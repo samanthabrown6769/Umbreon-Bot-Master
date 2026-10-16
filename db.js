@@ -811,12 +811,14 @@ db.exec(`
 `);
 
 // Promo items live in user_items; migrate any legacy promo_tokens balances across.
-db.exec(`
-  INSERT INTO user_items (user_id, item_name, amount)
-  SELECT id, 'Golden Leaf', promo_tokens FROM users WHERE promo_tokens > 0
-  ON CONFLICT(user_id, item_name) DO UPDATE SET amount = user_items.amount + excluded.amount;
-  UPDATE users SET promo_tokens = 0 WHERE promo_tokens > 0;
-`);
+if (db.prepare('PRAGMA table_info(users)').all().some((column) => column.name === 'promo_tokens')) {
+  db.exec(`
+    INSERT INTO user_items (user_id, item_name, amount)
+    SELECT id, 'Golden Leaf', promo_tokens FROM users WHERE promo_tokens > 0
+    ON CONFLICT(user_id, item_name) DO UPDATE SET amount = user_items.amount + excluded.amount;
+    UPDATE users SET promo_tokens = 0 WHERE promo_tokens > 0;
+  `);
+}
 if (!db.prepare('PRAGMA table_info(event_catches)').all().some((column) => column.name === 'catch_count')) {
   db.exec('ALTER TABLE event_catches ADD COLUMN catch_count INTEGER NOT NULL DEFAULT 1');
 }
