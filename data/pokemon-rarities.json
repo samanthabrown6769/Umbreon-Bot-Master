@@ -1,0 +1,9193 @@
+[
+  {
+    "id": 1,
+    "dex_number": 1,
+    "shiny_dex_number": 2001,
+    "name": "Bulbasaur",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 2,
+    "dex_number": 2,
+    "shiny_dex_number": 2002,
+    "name": "Ivysaur",
+    "rarity": "Rare"
+  },
+  {
+    "id": 3,
+    "dex_number": 3,
+    "shiny_dex_number": 2003,
+    "name": "Venusaur",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 4,
+    "dex_number": 4,
+    "shiny_dex_number": 2004,
+    "name": "Charmander",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 5,
+    "dex_number": 5,
+    "shiny_dex_number": 2005,
+    "name": "Charmeleon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 6,
+    "dex_number": 6,
+    "shiny_dex_number": 2006,
+    "name": "Charizard",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 7,
+    "dex_number": 7,
+    "shiny_dex_number": 2007,
+    "name": "Squirtle",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 8,
+    "dex_number": 8,
+    "shiny_dex_number": 2008,
+    "name": "Wartortle",
+    "rarity": "Rare"
+  },
+  {
+    "id": 9,
+    "dex_number": 9,
+    "shiny_dex_number": 2009,
+    "name": "Blastoise",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10,
+    "dex_number": 10,
+    "shiny_dex_number": 2010,
+    "name": "Caterpie",
+    "rarity": "Common"
+  },
+  {
+    "id": 11,
+    "dex_number": 11,
+    "shiny_dex_number": 2011,
+    "name": "Metapod",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 12,
+    "dex_number": 12,
+    "shiny_dex_number": 2012,
+    "name": "Butterfree",
+    "rarity": "Rare"
+  },
+  {
+    "id": 13,
+    "dex_number": 13,
+    "shiny_dex_number": 2013,
+    "name": "Weedle",
+    "rarity": "Common"
+  },
+  {
+    "id": 14,
+    "dex_number": 14,
+    "shiny_dex_number": 2014,
+    "name": "Kakuna",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 15,
+    "dex_number": 15,
+    "shiny_dex_number": 2015,
+    "name": "Beedrill",
+    "rarity": "Rare"
+  },
+  {
+    "id": 16,
+    "dex_number": 16,
+    "shiny_dex_number": 2016,
+    "name": "Pidgey",
+    "rarity": "Common"
+  },
+  {
+    "id": 17,
+    "dex_number": 17,
+    "shiny_dex_number": 2017,
+    "name": "Pidgeotto",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 18,
+    "dex_number": 18,
+    "shiny_dex_number": 2018,
+    "name": "Pidgeot",
+    "rarity": "Rare"
+  },
+  {
+    "id": 19,
+    "dex_number": 19,
+    "shiny_dex_number": 2019,
+    "name": "Rattata",
+    "rarity": "Common"
+  },
+  {
+    "id": 20,
+    "dex_number": 20,
+    "shiny_dex_number": 2020,
+    "name": "Raticate",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 21,
+    "dex_number": 21,
+    "shiny_dex_number": 2021,
+    "name": "Spearow",
+    "rarity": "Common"
+  },
+  {
+    "id": 22,
+    "dex_number": 22,
+    "shiny_dex_number": 2022,
+    "name": "Fearow",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 23,
+    "dex_number": 23,
+    "shiny_dex_number": 2023,
+    "name": "Ekans",
+    "rarity": "Common"
+  },
+  {
+    "id": 24,
+    "dex_number": 24,
+    "shiny_dex_number": 2024,
+    "name": "Arbok",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 25,
+    "dex_number": 25,
+    "shiny_dex_number": 2025,
+    "name": "Pikachu",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 26,
+    "dex_number": 26,
+    "shiny_dex_number": 2026,
+    "name": "Raichu",
+    "rarity": "Rare"
+  },
+  {
+    "id": 27,
+    "dex_number": 27,
+    "shiny_dex_number": 2027,
+    "name": "Sandshrew",
+    "rarity": "Common"
+  },
+  {
+    "id": 28,
+    "dex_number": 28,
+    "shiny_dex_number": 2028,
+    "name": "Sandslash",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 29,
+    "dex_number": 29,
+    "shiny_dex_number": 2029,
+    "name": "Nidoran♀",
+    "rarity": "Common"
+  },
+  {
+    "id": 30,
+    "dex_number": 30,
+    "shiny_dex_number": 2030,
+    "name": "Nidorina",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 31,
+    "dex_number": 31,
+    "shiny_dex_number": 2031,
+    "name": "Nidoqueen",
+    "rarity": "Rare"
+  },
+  {
+    "id": 32,
+    "dex_number": 32,
+    "shiny_dex_number": 2032,
+    "name": "Nidoran♂",
+    "rarity": "Common"
+  },
+  {
+    "id": 33,
+    "dex_number": 33,
+    "shiny_dex_number": 2033,
+    "name": "Nidorino",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 34,
+    "dex_number": 34,
+    "shiny_dex_number": 2034,
+    "name": "Nidoking",
+    "rarity": "Rare"
+  },
+  {
+    "id": 35,
+    "dex_number": 35,
+    "shiny_dex_number": 2035,
+    "name": "Clefairy",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 36,
+    "dex_number": 36,
+    "shiny_dex_number": 2036,
+    "name": "Clefable",
+    "rarity": "Rare"
+  },
+  {
+    "id": 37,
+    "dex_number": 37,
+    "shiny_dex_number": 2037,
+    "name": "Vulpix",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 38,
+    "dex_number": 38,
+    "shiny_dex_number": 2038,
+    "name": "Ninetales",
+    "rarity": "Rare"
+  },
+  {
+    "id": 39,
+    "dex_number": 39,
+    "shiny_dex_number": 2039,
+    "name": "Jigglypuff",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 40,
+    "dex_number": 40,
+    "shiny_dex_number": 2040,
+    "name": "Wigglytuff",
+    "rarity": "Rare"
+  },
+  {
+    "id": 41,
+    "dex_number": 41,
+    "shiny_dex_number": 2041,
+    "name": "Zubat",
+    "rarity": "Common"
+  },
+  {
+    "id": 42,
+    "dex_number": 42,
+    "shiny_dex_number": 2042,
+    "name": "Golbat",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 43,
+    "dex_number": 43,
+    "shiny_dex_number": 2043,
+    "name": "Oddish",
+    "rarity": "Common"
+  },
+  {
+    "id": 44,
+    "dex_number": 44,
+    "shiny_dex_number": 2044,
+    "name": "Gloom",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 45,
+    "dex_number": 45,
+    "shiny_dex_number": 2045,
+    "name": "Vileplume",
+    "rarity": "Rare"
+  },
+  {
+    "id": 46,
+    "dex_number": 46,
+    "shiny_dex_number": 2046,
+    "name": "Paras",
+    "rarity": "Common"
+  },
+  {
+    "id": 47,
+    "dex_number": 47,
+    "shiny_dex_number": 2047,
+    "name": "Parasect",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 48,
+    "dex_number": 48,
+    "shiny_dex_number": 2048,
+    "name": "Venonat",
+    "rarity": "Common"
+  },
+  {
+    "id": 49,
+    "dex_number": 49,
+    "shiny_dex_number": 2049,
+    "name": "Venomoth",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 50,
+    "dex_number": 50,
+    "shiny_dex_number": 2050,
+    "name": "Diglett",
+    "rarity": "Common"
+  },
+  {
+    "id": 51,
+    "dex_number": 51,
+    "shiny_dex_number": 2051,
+    "name": "Dugtrio",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 52,
+    "dex_number": 52,
+    "shiny_dex_number": 2052,
+    "name": "Meowth",
+    "rarity": "Common"
+  },
+  {
+    "id": 53,
+    "dex_number": 53,
+    "shiny_dex_number": 2053,
+    "name": "Persian",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 54,
+    "dex_number": 54,
+    "shiny_dex_number": 2054,
+    "name": "Psyduck",
+    "rarity": "Common"
+  },
+  {
+    "id": 55,
+    "dex_number": 55,
+    "shiny_dex_number": 2055,
+    "name": "Golduck",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 56,
+    "dex_number": 56,
+    "shiny_dex_number": 2056,
+    "name": "Mankey",
+    "rarity": "Common"
+  },
+  {
+    "id": 57,
+    "dex_number": 57,
+    "shiny_dex_number": 2057,
+    "name": "Primeape",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 58,
+    "dex_number": 58,
+    "shiny_dex_number": 2058,
+    "name": "Growlithe",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 59,
+    "dex_number": 59,
+    "shiny_dex_number": 2059,
+    "name": "Arcanine",
+    "rarity": "Rare"
+  },
+  {
+    "id": 60,
+    "dex_number": 60,
+    "shiny_dex_number": 2060,
+    "name": "Poliwag",
+    "rarity": "Common"
+  },
+  {
+    "id": 61,
+    "dex_number": 61,
+    "shiny_dex_number": 2061,
+    "name": "Poliwhirl",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 62,
+    "dex_number": 62,
+    "shiny_dex_number": 2062,
+    "name": "Poliwrath",
+    "rarity": "Rare"
+  },
+  {
+    "id": 63,
+    "dex_number": 63,
+    "shiny_dex_number": 2063,
+    "name": "Abra",
+    "rarity": "Common"
+  },
+  {
+    "id": 64,
+    "dex_number": 64,
+    "shiny_dex_number": 2064,
+    "name": "Kadabra",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 65,
+    "dex_number": 65,
+    "shiny_dex_number": 2065,
+    "name": "Alakazam",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 66,
+    "dex_number": 66,
+    "shiny_dex_number": 2066,
+    "name": "Machop",
+    "rarity": "Common"
+  },
+  {
+    "id": 67,
+    "dex_number": 67,
+    "shiny_dex_number": 2067,
+    "name": "Machoke",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 68,
+    "dex_number": 68,
+    "shiny_dex_number": 2068,
+    "name": "Machamp",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 69,
+    "dex_number": 69,
+    "shiny_dex_number": 2069,
+    "name": "Bellsprout",
+    "rarity": "Common"
+  },
+  {
+    "id": 70,
+    "dex_number": 70,
+    "shiny_dex_number": 2070,
+    "name": "Weepinbell",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 71,
+    "dex_number": 71,
+    "shiny_dex_number": 2071,
+    "name": "Victreebel",
+    "rarity": "Rare"
+  },
+  {
+    "id": 72,
+    "dex_number": 72,
+    "shiny_dex_number": 2072,
+    "name": "Tentacool",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 73,
+    "dex_number": 73,
+    "shiny_dex_number": 2073,
+    "name": "Tentacruel",
+    "rarity": "Rare"
+  },
+  {
+    "id": 74,
+    "dex_number": 74,
+    "shiny_dex_number": 2074,
+    "name": "Geodude",
+    "rarity": "Common"
+  },
+  {
+    "id": 75,
+    "dex_number": 75,
+    "shiny_dex_number": 2075,
+    "name": "Graveler",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 76,
+    "dex_number": 76,
+    "shiny_dex_number": 2076,
+    "name": "Golem",
+    "rarity": "Rare"
+  },
+  {
+    "id": 77,
+    "dex_number": 77,
+    "shiny_dex_number": 2077,
+    "name": "Ponyta",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 78,
+    "dex_number": 78,
+    "shiny_dex_number": 2078,
+    "name": "Rapidash",
+    "rarity": "Rare"
+  },
+  {
+    "id": 79,
+    "dex_number": 79,
+    "shiny_dex_number": 2079,
+    "name": "Slowpoke",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 80,
+    "dex_number": 80,
+    "shiny_dex_number": 2080,
+    "name": "Slowbro",
+    "rarity": "Rare"
+  },
+  {
+    "id": 81,
+    "dex_number": 81,
+    "shiny_dex_number": 2081,
+    "name": "Magnemite",
+    "rarity": "Common"
+  },
+  {
+    "id": 82,
+    "dex_number": 82,
+    "shiny_dex_number": 2082,
+    "name": "Magneton",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 83,
+    "dex_number": 83,
+    "shiny_dex_number": 2083,
+    "name": "Farfetch'd",
+    "rarity": "Rare"
+  },
+  {
+    "id": 84,
+    "dex_number": 84,
+    "shiny_dex_number": 2084,
+    "name": "Doduo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 85,
+    "dex_number": 85,
+    "shiny_dex_number": 2085,
+    "name": "Dodrio",
+    "rarity": "Rare"
+  },
+  {
+    "id": 86,
+    "dex_number": 86,
+    "shiny_dex_number": 2086,
+    "name": "Seel",
+    "rarity": "Common"
+  },
+  {
+    "id": 87,
+    "dex_number": 87,
+    "shiny_dex_number": 2087,
+    "name": "Dewgong",
+    "rarity": "Rare"
+  },
+  {
+    "id": 88,
+    "dex_number": 88,
+    "shiny_dex_number": 2088,
+    "name": "Grimer",
+    "rarity": "Common"
+  },
+  {
+    "id": 89,
+    "dex_number": 89,
+    "shiny_dex_number": 2089,
+    "name": "Muk",
+    "rarity": "Rare"
+  },
+  {
+    "id": 90,
+    "dex_number": 90,
+    "shiny_dex_number": 2090,
+    "name": "Shellder",
+    "rarity": "Common"
+  },
+  {
+    "id": 91,
+    "dex_number": 91,
+    "shiny_dex_number": 2091,
+    "name": "Cloyster",
+    "rarity": "Rare"
+  },
+  {
+    "id": 92,
+    "dex_number": 92,
+    "shiny_dex_number": 2092,
+    "name": "Gastly",
+    "rarity": "Common"
+  },
+  {
+    "id": 93,
+    "dex_number": 93,
+    "shiny_dex_number": 2093,
+    "name": "Haunter",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 94,
+    "dex_number": 94,
+    "shiny_dex_number": 2094,
+    "name": "Gengar",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 95,
+    "dex_number": 95,
+    "shiny_dex_number": 2095,
+    "name": "Onix",
+    "rarity": "Rare"
+  },
+  {
+    "id": 96,
+    "dex_number": 96,
+    "shiny_dex_number": 2096,
+    "name": "Drowzee",
+    "rarity": "Common"
+  },
+  {
+    "id": 97,
+    "dex_number": 97,
+    "shiny_dex_number": 2097,
+    "name": "Hypno",
+    "rarity": "Rare"
+  },
+  {
+    "id": 98,
+    "dex_number": 98,
+    "shiny_dex_number": 2098,
+    "name": "Krabby",
+    "rarity": "Common"
+  },
+  {
+    "id": 99,
+    "dex_number": 99,
+    "shiny_dex_number": 2099,
+    "name": "Kingler",
+    "rarity": "Rare"
+  },
+  {
+    "id": 100,
+    "dex_number": 100,
+    "shiny_dex_number": 2100,
+    "name": "Voltorb",
+    "rarity": "Common"
+  },
+  {
+    "id": 101,
+    "dex_number": 101,
+    "shiny_dex_number": 2101,
+    "name": "Electrode",
+    "rarity": "Rare"
+  },
+  {
+    "id": 102,
+    "dex_number": 102,
+    "shiny_dex_number": 2102,
+    "name": "Exeggcute",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 103,
+    "dex_number": 103,
+    "shiny_dex_number": 2103,
+    "name": "Exeggutor",
+    "rarity": "Rare"
+  },
+  {
+    "id": 104,
+    "dex_number": 104,
+    "shiny_dex_number": 2104,
+    "name": "Cubone",
+    "rarity": "Common"
+  },
+  {
+    "id": 105,
+    "dex_number": 105,
+    "shiny_dex_number": 2105,
+    "name": "Marowak",
+    "rarity": "Rare"
+  },
+  {
+    "id": 106,
+    "dex_number": 106,
+    "shiny_dex_number": 2106,
+    "name": "Hitmonlee",
+    "rarity": "Rare"
+  },
+  {
+    "id": 107,
+    "dex_number": 107,
+    "shiny_dex_number": 2107,
+    "name": "Hitmonchan",
+    "rarity": "Rare"
+  },
+  {
+    "id": 108,
+    "dex_number": 108,
+    "shiny_dex_number": 2108,
+    "name": "Lickitung",
+    "rarity": "Rare"
+  },
+  {
+    "id": 109,
+    "dex_number": 109,
+    "shiny_dex_number": 2109,
+    "name": "Koffing",
+    "rarity": "Common"
+  },
+  {
+    "id": 110,
+    "dex_number": 110,
+    "shiny_dex_number": 2110,
+    "name": "Weezing",
+    "rarity": "Rare"
+  },
+  {
+    "id": 111,
+    "dex_number": 111,
+    "shiny_dex_number": 2111,
+    "name": "Rhyhorn",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 112,
+    "dex_number": 112,
+    "shiny_dex_number": 2112,
+    "name": "Rhydon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 113,
+    "dex_number": 113,
+    "shiny_dex_number": 2113,
+    "name": "Chansey",
+    "rarity": "Rare"
+  },
+  {
+    "id": 114,
+    "dex_number": 114,
+    "shiny_dex_number": 2114,
+    "name": "Tangela",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 115,
+    "dex_number": 115,
+    "shiny_dex_number": 2115,
+    "name": "Kangaskhan",
+    "rarity": "Rare"
+  },
+  {
+    "id": 116,
+    "dex_number": 116,
+    "shiny_dex_number": 2116,
+    "name": "Horsea",
+    "rarity": "Common"
+  },
+  {
+    "id": 117,
+    "dex_number": 117,
+    "shiny_dex_number": 2117,
+    "name": "Seadra",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 118,
+    "dex_number": 118,
+    "shiny_dex_number": 2118,
+    "name": "Goldeen",
+    "rarity": "Common"
+  },
+  {
+    "id": 119,
+    "dex_number": 119,
+    "shiny_dex_number": 2119,
+    "name": "Seaking",
+    "rarity": "Rare"
+  },
+  {
+    "id": 120,
+    "dex_number": 120,
+    "shiny_dex_number": 2120,
+    "name": "Staryu",
+    "rarity": "Common"
+  },
+  {
+    "id": 121,
+    "dex_number": 121,
+    "shiny_dex_number": 2121,
+    "name": "Starmie",
+    "rarity": "Rare"
+  },
+  {
+    "id": 122,
+    "dex_number": 122,
+    "shiny_dex_number": 2122,
+    "name": "Mr. Mime",
+    "rarity": "Rare"
+  },
+  {
+    "id": 123,
+    "dex_number": 123,
+    "shiny_dex_number": 2123,
+    "name": "Scyther",
+    "rarity": "Rare"
+  },
+  {
+    "id": 124,
+    "dex_number": 124,
+    "shiny_dex_number": 2124,
+    "name": "Jynx",
+    "rarity": "Rare"
+  },
+  {
+    "id": 125,
+    "dex_number": 125,
+    "shiny_dex_number": 2125,
+    "name": "Electabuzz",
+    "rarity": "Rare"
+  },
+  {
+    "id": 126,
+    "dex_number": 126,
+    "shiny_dex_number": 2126,
+    "name": "Magmar",
+    "rarity": "Rare"
+  },
+  {
+    "id": 127,
+    "dex_number": 127,
+    "shiny_dex_number": 2127,
+    "name": "Pinsir",
+    "rarity": "Rare"
+  },
+  {
+    "id": 128,
+    "dex_number": 128,
+    "shiny_dex_number": 2128,
+    "name": "Tauros",
+    "rarity": "Rare"
+  },
+  {
+    "id": 129,
+    "dex_number": 129,
+    "shiny_dex_number": 2129,
+    "name": "Magikarp",
+    "rarity": "Common"
+  },
+  {
+    "id": 130,
+    "dex_number": 130,
+    "shiny_dex_number": 2130,
+    "name": "Gyarados",
+    "rarity": "Rare"
+  },
+  {
+    "id": 131,
+    "dex_number": 131,
+    "shiny_dex_number": 2131,
+    "name": "Lapras",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 132,
+    "dex_number": 132,
+    "shiny_dex_number": 2132,
+    "name": "Ditto",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 133,
+    "dex_number": 133,
+    "shiny_dex_number": 2133,
+    "name": "Eevee",
+    "rarity": "Rare"
+  },
+  {
+    "id": 134,
+    "dex_number": 134,
+    "shiny_dex_number": 2134,
+    "name": "Vaporeon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 135,
+    "dex_number": 135,
+    "shiny_dex_number": 2135,
+    "name": "Jolteon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 136,
+    "dex_number": 136,
+    "shiny_dex_number": 2136,
+    "name": "Flareon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 137,
+    "dex_number": 137,
+    "shiny_dex_number": 2137,
+    "name": "Porygon",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 138,
+    "dex_number": 138,
+    "shiny_dex_number": 2138,
+    "name": "Omanyte",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 139,
+    "dex_number": 139,
+    "shiny_dex_number": 2139,
+    "name": "Omastar",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 140,
+    "dex_number": 140,
+    "shiny_dex_number": 2140,
+    "name": "Kabuto",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 141,
+    "dex_number": 141,
+    "shiny_dex_number": 2141,
+    "name": "Kabutops",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 142,
+    "dex_number": 142,
+    "shiny_dex_number": 2142,
+    "name": "Aerodactyl",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 143,
+    "dex_number": 143,
+    "shiny_dex_number": 2143,
+    "name": "Snorlax",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 144,
+    "dex_number": 144,
+    "shiny_dex_number": 2144,
+    "name": "Articuno",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 145,
+    "dex_number": 145,
+    "shiny_dex_number": 2145,
+    "name": "Zapdos",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 146,
+    "dex_number": 146,
+    "shiny_dex_number": 2146,
+    "name": "Moltres",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 147,
+    "dex_number": 147,
+    "shiny_dex_number": 2147,
+    "name": "Dratini",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 148,
+    "dex_number": 148,
+    "shiny_dex_number": 2148,
+    "name": "Dragonair",
+    "rarity": "Rare"
+  },
+  {
+    "id": 149,
+    "dex_number": 149,
+    "shiny_dex_number": 2149,
+    "name": "Dragonite",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 150,
+    "dex_number": 150,
+    "shiny_dex_number": 2150,
+    "name": "Mewtwo",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 151,
+    "dex_number": 151,
+    "shiny_dex_number": 2151,
+    "name": "Mew",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 152,
+    "dex_number": 152,
+    "shiny_dex_number": 2152,
+    "name": "Chikorita",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 153,
+    "dex_number": 153,
+    "shiny_dex_number": 2153,
+    "name": "Bayleef",
+    "rarity": "Rare"
+  },
+  {
+    "id": 154,
+    "dex_number": 154,
+    "shiny_dex_number": 2154,
+    "name": "Meganium",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 155,
+    "dex_number": 155,
+    "shiny_dex_number": 2155,
+    "name": "Cyndaquil",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 156,
+    "dex_number": 156,
+    "shiny_dex_number": 2156,
+    "name": "Quilava",
+    "rarity": "Rare"
+  },
+  {
+    "id": 157,
+    "dex_number": 157,
+    "shiny_dex_number": 2157,
+    "name": "Typhlosion",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 158,
+    "dex_number": 158,
+    "shiny_dex_number": 2158,
+    "name": "Totodile",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 159,
+    "dex_number": 159,
+    "shiny_dex_number": 2159,
+    "name": "Croconaw",
+    "rarity": "Rare"
+  },
+  {
+    "id": 160,
+    "dex_number": 160,
+    "shiny_dex_number": 2160,
+    "name": "Feraligatr",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 161,
+    "dex_number": 161,
+    "shiny_dex_number": 2161,
+    "name": "Sentret",
+    "rarity": "Common"
+  },
+  {
+    "id": 162,
+    "dex_number": 162,
+    "shiny_dex_number": 2162,
+    "name": "Furret",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 163,
+    "dex_number": 163,
+    "shiny_dex_number": 2163,
+    "name": "Hoothoot",
+    "rarity": "Common"
+  },
+  {
+    "id": 164,
+    "dex_number": 164,
+    "shiny_dex_number": 2164,
+    "name": "Noctowl",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 165,
+    "dex_number": 165,
+    "shiny_dex_number": 2165,
+    "name": "Ledyba",
+    "rarity": "Common"
+  },
+  {
+    "id": 166,
+    "dex_number": 166,
+    "shiny_dex_number": 2166,
+    "name": "Ledian",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 167,
+    "dex_number": 167,
+    "shiny_dex_number": 2167,
+    "name": "Spinarak",
+    "rarity": "Common"
+  },
+  {
+    "id": 168,
+    "dex_number": 168,
+    "shiny_dex_number": 2168,
+    "name": "Ariados",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 169,
+    "dex_number": 169,
+    "shiny_dex_number": 2169,
+    "name": "Crobat",
+    "rarity": "Rare"
+  },
+  {
+    "id": 170,
+    "dex_number": 170,
+    "shiny_dex_number": 2170,
+    "name": "Chinchou",
+    "rarity": "Common"
+  },
+  {
+    "id": 171,
+    "dex_number": 171,
+    "shiny_dex_number": 2171,
+    "name": "Lanturn",
+    "rarity": "Rare"
+  },
+  {
+    "id": 172,
+    "dex_number": 172,
+    "shiny_dex_number": 2172,
+    "name": "Pichu",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 173,
+    "dex_number": 173,
+    "shiny_dex_number": 2173,
+    "name": "Cleffa",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 174,
+    "dex_number": 174,
+    "shiny_dex_number": 2174,
+    "name": "Igglybuff",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 175,
+    "dex_number": 175,
+    "shiny_dex_number": 2175,
+    "name": "Togepi",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 176,
+    "dex_number": 176,
+    "shiny_dex_number": 2176,
+    "name": "Togetic",
+    "rarity": "Rare"
+  },
+  {
+    "id": 177,
+    "dex_number": 177,
+    "shiny_dex_number": 2177,
+    "name": "Natu",
+    "rarity": "Common"
+  },
+  {
+    "id": 178,
+    "dex_number": 178,
+    "shiny_dex_number": 2178,
+    "name": "Xatu",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 179,
+    "dex_number": 179,
+    "shiny_dex_number": 2179,
+    "name": "Mareep",
+    "rarity": "Common"
+  },
+  {
+    "id": 180,
+    "dex_number": 180,
+    "shiny_dex_number": 2180,
+    "name": "Flaaffy",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 181,
+    "dex_number": 181,
+    "shiny_dex_number": 2181,
+    "name": "Ampharos",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 182,
+    "dex_number": 182,
+    "shiny_dex_number": 2182,
+    "name": "Bellossom",
+    "rarity": "Rare"
+  },
+  {
+    "id": 183,
+    "dex_number": 183,
+    "shiny_dex_number": 2183,
+    "name": "Marill",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 184,
+    "dex_number": 184,
+    "shiny_dex_number": 2184,
+    "name": "Azumarill",
+    "rarity": "Rare"
+  },
+  {
+    "id": 185,
+    "dex_number": 185,
+    "shiny_dex_number": 2185,
+    "name": "Sudowoodo",
+    "rarity": "Rare"
+  },
+  {
+    "id": 186,
+    "dex_number": 186,
+    "shiny_dex_number": 2186,
+    "name": "Politoed",
+    "rarity": "Rare"
+  },
+  {
+    "id": 187,
+    "dex_number": 187,
+    "shiny_dex_number": 2187,
+    "name": "Hoppip",
+    "rarity": "Common"
+  },
+  {
+    "id": 188,
+    "dex_number": 188,
+    "shiny_dex_number": 2188,
+    "name": "Skiploom",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 189,
+    "dex_number": 189,
+    "shiny_dex_number": 2189,
+    "name": "Jumpluff",
+    "rarity": "Rare"
+  },
+  {
+    "id": 190,
+    "dex_number": 190,
+    "shiny_dex_number": 2190,
+    "name": "Aipom",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 191,
+    "dex_number": 191,
+    "shiny_dex_number": 2191,
+    "name": "Sunkern",
+    "rarity": "Common"
+  },
+  {
+    "id": 192,
+    "dex_number": 192,
+    "shiny_dex_number": 2192,
+    "name": "Sunflora",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 193,
+    "dex_number": 193,
+    "shiny_dex_number": 2193,
+    "name": "Yanma",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 194,
+    "dex_number": 194,
+    "shiny_dex_number": 2194,
+    "name": "Wooper",
+    "rarity": "Common"
+  },
+  {
+    "id": 195,
+    "dex_number": 195,
+    "shiny_dex_number": 2195,
+    "name": "Quagsire",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 196,
+    "dex_number": 196,
+    "shiny_dex_number": 2196,
+    "name": "Espeon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 197,
+    "dex_number": 197,
+    "shiny_dex_number": 2197,
+    "name": "Umbreon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 198,
+    "dex_number": 198,
+    "shiny_dex_number": 2198,
+    "name": "Murkrow",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 199,
+    "dex_number": 199,
+    "shiny_dex_number": 2199,
+    "name": "Slowking",
+    "rarity": "Rare"
+  },
+  {
+    "id": 200,
+    "dex_number": 200,
+    "shiny_dex_number": 2200,
+    "name": "Misdreavus",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 201,
+    "dex_number": 201,
+    "shiny_dex_number": 2201,
+    "name": "Unown",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 202,
+    "dex_number": 202,
+    "shiny_dex_number": 2202,
+    "name": "Wobbuffet",
+    "rarity": "Rare"
+  },
+  {
+    "id": 203,
+    "dex_number": 203,
+    "shiny_dex_number": 2203,
+    "name": "Girafarig",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 204,
+    "dex_number": 204,
+    "shiny_dex_number": 2204,
+    "name": "Pineco",
+    "rarity": "Common"
+  },
+  {
+    "id": 205,
+    "dex_number": 205,
+    "shiny_dex_number": 2205,
+    "name": "Forretress",
+    "rarity": "Rare"
+  },
+  {
+    "id": 206,
+    "dex_number": 206,
+    "shiny_dex_number": 2206,
+    "name": "Dunsparce",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 207,
+    "dex_number": 207,
+    "shiny_dex_number": 2207,
+    "name": "Gligar",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 208,
+    "dex_number": 208,
+    "shiny_dex_number": 2208,
+    "name": "Steelix",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 209,
+    "dex_number": 209,
+    "shiny_dex_number": 2209,
+    "name": "Snubbull",
+    "rarity": "Common"
+  },
+  {
+    "id": 210,
+    "dex_number": 210,
+    "shiny_dex_number": 2210,
+    "name": "Granbull",
+    "rarity": "Rare"
+  },
+  {
+    "id": 211,
+    "dex_number": 211,
+    "shiny_dex_number": 2211,
+    "name": "Qwilfish",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 212,
+    "dex_number": 212,
+    "shiny_dex_number": 2212,
+    "name": "Scizor",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 213,
+    "dex_number": 213,
+    "shiny_dex_number": 2213,
+    "name": "Shuckle",
+    "rarity": "Rare"
+  },
+  {
+    "id": 214,
+    "dex_number": 214,
+    "shiny_dex_number": 2214,
+    "name": "Heracross",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 215,
+    "dex_number": 215,
+    "shiny_dex_number": 2215,
+    "name": "Sneasel",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 216,
+    "dex_number": 216,
+    "shiny_dex_number": 2216,
+    "name": "Teddiursa",
+    "rarity": "Common"
+  },
+  {
+    "id": 217,
+    "dex_number": 217,
+    "shiny_dex_number": 2217,
+    "name": "Ursaring",
+    "rarity": "Rare"
+  },
+  {
+    "id": 218,
+    "dex_number": 218,
+    "shiny_dex_number": 2218,
+    "name": "Slugma",
+    "rarity": "Common"
+  },
+  {
+    "id": 219,
+    "dex_number": 219,
+    "shiny_dex_number": 2219,
+    "name": "Magcargo",
+    "rarity": "Rare"
+  },
+  {
+    "id": 220,
+    "dex_number": 220,
+    "shiny_dex_number": 2220,
+    "name": "Swinub",
+    "rarity": "Common"
+  },
+  {
+    "id": 221,
+    "dex_number": 221,
+    "shiny_dex_number": 2221,
+    "name": "Piloswine",
+    "rarity": "Rare"
+  },
+  {
+    "id": 222,
+    "dex_number": 222,
+    "shiny_dex_number": 2222,
+    "name": "Corsola",
+    "rarity": "Rare"
+  },
+  {
+    "id": 223,
+    "dex_number": 223,
+    "shiny_dex_number": 2223,
+    "name": "Remoraid",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 224,
+    "dex_number": 224,
+    "shiny_dex_number": 2224,
+    "name": "Octillery",
+    "rarity": "Rare"
+  },
+  {
+    "id": 225,
+    "dex_number": 225,
+    "shiny_dex_number": 2225,
+    "name": "Delibird",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 226,
+    "dex_number": 226,
+    "shiny_dex_number": 2226,
+    "name": "Mantine",
+    "rarity": "Rare"
+  },
+  {
+    "id": 227,
+    "dex_number": 227,
+    "shiny_dex_number": 2227,
+    "name": "Skarmory",
+    "rarity": "Rare"
+  },
+  {
+    "id": 228,
+    "dex_number": 228,
+    "shiny_dex_number": 2228,
+    "name": "Houndour",
+    "rarity": "Common"
+  },
+  {
+    "id": 229,
+    "dex_number": 229,
+    "shiny_dex_number": 2229,
+    "name": "Houndoom",
+    "rarity": "Rare"
+  },
+  {
+    "id": 230,
+    "dex_number": 230,
+    "shiny_dex_number": 2230,
+    "name": "Kingdra",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 231,
+    "dex_number": 231,
+    "shiny_dex_number": 2231,
+    "name": "Phanpy",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 232,
+    "dex_number": 232,
+    "shiny_dex_number": 2232,
+    "name": "Donphan",
+    "rarity": "Rare"
+  },
+  {
+    "id": 233,
+    "dex_number": 233,
+    "shiny_dex_number": 2233,
+    "name": "Porygon2",
+    "rarity": "Rare"
+  },
+  {
+    "id": 234,
+    "dex_number": 234,
+    "shiny_dex_number": 2234,
+    "name": "Stantler",
+    "rarity": "Rare"
+  },
+  {
+    "id": 235,
+    "dex_number": 235,
+    "shiny_dex_number": 2235,
+    "name": "Smeargle",
+    "rarity": "Rare"
+  },
+  {
+    "id": 236,
+    "dex_number": 236,
+    "shiny_dex_number": 2236,
+    "name": "Tyrogue",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 237,
+    "dex_number": 237,
+    "shiny_dex_number": 2237,
+    "name": "Hitmontop",
+    "rarity": "Rare"
+  },
+  {
+    "id": 238,
+    "dex_number": 238,
+    "shiny_dex_number": 2238,
+    "name": "Smoochum",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 239,
+    "dex_number": 239,
+    "shiny_dex_number": 2239,
+    "name": "Elekid",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 240,
+    "dex_number": 240,
+    "shiny_dex_number": 2240,
+    "name": "Magby",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 241,
+    "dex_number": 241,
+    "shiny_dex_number": 2241,
+    "name": "Miltank",
+    "rarity": "Rare"
+  },
+  {
+    "id": 242,
+    "dex_number": 242,
+    "shiny_dex_number": 2242,
+    "name": "Blissey",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 243,
+    "dex_number": 243,
+    "shiny_dex_number": 2243,
+    "name": "Raikou",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 244,
+    "dex_number": 244,
+    "shiny_dex_number": 2244,
+    "name": "Entei",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 245,
+    "dex_number": 245,
+    "shiny_dex_number": 2245,
+    "name": "Suicune",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 246,
+    "dex_number": 246,
+    "shiny_dex_number": 2246,
+    "name": "Larvitar",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 247,
+    "dex_number": 247,
+    "shiny_dex_number": 2247,
+    "name": "Pupitar",
+    "rarity": "Rare"
+  },
+  {
+    "id": 248,
+    "dex_number": 248,
+    "shiny_dex_number": 2248,
+    "name": "Tyranitar",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 249,
+    "dex_number": 249,
+    "shiny_dex_number": 2249,
+    "name": "Lugia",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 250,
+    "dex_number": 250,
+    "shiny_dex_number": 2250,
+    "name": "Ho-Oh",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 251,
+    "dex_number": 251,
+    "shiny_dex_number": 2251,
+    "name": "Celebi",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 252,
+    "dex_number": 252,
+    "shiny_dex_number": 2252,
+    "name": "Treecko",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 253,
+    "dex_number": 253,
+    "shiny_dex_number": 2253,
+    "name": "Grovyle",
+    "rarity": "Rare"
+  },
+  {
+    "id": 254,
+    "dex_number": 254,
+    "shiny_dex_number": 2254,
+    "name": "Sceptile",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 255,
+    "dex_number": 255,
+    "shiny_dex_number": 2255,
+    "name": "Torchic",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 256,
+    "dex_number": 256,
+    "shiny_dex_number": 2256,
+    "name": "Combusken",
+    "rarity": "Rare"
+  },
+  {
+    "id": 257,
+    "dex_number": 257,
+    "shiny_dex_number": 2257,
+    "name": "Blaziken",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 258,
+    "dex_number": 258,
+    "shiny_dex_number": 2258,
+    "name": "Mudkip",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 259,
+    "dex_number": 259,
+    "shiny_dex_number": 2259,
+    "name": "Marshtomp",
+    "rarity": "Rare"
+  },
+  {
+    "id": 260,
+    "dex_number": 260,
+    "shiny_dex_number": 2260,
+    "name": "Swampert",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 261,
+    "dex_number": 261,
+    "shiny_dex_number": 2261,
+    "name": "Poochyena",
+    "rarity": "Common"
+  },
+  {
+    "id": 262,
+    "dex_number": 262,
+    "shiny_dex_number": 2262,
+    "name": "Mightyena",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 263,
+    "dex_number": 263,
+    "shiny_dex_number": 2263,
+    "name": "Zigzagoon",
+    "rarity": "Common"
+  },
+  {
+    "id": 264,
+    "dex_number": 264,
+    "shiny_dex_number": 2264,
+    "name": "Linoone",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 265,
+    "dex_number": 265,
+    "shiny_dex_number": 2265,
+    "name": "Wurmple",
+    "rarity": "Common"
+  },
+  {
+    "id": 266,
+    "dex_number": 266,
+    "shiny_dex_number": 2266,
+    "name": "Silcoon",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 267,
+    "dex_number": 267,
+    "shiny_dex_number": 2267,
+    "name": "Beautifly",
+    "rarity": "Rare"
+  },
+  {
+    "id": 268,
+    "dex_number": 268,
+    "shiny_dex_number": 2268,
+    "name": "Cascoon",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 269,
+    "dex_number": 269,
+    "shiny_dex_number": 2269,
+    "name": "Dustox",
+    "rarity": "Rare"
+  },
+  {
+    "id": 270,
+    "dex_number": 270,
+    "shiny_dex_number": 2270,
+    "name": "Lotad",
+    "rarity": "Common"
+  },
+  {
+    "id": 271,
+    "dex_number": 271,
+    "shiny_dex_number": 2271,
+    "name": "Lombre",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 272,
+    "dex_number": 272,
+    "shiny_dex_number": 2272,
+    "name": "Ludicolo",
+    "rarity": "Rare"
+  },
+  {
+    "id": 273,
+    "dex_number": 273,
+    "shiny_dex_number": 2273,
+    "name": "Seedot",
+    "rarity": "Common"
+  },
+  {
+    "id": 274,
+    "dex_number": 274,
+    "shiny_dex_number": 2274,
+    "name": "Nuzleaf",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 275,
+    "dex_number": 275,
+    "shiny_dex_number": 2275,
+    "name": "Shiftry",
+    "rarity": "Rare"
+  },
+  {
+    "id": 276,
+    "dex_number": 276,
+    "shiny_dex_number": 2276,
+    "name": "Taillow",
+    "rarity": "Common"
+  },
+  {
+    "id": 277,
+    "dex_number": 277,
+    "shiny_dex_number": 2277,
+    "name": "Swellow",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 278,
+    "dex_number": 278,
+    "shiny_dex_number": 2278,
+    "name": "Wingull",
+    "rarity": "Common"
+  },
+  {
+    "id": 279,
+    "dex_number": 279,
+    "shiny_dex_number": 2279,
+    "name": "Pelipper",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 280,
+    "dex_number": 280,
+    "shiny_dex_number": 2280,
+    "name": "Ralts",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 281,
+    "dex_number": 281,
+    "shiny_dex_number": 2281,
+    "name": "Kirlia",
+    "rarity": "Rare"
+  },
+  {
+    "id": 282,
+    "dex_number": 282,
+    "shiny_dex_number": 2282,
+    "name": "Gardevoir",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 283,
+    "dex_number": 283,
+    "shiny_dex_number": 2283,
+    "name": "Surskit",
+    "rarity": "Common"
+  },
+  {
+    "id": 284,
+    "dex_number": 284,
+    "shiny_dex_number": 2284,
+    "name": "Masquerain",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 285,
+    "dex_number": 285,
+    "shiny_dex_number": 2285,
+    "name": "Shroomish",
+    "rarity": "Common"
+  },
+  {
+    "id": 286,
+    "dex_number": 286,
+    "shiny_dex_number": 2286,
+    "name": "Breloom",
+    "rarity": "Rare"
+  },
+  {
+    "id": 287,
+    "dex_number": 287,
+    "shiny_dex_number": 2287,
+    "name": "Slakoth",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 288,
+    "dex_number": 288,
+    "shiny_dex_number": 2288,
+    "name": "Vigoroth",
+    "rarity": "Rare"
+  },
+  {
+    "id": 289,
+    "dex_number": 289,
+    "shiny_dex_number": 2289,
+    "name": "Slaking",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 290,
+    "dex_number": 290,
+    "shiny_dex_number": 2290,
+    "name": "Nincada",
+    "rarity": "Common"
+  },
+  {
+    "id": 291,
+    "dex_number": 291,
+    "shiny_dex_number": 2291,
+    "name": "Ninjask",
+    "rarity": "Rare"
+  },
+  {
+    "id": 292,
+    "dex_number": 292,
+    "shiny_dex_number": 2292,
+    "name": "Shedinja",
+    "rarity": "Rare"
+  },
+  {
+    "id": 293,
+    "dex_number": 293,
+    "shiny_dex_number": 2293,
+    "name": "Whismur",
+    "rarity": "Common"
+  },
+  {
+    "id": 294,
+    "dex_number": 294,
+    "shiny_dex_number": 2294,
+    "name": "Loudred",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 295,
+    "dex_number": 295,
+    "shiny_dex_number": 2295,
+    "name": "Exploud",
+    "rarity": "Rare"
+  },
+  {
+    "id": 296,
+    "dex_number": 296,
+    "shiny_dex_number": 2296,
+    "name": "Makuhita",
+    "rarity": "Common"
+  },
+  {
+    "id": 297,
+    "dex_number": 297,
+    "shiny_dex_number": 2297,
+    "name": "Hariyama",
+    "rarity": "Rare"
+  },
+  {
+    "id": 298,
+    "dex_number": 298,
+    "shiny_dex_number": 2298,
+    "name": "Azurill",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 299,
+    "dex_number": 299,
+    "shiny_dex_number": 2299,
+    "name": "Nosepass",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 300,
+    "dex_number": 300,
+    "shiny_dex_number": 2300,
+    "name": "Skitty",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 301,
+    "dex_number": 301,
+    "shiny_dex_number": 2301,
+    "name": "Delcatty",
+    "rarity": "Rare"
+  },
+  {
+    "id": 302,
+    "dex_number": 302,
+    "shiny_dex_number": 2302,
+    "name": "Sableye",
+    "rarity": "Rare"
+  },
+  {
+    "id": 303,
+    "dex_number": 303,
+    "shiny_dex_number": 2303,
+    "name": "Mawile",
+    "rarity": "Rare"
+  },
+  {
+    "id": 304,
+    "dex_number": 304,
+    "shiny_dex_number": 2304,
+    "name": "Aron",
+    "rarity": "Common"
+  },
+  {
+    "id": 305,
+    "dex_number": 305,
+    "shiny_dex_number": 2305,
+    "name": "Lairon",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 306,
+    "dex_number": 306,
+    "shiny_dex_number": 2306,
+    "name": "Aggron",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 307,
+    "dex_number": 307,
+    "shiny_dex_number": 2307,
+    "name": "Meditite",
+    "rarity": "Common"
+  },
+  {
+    "id": 308,
+    "dex_number": 308,
+    "shiny_dex_number": 2308,
+    "name": "Medicham",
+    "rarity": "Rare"
+  },
+  {
+    "id": 309,
+    "dex_number": 309,
+    "shiny_dex_number": 2309,
+    "name": "Electrike",
+    "rarity": "Common"
+  },
+  {
+    "id": 310,
+    "dex_number": 310,
+    "shiny_dex_number": 2310,
+    "name": "Manectric",
+    "rarity": "Rare"
+  },
+  {
+    "id": 311,
+    "dex_number": 311,
+    "shiny_dex_number": 2311,
+    "name": "Plusle",
+    "rarity": "Rare"
+  },
+  {
+    "id": 312,
+    "dex_number": 312,
+    "shiny_dex_number": 2312,
+    "name": "Minun",
+    "rarity": "Rare"
+  },
+  {
+    "id": 313,
+    "dex_number": 313,
+    "shiny_dex_number": 2313,
+    "name": "Volbeat",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 314,
+    "dex_number": 314,
+    "shiny_dex_number": 2314,
+    "name": "Illumise",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 315,
+    "dex_number": 315,
+    "shiny_dex_number": 2315,
+    "name": "Roselia",
+    "rarity": "Rare"
+  },
+  {
+    "id": 316,
+    "dex_number": 316,
+    "shiny_dex_number": 2316,
+    "name": "Gulpin",
+    "rarity": "Common"
+  },
+  {
+    "id": 317,
+    "dex_number": 317,
+    "shiny_dex_number": 2317,
+    "name": "Swalot",
+    "rarity": "Rare"
+  },
+  {
+    "id": 318,
+    "dex_number": 318,
+    "shiny_dex_number": 2318,
+    "name": "Carvanha",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 319,
+    "dex_number": 319,
+    "shiny_dex_number": 2319,
+    "name": "Sharpedo",
+    "rarity": "Rare"
+  },
+  {
+    "id": 320,
+    "dex_number": 320,
+    "shiny_dex_number": 2320,
+    "name": "Wailmer",
+    "rarity": "Common"
+  },
+  {
+    "id": 321,
+    "dex_number": 321,
+    "shiny_dex_number": 2321,
+    "name": "Wailord",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 322,
+    "dex_number": 322,
+    "shiny_dex_number": 2322,
+    "name": "Numel",
+    "rarity": "Common"
+  },
+  {
+    "id": 323,
+    "dex_number": 323,
+    "shiny_dex_number": 2323,
+    "name": "Camerupt",
+    "rarity": "Rare"
+  },
+  {
+    "id": 324,
+    "dex_number": 324,
+    "shiny_dex_number": 2324,
+    "name": "Torkoal",
+    "rarity": "Rare"
+  },
+  {
+    "id": 325,
+    "dex_number": 325,
+    "shiny_dex_number": 2325,
+    "name": "Spoink",
+    "rarity": "Common"
+  },
+  {
+    "id": 326,
+    "dex_number": 326,
+    "shiny_dex_number": 2326,
+    "name": "Grumpig",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 327,
+    "dex_number": 327,
+    "shiny_dex_number": 2327,
+    "name": "Spinda",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 328,
+    "dex_number": 328,
+    "shiny_dex_number": 2328,
+    "name": "Trapinch",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 329,
+    "dex_number": 329,
+    "shiny_dex_number": 2329,
+    "name": "Vibrava",
+    "rarity": "Rare"
+  },
+  {
+    "id": 330,
+    "dex_number": 330,
+    "shiny_dex_number": 2330,
+    "name": "Flygon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 331,
+    "dex_number": 331,
+    "shiny_dex_number": 2331,
+    "name": "Cacnea",
+    "rarity": "Common"
+  },
+  {
+    "id": 332,
+    "dex_number": 332,
+    "shiny_dex_number": 2332,
+    "name": "Cacturne",
+    "rarity": "Rare"
+  },
+  {
+    "id": 333,
+    "dex_number": 333,
+    "shiny_dex_number": 2333,
+    "name": "Swablu",
+    "rarity": "Common"
+  },
+  {
+    "id": 334,
+    "dex_number": 334,
+    "shiny_dex_number": 2334,
+    "name": "Altaria",
+    "rarity": "Rare"
+  },
+  {
+    "id": 335,
+    "dex_number": 335,
+    "shiny_dex_number": 2335,
+    "name": "Zangoose",
+    "rarity": "Rare"
+  },
+  {
+    "id": 336,
+    "dex_number": 336,
+    "shiny_dex_number": 2336,
+    "name": "Seviper",
+    "rarity": "Rare"
+  },
+  {
+    "id": 337,
+    "dex_number": 337,
+    "shiny_dex_number": 2337,
+    "name": "Lunatone",
+    "rarity": "Rare"
+  },
+  {
+    "id": 338,
+    "dex_number": 338,
+    "shiny_dex_number": 2338,
+    "name": "Solrock",
+    "rarity": "Rare"
+  },
+  {
+    "id": 339,
+    "dex_number": 339,
+    "shiny_dex_number": 2339,
+    "name": "Barboach",
+    "rarity": "Common"
+  },
+  {
+    "id": 340,
+    "dex_number": 340,
+    "shiny_dex_number": 2340,
+    "name": "Whiscash",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 341,
+    "dex_number": 341,
+    "shiny_dex_number": 2341,
+    "name": "Corphish",
+    "rarity": "Common"
+  },
+  {
+    "id": 342,
+    "dex_number": 342,
+    "shiny_dex_number": 2342,
+    "name": "Crawdaunt",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 343,
+    "dex_number": 343,
+    "shiny_dex_number": 2343,
+    "name": "Baltoy",
+    "rarity": "Common"
+  },
+  {
+    "id": 344,
+    "dex_number": 344,
+    "shiny_dex_number": 2344,
+    "name": "Claydol",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 345,
+    "dex_number": 345,
+    "shiny_dex_number": 2345,
+    "name": "Lileep",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 346,
+    "dex_number": 346,
+    "shiny_dex_number": 2346,
+    "name": "Cradily",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 347,
+    "dex_number": 347,
+    "shiny_dex_number": 2347,
+    "name": "Anorith",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 348,
+    "dex_number": 348,
+    "shiny_dex_number": 2348,
+    "name": "Armaldo",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 349,
+    "dex_number": 349,
+    "shiny_dex_number": 2349,
+    "name": "Feebas",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 350,
+    "dex_number": 350,
+    "shiny_dex_number": 2350,
+    "name": "Milotic",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 351,
+    "dex_number": 351,
+    "shiny_dex_number": 2351,
+    "name": "Castform",
+    "rarity": "Rare"
+  },
+  {
+    "id": 352,
+    "dex_number": 352,
+    "shiny_dex_number": 2352,
+    "name": "Kecleon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 353,
+    "dex_number": 353,
+    "shiny_dex_number": 2353,
+    "name": "Shuppet",
+    "rarity": "Common"
+  },
+  {
+    "id": 354,
+    "dex_number": 354,
+    "shiny_dex_number": 2354,
+    "name": "Banette",
+    "rarity": "Rare"
+  },
+  {
+    "id": 355,
+    "dex_number": 355,
+    "shiny_dex_number": 2355,
+    "name": "Duskull",
+    "rarity": "Common"
+  },
+  {
+    "id": 356,
+    "dex_number": 356,
+    "shiny_dex_number": 2356,
+    "name": "Dusclops",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 357,
+    "dex_number": 357,
+    "shiny_dex_number": 2357,
+    "name": "Tropius",
+    "rarity": "Rare"
+  },
+  {
+    "id": 358,
+    "dex_number": 358,
+    "shiny_dex_number": 2358,
+    "name": "Chimecho",
+    "rarity": "Rare"
+  },
+  {
+    "id": 359,
+    "dex_number": 359,
+    "shiny_dex_number": 2359,
+    "name": "Absol",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 360,
+    "dex_number": 360,
+    "shiny_dex_number": 2360,
+    "name": "Wynaut",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 361,
+    "dex_number": 361,
+    "shiny_dex_number": 2361,
+    "name": "Snorunt",
+    "rarity": "Common"
+  },
+  {
+    "id": 362,
+    "dex_number": 362,
+    "shiny_dex_number": 2362,
+    "name": "Glalie",
+    "rarity": "Rare"
+  },
+  {
+    "id": 363,
+    "dex_number": 363,
+    "shiny_dex_number": 2363,
+    "name": "Spheal",
+    "rarity": "Common"
+  },
+  {
+    "id": 364,
+    "dex_number": 364,
+    "shiny_dex_number": 2364,
+    "name": "Sealeo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 365,
+    "dex_number": 365,
+    "shiny_dex_number": 2365,
+    "name": "Walrein",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 366,
+    "dex_number": 366,
+    "shiny_dex_number": 2366,
+    "name": "Clamperl",
+    "rarity": "Common"
+  },
+  {
+    "id": 367,
+    "dex_number": 367,
+    "shiny_dex_number": 2367,
+    "name": "Huntail",
+    "rarity": "Rare"
+  },
+  {
+    "id": 368,
+    "dex_number": 368,
+    "shiny_dex_number": 2368,
+    "name": "Gorebyss",
+    "rarity": "Rare"
+  },
+  {
+    "id": 369,
+    "dex_number": 369,
+    "shiny_dex_number": 2369,
+    "name": "Relicanth",
+    "rarity": "Rare"
+  },
+  {
+    "id": 370,
+    "dex_number": 370,
+    "shiny_dex_number": 2370,
+    "name": "Luvdisc",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 371,
+    "dex_number": 371,
+    "shiny_dex_number": 2371,
+    "name": "Bagon",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 372,
+    "dex_number": 372,
+    "shiny_dex_number": 2372,
+    "name": "Shelgon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 373,
+    "dex_number": 373,
+    "shiny_dex_number": 2373,
+    "name": "Salamence",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 374,
+    "dex_number": 374,
+    "shiny_dex_number": 2374,
+    "name": "Beldum",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 375,
+    "dex_number": 375,
+    "shiny_dex_number": 2375,
+    "name": "Metang",
+    "rarity": "Rare"
+  },
+  {
+    "id": 376,
+    "dex_number": 376,
+    "shiny_dex_number": 2376,
+    "name": "Metagross",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 377,
+    "dex_number": 377,
+    "shiny_dex_number": 2377,
+    "name": "Regirock",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 378,
+    "dex_number": 378,
+    "shiny_dex_number": 2378,
+    "name": "Regice",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 379,
+    "dex_number": 379,
+    "shiny_dex_number": 2379,
+    "name": "Registeel",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 380,
+    "dex_number": 380,
+    "shiny_dex_number": 2380,
+    "name": "Latias",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 381,
+    "dex_number": 381,
+    "shiny_dex_number": 2381,
+    "name": "Latios",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 382,
+    "dex_number": 382,
+    "shiny_dex_number": 2382,
+    "name": "Kyogre",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 383,
+    "dex_number": 383,
+    "shiny_dex_number": 2383,
+    "name": "Groudon",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 384,
+    "dex_number": 384,
+    "shiny_dex_number": 2384,
+    "name": "Rayquaza",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 385,
+    "dex_number": 385,
+    "shiny_dex_number": 2385,
+    "name": "Jirachi",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 386,
+    "dex_number": 386,
+    "shiny_dex_number": 2386,
+    "name": "Deoxys Normal",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 387,
+    "dex_number": 387,
+    "shiny_dex_number": 2387,
+    "name": "Turtwig",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 388,
+    "dex_number": 388,
+    "shiny_dex_number": 2388,
+    "name": "Grotle",
+    "rarity": "Rare"
+  },
+  {
+    "id": 389,
+    "dex_number": 389,
+    "shiny_dex_number": 2389,
+    "name": "Torterra",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 390,
+    "dex_number": 390,
+    "shiny_dex_number": 2390,
+    "name": "Chimchar",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 391,
+    "dex_number": 391,
+    "shiny_dex_number": 2391,
+    "name": "Monferno",
+    "rarity": "Rare"
+  },
+  {
+    "id": 392,
+    "dex_number": 392,
+    "shiny_dex_number": 2392,
+    "name": "Infernape",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 393,
+    "dex_number": 393,
+    "shiny_dex_number": 2393,
+    "name": "Piplup",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 394,
+    "dex_number": 394,
+    "shiny_dex_number": 2394,
+    "name": "Prinplup",
+    "rarity": "Rare"
+  },
+  {
+    "id": 395,
+    "dex_number": 395,
+    "shiny_dex_number": 2395,
+    "name": "Empoleon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 396,
+    "dex_number": 396,
+    "shiny_dex_number": 2396,
+    "name": "Starly",
+    "rarity": "Common"
+  },
+  {
+    "id": 397,
+    "dex_number": 397,
+    "shiny_dex_number": 2397,
+    "name": "Staravia",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 398,
+    "dex_number": 398,
+    "shiny_dex_number": 2398,
+    "name": "Staraptor",
+    "rarity": "Rare"
+  },
+  {
+    "id": 399,
+    "dex_number": 399,
+    "shiny_dex_number": 2399,
+    "name": "Bidoof",
+    "rarity": "Common"
+  },
+  {
+    "id": 400,
+    "dex_number": 400,
+    "shiny_dex_number": 2400,
+    "name": "Bibarel",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 401,
+    "dex_number": 401,
+    "shiny_dex_number": 2401,
+    "name": "Kricketot",
+    "rarity": "Common"
+  },
+  {
+    "id": 402,
+    "dex_number": 402,
+    "shiny_dex_number": 2402,
+    "name": "Kricketune",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 403,
+    "dex_number": 403,
+    "shiny_dex_number": 2403,
+    "name": "Shinx",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 404,
+    "dex_number": 404,
+    "shiny_dex_number": 2404,
+    "name": "Luxio",
+    "rarity": "Rare"
+  },
+  {
+    "id": 405,
+    "dex_number": 405,
+    "shiny_dex_number": 2405,
+    "name": "Luxray",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 406,
+    "dex_number": 406,
+    "shiny_dex_number": 2406,
+    "name": "Budew",
+    "rarity": "Common"
+  },
+  {
+    "id": 407,
+    "dex_number": 407,
+    "shiny_dex_number": 2407,
+    "name": "Roserade",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 408,
+    "dex_number": 408,
+    "shiny_dex_number": 2408,
+    "name": "Cranidos",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 409,
+    "dex_number": 409,
+    "shiny_dex_number": 2409,
+    "name": "Rampardos",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 410,
+    "dex_number": 410,
+    "shiny_dex_number": 2410,
+    "name": "Shieldon",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 411,
+    "dex_number": 411,
+    "shiny_dex_number": 2411,
+    "name": "Bastiodon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 412,
+    "dex_number": 412,
+    "shiny_dex_number": 2412,
+    "name": "Burmy",
+    "rarity": "Common"
+  },
+  {
+    "id": 413,
+    "dex_number": 413,
+    "shiny_dex_number": 2413,
+    "name": "Wormadam Plant",
+    "rarity": "Rare"
+  },
+  {
+    "id": 414,
+    "dex_number": 414,
+    "shiny_dex_number": 2414,
+    "name": "Mothim",
+    "rarity": "Rare"
+  },
+  {
+    "id": 415,
+    "dex_number": 415,
+    "shiny_dex_number": 2415,
+    "name": "Combee",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 416,
+    "dex_number": 416,
+    "shiny_dex_number": 2416,
+    "name": "Vespiquen",
+    "rarity": "Rare"
+  },
+  {
+    "id": 417,
+    "dex_number": 417,
+    "shiny_dex_number": 2417,
+    "name": "Pachirisu",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 418,
+    "dex_number": 418,
+    "shiny_dex_number": 2418,
+    "name": "Buizel",
+    "rarity": "Common"
+  },
+  {
+    "id": 419,
+    "dex_number": 419,
+    "shiny_dex_number": 2419,
+    "name": "Floatzel",
+    "rarity": "Rare"
+  },
+  {
+    "id": 420,
+    "dex_number": 420,
+    "shiny_dex_number": 2420,
+    "name": "Cherubi",
+    "rarity": "Common"
+  },
+  {
+    "id": 421,
+    "dex_number": 421,
+    "shiny_dex_number": 2421,
+    "name": "Cherrim",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 422,
+    "dex_number": 422,
+    "shiny_dex_number": 2422,
+    "name": "Shellos",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 423,
+    "dex_number": 423,
+    "shiny_dex_number": 2423,
+    "name": "Gastrodon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 424,
+    "dex_number": 424,
+    "shiny_dex_number": 2424,
+    "name": "Ambipom",
+    "rarity": "Rare"
+  },
+  {
+    "id": 425,
+    "dex_number": 425,
+    "shiny_dex_number": 2425,
+    "name": "Drifloon",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 426,
+    "dex_number": 426,
+    "shiny_dex_number": 2426,
+    "name": "Drifblim",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 427,
+    "dex_number": 427,
+    "shiny_dex_number": 2427,
+    "name": "Buneary",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 428,
+    "dex_number": 428,
+    "shiny_dex_number": 2428,
+    "name": "Lopunny",
+    "rarity": "Rare"
+  },
+  {
+    "id": 429,
+    "dex_number": 429,
+    "shiny_dex_number": 2429,
+    "name": "Mismagius",
+    "rarity": "Rare"
+  },
+  {
+    "id": 430,
+    "dex_number": 430,
+    "shiny_dex_number": 2430,
+    "name": "Honchkrow",
+    "rarity": "Rare"
+  },
+  {
+    "id": 431,
+    "dex_number": 431,
+    "shiny_dex_number": 2431,
+    "name": "Glameow",
+    "rarity": "Common"
+  },
+  {
+    "id": 432,
+    "dex_number": 432,
+    "shiny_dex_number": 2432,
+    "name": "Purugly",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 433,
+    "dex_number": 433,
+    "shiny_dex_number": 2433,
+    "name": "Chingling",
+    "rarity": "Rare"
+  },
+  {
+    "id": 434,
+    "dex_number": 434,
+    "shiny_dex_number": 2434,
+    "name": "Stunky",
+    "rarity": "Common"
+  },
+  {
+    "id": 435,
+    "dex_number": 435,
+    "shiny_dex_number": 2435,
+    "name": "Skuntank",
+    "rarity": "Rare"
+  },
+  {
+    "id": 436,
+    "dex_number": 436,
+    "shiny_dex_number": 2436,
+    "name": "Bronzor",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 437,
+    "dex_number": 437,
+    "shiny_dex_number": 2437,
+    "name": "Bronzong",
+    "rarity": "Rare"
+  },
+  {
+    "id": 438,
+    "dex_number": 438,
+    "shiny_dex_number": 2438,
+    "name": "Bonsly",
+    "rarity": "Rare"
+  },
+  {
+    "id": 439,
+    "dex_number": 439,
+    "shiny_dex_number": 2439,
+    "name": "Mime Jr.",
+    "rarity": "Rare"
+  },
+  {
+    "id": 440,
+    "dex_number": 440,
+    "shiny_dex_number": 2440,
+    "name": "Happiny",
+    "rarity": "Rare"
+  },
+  {
+    "id": 441,
+    "dex_number": 441,
+    "shiny_dex_number": 2441,
+    "name": "Chatot",
+    "rarity": "Rare"
+  },
+  {
+    "id": 442,
+    "dex_number": 442,
+    "shiny_dex_number": 2442,
+    "name": "Spiritomb",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 443,
+    "dex_number": 443,
+    "shiny_dex_number": 2443,
+    "name": "Gible",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 444,
+    "dex_number": 444,
+    "shiny_dex_number": 2444,
+    "name": "Gabite",
+    "rarity": "Rare"
+  },
+  {
+    "id": 445,
+    "dex_number": 445,
+    "shiny_dex_number": 2445,
+    "name": "Garchomp",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 446,
+    "dex_number": 446,
+    "shiny_dex_number": 2446,
+    "name": "Munchlax",
+    "rarity": "Rare"
+  },
+  {
+    "id": 447,
+    "dex_number": 447,
+    "shiny_dex_number": 2447,
+    "name": "Riolu",
+    "rarity": "Rare"
+  },
+  {
+    "id": 448,
+    "dex_number": 448,
+    "shiny_dex_number": 2448,
+    "name": "Lucario",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 449,
+    "dex_number": 449,
+    "shiny_dex_number": 2449,
+    "name": "Hippopotas",
+    "rarity": "Common"
+  },
+  {
+    "id": 450,
+    "dex_number": 450,
+    "shiny_dex_number": 2450,
+    "name": "Hippowdon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 451,
+    "dex_number": 451,
+    "shiny_dex_number": 2451,
+    "name": "Skorupi",
+    "rarity": "Common"
+  },
+  {
+    "id": 452,
+    "dex_number": 452,
+    "shiny_dex_number": 2452,
+    "name": "Drapion",
+    "rarity": "Rare"
+  },
+  {
+    "id": 453,
+    "dex_number": 453,
+    "shiny_dex_number": 2453,
+    "name": "Croagunk",
+    "rarity": "Common"
+  },
+  {
+    "id": 454,
+    "dex_number": 454,
+    "shiny_dex_number": 2454,
+    "name": "Toxicroak",
+    "rarity": "Rare"
+  },
+  {
+    "id": 455,
+    "dex_number": 455,
+    "shiny_dex_number": 2455,
+    "name": "Carnivine",
+    "rarity": "Rare"
+  },
+  {
+    "id": 456,
+    "dex_number": 456,
+    "shiny_dex_number": 2456,
+    "name": "Finneon",
+    "rarity": "Common"
+  },
+  {
+    "id": 457,
+    "dex_number": 457,
+    "shiny_dex_number": 2457,
+    "name": "Lumineon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 458,
+    "dex_number": 458,
+    "shiny_dex_number": 2458,
+    "name": "Mantyke",
+    "rarity": "Rare"
+  },
+  {
+    "id": 459,
+    "dex_number": 459,
+    "shiny_dex_number": 2459,
+    "name": "Snover",
+    "rarity": "Common"
+  },
+  {
+    "id": 460,
+    "dex_number": 460,
+    "shiny_dex_number": 2460,
+    "name": "Abomasnow",
+    "rarity": "Rare"
+  },
+  {
+    "id": 461,
+    "dex_number": 461,
+    "shiny_dex_number": 2461,
+    "name": "Weavile",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 462,
+    "dex_number": 462,
+    "shiny_dex_number": 2462,
+    "name": "Magnezone",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 463,
+    "dex_number": 463,
+    "shiny_dex_number": 2463,
+    "name": "Lickilicky",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 464,
+    "dex_number": 464,
+    "shiny_dex_number": 2464,
+    "name": "Rhyperior",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 465,
+    "dex_number": 465,
+    "shiny_dex_number": 2465,
+    "name": "Tangrowth",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 466,
+    "dex_number": 466,
+    "shiny_dex_number": 2466,
+    "name": "Electivire",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 467,
+    "dex_number": 467,
+    "shiny_dex_number": 2467,
+    "name": "Magmortar",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 468,
+    "dex_number": 468,
+    "shiny_dex_number": 2468,
+    "name": "Togekiss",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 469,
+    "dex_number": 469,
+    "shiny_dex_number": 2469,
+    "name": "Yanmega",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 470,
+    "dex_number": 470,
+    "shiny_dex_number": 2470,
+    "name": "Leafeon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 471,
+    "dex_number": 471,
+    "shiny_dex_number": 2471,
+    "name": "Glaceon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 472,
+    "dex_number": 472,
+    "shiny_dex_number": 2472,
+    "name": "Gliscor",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 473,
+    "dex_number": 473,
+    "shiny_dex_number": 2473,
+    "name": "Mamoswine",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 474,
+    "dex_number": 474,
+    "shiny_dex_number": 2474,
+    "name": "Porygon Z",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 475,
+    "dex_number": 475,
+    "shiny_dex_number": 2475,
+    "name": "Gallade",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 476,
+    "dex_number": 476,
+    "shiny_dex_number": 2476,
+    "name": "Probopass",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 477,
+    "dex_number": 477,
+    "shiny_dex_number": 2477,
+    "name": "Dusknoir",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 478,
+    "dex_number": 478,
+    "shiny_dex_number": 2478,
+    "name": "Froslass",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 479,
+    "dex_number": 479,
+    "shiny_dex_number": 2479,
+    "name": "Rotom",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 480,
+    "dex_number": 480,
+    "shiny_dex_number": 2480,
+    "name": "Uxie",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 481,
+    "dex_number": 481,
+    "shiny_dex_number": 2481,
+    "name": "Mesprit",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 482,
+    "dex_number": 482,
+    "shiny_dex_number": 2482,
+    "name": "Azelf",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 483,
+    "dex_number": 483,
+    "shiny_dex_number": 2483,
+    "name": "Dialga",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 484,
+    "dex_number": 484,
+    "shiny_dex_number": 2484,
+    "name": "Palkia",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 485,
+    "dex_number": 485,
+    "shiny_dex_number": 2485,
+    "name": "Heatran",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 486,
+    "dex_number": 486,
+    "shiny_dex_number": 2486,
+    "name": "Regigigas",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 487,
+    "dex_number": 487,
+    "shiny_dex_number": 2487,
+    "name": "Giratina Altered",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 488,
+    "dex_number": 488,
+    "shiny_dex_number": 2488,
+    "name": "Cresselia",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 489,
+    "dex_number": 489,
+    "shiny_dex_number": 2489,
+    "name": "Phione",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 490,
+    "dex_number": 490,
+    "shiny_dex_number": 2490,
+    "name": "Manaphy",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 491,
+    "dex_number": 491,
+    "shiny_dex_number": 2491,
+    "name": "Darkrai",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 492,
+    "dex_number": 492,
+    "shiny_dex_number": 2492,
+    "name": "Shaymin Land",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 493,
+    "dex_number": 493,
+    "shiny_dex_number": 2493,
+    "name": "Arceus",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 494,
+    "dex_number": 494,
+    "shiny_dex_number": 2494,
+    "name": "Victini",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 495,
+    "dex_number": 495,
+    "shiny_dex_number": 2495,
+    "name": "Snivy",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 496,
+    "dex_number": 496,
+    "shiny_dex_number": 2496,
+    "name": "Servine",
+    "rarity": "Rare"
+  },
+  {
+    "id": 497,
+    "dex_number": 497,
+    "shiny_dex_number": 2497,
+    "name": "Serperior",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 498,
+    "dex_number": 498,
+    "shiny_dex_number": 2498,
+    "name": "Tepig",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 499,
+    "dex_number": 499,
+    "shiny_dex_number": 2499,
+    "name": "Pignite",
+    "rarity": "Rare"
+  },
+  {
+    "id": 500,
+    "dex_number": 500,
+    "shiny_dex_number": 2500,
+    "name": "Emboar",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 501,
+    "dex_number": 501,
+    "shiny_dex_number": 2501,
+    "name": "Oshawott",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 502,
+    "dex_number": 502,
+    "shiny_dex_number": 2502,
+    "name": "Dewott",
+    "rarity": "Rare"
+  },
+  {
+    "id": 503,
+    "dex_number": 503,
+    "shiny_dex_number": 2503,
+    "name": "Samurott",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 504,
+    "dex_number": 504,
+    "shiny_dex_number": 2504,
+    "name": "Patrat",
+    "rarity": "Common"
+  },
+  {
+    "id": 505,
+    "dex_number": 505,
+    "shiny_dex_number": 2505,
+    "name": "Watchog",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 506,
+    "dex_number": 506,
+    "shiny_dex_number": 2506,
+    "name": "Lillipup",
+    "rarity": "Common"
+  },
+  {
+    "id": 507,
+    "dex_number": 507,
+    "shiny_dex_number": 2507,
+    "name": "Herdier",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 508,
+    "dex_number": 508,
+    "shiny_dex_number": 2508,
+    "name": "Stoutland",
+    "rarity": "Rare"
+  },
+  {
+    "id": 509,
+    "dex_number": 509,
+    "shiny_dex_number": 2509,
+    "name": "Purrloin",
+    "rarity": "Common"
+  },
+  {
+    "id": 510,
+    "dex_number": 510,
+    "shiny_dex_number": 2510,
+    "name": "Liepard",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 511,
+    "dex_number": 511,
+    "shiny_dex_number": 2511,
+    "name": "Pansage",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 512,
+    "dex_number": 512,
+    "shiny_dex_number": 2512,
+    "name": "Simisage",
+    "rarity": "Rare"
+  },
+  {
+    "id": 513,
+    "dex_number": 513,
+    "shiny_dex_number": 2513,
+    "name": "Pansear",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 514,
+    "dex_number": 514,
+    "shiny_dex_number": 2514,
+    "name": "Simisear",
+    "rarity": "Rare"
+  },
+  {
+    "id": 515,
+    "dex_number": 515,
+    "shiny_dex_number": 2515,
+    "name": "Panpour",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 516,
+    "dex_number": 516,
+    "shiny_dex_number": 2516,
+    "name": "Simipour",
+    "rarity": "Rare"
+  },
+  {
+    "id": 517,
+    "dex_number": 517,
+    "shiny_dex_number": 2517,
+    "name": "Munna",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 518,
+    "dex_number": 518,
+    "shiny_dex_number": 2518,
+    "name": "Musharna",
+    "rarity": "Rare"
+  },
+  {
+    "id": 519,
+    "dex_number": 519,
+    "shiny_dex_number": 2519,
+    "name": "Pidove",
+    "rarity": "Common"
+  },
+  {
+    "id": 520,
+    "dex_number": 520,
+    "shiny_dex_number": 2520,
+    "name": "Tranquill",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 521,
+    "dex_number": 521,
+    "shiny_dex_number": 2521,
+    "name": "Unfezant",
+    "rarity": "Rare"
+  },
+  {
+    "id": 522,
+    "dex_number": 522,
+    "shiny_dex_number": 2522,
+    "name": "Blitzle",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 523,
+    "dex_number": 523,
+    "shiny_dex_number": 2523,
+    "name": "Zebstrika",
+    "rarity": "Rare"
+  },
+  {
+    "id": 524,
+    "dex_number": 524,
+    "shiny_dex_number": 2524,
+    "name": "Roggenrola",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 525,
+    "dex_number": 525,
+    "shiny_dex_number": 2525,
+    "name": "Boldore",
+    "rarity": "Rare"
+  },
+  {
+    "id": 526,
+    "dex_number": 526,
+    "shiny_dex_number": 2526,
+    "name": "Gigalith",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 527,
+    "dex_number": 527,
+    "shiny_dex_number": 2527,
+    "name": "Woobat",
+    "rarity": "Common"
+  },
+  {
+    "id": 528,
+    "dex_number": 528,
+    "shiny_dex_number": 2528,
+    "name": "Swoobat",
+    "rarity": "Rare"
+  },
+  {
+    "id": 529,
+    "dex_number": 529,
+    "shiny_dex_number": 2529,
+    "name": "Drilbur",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 530,
+    "dex_number": 530,
+    "shiny_dex_number": 2530,
+    "name": "Excadrill",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 531,
+    "dex_number": 531,
+    "shiny_dex_number": 2531,
+    "name": "Audino",
+    "rarity": "Rare"
+  },
+  {
+    "id": 532,
+    "dex_number": 532,
+    "shiny_dex_number": 2532,
+    "name": "Timburr",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 533,
+    "dex_number": 533,
+    "shiny_dex_number": 2533,
+    "name": "Gurdurr",
+    "rarity": "Rare"
+  },
+  {
+    "id": 534,
+    "dex_number": 534,
+    "shiny_dex_number": 2534,
+    "name": "Conkeldurr",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 535,
+    "dex_number": 535,
+    "shiny_dex_number": 2535,
+    "name": "Tympole",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 536,
+    "dex_number": 536,
+    "shiny_dex_number": 2536,
+    "name": "Palpitoad",
+    "rarity": "Rare"
+  },
+  {
+    "id": 537,
+    "dex_number": 537,
+    "shiny_dex_number": 2537,
+    "name": "Seismitoad",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 538,
+    "dex_number": 538,
+    "shiny_dex_number": 2538,
+    "name": "Throh",
+    "rarity": "Rare"
+  },
+  {
+    "id": 539,
+    "dex_number": 539,
+    "shiny_dex_number": 2539,
+    "name": "Sawk",
+    "rarity": "Rare"
+  },
+  {
+    "id": 540,
+    "dex_number": 540,
+    "shiny_dex_number": 2540,
+    "name": "Sewaddle",
+    "rarity": "Common"
+  },
+  {
+    "id": 541,
+    "dex_number": 541,
+    "shiny_dex_number": 2541,
+    "name": "Swadloon",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 542,
+    "dex_number": 542,
+    "shiny_dex_number": 2542,
+    "name": "Leavanny",
+    "rarity": "Rare"
+  },
+  {
+    "id": 543,
+    "dex_number": 543,
+    "shiny_dex_number": 2543,
+    "name": "Venipede",
+    "rarity": "Common"
+  },
+  {
+    "id": 544,
+    "dex_number": 544,
+    "shiny_dex_number": 2544,
+    "name": "Whirlipede",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 545,
+    "dex_number": 545,
+    "shiny_dex_number": 2545,
+    "name": "Scolipede",
+    "rarity": "Rare"
+  },
+  {
+    "id": 546,
+    "dex_number": 546,
+    "shiny_dex_number": 2546,
+    "name": "Cottonee",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 547,
+    "dex_number": 547,
+    "shiny_dex_number": 2547,
+    "name": "Whimsicott",
+    "rarity": "Rare"
+  },
+  {
+    "id": 548,
+    "dex_number": 548,
+    "shiny_dex_number": 2548,
+    "name": "Petilil",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 549,
+    "dex_number": 549,
+    "shiny_dex_number": 2549,
+    "name": "Lilligant",
+    "rarity": "Rare"
+  },
+  {
+    "id": 550,
+    "dex_number": 550,
+    "shiny_dex_number": 2550,
+    "name": "Basculin Red Striped",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 551,
+    "dex_number": 551,
+    "shiny_dex_number": 2551,
+    "name": "Sandile",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 552,
+    "dex_number": 552,
+    "shiny_dex_number": 2552,
+    "name": "Krokorok",
+    "rarity": "Rare"
+  },
+  {
+    "id": 553,
+    "dex_number": 553,
+    "shiny_dex_number": 2553,
+    "name": "Krookodile",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 554,
+    "dex_number": 554,
+    "shiny_dex_number": 2554,
+    "name": "Darumaka",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 555,
+    "dex_number": 555,
+    "shiny_dex_number": 2555,
+    "name": "Darmanitan Standard",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 556,
+    "dex_number": 556,
+    "shiny_dex_number": 2556,
+    "name": "Maractus",
+    "rarity": "Rare"
+  },
+  {
+    "id": 557,
+    "dex_number": 557,
+    "shiny_dex_number": 2557,
+    "name": "Dwebble",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 558,
+    "dex_number": 558,
+    "shiny_dex_number": 2558,
+    "name": "Crustle",
+    "rarity": "Rare"
+  },
+  {
+    "id": 559,
+    "dex_number": 559,
+    "shiny_dex_number": 2559,
+    "name": "Scraggy",
+    "rarity": "Rare"
+  },
+  {
+    "id": 560,
+    "dex_number": 560,
+    "shiny_dex_number": 2560,
+    "name": "Scrafty",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 561,
+    "dex_number": 561,
+    "shiny_dex_number": 2561,
+    "name": "Sigilyph",
+    "rarity": "Rare"
+  },
+  {
+    "id": 562,
+    "dex_number": 562,
+    "shiny_dex_number": 2562,
+    "name": "Yamask",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 563,
+    "dex_number": 563,
+    "shiny_dex_number": 2563,
+    "name": "Cofagrigus",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 564,
+    "dex_number": 564,
+    "shiny_dex_number": 2564,
+    "name": "Tirtouga",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 565,
+    "dex_number": 565,
+    "shiny_dex_number": 2565,
+    "name": "Carracosta",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 566,
+    "dex_number": 566,
+    "shiny_dex_number": 2566,
+    "name": "Archen",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 567,
+    "dex_number": 567,
+    "shiny_dex_number": 2567,
+    "name": "Archeops",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 568,
+    "dex_number": 568,
+    "shiny_dex_number": 2568,
+    "name": "Trubbish",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 569,
+    "dex_number": 569,
+    "shiny_dex_number": 2569,
+    "name": "Garbodor",
+    "rarity": "Rare"
+  },
+  {
+    "id": 570,
+    "dex_number": 570,
+    "shiny_dex_number": 2570,
+    "name": "Zorua",
+    "rarity": "Rare"
+  },
+  {
+    "id": 571,
+    "dex_number": 571,
+    "shiny_dex_number": 2571,
+    "name": "Zoroark",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 572,
+    "dex_number": 572,
+    "shiny_dex_number": 2572,
+    "name": "Minccino",
+    "rarity": "Common"
+  },
+  {
+    "id": 573,
+    "dex_number": 573,
+    "shiny_dex_number": 2573,
+    "name": "Cinccino",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 574,
+    "dex_number": 574,
+    "shiny_dex_number": 2574,
+    "name": "Gothita",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 575,
+    "dex_number": 575,
+    "shiny_dex_number": 2575,
+    "name": "Gothorita",
+    "rarity": "Rare"
+  },
+  {
+    "id": 576,
+    "dex_number": 576,
+    "shiny_dex_number": 2576,
+    "name": "Gothitelle",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 577,
+    "dex_number": 577,
+    "shiny_dex_number": 2577,
+    "name": "Solosis",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 578,
+    "dex_number": 578,
+    "shiny_dex_number": 2578,
+    "name": "Duosion",
+    "rarity": "Rare"
+  },
+  {
+    "id": 579,
+    "dex_number": 579,
+    "shiny_dex_number": 2579,
+    "name": "Reuniclus",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 580,
+    "dex_number": 580,
+    "shiny_dex_number": 2580,
+    "name": "Ducklett",
+    "rarity": "Common"
+  },
+  {
+    "id": 581,
+    "dex_number": 581,
+    "shiny_dex_number": 2581,
+    "name": "Swanna",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 582,
+    "dex_number": 582,
+    "shiny_dex_number": 2582,
+    "name": "Vanillite",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 583,
+    "dex_number": 583,
+    "shiny_dex_number": 2583,
+    "name": "Vanillish",
+    "rarity": "Rare"
+  },
+  {
+    "id": 584,
+    "dex_number": 584,
+    "shiny_dex_number": 2584,
+    "name": "Vanilluxe",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 585,
+    "dex_number": 585,
+    "shiny_dex_number": 2585,
+    "name": "Deerling",
+    "rarity": "Common"
+  },
+  {
+    "id": 586,
+    "dex_number": 586,
+    "shiny_dex_number": 2586,
+    "name": "Sawsbuck",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 587,
+    "dex_number": 587,
+    "shiny_dex_number": 2587,
+    "name": "Emolga",
+    "rarity": "Rare"
+  },
+  {
+    "id": 588,
+    "dex_number": 588,
+    "shiny_dex_number": 2588,
+    "name": "Karrablast",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 589,
+    "dex_number": 589,
+    "shiny_dex_number": 2589,
+    "name": "Escavalier",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 590,
+    "dex_number": 590,
+    "shiny_dex_number": 2590,
+    "name": "Foongus",
+    "rarity": "Common"
+  },
+  {
+    "id": 591,
+    "dex_number": 591,
+    "shiny_dex_number": 2591,
+    "name": "Amoonguss",
+    "rarity": "Rare"
+  },
+  {
+    "id": 592,
+    "dex_number": 592,
+    "shiny_dex_number": 2592,
+    "name": "Frillish Male",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 593,
+    "dex_number": 593,
+    "shiny_dex_number": 2593,
+    "name": "Jellicent Male",
+    "rarity": "Rare"
+  },
+  {
+    "id": 594,
+    "dex_number": 594,
+    "shiny_dex_number": 2594,
+    "name": "Alomomola",
+    "rarity": "Rare"
+  },
+  {
+    "id": 595,
+    "dex_number": 595,
+    "shiny_dex_number": 2595,
+    "name": "Joltik",
+    "rarity": "Common"
+  },
+  {
+    "id": 596,
+    "dex_number": 596,
+    "shiny_dex_number": 2596,
+    "name": "Galvantula",
+    "rarity": "Rare"
+  },
+  {
+    "id": 597,
+    "dex_number": 597,
+    "shiny_dex_number": 2597,
+    "name": "Ferroseed",
+    "rarity": "Rare"
+  },
+  {
+    "id": 598,
+    "dex_number": 598,
+    "shiny_dex_number": 2598,
+    "name": "Ferrothorn",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 599,
+    "dex_number": 599,
+    "shiny_dex_number": 2599,
+    "name": "Klink",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 600,
+    "dex_number": 600,
+    "shiny_dex_number": 2600,
+    "name": "Klang",
+    "rarity": "Rare"
+  },
+  {
+    "id": 601,
+    "dex_number": 601,
+    "shiny_dex_number": 2601,
+    "name": "Klinklang",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 602,
+    "dex_number": 602,
+    "shiny_dex_number": 2602,
+    "name": "Tynamo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 603,
+    "dex_number": 603,
+    "shiny_dex_number": 2603,
+    "name": "Eelektrik",
+    "rarity": "Rare"
+  },
+  {
+    "id": 604,
+    "dex_number": 604,
+    "shiny_dex_number": 2604,
+    "name": "Eelektross",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 605,
+    "dex_number": 605,
+    "shiny_dex_number": 2605,
+    "name": "Elgyem",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 606,
+    "dex_number": 606,
+    "shiny_dex_number": 2606,
+    "name": "Beheeyem",
+    "rarity": "Rare"
+  },
+  {
+    "id": 607,
+    "dex_number": 607,
+    "shiny_dex_number": 2607,
+    "name": "Litwick",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 608,
+    "dex_number": 608,
+    "shiny_dex_number": 2608,
+    "name": "Lampent",
+    "rarity": "Rare"
+  },
+  {
+    "id": 609,
+    "dex_number": 609,
+    "shiny_dex_number": 2609,
+    "name": "Chandelure",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 610,
+    "dex_number": 610,
+    "shiny_dex_number": 2610,
+    "name": "Axew",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 611,
+    "dex_number": 611,
+    "shiny_dex_number": 2611,
+    "name": "Fraxure",
+    "rarity": "Rare"
+  },
+  {
+    "id": 612,
+    "dex_number": 612,
+    "shiny_dex_number": 2612,
+    "name": "Haxorus",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 613,
+    "dex_number": 613,
+    "shiny_dex_number": 2613,
+    "name": "Cubchoo",
+    "rarity": "Common"
+  },
+  {
+    "id": 614,
+    "dex_number": 614,
+    "shiny_dex_number": 2614,
+    "name": "Beartic",
+    "rarity": "Rare"
+  },
+  {
+    "id": 615,
+    "dex_number": 615,
+    "shiny_dex_number": 2615,
+    "name": "Cryogonal",
+    "rarity": "Rare"
+  },
+  {
+    "id": 616,
+    "dex_number": 616,
+    "shiny_dex_number": 2616,
+    "name": "Shelmet",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 617,
+    "dex_number": 617,
+    "shiny_dex_number": 2617,
+    "name": "Accelgor",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 618,
+    "dex_number": 618,
+    "shiny_dex_number": 2618,
+    "name": "Stunfisk",
+    "rarity": "Rare"
+  },
+  {
+    "id": 619,
+    "dex_number": 619,
+    "shiny_dex_number": 2619,
+    "name": "Mienfoo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 620,
+    "dex_number": 620,
+    "shiny_dex_number": 2620,
+    "name": "Mienshao",
+    "rarity": "Rare"
+  },
+  {
+    "id": 621,
+    "dex_number": 621,
+    "shiny_dex_number": 2621,
+    "name": "Druddigon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 622,
+    "dex_number": 622,
+    "shiny_dex_number": 2622,
+    "name": "Golett",
+    "rarity": "Rare"
+  },
+  {
+    "id": 623,
+    "dex_number": 623,
+    "shiny_dex_number": 2623,
+    "name": "Golurk",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 624,
+    "dex_number": 624,
+    "shiny_dex_number": 2624,
+    "name": "Pawniard",
+    "rarity": "Rare"
+  },
+  {
+    "id": 625,
+    "dex_number": 625,
+    "shiny_dex_number": 2625,
+    "name": "Bisharp",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 626,
+    "dex_number": 626,
+    "shiny_dex_number": 2626,
+    "name": "Bouffalant",
+    "rarity": "Rare"
+  },
+  {
+    "id": 627,
+    "dex_number": 627,
+    "shiny_dex_number": 2627,
+    "name": "Rufflet",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 628,
+    "dex_number": 628,
+    "shiny_dex_number": 2628,
+    "name": "Braviary",
+    "rarity": "Rare"
+  },
+  {
+    "id": 629,
+    "dex_number": 629,
+    "shiny_dex_number": 2629,
+    "name": "Vullaby",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 630,
+    "dex_number": 630,
+    "shiny_dex_number": 2630,
+    "name": "Mandibuzz",
+    "rarity": "Rare"
+  },
+  {
+    "id": 631,
+    "dex_number": 631,
+    "shiny_dex_number": 2631,
+    "name": "Heatmor",
+    "rarity": "Rare"
+  },
+  {
+    "id": 632,
+    "dex_number": 632,
+    "shiny_dex_number": 2632,
+    "name": "Durant",
+    "rarity": "Rare"
+  },
+  {
+    "id": 633,
+    "dex_number": 633,
+    "shiny_dex_number": 2633,
+    "name": "Deino",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 634,
+    "dex_number": 634,
+    "shiny_dex_number": 2634,
+    "name": "Zweilous",
+    "rarity": "Rare"
+  },
+  {
+    "id": 635,
+    "dex_number": 635,
+    "shiny_dex_number": 2635,
+    "name": "Hydreigon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 636,
+    "dex_number": 636,
+    "shiny_dex_number": 2636,
+    "name": "Larvesta",
+    "rarity": "Rare"
+  },
+  {
+    "id": 637,
+    "dex_number": 637,
+    "shiny_dex_number": 2637,
+    "name": "Volcarona",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 638,
+    "dex_number": 638,
+    "shiny_dex_number": 2638,
+    "name": "Cobalion",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 639,
+    "dex_number": 639,
+    "shiny_dex_number": 2639,
+    "name": "Terrakion",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 640,
+    "dex_number": 640,
+    "shiny_dex_number": 2640,
+    "name": "Virizion",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 641,
+    "dex_number": 641,
+    "shiny_dex_number": 2641,
+    "name": "Tornadus Incarnate",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 642,
+    "dex_number": 642,
+    "shiny_dex_number": 2642,
+    "name": "Thundurus Incarnate",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 643,
+    "dex_number": 643,
+    "shiny_dex_number": 2643,
+    "name": "Reshiram",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 644,
+    "dex_number": 644,
+    "shiny_dex_number": 2644,
+    "name": "Zekrom",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 645,
+    "dex_number": 645,
+    "shiny_dex_number": 2645,
+    "name": "Landorus Incarnate",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 646,
+    "dex_number": 646,
+    "shiny_dex_number": 2646,
+    "name": "Kyurem",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 647,
+    "dex_number": 647,
+    "shiny_dex_number": 2647,
+    "name": "Keldeo Ordinary",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 648,
+    "dex_number": 648,
+    "shiny_dex_number": 2648,
+    "name": "Meloetta Aria",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 649,
+    "dex_number": 649,
+    "shiny_dex_number": 2649,
+    "name": "Genesect",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 650,
+    "dex_number": 650,
+    "shiny_dex_number": 2650,
+    "name": "Chespin",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 651,
+    "dex_number": 651,
+    "shiny_dex_number": 2651,
+    "name": "Quilladin",
+    "rarity": "Rare"
+  },
+  {
+    "id": 652,
+    "dex_number": 652,
+    "shiny_dex_number": 2652,
+    "name": "Chesnaught",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 653,
+    "dex_number": 653,
+    "shiny_dex_number": 2653,
+    "name": "Fennekin",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 654,
+    "dex_number": 654,
+    "shiny_dex_number": 2654,
+    "name": "Braixen",
+    "rarity": "Rare"
+  },
+  {
+    "id": 655,
+    "dex_number": 655,
+    "shiny_dex_number": 2655,
+    "name": "Delphox",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 656,
+    "dex_number": 656,
+    "shiny_dex_number": 2656,
+    "name": "Froakie",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 657,
+    "dex_number": 657,
+    "shiny_dex_number": 2657,
+    "name": "Frogadier",
+    "rarity": "Rare"
+  },
+  {
+    "id": 658,
+    "dex_number": 658,
+    "shiny_dex_number": 2658,
+    "name": "Greninja",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 659,
+    "dex_number": 659,
+    "shiny_dex_number": 2659,
+    "name": "Bunnelby",
+    "rarity": "Common"
+  },
+  {
+    "id": 660,
+    "dex_number": 660,
+    "shiny_dex_number": 2660,
+    "name": "Diggersby",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 661,
+    "dex_number": 661,
+    "shiny_dex_number": 2661,
+    "name": "Fletchling",
+    "rarity": "Common"
+  },
+  {
+    "id": 662,
+    "dex_number": 662,
+    "shiny_dex_number": 2662,
+    "name": "Fletchinder",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 663,
+    "dex_number": 663,
+    "shiny_dex_number": 2663,
+    "name": "Talonflame",
+    "rarity": "Rare"
+  },
+  {
+    "id": 664,
+    "dex_number": 664,
+    "shiny_dex_number": 2664,
+    "name": "Scatterbug",
+    "rarity": "Common"
+  },
+  {
+    "id": 665,
+    "dex_number": 665,
+    "shiny_dex_number": 2665,
+    "name": "Spewpa",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 666,
+    "dex_number": 666,
+    "shiny_dex_number": 2666,
+    "name": "Vivillon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 667,
+    "dex_number": 667,
+    "shiny_dex_number": 2667,
+    "name": "Litleo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 668,
+    "dex_number": 668,
+    "shiny_dex_number": 2668,
+    "name": "Pyroar Male",
+    "rarity": "Rare"
+  },
+  {
+    "id": 669,
+    "dex_number": 669,
+    "shiny_dex_number": 2669,
+    "name": "Flabébé",
+    "rarity": "Common"
+  },
+  {
+    "id": 670,
+    "dex_number": 670,
+    "shiny_dex_number": 2670,
+    "name": "Floette",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 671,
+    "dex_number": 671,
+    "shiny_dex_number": 2671,
+    "name": "Florges",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 672,
+    "dex_number": 672,
+    "shiny_dex_number": 2672,
+    "name": "Skiddo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 673,
+    "dex_number": 673,
+    "shiny_dex_number": 2673,
+    "name": "Gogoat",
+    "rarity": "Rare"
+  },
+  {
+    "id": 674,
+    "dex_number": 674,
+    "shiny_dex_number": 2674,
+    "name": "Pancham",
+    "rarity": "Rare"
+  },
+  {
+    "id": 675,
+    "dex_number": 675,
+    "shiny_dex_number": 2675,
+    "name": "Pangoro",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 676,
+    "dex_number": 676,
+    "shiny_dex_number": 2676,
+    "name": "Furfrou",
+    "rarity": "Rare"
+  },
+  {
+    "id": 677,
+    "dex_number": 677,
+    "shiny_dex_number": 2677,
+    "name": "Espurr",
+    "rarity": "Common"
+  },
+  {
+    "id": 678,
+    "dex_number": 678,
+    "shiny_dex_number": 2678,
+    "name": "Meowstic Male",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 679,
+    "dex_number": 679,
+    "shiny_dex_number": 2679,
+    "name": "Honedge",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 680,
+    "dex_number": 680,
+    "shiny_dex_number": 2680,
+    "name": "Doublade",
+    "rarity": "Rare"
+  },
+  {
+    "id": 681,
+    "dex_number": 681,
+    "shiny_dex_number": 2681,
+    "name": "Aegislash Shield",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 682,
+    "dex_number": 682,
+    "shiny_dex_number": 2682,
+    "name": "Spritzee",
+    "rarity": "Rare"
+  },
+  {
+    "id": 683,
+    "dex_number": 683,
+    "shiny_dex_number": 2683,
+    "name": "Aromatisse",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 684,
+    "dex_number": 684,
+    "shiny_dex_number": 2684,
+    "name": "Swirlix",
+    "rarity": "Rare"
+  },
+  {
+    "id": 685,
+    "dex_number": 685,
+    "shiny_dex_number": 2685,
+    "name": "Slurpuff",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 686,
+    "dex_number": 686,
+    "shiny_dex_number": 2686,
+    "name": "Inkay",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 687,
+    "dex_number": 687,
+    "shiny_dex_number": 2687,
+    "name": "Malamar",
+    "rarity": "Rare"
+  },
+  {
+    "id": 688,
+    "dex_number": 688,
+    "shiny_dex_number": 2688,
+    "name": "Binacle",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 689,
+    "dex_number": 689,
+    "shiny_dex_number": 2689,
+    "name": "Barbaracle",
+    "rarity": "Rare"
+  },
+  {
+    "id": 690,
+    "dex_number": 690,
+    "shiny_dex_number": 2690,
+    "name": "Skrelp",
+    "rarity": "Rare"
+  },
+  {
+    "id": 691,
+    "dex_number": 691,
+    "shiny_dex_number": 2691,
+    "name": "Dragalge",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 692,
+    "dex_number": 692,
+    "shiny_dex_number": 2692,
+    "name": "Clauncher",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 693,
+    "dex_number": 693,
+    "shiny_dex_number": 2693,
+    "name": "Clawitzer",
+    "rarity": "Rare"
+  },
+  {
+    "id": 694,
+    "dex_number": 694,
+    "shiny_dex_number": 2694,
+    "name": "Helioptile",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 695,
+    "dex_number": 695,
+    "shiny_dex_number": 2695,
+    "name": "Heliolisk",
+    "rarity": "Rare"
+  },
+  {
+    "id": 696,
+    "dex_number": 696,
+    "shiny_dex_number": 2696,
+    "name": "Tyrunt",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 697,
+    "dex_number": 697,
+    "shiny_dex_number": 2697,
+    "name": "Tyrantrum",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 698,
+    "dex_number": 698,
+    "shiny_dex_number": 2698,
+    "name": "Amaura",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 699,
+    "dex_number": 699,
+    "shiny_dex_number": 2699,
+    "name": "Aurorus",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 700,
+    "dex_number": 700,
+    "shiny_dex_number": 2700,
+    "name": "Sylveon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 701,
+    "dex_number": 701,
+    "shiny_dex_number": 2701,
+    "name": "Hawlucha",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 702,
+    "dex_number": 702,
+    "shiny_dex_number": 2702,
+    "name": "Dedenne",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 703,
+    "dex_number": 703,
+    "shiny_dex_number": 2703,
+    "name": "Carbink",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 704,
+    "dex_number": 704,
+    "shiny_dex_number": 2704,
+    "name": "Goomy",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 705,
+    "dex_number": 705,
+    "shiny_dex_number": 2705,
+    "name": "Sliggoo",
+    "rarity": "Rare"
+  },
+  {
+    "id": 706,
+    "dex_number": 706,
+    "shiny_dex_number": 2706,
+    "name": "Goodra",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 707,
+    "dex_number": 707,
+    "shiny_dex_number": 2707,
+    "name": "Klefki",
+    "rarity": "Rare"
+  },
+  {
+    "id": 708,
+    "dex_number": 708,
+    "shiny_dex_number": 2708,
+    "name": "Phantump",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 709,
+    "dex_number": 709,
+    "shiny_dex_number": 2709,
+    "name": "Trevenant",
+    "rarity": "Rare"
+  },
+  {
+    "id": 710,
+    "dex_number": 710,
+    "shiny_dex_number": 7108,
+    "name": "Pumpkaboo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 711,
+    "dex_number": 711,
+    "shiny_dex_number": 2711,
+    "name": "Gourgeist Average",
+    "rarity": "Rare"
+  },
+  {
+    "id": 712,
+    "dex_number": 712,
+    "shiny_dex_number": 2712,
+    "name": "Bergmite",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 713,
+    "dex_number": 713,
+    "shiny_dex_number": 2713,
+    "name": "Avalugg",
+    "rarity": "Rare"
+  },
+  {
+    "id": 714,
+    "dex_number": 714,
+    "shiny_dex_number": 2714,
+    "name": "Noibat",
+    "rarity": "Rare"
+  },
+  {
+    "id": 715,
+    "dex_number": 715,
+    "shiny_dex_number": 2715,
+    "name": "Noivern",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 716,
+    "dex_number": 716,
+    "shiny_dex_number": 2716,
+    "name": "Xerneas",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 717,
+    "dex_number": 717,
+    "shiny_dex_number": 2717,
+    "name": "Yveltal",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 718,
+    "dex_number": 718,
+    "shiny_dex_number": 2718,
+    "name": "Zygarde 50",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 719,
+    "dex_number": 719,
+    "shiny_dex_number": 2719,
+    "name": "Diancie",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 720,
+    "dex_number": 720,
+    "shiny_dex_number": 2720,
+    "name": "Hoopa",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 721,
+    "dex_number": 721,
+    "shiny_dex_number": 2721,
+    "name": "Volcanion",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 722,
+    "dex_number": 722,
+    "shiny_dex_number": 2722,
+    "name": "Rowlet",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 723,
+    "dex_number": 723,
+    "shiny_dex_number": 2723,
+    "name": "Dartrix",
+    "rarity": "Rare"
+  },
+  {
+    "id": 724,
+    "dex_number": 724,
+    "shiny_dex_number": 2724,
+    "name": "Decidueye",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 725,
+    "dex_number": 725,
+    "shiny_dex_number": 2725,
+    "name": "Litten",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 726,
+    "dex_number": 726,
+    "shiny_dex_number": 2726,
+    "name": "Torracat",
+    "rarity": "Rare"
+  },
+  {
+    "id": 727,
+    "dex_number": 727,
+    "shiny_dex_number": 2727,
+    "name": "Incineroar",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 728,
+    "dex_number": 728,
+    "shiny_dex_number": 2728,
+    "name": "Popplio",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 729,
+    "dex_number": 729,
+    "shiny_dex_number": 2729,
+    "name": "Brionne",
+    "rarity": "Rare"
+  },
+  {
+    "id": 730,
+    "dex_number": 730,
+    "shiny_dex_number": 2730,
+    "name": "Primarina",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 731,
+    "dex_number": 731,
+    "shiny_dex_number": 2731,
+    "name": "Pikipek",
+    "rarity": "Common"
+  },
+  {
+    "id": 732,
+    "dex_number": 732,
+    "shiny_dex_number": 2732,
+    "name": "Trumbeak",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 733,
+    "dex_number": 733,
+    "shiny_dex_number": 2733,
+    "name": "Toucannon",
+    "rarity": "Rare"
+  },
+  {
+    "id": 734,
+    "dex_number": 734,
+    "shiny_dex_number": 2734,
+    "name": "Yungoos",
+    "rarity": "Common"
+  },
+  {
+    "id": 735,
+    "dex_number": 735,
+    "shiny_dex_number": 2735,
+    "name": "Gumshoos",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 736,
+    "dex_number": 736,
+    "shiny_dex_number": 2736,
+    "name": "Grubbin",
+    "rarity": "Common"
+  },
+  {
+    "id": 737,
+    "dex_number": 737,
+    "shiny_dex_number": 2737,
+    "name": "Charjabug",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 738,
+    "dex_number": 738,
+    "shiny_dex_number": 2738,
+    "name": "Vikavolt",
+    "rarity": "Rare"
+  },
+  {
+    "id": 739,
+    "dex_number": 739,
+    "shiny_dex_number": 2739,
+    "name": "Crabrawler",
+    "rarity": "Rare"
+  },
+  {
+    "id": 740,
+    "dex_number": 740,
+    "shiny_dex_number": 2740,
+    "name": "Crabominable",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 741,
+    "dex_number": 741,
+    "shiny_dex_number": 2741,
+    "name": "Oricorio Baile",
+    "rarity": "Rare"
+  },
+  {
+    "id": 742,
+    "dex_number": 742,
+    "shiny_dex_number": 2742,
+    "name": "Cutiefly",
+    "rarity": "Common"
+  },
+  {
+    "id": 743,
+    "dex_number": 743,
+    "shiny_dex_number": 2743,
+    "name": "Ribombee",
+    "rarity": "Rare"
+  },
+  {
+    "id": 744,
+    "dex_number": 744,
+    "shiny_dex_number": 7123,
+    "name": "Rockruff",
+    "rarity": "Rare"
+  },
+  {
+    "id": 745,
+    "dex_number": 745,
+    "shiny_dex_number": 2745,
+    "name": "Lycanroc Midday",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 746,
+    "dex_number": 746,
+    "shiny_dex_number": 2746,
+    "name": "Wishiwashi Solo",
+    "rarity": "Rare"
+  },
+  {
+    "id": 747,
+    "dex_number": 747,
+    "shiny_dex_number": 2747,
+    "name": "Mareanie",
+    "rarity": "Rare"
+  },
+  {
+    "id": 748,
+    "dex_number": 748,
+    "shiny_dex_number": 2748,
+    "name": "Toxapex",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 749,
+    "dex_number": 749,
+    "shiny_dex_number": 2749,
+    "name": "Mudbray",
+    "rarity": "Rare"
+  },
+  {
+    "id": 750,
+    "dex_number": 750,
+    "shiny_dex_number": 2750,
+    "name": "Mudsdale",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 751,
+    "dex_number": 751,
+    "shiny_dex_number": 2751,
+    "name": "Dewpider",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 752,
+    "dex_number": 752,
+    "shiny_dex_number": 2752,
+    "name": "Araquanid",
+    "rarity": "Rare"
+  },
+  {
+    "id": 753,
+    "dex_number": 753,
+    "shiny_dex_number": 2753,
+    "name": "Fomantis",
+    "rarity": "Common"
+  },
+  {
+    "id": 754,
+    "dex_number": 754,
+    "shiny_dex_number": 2754,
+    "name": "Lurantis",
+    "rarity": "Rare"
+  },
+  {
+    "id": 755,
+    "dex_number": 755,
+    "shiny_dex_number": 2755,
+    "name": "Morelull",
+    "rarity": "Common"
+  },
+  {
+    "id": 756,
+    "dex_number": 756,
+    "shiny_dex_number": 2756,
+    "name": "Shiinotic",
+    "rarity": "Rare"
+  },
+  {
+    "id": 757,
+    "dex_number": 757,
+    "shiny_dex_number": 2757,
+    "name": "Salandit",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 758,
+    "dex_number": 758,
+    "shiny_dex_number": 2758,
+    "name": "Salazzle",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 759,
+    "dex_number": 759,
+    "shiny_dex_number": 2759,
+    "name": "Stufful",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 760,
+    "dex_number": 760,
+    "shiny_dex_number": 2760,
+    "name": "Bewear",
+    "rarity": "Rare"
+  },
+  {
+    "id": 761,
+    "dex_number": 761,
+    "shiny_dex_number": 2761,
+    "name": "Bounsweet",
+    "rarity": "Common"
+  },
+  {
+    "id": 762,
+    "dex_number": 762,
+    "shiny_dex_number": 2762,
+    "name": "Steenee",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 763,
+    "dex_number": 763,
+    "shiny_dex_number": 2763,
+    "name": "Tsareena",
+    "rarity": "Rare"
+  },
+  {
+    "id": 764,
+    "dex_number": 764,
+    "shiny_dex_number": 2764,
+    "name": "Comfey",
+    "rarity": "Rare"
+  },
+  {
+    "id": 765,
+    "dex_number": 765,
+    "shiny_dex_number": 2765,
+    "name": "Oranguru",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 766,
+    "dex_number": 766,
+    "shiny_dex_number": 2766,
+    "name": "Passimian",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 767,
+    "dex_number": 767,
+    "shiny_dex_number": 2767,
+    "name": "Wimpod",
+    "rarity": "Rare"
+  },
+  {
+    "id": 768,
+    "dex_number": 768,
+    "shiny_dex_number": 2768,
+    "name": "Golisopod",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 769,
+    "dex_number": 769,
+    "shiny_dex_number": 2769,
+    "name": "Sandygast",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 770,
+    "dex_number": 770,
+    "shiny_dex_number": 2770,
+    "name": "Palossand",
+    "rarity": "Rare"
+  },
+  {
+    "id": 771,
+    "dex_number": 771,
+    "shiny_dex_number": 2771,
+    "name": "Pyukumuku",
+    "rarity": "Rare"
+  },
+  {
+    "id": 772,
+    "dex_number": 772,
+    "shiny_dex_number": 2772,
+    "name": "Type: Null",
+    "rarity": "Rare"
+  },
+  {
+    "id": 773,
+    "dex_number": 773,
+    "shiny_dex_number": 2773,
+    "name": "Silvally",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 774,
+    "dex_number": 774,
+    "shiny_dex_number": 2774,
+    "name": "Minior Red Meteor",
+    "rarity": "Rare"
+  },
+  {
+    "id": 775,
+    "dex_number": 775,
+    "shiny_dex_number": 2775,
+    "name": "Komala",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 776,
+    "dex_number": 776,
+    "shiny_dex_number": 2776,
+    "name": "Turtonator",
+    "rarity": "Rare"
+  },
+  {
+    "id": 777,
+    "dex_number": 777,
+    "shiny_dex_number": 2777,
+    "name": "Togedemaru",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 778,
+    "dex_number": 778,
+    "shiny_dex_number": 2778,
+    "name": "Mimikyu Disguised",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 779,
+    "dex_number": 779,
+    "shiny_dex_number": 2779,
+    "name": "Bruxish",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 780,
+    "dex_number": 780,
+    "shiny_dex_number": 2780,
+    "name": "Drampa",
+    "rarity": "Rare"
+  },
+  {
+    "id": 781,
+    "dex_number": 781,
+    "shiny_dex_number": 2781,
+    "name": "Dhelmise",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 782,
+    "dex_number": 782,
+    "shiny_dex_number": 2782,
+    "name": "Jangmo-o",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 783,
+    "dex_number": 783,
+    "shiny_dex_number": 2783,
+    "name": "Hakamo-o",
+    "rarity": "Rare"
+  },
+  {
+    "id": 784,
+    "dex_number": 784,
+    "shiny_dex_number": 2784,
+    "name": "Kommo-o",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 785,
+    "dex_number": 785,
+    "shiny_dex_number": 2785,
+    "name": "Tapu Koko",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 786,
+    "dex_number": 786,
+    "shiny_dex_number": 2786,
+    "name": "Tapu Lele",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 787,
+    "dex_number": 787,
+    "shiny_dex_number": 2787,
+    "name": "Tapu Bulu",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 788,
+    "dex_number": 788,
+    "shiny_dex_number": 2788,
+    "name": "Tapu Fini",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 789,
+    "dex_number": 789,
+    "shiny_dex_number": 2789,
+    "name": "Cosmog",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 790,
+    "dex_number": 790,
+    "shiny_dex_number": 2790,
+    "name": "Cosmoem",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 791,
+    "dex_number": 791,
+    "shiny_dex_number": 2791,
+    "name": "Solgaleo",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 792,
+    "dex_number": 792,
+    "shiny_dex_number": 2792,
+    "name": "Lunala",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 793,
+    "dex_number": 793,
+    "shiny_dex_number": 2793,
+    "name": "Nihilego",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 794,
+    "dex_number": 794,
+    "shiny_dex_number": 2794,
+    "name": "Buzzwole",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 795,
+    "dex_number": 795,
+    "shiny_dex_number": 2795,
+    "name": "Pheromosa",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 796,
+    "dex_number": 796,
+    "shiny_dex_number": 2796,
+    "name": "Xurkitree",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 797,
+    "dex_number": 797,
+    "shiny_dex_number": 2797,
+    "name": "Celesteela",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 798,
+    "dex_number": 798,
+    "shiny_dex_number": 2798,
+    "name": "Kartana",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 799,
+    "dex_number": 799,
+    "shiny_dex_number": 2799,
+    "name": "Guzzlord",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 800,
+    "dex_number": 800,
+    "shiny_dex_number": 2800,
+    "name": "Necrozma",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 801,
+    "dex_number": 801,
+    "shiny_dex_number": 2801,
+    "name": "Magearna",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 802,
+    "dex_number": 802,
+    "shiny_dex_number": 2802,
+    "name": "Marshadow",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 803,
+    "dex_number": 803,
+    "shiny_dex_number": 2803,
+    "name": "Poipole",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 804,
+    "dex_number": 804,
+    "shiny_dex_number": 2804,
+    "name": "Naganadel",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 805,
+    "dex_number": 805,
+    "shiny_dex_number": 2805,
+    "name": "Stakataka",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 806,
+    "dex_number": 806,
+    "shiny_dex_number": 2806,
+    "name": "Blacephalon",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 807,
+    "dex_number": 807,
+    "shiny_dex_number": 2807,
+    "name": "Zeraora",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 808,
+    "dex_number": 808,
+    "shiny_dex_number": 2808,
+    "name": "Meltan",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 809,
+    "dex_number": 809,
+    "shiny_dex_number": 2809,
+    "name": "Melmetal",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 810,
+    "dex_number": 810,
+    "shiny_dex_number": 2810,
+    "name": "Grookey",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 811,
+    "dex_number": 811,
+    "shiny_dex_number": 2811,
+    "name": "Thwackey",
+    "rarity": "Rare"
+  },
+  {
+    "id": 812,
+    "dex_number": 812,
+    "shiny_dex_number": 2812,
+    "name": "Rillaboom",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 813,
+    "dex_number": 813,
+    "shiny_dex_number": 2813,
+    "name": "Scorbunny",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 814,
+    "dex_number": 814,
+    "shiny_dex_number": 2814,
+    "name": "Raboot",
+    "rarity": "Rare"
+  },
+  {
+    "id": 815,
+    "dex_number": 815,
+    "shiny_dex_number": 2815,
+    "name": "Cinderace",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 816,
+    "dex_number": 816,
+    "shiny_dex_number": 2816,
+    "name": "Sobble",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 817,
+    "dex_number": 817,
+    "shiny_dex_number": 2817,
+    "name": "Drizzile",
+    "rarity": "Rare"
+  },
+  {
+    "id": 818,
+    "dex_number": 818,
+    "shiny_dex_number": 2818,
+    "name": "Inteleon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 819,
+    "dex_number": 819,
+    "shiny_dex_number": 2819,
+    "name": "Skwovet",
+    "rarity": "Common"
+  },
+  {
+    "id": 820,
+    "dex_number": 820,
+    "shiny_dex_number": 2820,
+    "name": "Greedent",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 821,
+    "dex_number": 821,
+    "shiny_dex_number": 2821,
+    "name": "Rookidee",
+    "rarity": "Common"
+  },
+  {
+    "id": 822,
+    "dex_number": 822,
+    "shiny_dex_number": 2822,
+    "name": "Corvisquire",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 823,
+    "dex_number": 823,
+    "shiny_dex_number": 2823,
+    "name": "Corviknight",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 824,
+    "dex_number": 824,
+    "shiny_dex_number": 2824,
+    "name": "Blipbug",
+    "rarity": "Common"
+  },
+  {
+    "id": 825,
+    "dex_number": 825,
+    "shiny_dex_number": 2825,
+    "name": "Dottler",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 826,
+    "dex_number": 826,
+    "shiny_dex_number": 2826,
+    "name": "Orbeetle",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 827,
+    "dex_number": 827,
+    "shiny_dex_number": 2827,
+    "name": "Nickit",
+    "rarity": "Rare"
+  },
+  {
+    "id": 828,
+    "dex_number": 828,
+    "shiny_dex_number": 2828,
+    "name": "Thievul",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 829,
+    "dex_number": 829,
+    "shiny_dex_number": 2829,
+    "name": "Gossifleur",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 830,
+    "dex_number": 830,
+    "shiny_dex_number": 2830,
+    "name": "Eldegoss",
+    "rarity": "Rare"
+  },
+  {
+    "id": 831,
+    "dex_number": 831,
+    "shiny_dex_number": 2831,
+    "name": "Wooloo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 832,
+    "dex_number": 832,
+    "shiny_dex_number": 2832,
+    "name": "Dubwool",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 833,
+    "dex_number": 833,
+    "shiny_dex_number": 2833,
+    "name": "Chewtle",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 834,
+    "dex_number": 834,
+    "shiny_dex_number": 2834,
+    "name": "Drednaw",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 835,
+    "dex_number": 835,
+    "shiny_dex_number": 2835,
+    "name": "Yamper",
+    "rarity": "Rare"
+  },
+  {
+    "id": 836,
+    "dex_number": 836,
+    "shiny_dex_number": 2836,
+    "name": "Boltund",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 837,
+    "dex_number": 837,
+    "shiny_dex_number": 2837,
+    "name": "Rolycoly",
+    "rarity": "Common"
+  },
+  {
+    "id": 838,
+    "dex_number": 838,
+    "shiny_dex_number": 2838,
+    "name": "Carkol",
+    "rarity": "Rare"
+  },
+  {
+    "id": 839,
+    "dex_number": 839,
+    "shiny_dex_number": 2839,
+    "name": "Coalossal",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 840,
+    "dex_number": 840,
+    "shiny_dex_number": 2840,
+    "name": "Applin",
+    "rarity": "Common"
+  },
+  {
+    "id": 841,
+    "dex_number": 841,
+    "shiny_dex_number": 2841,
+    "name": "Flapple",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 842,
+    "dex_number": 842,
+    "shiny_dex_number": 2842,
+    "name": "Appletun",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 843,
+    "dex_number": 843,
+    "shiny_dex_number": 2843,
+    "name": "Silicobra",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 844,
+    "dex_number": 844,
+    "shiny_dex_number": 2844,
+    "name": "Sandaconda",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 845,
+    "dex_number": 845,
+    "shiny_dex_number": 2845,
+    "name": "Cramorant",
+    "rarity": "Rare"
+  },
+  {
+    "id": 846,
+    "dex_number": 846,
+    "shiny_dex_number": 2846,
+    "name": "Arrokuda",
+    "rarity": "Common"
+  },
+  {
+    "id": 847,
+    "dex_number": 847,
+    "shiny_dex_number": 2847,
+    "name": "Barraskewda",
+    "rarity": "Rare"
+  },
+  {
+    "id": 848,
+    "dex_number": 848,
+    "shiny_dex_number": 2848,
+    "name": "Toxel",
+    "rarity": "Rare"
+  },
+  {
+    "id": 849,
+    "dex_number": 849,
+    "shiny_dex_number": 2849,
+    "name": "Toxtricity Amped",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 850,
+    "dex_number": 850,
+    "shiny_dex_number": 2850,
+    "name": "Sizzlipede",
+    "rarity": "Common"
+  },
+  {
+    "id": 851,
+    "dex_number": 851,
+    "shiny_dex_number": 2851,
+    "name": "Centiskorch",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 852,
+    "dex_number": 852,
+    "shiny_dex_number": 2852,
+    "name": "Clobbopus",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 853,
+    "dex_number": 853,
+    "shiny_dex_number": 2853,
+    "name": "Grapploct",
+    "rarity": "Rare"
+  },
+  {
+    "id": 854,
+    "dex_number": 854,
+    "shiny_dex_number": 2854,
+    "name": "Sinistea",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 855,
+    "dex_number": 855,
+    "shiny_dex_number": 2855,
+    "name": "Polteageist",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 856,
+    "dex_number": 856,
+    "shiny_dex_number": 2856,
+    "name": "Hatenna",
+    "rarity": "Common"
+  },
+  {
+    "id": 857,
+    "dex_number": 857,
+    "shiny_dex_number": 2857,
+    "name": "Hattrem",
+    "rarity": "Rare"
+  },
+  {
+    "id": 858,
+    "dex_number": 858,
+    "shiny_dex_number": 2858,
+    "name": "Hatterene",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 859,
+    "dex_number": 859,
+    "shiny_dex_number": 2859,
+    "name": "Impidimp",
+    "rarity": "Common"
+  },
+  {
+    "id": 860,
+    "dex_number": 860,
+    "shiny_dex_number": 2860,
+    "name": "Morgrem",
+    "rarity": "Rare"
+  },
+  {
+    "id": 861,
+    "dex_number": 861,
+    "shiny_dex_number": 2861,
+    "name": "Grimmsnarl",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 862,
+    "dex_number": 862,
+    "shiny_dex_number": 2862,
+    "name": "Obstagoon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 863,
+    "dex_number": 863,
+    "shiny_dex_number": 2863,
+    "name": "Perrserker",
+    "rarity": "Rare"
+  },
+  {
+    "id": 864,
+    "dex_number": 864,
+    "shiny_dex_number": 2864,
+    "name": "Cursola",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 865,
+    "dex_number": 865,
+    "shiny_dex_number": 2865,
+    "name": "Sirfetch'd",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 866,
+    "dex_number": 866,
+    "shiny_dex_number": 2866,
+    "name": "Mr. Rime",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 867,
+    "dex_number": 867,
+    "shiny_dex_number": 2867,
+    "name": "Runerigus",
+    "rarity": "Rare"
+  },
+  {
+    "id": 868,
+    "dex_number": 868,
+    "shiny_dex_number": 2868,
+    "name": "Milcery",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 869,
+    "dex_number": 869,
+    "shiny_dex_number": 2869,
+    "name": "Alcremie",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 870,
+    "dex_number": 870,
+    "shiny_dex_number": 2870,
+    "name": "Falinks",
+    "rarity": "Rare"
+  },
+  {
+    "id": 871,
+    "dex_number": 871,
+    "shiny_dex_number": 2871,
+    "name": "Pincurchin",
+    "rarity": "Rare"
+  },
+  {
+    "id": 872,
+    "dex_number": 872,
+    "shiny_dex_number": 2872,
+    "name": "Snom",
+    "rarity": "Common"
+  },
+  {
+    "id": 873,
+    "dex_number": 873,
+    "shiny_dex_number": 2873,
+    "name": "Frosmoth",
+    "rarity": "Rare"
+  },
+  {
+    "id": 874,
+    "dex_number": 874,
+    "shiny_dex_number": 2874,
+    "name": "Stonjourner",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 875,
+    "dex_number": 875,
+    "shiny_dex_number": 2875,
+    "name": "Eiscue Ice",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 876,
+    "dex_number": 876,
+    "shiny_dex_number": 2876,
+    "name": "Indeedee Male",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 877,
+    "dex_number": 877,
+    "shiny_dex_number": 2877,
+    "name": "Morpeko Full Belly",
+    "rarity": "Rare"
+  },
+  {
+    "id": 878,
+    "dex_number": 878,
+    "shiny_dex_number": 2878,
+    "name": "Cufant",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 879,
+    "dex_number": 879,
+    "shiny_dex_number": 2879,
+    "name": "Copperajah",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 880,
+    "dex_number": 880,
+    "shiny_dex_number": 2880,
+    "name": "Dracozolt",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 881,
+    "dex_number": 881,
+    "shiny_dex_number": 2881,
+    "name": "Arctozolt",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 882,
+    "dex_number": 882,
+    "shiny_dex_number": 2882,
+    "name": "Dracovish",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 883,
+    "dex_number": 883,
+    "shiny_dex_number": 2883,
+    "name": "Arctovish",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 884,
+    "dex_number": 884,
+    "shiny_dex_number": 2884,
+    "name": "Duraludon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 885,
+    "dex_number": 885,
+    "shiny_dex_number": 2885,
+    "name": "Dreepy",
+    "rarity": "Common"
+  },
+  {
+    "id": 886,
+    "dex_number": 886,
+    "shiny_dex_number": 2886,
+    "name": "Drakloak",
+    "rarity": "Rare"
+  },
+  {
+    "id": 887,
+    "dex_number": 887,
+    "shiny_dex_number": 2887,
+    "name": "Dragapult",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 888,
+    "dex_number": 888,
+    "shiny_dex_number": 2888,
+    "name": "Zacian",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 889,
+    "dex_number": 889,
+    "shiny_dex_number": 2889,
+    "name": "Zamazenta",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 890,
+    "dex_number": 890,
+    "shiny_dex_number": 2890,
+    "name": "Eternatus",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 891,
+    "dex_number": 891,
+    "shiny_dex_number": 2891,
+    "name": "Kubfu",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 892,
+    "dex_number": 892,
+    "shiny_dex_number": 2892,
+    "name": "Urshifu Single Strike",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 893,
+    "dex_number": 893,
+    "shiny_dex_number": 2893,
+    "name": "Zarude",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 894,
+    "dex_number": 894,
+    "shiny_dex_number": 2894,
+    "name": "Regieleki",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 895,
+    "dex_number": 895,
+    "shiny_dex_number": 2895,
+    "name": "Regidrago",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 896,
+    "dex_number": 896,
+    "shiny_dex_number": 2896,
+    "name": "Glastrier",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 897,
+    "dex_number": 897,
+    "shiny_dex_number": 2897,
+    "name": "Spectrier",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 898,
+    "dex_number": 898,
+    "shiny_dex_number": 2898,
+    "name": "Calyrex",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 899,
+    "dex_number": 899,
+    "shiny_dex_number": 2899,
+    "name": "Wyrdeer",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 900,
+    "dex_number": 900,
+    "shiny_dex_number": 2900,
+    "name": "Kleavor",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 901,
+    "dex_number": 901,
+    "shiny_dex_number": 2901,
+    "name": "Ursaluna",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 902,
+    "dex_number": 902,
+    "shiny_dex_number": 2902,
+    "name": "Basculegion Male",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 903,
+    "dex_number": 903,
+    "shiny_dex_number": 2903,
+    "name": "Sneasler",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 904,
+    "dex_number": 904,
+    "shiny_dex_number": 2904,
+    "name": "Overqwil",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 905,
+    "dex_number": 905,
+    "shiny_dex_number": 2905,
+    "name": "Enamorus Incarnate",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 906,
+    "dex_number": 906,
+    "shiny_dex_number": 2906,
+    "name": "Sprigatito",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 907,
+    "dex_number": 907,
+    "shiny_dex_number": 2907,
+    "name": "Floragato",
+    "rarity": "Rare"
+  },
+  {
+    "id": 908,
+    "dex_number": 908,
+    "shiny_dex_number": 2908,
+    "name": "Meowscarada",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 909,
+    "dex_number": 909,
+    "shiny_dex_number": 2909,
+    "name": "Fuecoco",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 910,
+    "dex_number": 910,
+    "shiny_dex_number": 2910,
+    "name": "Crocalor",
+    "rarity": "Rare"
+  },
+  {
+    "id": 911,
+    "dex_number": 911,
+    "shiny_dex_number": 2911,
+    "name": "Skeledirge",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 912,
+    "dex_number": 912,
+    "shiny_dex_number": 2912,
+    "name": "Quaxly",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 913,
+    "dex_number": 913,
+    "shiny_dex_number": 2913,
+    "name": "Quaxwell",
+    "rarity": "Rare"
+  },
+  {
+    "id": 914,
+    "dex_number": 914,
+    "shiny_dex_number": 2914,
+    "name": "Quaquaval",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 915,
+    "dex_number": 915,
+    "shiny_dex_number": 2915,
+    "name": "Lechonk",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 916,
+    "dex_number": 916,
+    "shiny_dex_number": 2916,
+    "name": "Oinkologne Male",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 917,
+    "dex_number": 917,
+    "shiny_dex_number": 2917,
+    "name": "Tarountula",
+    "rarity": "Common"
+  },
+  {
+    "id": 918,
+    "dex_number": 918,
+    "shiny_dex_number": 2918,
+    "name": "Spidops",
+    "rarity": "Rare"
+  },
+  {
+    "id": 919,
+    "dex_number": 919,
+    "shiny_dex_number": 2919,
+    "name": "Nymble",
+    "rarity": "Common"
+  },
+  {
+    "id": 920,
+    "dex_number": 920,
+    "shiny_dex_number": 2920,
+    "name": "Lokix",
+    "rarity": "Rare"
+  },
+  {
+    "id": 921,
+    "dex_number": 921,
+    "shiny_dex_number": 2921,
+    "name": "Pawmi",
+    "rarity": "Common"
+  },
+  {
+    "id": 922,
+    "dex_number": 922,
+    "shiny_dex_number": 2922,
+    "name": "Pawmo",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 923,
+    "dex_number": 923,
+    "shiny_dex_number": 2923,
+    "name": "Pawmot",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 924,
+    "dex_number": 924,
+    "shiny_dex_number": 2924,
+    "name": "Tandemaus",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 925,
+    "dex_number": 925,
+    "shiny_dex_number": 2925,
+    "name": "Maushold Family Of Four",
+    "rarity": "Rare"
+  },
+  {
+    "id": 926,
+    "dex_number": 926,
+    "shiny_dex_number": 2926,
+    "name": "Fidough",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 927,
+    "dex_number": 927,
+    "shiny_dex_number": 2927,
+    "name": "Dachsbun",
+    "rarity": "Rare"
+  },
+  {
+    "id": 928,
+    "dex_number": 928,
+    "shiny_dex_number": 2928,
+    "name": "Smoliv",
+    "rarity": "Common"
+  },
+  {
+    "id": 929,
+    "dex_number": 929,
+    "shiny_dex_number": 2929,
+    "name": "Dolliv",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 930,
+    "dex_number": 930,
+    "shiny_dex_number": 2930,
+    "name": "Arboliva",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 931,
+    "dex_number": 931,
+    "shiny_dex_number": 2931,
+    "name": "Squawkabilly Green Plumage",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 932,
+    "dex_number": 932,
+    "shiny_dex_number": 2932,
+    "name": "Nacli",
+    "rarity": "Common"
+  },
+  {
+    "id": 933,
+    "dex_number": 933,
+    "shiny_dex_number": 2933,
+    "name": "Naclstack",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 934,
+    "dex_number": 934,
+    "shiny_dex_number": 2934,
+    "name": "Garganacl",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 935,
+    "dex_number": 935,
+    "shiny_dex_number": 2935,
+    "name": "Charcadet",
+    "rarity": "Common"
+  },
+  {
+    "id": 936,
+    "dex_number": 936,
+    "shiny_dex_number": 2936,
+    "name": "Armarouge",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 937,
+    "dex_number": 937,
+    "shiny_dex_number": 2937,
+    "name": "Ceruledge",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 938,
+    "dex_number": 938,
+    "shiny_dex_number": 2938,
+    "name": "Tadbulb",
+    "rarity": "Common"
+  },
+  {
+    "id": 939,
+    "dex_number": 939,
+    "shiny_dex_number": 2939,
+    "name": "Bellibolt",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 940,
+    "dex_number": 940,
+    "shiny_dex_number": 2940,
+    "name": "Wattrel",
+    "rarity": "Common"
+  },
+  {
+    "id": 941,
+    "dex_number": 941,
+    "shiny_dex_number": 2941,
+    "name": "Kilowattrel",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 942,
+    "dex_number": 942,
+    "shiny_dex_number": 2942,
+    "name": "Maschiff",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 943,
+    "dex_number": 943,
+    "shiny_dex_number": 2943,
+    "name": "Mabosstiff",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 944,
+    "dex_number": 944,
+    "shiny_dex_number": 2944,
+    "name": "Shroodle",
+    "rarity": "Common"
+  },
+  {
+    "id": 945,
+    "dex_number": 945,
+    "shiny_dex_number": 2945,
+    "name": "Grafaiai",
+    "rarity": "Rare"
+  },
+  {
+    "id": 946,
+    "dex_number": 946,
+    "shiny_dex_number": 2946,
+    "name": "Bramblin",
+    "rarity": "Common"
+  },
+  {
+    "id": 947,
+    "dex_number": 947,
+    "shiny_dex_number": 2947,
+    "name": "Brambleghast",
+    "rarity": "Rare"
+  },
+  {
+    "id": 948,
+    "dex_number": 948,
+    "shiny_dex_number": 2948,
+    "name": "Toedscool",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 949,
+    "dex_number": 949,
+    "shiny_dex_number": 2949,
+    "name": "Toedscruel",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 950,
+    "dex_number": 950,
+    "shiny_dex_number": 2950,
+    "name": "Klawf",
+    "rarity": "Rare"
+  },
+  {
+    "id": 951,
+    "dex_number": 951,
+    "shiny_dex_number": 2951,
+    "name": "Capsakid",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 952,
+    "dex_number": 952,
+    "shiny_dex_number": 2952,
+    "name": "Scovillain",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 953,
+    "dex_number": 953,
+    "shiny_dex_number": 2953,
+    "name": "Rellor",
+    "rarity": "Common"
+  },
+  {
+    "id": 954,
+    "dex_number": 954,
+    "shiny_dex_number": 2954,
+    "name": "Rabsca",
+    "rarity": "Rare"
+  },
+  {
+    "id": 955,
+    "dex_number": 955,
+    "shiny_dex_number": 2955,
+    "name": "Flittle",
+    "rarity": "Common"
+  },
+  {
+    "id": 956,
+    "dex_number": 956,
+    "shiny_dex_number": 2956,
+    "name": "Espathra",
+    "rarity": "Rare"
+  },
+  {
+    "id": 957,
+    "dex_number": 957,
+    "shiny_dex_number": 2957,
+    "name": "Tinkatink",
+    "rarity": "Common"
+  },
+  {
+    "id": 958,
+    "dex_number": 958,
+    "shiny_dex_number": 2958,
+    "name": "Tinkatuff",
+    "rarity": "Rare"
+  },
+  {
+    "id": 959,
+    "dex_number": 959,
+    "shiny_dex_number": 2959,
+    "name": "Tinkaton",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 960,
+    "dex_number": 960,
+    "shiny_dex_number": 2960,
+    "name": "Wiglett",
+    "rarity": "Common"
+  },
+  {
+    "id": 961,
+    "dex_number": 961,
+    "shiny_dex_number": 2961,
+    "name": "Wugtrio",
+    "rarity": "Rare"
+  },
+  {
+    "id": 962,
+    "dex_number": 962,
+    "shiny_dex_number": 2962,
+    "name": "Bombirdier",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 963,
+    "dex_number": 963,
+    "shiny_dex_number": 2963,
+    "name": "Finizen",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 964,
+    "dex_number": 964,
+    "shiny_dex_number": 2964,
+    "name": "Palafin Zero",
+    "rarity": "Rare"
+  },
+  {
+    "id": 965,
+    "dex_number": 965,
+    "shiny_dex_number": 2965,
+    "name": "Varoom",
+    "rarity": "Common"
+  },
+  {
+    "id": 966,
+    "dex_number": 966,
+    "shiny_dex_number": 2966,
+    "name": "Revavroom",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 967,
+    "dex_number": 967,
+    "shiny_dex_number": 2967,
+    "name": "Cyclizar",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 968,
+    "dex_number": 968,
+    "shiny_dex_number": 2968,
+    "name": "Orthworm",
+    "rarity": "Rare"
+  },
+  {
+    "id": 969,
+    "dex_number": 969,
+    "shiny_dex_number": 2969,
+    "name": "Glimmet",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 970,
+    "dex_number": 970,
+    "shiny_dex_number": 2970,
+    "name": "Glimmora",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 971,
+    "dex_number": 971,
+    "shiny_dex_number": 2971,
+    "name": "Greavard",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 972,
+    "dex_number": 972,
+    "shiny_dex_number": 2972,
+    "name": "Houndstone",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 973,
+    "dex_number": 973,
+    "shiny_dex_number": 2973,
+    "name": "Flamigo",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 974,
+    "dex_number": 974,
+    "shiny_dex_number": 2974,
+    "name": "Cetoddle",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 975,
+    "dex_number": 975,
+    "shiny_dex_number": 2975,
+    "name": "Cetitan",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 976,
+    "dex_number": 976,
+    "shiny_dex_number": 2976,
+    "name": "Veluza",
+    "rarity": "Rare"
+  },
+  {
+    "id": 977,
+    "dex_number": 977,
+    "shiny_dex_number": 2977,
+    "name": "Dondozo",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 978,
+    "dex_number": 978,
+    "shiny_dex_number": 2978,
+    "name": "Tatsugiri Curly",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 979,
+    "dex_number": 979,
+    "shiny_dex_number": 2979,
+    "name": "Annihilape",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 980,
+    "dex_number": 980,
+    "shiny_dex_number": 2980,
+    "name": "Clodsire",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 981,
+    "dex_number": 981,
+    "shiny_dex_number": 2981,
+    "name": "Farigiraf",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 982,
+    "dex_number": 982,
+    "shiny_dex_number": 2982,
+    "name": "Dudunsparce Two Segment",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 983,
+    "dex_number": 983,
+    "shiny_dex_number": 2983,
+    "name": "Kingambit",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 984,
+    "dex_number": 984,
+    "shiny_dex_number": 2984,
+    "name": "Great Tusk",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 985,
+    "dex_number": 985,
+    "shiny_dex_number": 2985,
+    "name": "Scream Tail",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 986,
+    "dex_number": 986,
+    "shiny_dex_number": 2986,
+    "name": "Brute Bonnet",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 987,
+    "dex_number": 987,
+    "shiny_dex_number": 2987,
+    "name": "Flutter Mane",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 988,
+    "dex_number": 988,
+    "shiny_dex_number": 2988,
+    "name": "Slither Wing",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 989,
+    "dex_number": 989,
+    "shiny_dex_number": 2989,
+    "name": "Sandy Shocks",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 990,
+    "dex_number": 990,
+    "shiny_dex_number": 2990,
+    "name": "Iron Treads",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 991,
+    "dex_number": 991,
+    "shiny_dex_number": 2991,
+    "name": "Iron Bundle",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 992,
+    "dex_number": 992,
+    "shiny_dex_number": 2992,
+    "name": "Iron Hands",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 993,
+    "dex_number": 993,
+    "shiny_dex_number": 2993,
+    "name": "Iron Jugulis",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 994,
+    "dex_number": 994,
+    "shiny_dex_number": 2994,
+    "name": "Iron Moth",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 995,
+    "dex_number": 995,
+    "shiny_dex_number": 2995,
+    "name": "Iron Thorns",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 996,
+    "dex_number": 996,
+    "shiny_dex_number": 2996,
+    "name": "Frigibax",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 997,
+    "dex_number": 997,
+    "shiny_dex_number": 2997,
+    "name": "Arctibax",
+    "rarity": "Rare"
+  },
+  {
+    "id": 998,
+    "dex_number": 998,
+    "shiny_dex_number": 2998,
+    "name": "Baxcalibur",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 999,
+    "dex_number": 999,
+    "shiny_dex_number": 2999,
+    "name": "Gimmighoul",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1000,
+    "dex_number": 1000,
+    "shiny_dex_number": 3000,
+    "name": "Gholdengo",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1001,
+    "dex_number": 1001,
+    "shiny_dex_number": 10001,
+    "name": "Wo Chien",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1002,
+    "dex_number": 1002,
+    "shiny_dex_number": 10002,
+    "name": "Chien Pao",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1003,
+    "dex_number": 1003,
+    "shiny_dex_number": 10003,
+    "name": "Ting Lu",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1004,
+    "dex_number": 1004,
+    "shiny_dex_number": 10004,
+    "name": "Chi Yu",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1005,
+    "dex_number": 1005,
+    "shiny_dex_number": 10005,
+    "name": "Roaring Moon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1006,
+    "dex_number": 1006,
+    "shiny_dex_number": 10006,
+    "name": "Iron Valiant",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1007,
+    "dex_number": 1007,
+    "shiny_dex_number": 10007,
+    "name": "Koraidon",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1008,
+    "dex_number": 1008,
+    "shiny_dex_number": 10008,
+    "name": "Miraidon",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1009,
+    "dex_number": 1009,
+    "shiny_dex_number": 10009,
+    "name": "Walking Wake",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1010,
+    "dex_number": 1010,
+    "shiny_dex_number": 10010,
+    "name": "Iron Leaves",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1011,
+    "dex_number": 1011,
+    "shiny_dex_number": 10011,
+    "name": "Dipplin",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1012,
+    "dex_number": 1012,
+    "shiny_dex_number": 10012,
+    "name": "Poltchageist",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1013,
+    "dex_number": 1013,
+    "shiny_dex_number": 10013,
+    "name": "Sinistcha",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1014,
+    "dex_number": 1014,
+    "shiny_dex_number": 10014,
+    "name": "Okidogi",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1015,
+    "dex_number": 1015,
+    "shiny_dex_number": 10015,
+    "name": "Munkidori",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1016,
+    "dex_number": 1016,
+    "shiny_dex_number": 10016,
+    "name": "Fezandipiti",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1017,
+    "dex_number": 1017,
+    "shiny_dex_number": 10017,
+    "name": "Ogerpon",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1018,
+    "dex_number": 1018,
+    "shiny_dex_number": 10018,
+    "name": "Archaludon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1019,
+    "dex_number": 1019,
+    "shiny_dex_number": 10019,
+    "name": "Hydrapple",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 1020,
+    "dex_number": 1020,
+    "shiny_dex_number": 10020,
+    "name": "Gouging Fire",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1021,
+    "dex_number": 1021,
+    "shiny_dex_number": 10021,
+    "name": "Raging Bolt",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1022,
+    "dex_number": 1022,
+    "shiny_dex_number": 10022,
+    "name": "Iron Boulder",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1023,
+    "dex_number": 1023,
+    "shiny_dex_number": 10023,
+    "name": "Iron Crown",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1024,
+    "dex_number": 1024,
+    "shiny_dex_number": 10024,
+    "name": "Terapagos",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 1025,
+    "dex_number": 1025,
+    "shiny_dex_number": 10025,
+    "name": "Pecharunt",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10001,
+    "dex_number": 7061,
+    "shiny_dex_number": 8061,
+    "name": "Deoxys Attack",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10002,
+    "dex_number": 7062,
+    "shiny_dex_number": 8062,
+    "name": "Deoxys Defense",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10003,
+    "dex_number": 7063,
+    "shiny_dex_number": 8063,
+    "name": "Deoxys Speed",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10004,
+    "dex_number": 7064,
+    "shiny_dex_number": 8064,
+    "name": "Wormadam Sandy",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10005,
+    "dex_number": 7065,
+    "shiny_dex_number": 8065,
+    "name": "Wormadam Trash",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10006,
+    "dex_number": 7074,
+    "shiny_dex_number": 8074,
+    "name": "Shaymin Sky",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10007,
+    "dex_number": 7073,
+    "shiny_dex_number": 8073,
+    "name": "Giratina Origin",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10008,
+    "dex_number": 7066,
+    "shiny_dex_number": 8066,
+    "name": "Rotom Heat",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10009,
+    "dex_number": 7067,
+    "shiny_dex_number": 8067,
+    "name": "Rotom Wash",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10010,
+    "dex_number": 7068,
+    "shiny_dex_number": 8068,
+    "name": "Rotom Frost",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10011,
+    "dex_number": 7069,
+    "shiny_dex_number": 8069,
+    "name": "Rotom Fan",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10012,
+    "dex_number": 7070,
+    "shiny_dex_number": 8070,
+    "name": "Rotom Mow",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10013,
+    "dex_number": 7056,
+    "shiny_dex_number": 8056,
+    "name": "Castform Sunny",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10014,
+    "dex_number": 7057,
+    "shiny_dex_number": 8057,
+    "name": "Castform Rainy",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10015,
+    "dex_number": 7058,
+    "shiny_dex_number": 8058,
+    "name": "Castform Snowy",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10016,
+    "dex_number": 7077,
+    "shiny_dex_number": 8077,
+    "name": "Basculin Blue Striped",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10017,
+    "dex_number": 7080,
+    "shiny_dex_number": 8080,
+    "name": "Darmanitan Zen",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10018,
+    "dex_number": 7093,
+    "shiny_dex_number": 8093,
+    "name": "Meloetta Pirouette",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10019,
+    "dex_number": 7087,
+    "shiny_dex_number": 8087,
+    "name": "Tornadus Therian",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10020,
+    "dex_number": 7088,
+    "shiny_dex_number": 8088,
+    "name": "Thundurus Therian",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10021,
+    "dex_number": 7089,
+    "shiny_dex_number": 8089,
+    "name": "Landorus Therian",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10022,
+    "dex_number": 7090,
+    "shiny_dex_number": 8090,
+    "name": "Kyurem Black",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10023,
+    "dex_number": 7091,
+    "shiny_dex_number": 8091,
+    "name": "Kyurem White",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10024,
+    "dex_number": 7092,
+    "shiny_dex_number": 8092,
+    "name": "Keldeo Resolute",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10025,
+    "dex_number": 7096,
+    "shiny_dex_number": 8096,
+    "name": "Meowstic Female",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10026,
+    "dex_number": 7097,
+    "shiny_dex_number": 8097,
+    "name": "Aegislash Blade",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10029,
+    "dex_number": 7100,
+    "shiny_dex_number": 8100,
+    "name": "Pumpkaboo Super",
+    "rarity": "Common"
+  },
+  {
+    "id": 10030,
+    "dex_number": 7101,
+    "shiny_dex_number": 8101,
+    "name": "Gourgeist Small",
+    "rarity": "Rare"
+  },
+  {
+    "id": 10031,
+    "dex_number": 7102,
+    "shiny_dex_number": 8102,
+    "name": "Gourgeist Large",
+    "rarity": "Rare"
+  },
+  {
+    "id": 10032,
+    "dex_number": 7103,
+    "shiny_dex_number": 8103,
+    "name": "Gourgeist Super",
+    "rarity": "Rare"
+  },
+  {
+    "id": 10033,
+    "dex_number": 3001,
+    "shiny_dex_number": 4001,
+    "name": "Venusaur Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10034,
+    "dex_number": 3002,
+    "shiny_dex_number": 4002,
+    "name": "Charizard Mega X",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10035,
+    "dex_number": 3003,
+    "shiny_dex_number": 4003,
+    "name": "Charizard Mega Y",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10036,
+    "dex_number": 3004,
+    "shiny_dex_number": 4004,
+    "name": "Blastoise Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10037,
+    "dex_number": 3010,
+    "shiny_dex_number": 4010,
+    "name": "Alakazam Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10038,
+    "dex_number": 3013,
+    "shiny_dex_number": 4013,
+    "name": "Gengar Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10039,
+    "dex_number": 3014,
+    "shiny_dex_number": 4014,
+    "name": "Kangaskhan Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10040,
+    "dex_number": 3016,
+    "shiny_dex_number": 4016,
+    "name": "Pinsir Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10041,
+    "dex_number": 3017,
+    "shiny_dex_number": 4017,
+    "name": "Gyarados Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10042,
+    "dex_number": 3018,
+    "shiny_dex_number": 4018,
+    "name": "Aerodactyl Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10043,
+    "dex_number": 3020,
+    "shiny_dex_number": 4020,
+    "name": "Mewtwo Mega X",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10044,
+    "dex_number": 3021,
+    "shiny_dex_number": 4021,
+    "name": "Mewtwo Mega Y",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10045,
+    "dex_number": 3024,
+    "shiny_dex_number": 4024,
+    "name": "Ampharos Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10046,
+    "dex_number": 3026,
+    "shiny_dex_number": 4026,
+    "name": "Scizor Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10047,
+    "dex_number": 3027,
+    "shiny_dex_number": 4027,
+    "name": "Heracross Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10048,
+    "dex_number": 3029,
+    "shiny_dex_number": 4029,
+    "name": "Houndoom Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10049,
+    "dex_number": 3030,
+    "shiny_dex_number": 4030,
+    "name": "Tyranitar Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10050,
+    "dex_number": 3032,
+    "shiny_dex_number": 4032,
+    "name": "Blaziken Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10051,
+    "dex_number": 3034,
+    "shiny_dex_number": 4034,
+    "name": "Gardevoir Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10052,
+    "dex_number": 3036,
+    "shiny_dex_number": 4036,
+    "name": "Mawile Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10053,
+    "dex_number": 3037,
+    "shiny_dex_number": 4037,
+    "name": "Aggron Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10054,
+    "dex_number": 3038,
+    "shiny_dex_number": 4038,
+    "name": "Medicham Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10055,
+    "dex_number": 3039,
+    "shiny_dex_number": 4039,
+    "name": "Manectric Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10056,
+    "dex_number": 3043,
+    "shiny_dex_number": 4043,
+    "name": "Banette Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10057,
+    "dex_number": 3045,
+    "shiny_dex_number": 4045,
+    "name": "Absol Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10058,
+    "dex_number": 3055,
+    "shiny_dex_number": 4055,
+    "name": "Garchomp Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10059,
+    "dex_number": 3057,
+    "shiny_dex_number": 4057,
+    "name": "Lucario Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10060,
+    "dex_number": 3059,
+    "shiny_dex_number": 4059,
+    "name": "Abomasnow Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10061,
+    "dex_number": 7095,
+    "shiny_dex_number": 8095,
+    "name": "Floette Eternal",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10062,
+    "dex_number": 3050,
+    "shiny_dex_number": 4050,
+    "name": "Latias Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10063,
+    "dex_number": 3051,
+    "shiny_dex_number": 4051,
+    "name": "Latios Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10064,
+    "dex_number": 3033,
+    "shiny_dex_number": 4033,
+    "name": "Swampert Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10065,
+    "dex_number": 3031,
+    "shiny_dex_number": 4031,
+    "name": "Sceptile Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10066,
+    "dex_number": 3035,
+    "shiny_dex_number": 4035,
+    "name": "Sableye Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10067,
+    "dex_number": 3042,
+    "shiny_dex_number": 4042,
+    "name": "Altaria Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10068,
+    "dex_number": 3060,
+    "shiny_dex_number": 4060,
+    "name": "Gallade Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10069,
+    "dex_number": 3066,
+    "shiny_dex_number": 4066,
+    "name": "Audino Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10070,
+    "dex_number": 3040,
+    "shiny_dex_number": 4040,
+    "name": "Sharpedo Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10071,
+    "dex_number": 3012,
+    "shiny_dex_number": 4012,
+    "name": "Slowbro Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10072,
+    "dex_number": 3025,
+    "shiny_dex_number": 4025,
+    "name": "Steelix Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10073,
+    "dex_number": 3006,
+    "shiny_dex_number": 4006,
+    "name": "Pidgeot Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10074,
+    "dex_number": 3047,
+    "shiny_dex_number": 4047,
+    "name": "Glalie Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10075,
+    "dex_number": 3084,
+    "shiny_dex_number": 4084,
+    "name": "Diancie Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10076,
+    "dex_number": 3049,
+    "shiny_dex_number": 4049,
+    "name": "Metagross Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10077,
+    "dex_number": 7059,
+    "shiny_dex_number": 8059,
+    "name": "Kyogre Primal",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10078,
+    "dex_number": 7060,
+    "shiny_dex_number": 8060,
+    "name": "Groudon Primal",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10079,
+    "dex_number": 3052,
+    "shiny_dex_number": 4052,
+    "name": "Rayquaza Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10080,
+    "dex_number": 7003,
+    "shiny_dex_number": 8003,
+    "name": "Pikachu Rock Star",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10081,
+    "dex_number": 7004,
+    "shiny_dex_number": 8004,
+    "name": "Pikachu Belle",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10082,
+    "dex_number": 7005,
+    "shiny_dex_number": 8005,
+    "name": "Pikachu Pop Star",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10083,
+    "dex_number": 7006,
+    "shiny_dex_number": 8006,
+    "name": "Pikachu Phd",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10084,
+    "dex_number": 7007,
+    "shiny_dex_number": 8007,
+    "name": "Pikachu Libre",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10085,
+    "dex_number": 7008,
+    "shiny_dex_number": 8008,
+    "name": "Pikachu Cosplay",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10086,
+    "dex_number": 7107,
+    "shiny_dex_number": 8107,
+    "name": "Hoopa Unbound",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10087,
+    "dex_number": 3041,
+    "shiny_dex_number": 4041,
+    "name": "Camerupt Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10088,
+    "dex_number": 3054,
+    "shiny_dex_number": 4054,
+    "name": "Lopunny Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10089,
+    "dex_number": 3048,
+    "shiny_dex_number": 4048,
+    "name": "Salamence Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10090,
+    "dex_number": 3005,
+    "shiny_dex_number": 4005,
+    "name": "Beedrill Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10091,
+    "dex_number": 7001,
+    "shiny_dex_number": 8001,
+    "name": "Alolan Rattata",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10092,
+    "dex_number": 7002,
+    "shiny_dex_number": 8002,
+    "name": "Alolan Raticate",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10094,
+    "dex_number": 7009,
+    "shiny_dex_number": 8009,
+    "name": "Pikachu Original Cap",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10095,
+    "dex_number": 7010,
+    "shiny_dex_number": 8010,
+    "name": "Pikachu Hoenn Cap",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10096,
+    "dex_number": 7011,
+    "shiny_dex_number": 8011,
+    "name": "Pikachu Sinnoh Cap",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10097,
+    "dex_number": 7012,
+    "shiny_dex_number": 8012,
+    "name": "Pikachu Unova Cap",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10098,
+    "dex_number": 7013,
+    "shiny_dex_number": 8013,
+    "name": "Pikachu Kalos Cap",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10099,
+    "dex_number": 7014,
+    "shiny_dex_number": 8014,
+    "name": "Pikachu Alola Cap",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10100,
+    "dex_number": 7017,
+    "shiny_dex_number": 8017,
+    "name": "Alolan Raichu",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10101,
+    "dex_number": 7018,
+    "shiny_dex_number": 8018,
+    "name": "Alolan Sandshrew",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10102,
+    "dex_number": 7019,
+    "shiny_dex_number": 8019,
+    "name": "Alolan Sandslash",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10103,
+    "dex_number": 7020,
+    "shiny_dex_number": 8020,
+    "name": "Alolan Vulpix",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10104,
+    "dex_number": 7021,
+    "shiny_dex_number": 8021,
+    "name": "Alolan Ninetales",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10105,
+    "dex_number": 7022,
+    "shiny_dex_number": 8022,
+    "name": "Alolan Diglett",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10106,
+    "dex_number": 7023,
+    "shiny_dex_number": 8023,
+    "name": "Alolan Dugtrio",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10107,
+    "dex_number": 7024,
+    "shiny_dex_number": 8024,
+    "name": "Alolan Meowth",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10108,
+    "dex_number": 7026,
+    "shiny_dex_number": 8026,
+    "name": "Alolan Persian",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10109,
+    "dex_number": 7029,
+    "shiny_dex_number": 8029,
+    "name": "Alolan Geodude",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10110,
+    "dex_number": 7030,
+    "shiny_dex_number": 8030,
+    "name": "Alolan Graveler",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10111,
+    "dex_number": 7031,
+    "shiny_dex_number": 8031,
+    "name": "Alolan Golem",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10112,
+    "dex_number": 7037,
+    "shiny_dex_number": 8037,
+    "name": "Alolan Grimer",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10113,
+    "dex_number": 7038,
+    "shiny_dex_number": 8038,
+    "name": "Alolan Muk",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10114,
+    "dex_number": 7041,
+    "shiny_dex_number": 8041,
+    "name": "Alolan Exeggutor",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10115,
+    "dex_number": 7042,
+    "shiny_dex_number": 8042,
+    "name": "Alolan Marowak",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10117,
+    "dex_number": 7094,
+    "shiny_dex_number": 8094,
+    "name": "Greninja Ash",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10120,
+    "dex_number": 7105,
+    "shiny_dex_number": 8105,
+    "name": "Zygarde Complete",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10123,
+    "dex_number": 7109,
+    "shiny_dex_number": 8109,
+    "name": "Oricorio Pom Pom",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10124,
+    "dex_number": 7110,
+    "shiny_dex_number": 8110,
+    "name": "Oricorio Pau",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10125,
+    "dex_number": 7111,
+    "shiny_dex_number": 8111,
+    "name": "Oricorio Sensu",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10126,
+    "dex_number": 7112,
+    "shiny_dex_number": 8112,
+    "name": "Lycanroc Midnight",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10127,
+    "dex_number": 7114,
+    "shiny_dex_number": 8114,
+    "name": "Wishiwashi School",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10136,
+    "dex_number": 7115,
+    "shiny_dex_number": 8115,
+    "name": "Minior Red",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10137,
+    "dex_number": 7116,
+    "shiny_dex_number": 8116,
+    "name": "Minior Orange",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10138,
+    "dex_number": 7117,
+    "shiny_dex_number": 8117,
+    "name": "Minior Yellow",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10139,
+    "dex_number": 7118,
+    "shiny_dex_number": 8118,
+    "name": "Minior Green",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10140,
+    "dex_number": 7119,
+    "shiny_dex_number": 8119,
+    "name": "Minior Blue",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10141,
+    "dex_number": 7120,
+    "shiny_dex_number": 8120,
+    "name": "Minior Indigo",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10142,
+    "dex_number": 7121,
+    "shiny_dex_number": 8121,
+    "name": "Minior Violet",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10143,
+    "dex_number": 7122,
+    "shiny_dex_number": 8122,
+    "name": "Mimikyu Busted",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10147,
+    "dex_number": 7126,
+    "shiny_dex_number": 8126,
+    "name": "Magearna Original",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10148,
+    "dex_number": 7015,
+    "shiny_dex_number": 8015,
+    "name": "Pikachu Partner Cap",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10152,
+    "dex_number": 7113,
+    "shiny_dex_number": 8113,
+    "name": "Lycanroc Dusk",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10155,
+    "dex_number": 7158,
+    "shiny_dex_number": 8123,
+    "name": "Necrozma Dusk",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10156,
+    "dex_number": 7124,
+    "shiny_dex_number": 8124,
+    "name": "Necrozma Dawn",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10157,
+    "dex_number": 7125,
+    "shiny_dex_number": 8125,
+    "name": "Necrozma Ultra",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10160,
+    "dex_number": 7016,
+    "shiny_dex_number": 8016,
+    "name": "Pikachu World Cap",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10161,
+    "dex_number": 7025,
+    "shiny_dex_number": 8025,
+    "name": "Galarian Meowth",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10162,
+    "dex_number": 7032,
+    "shiny_dex_number": 8032,
+    "name": "Galarian Ponyta",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10163,
+    "dex_number": 7033,
+    "shiny_dex_number": 8033,
+    "name": "Galarian Rapidash",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10164,
+    "dex_number": 7034,
+    "shiny_dex_number": 8034,
+    "name": "Galarian Slowpoke",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10165,
+    "dex_number": 7035,
+    "shiny_dex_number": 8035,
+    "name": "Galarian Slowbro",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10166,
+    "dex_number": 7036,
+    "shiny_dex_number": 8036,
+    "name": "Galarian Farfetch'd",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10167,
+    "dex_number": 7043,
+    "shiny_dex_number": 8043,
+    "name": "Galarian Weezing",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10168,
+    "dex_number": 7044,
+    "shiny_dex_number": 8044,
+    "name": "Galarian Mr. Mime",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10169,
+    "dex_number": 7045,
+    "shiny_dex_number": 8045,
+    "name": "Galarian Articuno",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10170,
+    "dex_number": 7046,
+    "shiny_dex_number": 8046,
+    "name": "Galarian Zapdos",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10171,
+    "dex_number": 7047,
+    "shiny_dex_number": 8047,
+    "name": "Galarian Moltres",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10172,
+    "dex_number": 7050,
+    "shiny_dex_number": 8050,
+    "name": "Galarian Slowking",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10173,
+    "dex_number": 7053,
+    "shiny_dex_number": 8053,
+    "name": "Galarian Corsola",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10174,
+    "dex_number": 7054,
+    "shiny_dex_number": 8054,
+    "name": "Galarian Zigzagoon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10175,
+    "dex_number": 7055,
+    "shiny_dex_number": 8055,
+    "name": "Galarian Linoone",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10176,
+    "dex_number": 7079,
+    "shiny_dex_number": 8079,
+    "name": "Galarian Darumaka",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10178,
+    "dex_number": 7081,
+    "shiny_dex_number": 8081,
+    "name": "Galarian Darmanitan Zen",
+    "rarity": "Rare"
+  },
+  {
+    "id": 10179,
+    "dex_number": 7082,
+    "shiny_dex_number": 8082,
+    "name": "Galarian Yamask",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10180,
+    "dex_number": 7085,
+    "shiny_dex_number": 8085,
+    "name": "Galarian Stunfisk",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10181,
+    "dex_number": 7106,
+    "shiny_dex_number": 8106,
+    "name": "Zygarde 10",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10182,
+    "dex_number": 7127,
+    "shiny_dex_number": 8127,
+    "name": "Cramorant Gulping",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10183,
+    "dex_number": 7128,
+    "shiny_dex_number": 8128,
+    "name": "Cramorant Gorging",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10184,
+    "dex_number": 7129,
+    "shiny_dex_number": 8129,
+    "name": "Toxtricity Low Key",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10185,
+    "dex_number": 7130,
+    "shiny_dex_number": 8130,
+    "name": "Eiscue Noice",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10186,
+    "dex_number": 7131,
+    "shiny_dex_number": 8131,
+    "name": "Indeedee Female",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10187,
+    "dex_number": 7132,
+    "shiny_dex_number": 8132,
+    "name": "Morpeko Hangry",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10188,
+    "dex_number": 7133,
+    "shiny_dex_number": 8133,
+    "name": "Zacian Crowned",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10189,
+    "dex_number": 7134,
+    "shiny_dex_number": 8134,
+    "name": "Zamazenta Crowned",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10190,
+    "dex_number": 5033,
+    "shiny_dex_number": 6033,
+    "name": "Eternatus Eternamax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10191,
+    "dex_number": 7135,
+    "shiny_dex_number": 8135,
+    "name": "Urshifu Rapid Strike",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10192,
+    "dex_number": 7136,
+    "shiny_dex_number": 8136,
+    "name": "Zarude Dada",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10193,
+    "dex_number": 7137,
+    "shiny_dex_number": 8137,
+    "name": "Calyrex Ice",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10194,
+    "dex_number": 7138,
+    "shiny_dex_number": 8138,
+    "name": "Calyrex Shadow",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10195,
+    "dex_number": 5001,
+    "shiny_dex_number": 6001,
+    "name": "Venusaur Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10196,
+    "dex_number": 5002,
+    "shiny_dex_number": 6002,
+    "name": "Charizard Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10197,
+    "dex_number": 5003,
+    "shiny_dex_number": 6003,
+    "name": "Blastoise Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10198,
+    "dex_number": 5004,
+    "shiny_dex_number": 6004,
+    "name": "Butterfree Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10199,
+    "dex_number": 5005,
+    "shiny_dex_number": 6005,
+    "name": "Pikachu Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10200,
+    "dex_number": 5006,
+    "shiny_dex_number": 6006,
+    "name": "Meowth Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10201,
+    "dex_number": 5007,
+    "shiny_dex_number": 6007,
+    "name": "Machamp Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10202,
+    "dex_number": 5008,
+    "shiny_dex_number": 6008,
+    "name": "Gengar Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10203,
+    "dex_number": 5009,
+    "shiny_dex_number": 6009,
+    "name": "Kingler Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10204,
+    "dex_number": 5010,
+    "shiny_dex_number": 6010,
+    "name": "Lapras Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10205,
+    "dex_number": 5011,
+    "shiny_dex_number": 6011,
+    "name": "Eevee Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10206,
+    "dex_number": 5012,
+    "shiny_dex_number": 6012,
+    "name": "Snorlax Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10207,
+    "dex_number": 5013,
+    "shiny_dex_number": 6013,
+    "name": "Garbodor Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10208,
+    "dex_number": 5014,
+    "shiny_dex_number": 6014,
+    "name": "Melmetal Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10209,
+    "dex_number": 5015,
+    "shiny_dex_number": 6015,
+    "name": "Rillaboom Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10210,
+    "dex_number": 5016,
+    "shiny_dex_number": 6016,
+    "name": "Cinderace Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10211,
+    "dex_number": 5017,
+    "shiny_dex_number": 6017,
+    "name": "Inteleon Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10212,
+    "dex_number": 5018,
+    "shiny_dex_number": 6018,
+    "name": "Corviknight Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10213,
+    "dex_number": 5019,
+    "shiny_dex_number": 6019,
+    "name": "Orbeetle Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10214,
+    "dex_number": 5020,
+    "shiny_dex_number": 6020,
+    "name": "Drednaw Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10215,
+    "dex_number": 5021,
+    "shiny_dex_number": 6021,
+    "name": "Coalossal Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10216,
+    "dex_number": 5022,
+    "shiny_dex_number": 6022,
+    "name": "Flapple Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10217,
+    "dex_number": 5023,
+    "shiny_dex_number": 6023,
+    "name": "Appletun Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10218,
+    "dex_number": 5024,
+    "shiny_dex_number": 6024,
+    "name": "Sandaconda Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10219,
+    "dex_number": 5025,
+    "shiny_dex_number": 6025,
+    "name": "Toxtricity Amped Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10220,
+    "dex_number": 5027,
+    "shiny_dex_number": 6027,
+    "name": "Centiskorch Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10221,
+    "dex_number": 5028,
+    "shiny_dex_number": 6028,
+    "name": "Hatterene Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10222,
+    "dex_number": 5029,
+    "shiny_dex_number": 6029,
+    "name": "Grimmsnarl Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10223,
+    "dex_number": 5030,
+    "shiny_dex_number": 6030,
+    "name": "Alcremie Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10224,
+    "dex_number": 5031,
+    "shiny_dex_number": 6031,
+    "name": "Copperajah Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10225,
+    "dex_number": 5032,
+    "shiny_dex_number": 6032,
+    "name": "Duraludon Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10226,
+    "dex_number": 5034,
+    "shiny_dex_number": 6034,
+    "name": "Urshifu Single Strike Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10227,
+    "dex_number": 5035,
+    "shiny_dex_number": 6035,
+    "name": "Urshifu Rapid Strike Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10228,
+    "dex_number": 5026,
+    "shiny_dex_number": 6026,
+    "name": "Toxtricity Low Key Gmax",
+    "rarity": "Gmax"
+  },
+  {
+    "id": 10229,
+    "dex_number": 7027,
+    "shiny_dex_number": 8027,
+    "name": "Hisuian Growlithe",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10230,
+    "dex_number": 7028,
+    "shiny_dex_number": 8028,
+    "name": "Hisuian Arcanine",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10231,
+    "dex_number": 7039,
+    "shiny_dex_number": 8039,
+    "name": "Hisuian Voltorb",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10232,
+    "dex_number": 7040,
+    "shiny_dex_number": 8040,
+    "name": "Hisuian Electrode",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10233,
+    "dex_number": 7048,
+    "shiny_dex_number": 8048,
+    "name": "Hisuian Typhlosion",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10234,
+    "dex_number": 7051,
+    "shiny_dex_number": 8051,
+    "name": "Hisuian Qwilfish",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10235,
+    "dex_number": 7052,
+    "shiny_dex_number": 8052,
+    "name": "Hisuian Sneasel",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10236,
+    "dex_number": 7075,
+    "shiny_dex_number": 8075,
+    "name": "Hisuian Samurott",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10237,
+    "dex_number": 7076,
+    "shiny_dex_number": 8076,
+    "name": "Hisuian Lilligant",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10238,
+    "dex_number": 7083,
+    "shiny_dex_number": 8083,
+    "name": "Hisuian Zorua",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10239,
+    "dex_number": 7084,
+    "shiny_dex_number": 8084,
+    "name": "Hisuian Zoroark",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10240,
+    "dex_number": 7086,
+    "shiny_dex_number": 8086,
+    "name": "Hisuian Braviary",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10241,
+    "dex_number": 7098,
+    "shiny_dex_number": 8098,
+    "name": "Hisuian Sliggoo",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10242,
+    "dex_number": 7099,
+    "shiny_dex_number": 8099,
+    "name": "Hisuian Goodra",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10243,
+    "dex_number": 7104,
+    "shiny_dex_number": 8104,
+    "name": "Hisuian Avalugg",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10244,
+    "dex_number": 7157,
+    "shiny_dex_number": 8108,
+    "name": "Hisuian Decidueye",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10245,
+    "dex_number": 7071,
+    "shiny_dex_number": 8071,
+    "name": "Dialga Origin",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10246,
+    "dex_number": 7072,
+    "shiny_dex_number": 8072,
+    "name": "Palkia Origin",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10247,
+    "dex_number": 7078,
+    "shiny_dex_number": 8078,
+    "name": "Basculin White Striped",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10248,
+    "dex_number": 7140,
+    "shiny_dex_number": 8140,
+    "name": "Basculegion Female",
+    "rarity": "Rare"
+  },
+  {
+    "id": 10249,
+    "dex_number": 7141,
+    "shiny_dex_number": 8141,
+    "name": "Enamorus Therian",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10253,
+    "dex_number": 7049,
+    "shiny_dex_number": 8049,
+    "name": "Paldean Wooper",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10254,
+    "dex_number": 7142,
+    "shiny_dex_number": 8142,
+    "name": "Oinkologne Female",
+    "rarity": "Rare"
+  },
+  {
+    "id": 10255,
+    "dex_number": 7150,
+    "shiny_dex_number": 8150,
+    "name": "Dudunsparce Three Segment",
+    "rarity": "Rare"
+  },
+  {
+    "id": 10256,
+    "dex_number": 7147,
+    "shiny_dex_number": 8147,
+    "name": "Palafin Hero",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10257,
+    "dex_number": 7143,
+    "shiny_dex_number": 8143,
+    "name": "Maushold Family Of Three",
+    "rarity": "Rare"
+  },
+  {
+    "id": 10258,
+    "dex_number": 7148,
+    "shiny_dex_number": 8148,
+    "name": "Tatsugiri Droopy",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10259,
+    "dex_number": 7149,
+    "shiny_dex_number": 8149,
+    "name": "Tatsugiri Stretchy",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10260,
+    "dex_number": 7144,
+    "shiny_dex_number": 8144,
+    "name": "Squawkabilly Blue Plumage",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10261,
+    "dex_number": 7145,
+    "shiny_dex_number": 8145,
+    "name": "Squawkabilly Yellow Plumage",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10262,
+    "dex_number": 7146,
+    "shiny_dex_number": 8146,
+    "name": "Squawkabilly White Plumage",
+    "rarity": "Uncommon"
+  },
+  {
+    "id": 10263,
+    "dex_number": 7151,
+    "shiny_dex_number": 8151,
+    "name": "Gimmighoul Roaming",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10272,
+    "dex_number": 7139,
+    "shiny_dex_number": 8139,
+    "name": "Ursaluna Bloodmoon",
+    "rarity": "Super Rare"
+  },
+  {
+    "id": 10273,
+    "dex_number": 7152,
+    "shiny_dex_number": 8152,
+    "name": "Ogerpon Wellspring Mask",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10274,
+    "dex_number": 7153,
+    "shiny_dex_number": 8153,
+    "name": "Ogerpon Hearthflame Mask",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10275,
+    "dex_number": 7154,
+    "shiny_dex_number": 8154,
+    "name": "Ogerpon Cornerstone Mask",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10276,
+    "dex_number": 7155,
+    "shiny_dex_number": 8155,
+    "name": "Terapagos Terastal",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10277,
+    "dex_number": 7156,
+    "shiny_dex_number": 8156,
+    "name": "Terapagos Stellar",
+    "rarity": "Legendary"
+  },
+  {
+    "id": 10278,
+    "dex_number": 3009,
+    "shiny_dex_number": 4009,
+    "name": "Clefable Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10279,
+    "dex_number": 3011,
+    "shiny_dex_number": 4011,
+    "name": "Victreebel Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10280,
+    "dex_number": 3015,
+    "shiny_dex_number": 4015,
+    "name": "Starmie Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10281,
+    "dex_number": 3019,
+    "shiny_dex_number": 4019,
+    "name": "Dragonite Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10282,
+    "dex_number": 3022,
+    "shiny_dex_number": 4022,
+    "name": "Meganium Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10283,
+    "dex_number": 3023,
+    "shiny_dex_number": 4023,
+    "name": "Feraligatr Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10284,
+    "dex_number": 3028,
+    "shiny_dex_number": 4028,
+    "name": "Skarmory Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10285,
+    "dex_number": 3061,
+    "shiny_dex_number": 4061,
+    "name": "Froslass Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10286,
+    "dex_number": 3064,
+    "shiny_dex_number": 4064,
+    "name": "Emboar Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10287,
+    "dex_number": 3065,
+    "shiny_dex_number": 4065,
+    "name": "Excadrill Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10288,
+    "dex_number": 3067,
+    "shiny_dex_number": 4067,
+    "name": "Scolipede Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10289,
+    "dex_number": 3068,
+    "shiny_dex_number": 4068,
+    "name": "Scrafty Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10290,
+    "dex_number": 3069,
+    "shiny_dex_number": 4069,
+    "name": "Eelektross Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10291,
+    "dex_number": 3070,
+    "shiny_dex_number": 4070,
+    "name": "Chandelure Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10292,
+    "dex_number": 3072,
+    "shiny_dex_number": 4072,
+    "name": "Chesnaught Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10293,
+    "dex_number": 3073,
+    "shiny_dex_number": 4073,
+    "name": "Delphox Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10294,
+    "dex_number": 3074,
+    "shiny_dex_number": 4074,
+    "name": "Greninja Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10295,
+    "dex_number": 3075,
+    "shiny_dex_number": 4075,
+    "name": "Pyroar Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10296,
+    "dex_number": 3076,
+    "shiny_dex_number": 4076,
+    "name": "Floette Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10297,
+    "dex_number": 3079,
+    "shiny_dex_number": 4079,
+    "name": "Malamar Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10298,
+    "dex_number": 3080,
+    "shiny_dex_number": 4080,
+    "name": "Barbaracle Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10299,
+    "dex_number": 3081,
+    "shiny_dex_number": 4081,
+    "name": "Dragalge Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10300,
+    "dex_number": 3082,
+    "shiny_dex_number": 4082,
+    "name": "Hawlucha Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10301,
+    "dex_number": 3083,
+    "shiny_dex_number": 4083,
+    "name": "Zygarde Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10302,
+    "dex_number": 3087,
+    "shiny_dex_number": 4087,
+    "name": "Drampa Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10303,
+    "dex_number": 3091,
+    "shiny_dex_number": 4091,
+    "name": "Falinks Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10304,
+    "dex_number": 3007,
+    "shiny_dex_number": 4007,
+    "name": "Raichu Mega X",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10305,
+    "dex_number": 3008,
+    "shiny_dex_number": 4008,
+    "name": "Raichu Mega Y",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10306,
+    "dex_number": 3044,
+    "shiny_dex_number": 4044,
+    "name": "Chimecho Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10307,
+    "dex_number": 3046,
+    "shiny_dex_number": 4046,
+    "name": "Absol Mega Z",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10308,
+    "dex_number": 3053,
+    "shiny_dex_number": 4053,
+    "name": "Staraptor Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10309,
+    "dex_number": 3056,
+    "shiny_dex_number": 4056,
+    "name": "Garchomp Mega Z",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10310,
+    "dex_number": 3058,
+    "shiny_dex_number": 4058,
+    "name": "Lucario Mega Z",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10311,
+    "dex_number": 3062,
+    "shiny_dex_number": 4062,
+    "name": "Heatran Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10312,
+    "dex_number": 3063,
+    "shiny_dex_number": 4063,
+    "name": "Darkrai Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10313,
+    "dex_number": 3071,
+    "shiny_dex_number": 4071,
+    "name": "Golurk Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10314,
+    "dex_number": 3077,
+    "shiny_dex_number": 4077,
+    "name": "Meowstic Male Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10315,
+    "dex_number": 3085,
+    "shiny_dex_number": 4085,
+    "name": "Crabominable Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10316,
+    "dex_number": 3086,
+    "shiny_dex_number": 4086,
+    "name": "Golisopod Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10317,
+    "dex_number": 3088,
+    "shiny_dex_number": 4088,
+    "name": "Magearna Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10318,
+    "dex_number": 3089,
+    "shiny_dex_number": 4089,
+    "name": "Magearna Original Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10319,
+    "dex_number": 3090,
+    "shiny_dex_number": 4090,
+    "name": "Zeraora Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10320,
+    "dex_number": 3092,
+    "shiny_dex_number": 4092,
+    "name": "Scovillain Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10321,
+    "dex_number": 3093,
+    "shiny_dex_number": 4093,
+    "name": "Glimmora Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10322,
+    "dex_number": 3094,
+    "shiny_dex_number": 4094,
+    "name": "Tatsugiri Curly Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10323,
+    "dex_number": 3095,
+    "shiny_dex_number": 4095,
+    "name": "Tatsugiri Droopy Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10324,
+    "dex_number": 3096,
+    "shiny_dex_number": 4096,
+    "name": "Tatsugiri Stretchy Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10325,
+    "dex_number": 3097,
+    "shiny_dex_number": 4097,
+    "name": "Baxcalibur Mega",
+    "rarity": "Mega"
+  },
+  {
+    "id": 10326,
+    "dex_number": 3078,
+    "shiny_dex_number": 4078,
+    "name": "Meowstic Female Mega",
+    "rarity": "Mega"
+  }
+]

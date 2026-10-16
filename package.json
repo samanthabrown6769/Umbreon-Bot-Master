@@ -4,14 +4,27 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "start": "nodemon index.js"
+    "start": "nodemon index.js",
+    "sync-pokemon": "node scripts/sync-pokemon-catalog.js",
+    "sync-pokemon-moves": "node scripts/sync-pokemon-moves.js",
+    "sync-rarities": "node scripts/sync-pokemon-rarities.js",
+    "build-pokemon-database": "node scripts/build-pokemon-database.js",
+    "upload-sprites": "node scripts/upload-sprites-to-cloudinary.js"
   },
   "dependencies": {
-    "discord.js": "^12.5.3",
-    "dotenv": "^8.2.0",
-    "node-fetch": "^2.6.1"
+    "@napi-rs/canvas": "^1.0.11",
+    "better-sqlite3": "^12.2.0",
+    "cloudinary": "^2.11.0",
+    "discord.js": "^14.22.1",
+    "dotenv": "^8.2.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.7"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
   }
 }

@@ -1,0 +1,1577 @@
+[
+  {
+    "fromSpeciesId": 1,
+    "toSpeciesId": 2,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 2,
+    "toSpeciesId": 3,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 4,
+    "toSpeciesId": 5,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 5,
+    "toSpeciesId": 6,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 7,
+    "toSpeciesId": 8,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 8,
+    "toSpeciesId": 9,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 10,
+    "toSpeciesId": 11,
+    "minLevel": 7
+  },
+  {
+    "fromSpeciesId": 11,
+    "toSpeciesId": 12,
+    "minLevel": 10
+  },
+  {
+    "fromSpeciesId": 13,
+    "toSpeciesId": 14,
+    "minLevel": 7
+  },
+  {
+    "fromSpeciesId": 14,
+    "toSpeciesId": 15,
+    "minLevel": 10
+  },
+  {
+    "fromSpeciesId": 16,
+    "toSpeciesId": 17,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 17,
+    "toSpeciesId": 18,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 19,
+    "toSpeciesId": 20,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 21,
+    "toSpeciesId": 22,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 23,
+    "toSpeciesId": 24,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 27,
+    "toSpeciesId": 28,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 29,
+    "toSpeciesId": 30,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 32,
+    "toSpeciesId": 33,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 41,
+    "toSpeciesId": 42,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 43,
+    "toSpeciesId": 44,
+    "minLevel": 21
+  },
+  {
+    "fromSpeciesId": 46,
+    "toSpeciesId": 47,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 48,
+    "toSpeciesId": 49,
+    "minLevel": 31
+  },
+  {
+    "fromSpeciesId": 50,
+    "toSpeciesId": 51,
+    "minLevel": 26
+  },
+  {
+    "fromSpeciesId": 52,
+    "toSpeciesId": 53,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 54,
+    "toSpeciesId": 55,
+    "minLevel": 33
+  },
+  {
+    "fromSpeciesId": 56,
+    "toSpeciesId": 57,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 60,
+    "toSpeciesId": 61,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 63,
+    "toSpeciesId": 64,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 66,
+    "toSpeciesId": 67,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 69,
+    "toSpeciesId": 70,
+    "minLevel": 21
+  },
+  {
+    "fromSpeciesId": 72,
+    "toSpeciesId": 73,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 74,
+    "toSpeciesId": 75,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 77,
+    "toSpeciesId": 78,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 79,
+    "toSpeciesId": 80,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 81,
+    "toSpeciesId": 82,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 84,
+    "toSpeciesId": 85,
+    "minLevel": 31
+  },
+  {
+    "fromSpeciesId": 86,
+    "toSpeciesId": 87,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 88,
+    "toSpeciesId": 89,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 92,
+    "toSpeciesId": 93,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 96,
+    "toSpeciesId": 97,
+    "minLevel": 26
+  },
+  {
+    "fromSpeciesId": 98,
+    "toSpeciesId": 99,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 100,
+    "toSpeciesId": 101,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 104,
+    "toSpeciesId": 105,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 109,
+    "toSpeciesId": 110,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 111,
+    "toSpeciesId": 112,
+    "minLevel": 42
+  },
+  {
+    "fromSpeciesId": 116,
+    "toSpeciesId": 117,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 118,
+    "toSpeciesId": 119,
+    "minLevel": 33
+  },
+  {
+    "fromSpeciesId": 129,
+    "toSpeciesId": 130,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 138,
+    "toSpeciesId": 139,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 140,
+    "toSpeciesId": 141,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 147,
+    "toSpeciesId": 148,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 148,
+    "toSpeciesId": 149,
+    "minLevel": 55
+  },
+  {
+    "fromSpeciesId": 152,
+    "toSpeciesId": 153,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 153,
+    "toSpeciesId": 154,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 155,
+    "toSpeciesId": 156,
+    "minLevel": 14
+  },
+  {
+    "fromSpeciesId": 156,
+    "toSpeciesId": 157,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 158,
+    "toSpeciesId": 159,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 159,
+    "toSpeciesId": 160,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 161,
+    "toSpeciesId": 162,
+    "minLevel": 15
+  },
+  {
+    "fromSpeciesId": 163,
+    "toSpeciesId": 164,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 165,
+    "toSpeciesId": 166,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 167,
+    "toSpeciesId": 168,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 170,
+    "toSpeciesId": 171,
+    "minLevel": 27
+  },
+  {
+    "fromSpeciesId": 177,
+    "toSpeciesId": 178,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 179,
+    "toSpeciesId": 180,
+    "minLevel": 15
+  },
+  {
+    "fromSpeciesId": 180,
+    "toSpeciesId": 181,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 183,
+    "toSpeciesId": 184,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 187,
+    "toSpeciesId": 188,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 188,
+    "toSpeciesId": 189,
+    "minLevel": 27
+  },
+  {
+    "fromSpeciesId": 194,
+    "toSpeciesId": 195,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 204,
+    "toSpeciesId": 205,
+    "minLevel": 31
+  },
+  {
+    "fromSpeciesId": 209,
+    "toSpeciesId": 210,
+    "minLevel": 23
+  },
+  {
+    "fromSpeciesId": 216,
+    "toSpeciesId": 217,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 218,
+    "toSpeciesId": 219,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 220,
+    "toSpeciesId": 221,
+    "minLevel": 33
+  },
+  {
+    "fromSpeciesId": 223,
+    "toSpeciesId": 224,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 228,
+    "toSpeciesId": 229,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 231,
+    "toSpeciesId": 232,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 238,
+    "toSpeciesId": 124,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 239,
+    "toSpeciesId": 125,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 240,
+    "toSpeciesId": 126,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 246,
+    "toSpeciesId": 247,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 247,
+    "toSpeciesId": 248,
+    "minLevel": 55
+  },
+  {
+    "fromSpeciesId": 252,
+    "toSpeciesId": 253,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 253,
+    "toSpeciesId": 254,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 255,
+    "toSpeciesId": 256,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 256,
+    "toSpeciesId": 257,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 258,
+    "toSpeciesId": 259,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 259,
+    "toSpeciesId": 260,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 261,
+    "toSpeciesId": 262,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 263,
+    "toSpeciesId": 264,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 266,
+    "toSpeciesId": 267,
+    "minLevel": 10
+  },
+  {
+    "fromSpeciesId": 268,
+    "toSpeciesId": 269,
+    "minLevel": 10
+  },
+  {
+    "fromSpeciesId": 270,
+    "toSpeciesId": 271,
+    "minLevel": 14
+  },
+  {
+    "fromSpeciesId": 273,
+    "toSpeciesId": 274,
+    "minLevel": 14
+  },
+  {
+    "fromSpeciesId": 276,
+    "toSpeciesId": 277,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 278,
+    "toSpeciesId": 279,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 280,
+    "toSpeciesId": 281,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 281,
+    "toSpeciesId": 282,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 283,
+    "toSpeciesId": 284,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 285,
+    "toSpeciesId": 286,
+    "minLevel": 23
+  },
+  {
+    "fromSpeciesId": 287,
+    "toSpeciesId": 288,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 288,
+    "toSpeciesId": 289,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 290,
+    "toSpeciesId": 291,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 293,
+    "toSpeciesId": 294,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 294,
+    "toSpeciesId": 295,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 296,
+    "toSpeciesId": 297,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 304,
+    "toSpeciesId": 305,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 305,
+    "toSpeciesId": 306,
+    "minLevel": 42
+  },
+  {
+    "fromSpeciesId": 307,
+    "toSpeciesId": 308,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 309,
+    "toSpeciesId": 310,
+    "minLevel": 26
+  },
+  {
+    "fromSpeciesId": 316,
+    "toSpeciesId": 317,
+    "minLevel": 26
+  },
+  {
+    "fromSpeciesId": 318,
+    "toSpeciesId": 319,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 320,
+    "toSpeciesId": 321,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 322,
+    "toSpeciesId": 323,
+    "minLevel": 33
+  },
+  {
+    "fromSpeciesId": 325,
+    "toSpeciesId": 326,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 328,
+    "toSpeciesId": 329,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 329,
+    "toSpeciesId": 330,
+    "minLevel": 45
+  },
+  {
+    "fromSpeciesId": 331,
+    "toSpeciesId": 332,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 333,
+    "toSpeciesId": 334,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 339,
+    "toSpeciesId": 340,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 341,
+    "toSpeciesId": 342,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 343,
+    "toSpeciesId": 344,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 345,
+    "toSpeciesId": 346,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 347,
+    "toSpeciesId": 348,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 353,
+    "toSpeciesId": 354,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 355,
+    "toSpeciesId": 356,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 360,
+    "toSpeciesId": 202,
+    "minLevel": 15
+  },
+  {
+    "fromSpeciesId": 361,
+    "toSpeciesId": 362,
+    "minLevel": 42
+  },
+  {
+    "fromSpeciesId": 363,
+    "toSpeciesId": 364,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 364,
+    "toSpeciesId": 365,
+    "minLevel": 44
+  },
+  {
+    "fromSpeciesId": 371,
+    "toSpeciesId": 372,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 372,
+    "toSpeciesId": 373,
+    "minLevel": 50
+  },
+  {
+    "fromSpeciesId": 374,
+    "toSpeciesId": 375,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 375,
+    "toSpeciesId": 376,
+    "minLevel": 45
+  },
+  {
+    "fromSpeciesId": 387,
+    "toSpeciesId": 388,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 388,
+    "toSpeciesId": 389,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 390,
+    "toSpeciesId": 391,
+    "minLevel": 14
+  },
+  {
+    "fromSpeciesId": 391,
+    "toSpeciesId": 392,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 393,
+    "toSpeciesId": 394,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 394,
+    "toSpeciesId": 395,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 396,
+    "toSpeciesId": 397,
+    "minLevel": 14
+  },
+  {
+    "fromSpeciesId": 397,
+    "toSpeciesId": 398,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 399,
+    "toSpeciesId": 400,
+    "minLevel": 15
+  },
+  {
+    "fromSpeciesId": 401,
+    "toSpeciesId": 402,
+    "minLevel": 10
+  },
+  {
+    "fromSpeciesId": 403,
+    "toSpeciesId": 404,
+    "minLevel": 15
+  },
+  {
+    "fromSpeciesId": 404,
+    "toSpeciesId": 405,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 408,
+    "toSpeciesId": 409,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 410,
+    "toSpeciesId": 411,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 418,
+    "toSpeciesId": 419,
+    "minLevel": 26
+  },
+  {
+    "fromSpeciesId": 420,
+    "toSpeciesId": 421,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 425,
+    "toSpeciesId": 426,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 431,
+    "toSpeciesId": 432,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 434,
+    "toSpeciesId": 435,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 436,
+    "toSpeciesId": 437,
+    "minLevel": 33
+  },
+  {
+    "fromSpeciesId": 443,
+    "toSpeciesId": 444,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 444,
+    "toSpeciesId": 445,
+    "minLevel": 48
+  },
+  {
+    "fromSpeciesId": 449,
+    "toSpeciesId": 450,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 451,
+    "toSpeciesId": 452,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 453,
+    "toSpeciesId": 454,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 456,
+    "toSpeciesId": 457,
+    "minLevel": 31
+  },
+  {
+    "fromSpeciesId": 459,
+    "toSpeciesId": 460,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 495,
+    "toSpeciesId": 496,
+    "minLevel": 17
+  },
+  {
+    "fromSpeciesId": 496,
+    "toSpeciesId": 497,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 498,
+    "toSpeciesId": 499,
+    "minLevel": 17
+  },
+  {
+    "fromSpeciesId": 499,
+    "toSpeciesId": 500,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 501,
+    "toSpeciesId": 502,
+    "minLevel": 17
+  },
+  {
+    "fromSpeciesId": 502,
+    "toSpeciesId": 503,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 504,
+    "toSpeciesId": 505,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 506,
+    "toSpeciesId": 507,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 507,
+    "toSpeciesId": 508,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 509,
+    "toSpeciesId": 510,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 519,
+    "toSpeciesId": 520,
+    "minLevel": 21
+  },
+  {
+    "fromSpeciesId": 520,
+    "toSpeciesId": 521,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 522,
+    "toSpeciesId": 523,
+    "minLevel": 27
+  },
+  {
+    "fromSpeciesId": 524,
+    "toSpeciesId": 525,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 529,
+    "toSpeciesId": 530,
+    "minLevel": 31
+  },
+  {
+    "fromSpeciesId": 532,
+    "toSpeciesId": 533,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 535,
+    "toSpeciesId": 536,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 536,
+    "toSpeciesId": 537,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 540,
+    "toSpeciesId": 541,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 543,
+    "toSpeciesId": 544,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 544,
+    "toSpeciesId": 545,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 551,
+    "toSpeciesId": 552,
+    "minLevel": 29
+  },
+  {
+    "fromSpeciesId": 552,
+    "toSpeciesId": 553,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 554,
+    "toSpeciesId": 555,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 557,
+    "toSpeciesId": 558,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 559,
+    "toSpeciesId": 560,
+    "minLevel": 39
+  },
+  {
+    "fromSpeciesId": 562,
+    "toSpeciesId": 563,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 564,
+    "toSpeciesId": 565,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 566,
+    "toSpeciesId": 567,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 568,
+    "toSpeciesId": 569,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 570,
+    "toSpeciesId": 571,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 574,
+    "toSpeciesId": 575,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 575,
+    "toSpeciesId": 576,
+    "minLevel": 41
+  },
+  {
+    "fromSpeciesId": 577,
+    "toSpeciesId": 578,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 578,
+    "toSpeciesId": 579,
+    "minLevel": 41
+  },
+  {
+    "fromSpeciesId": 580,
+    "toSpeciesId": 581,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 582,
+    "toSpeciesId": 583,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 583,
+    "toSpeciesId": 584,
+    "minLevel": 47
+  },
+  {
+    "fromSpeciesId": 590,
+    "toSpeciesId": 591,
+    "minLevel": 39
+  },
+  {
+    "fromSpeciesId": 592,
+    "toSpeciesId": 593,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 595,
+    "toSpeciesId": 596,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 597,
+    "toSpeciesId": 598,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 599,
+    "toSpeciesId": 600,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 600,
+    "toSpeciesId": 601,
+    "minLevel": 49
+  },
+  {
+    "fromSpeciesId": 602,
+    "toSpeciesId": 603,
+    "minLevel": 39
+  },
+  {
+    "fromSpeciesId": 605,
+    "toSpeciesId": 606,
+    "minLevel": 42
+  },
+  {
+    "fromSpeciesId": 607,
+    "toSpeciesId": 608,
+    "minLevel": 41
+  },
+  {
+    "fromSpeciesId": 610,
+    "toSpeciesId": 611,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 611,
+    "toSpeciesId": 612,
+    "minLevel": 48
+  },
+  {
+    "fromSpeciesId": 613,
+    "toSpeciesId": 614,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 619,
+    "toSpeciesId": 620,
+    "minLevel": 50
+  },
+  {
+    "fromSpeciesId": 622,
+    "toSpeciesId": 623,
+    "minLevel": 43
+  },
+  {
+    "fromSpeciesId": 624,
+    "toSpeciesId": 625,
+    "minLevel": 52
+  },
+  {
+    "fromSpeciesId": 627,
+    "toSpeciesId": 628,
+    "minLevel": 54
+  },
+  {
+    "fromSpeciesId": 629,
+    "toSpeciesId": 630,
+    "minLevel": 54
+  },
+  {
+    "fromSpeciesId": 633,
+    "toSpeciesId": 634,
+    "minLevel": 50
+  },
+  {
+    "fromSpeciesId": 634,
+    "toSpeciesId": 635,
+    "minLevel": 64
+  },
+  {
+    "fromSpeciesId": 636,
+    "toSpeciesId": 637,
+    "minLevel": 59
+  },
+  {
+    "fromSpeciesId": 650,
+    "toSpeciesId": 651,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 651,
+    "toSpeciesId": 652,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 653,
+    "toSpeciesId": 654,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 654,
+    "toSpeciesId": 655,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 656,
+    "toSpeciesId": 657,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 657,
+    "toSpeciesId": 658,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 659,
+    "toSpeciesId": 660,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 661,
+    "toSpeciesId": 662,
+    "minLevel": 17
+  },
+  {
+    "fromSpeciesId": 662,
+    "toSpeciesId": 663,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 667,
+    "toSpeciesId": 668,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 672,
+    "toSpeciesId": 673,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 679,
+    "toSpeciesId": 680,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 688,
+    "toSpeciesId": 689,
+    "minLevel": 39
+  },
+  {
+    "fromSpeciesId": 690,
+    "toSpeciesId": 691,
+    "minLevel": 48
+  },
+  {
+    "fromSpeciesId": 692,
+    "toSpeciesId": 693,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 704,
+    "toSpeciesId": 705,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 712,
+    "toSpeciesId": 713,
+    "minLevel": 37
+  },
+  {
+    "fromSpeciesId": 714,
+    "toSpeciesId": 715,
+    "minLevel": 48
+  },
+  {
+    "fromSpeciesId": 722,
+    "toSpeciesId": 723,
+    "minLevel": 17
+  },
+  {
+    "fromSpeciesId": 723,
+    "toSpeciesId": 724,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 725,
+    "toSpeciesId": 726,
+    "minLevel": 17
+  },
+  {
+    "fromSpeciesId": 726,
+    "toSpeciesId": 727,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 728,
+    "toSpeciesId": 729,
+    "minLevel": 17
+  },
+  {
+    "fromSpeciesId": 729,
+    "toSpeciesId": 730,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 731,
+    "toSpeciesId": 732,
+    "minLevel": 14
+  },
+  {
+    "fromSpeciesId": 732,
+    "toSpeciesId": 733,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 736,
+    "toSpeciesId": 737,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 742,
+    "toSpeciesId": 743,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 747,
+    "toSpeciesId": 748,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 749,
+    "toSpeciesId": 750,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 751,
+    "toSpeciesId": 752,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 755,
+    "toSpeciesId": 756,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 759,
+    "toSpeciesId": 760,
+    "minLevel": 27
+  },
+  {
+    "fromSpeciesId": 761,
+    "toSpeciesId": 762,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 767,
+    "toSpeciesId": 768,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 769,
+    "toSpeciesId": 770,
+    "minLevel": 42
+  },
+  {
+    "fromSpeciesId": 782,
+    "toSpeciesId": 783,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 783,
+    "toSpeciesId": 784,
+    "minLevel": 45
+  },
+  {
+    "fromSpeciesId": 789,
+    "toSpeciesId": 790,
+    "minLevel": 43
+  },
+  {
+    "fromSpeciesId": 790,
+    "toSpeciesId": 791,
+    "minLevel": 53
+  },
+  {
+    "fromSpeciesId": 790,
+    "toSpeciesId": 792,
+    "minLevel": 53
+  },
+  {
+    "fromSpeciesId": 810,
+    "toSpeciesId": 811,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 811,
+    "toSpeciesId": 812,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 813,
+    "toSpeciesId": 814,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 814,
+    "toSpeciesId": 815,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 816,
+    "toSpeciesId": 817,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 817,
+    "toSpeciesId": 818,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 819,
+    "toSpeciesId": 820,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 821,
+    "toSpeciesId": 822,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 822,
+    "toSpeciesId": 823,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 824,
+    "toSpeciesId": 825,
+    "minLevel": 10
+  },
+  {
+    "fromSpeciesId": 825,
+    "toSpeciesId": 826,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 827,
+    "toSpeciesId": 828,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 829,
+    "toSpeciesId": 830,
+    "minLevel": 20
+  },
+  {
+    "fromSpeciesId": 831,
+    "toSpeciesId": 832,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 833,
+    "toSpeciesId": 834,
+    "minLevel": 22
+  },
+  {
+    "fromSpeciesId": 835,
+    "toSpeciesId": 836,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 837,
+    "toSpeciesId": 838,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 838,
+    "toSpeciesId": 839,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 843,
+    "toSpeciesId": 844,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 846,
+    "toSpeciesId": 847,
+    "minLevel": 26
+  },
+  {
+    "fromSpeciesId": 850,
+    "toSpeciesId": 851,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 856,
+    "toSpeciesId": 857,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 857,
+    "toSpeciesId": 858,
+    "minLevel": 42
+  },
+  {
+    "fromSpeciesId": 859,
+    "toSpeciesId": 860,
+    "minLevel": 32
+  },
+  {
+    "fromSpeciesId": 860,
+    "toSpeciesId": 861,
+    "minLevel": 42
+  },
+  {
+    "fromSpeciesId": 878,
+    "toSpeciesId": 879,
+    "minLevel": 34
+  },
+  {
+    "fromSpeciesId": 885,
+    "toSpeciesId": 886,
+    "minLevel": 50
+  },
+  {
+    "fromSpeciesId": 886,
+    "toSpeciesId": 887,
+    "minLevel": 60
+  },
+  {
+    "fromSpeciesId": 906,
+    "toSpeciesId": 907,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 907,
+    "toSpeciesId": 908,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 909,
+    "toSpeciesId": 910,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 910,
+    "toSpeciesId": 911,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 912,
+    "toSpeciesId": 913,
+    "minLevel": 16
+  },
+  {
+    "fromSpeciesId": 913,
+    "toSpeciesId": 914,
+    "minLevel": 36
+  },
+  {
+    "fromSpeciesId": 917,
+    "toSpeciesId": 918,
+    "minLevel": 15
+  },
+  {
+    "fromSpeciesId": 919,
+    "toSpeciesId": 920,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 921,
+    "toSpeciesId": 922,
+    "minLevel": 18
+  },
+  {
+    "fromSpeciesId": 926,
+    "toSpeciesId": 927,
+    "minLevel": 26
+  },
+  {
+    "fromSpeciesId": 928,
+    "toSpeciesId": 929,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 929,
+    "toSpeciesId": 930,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 932,
+    "toSpeciesId": 933,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 933,
+    "toSpeciesId": 934,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 940,
+    "toSpeciesId": 941,
+    "minLevel": 25
+  },
+  {
+    "fromSpeciesId": 942,
+    "toSpeciesId": 943,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 944,
+    "toSpeciesId": 945,
+    "minLevel": 28
+  },
+  {
+    "fromSpeciesId": 948,
+    "toSpeciesId": 949,
+    "minLevel": 30
+  },
+  {
+    "fromSpeciesId": 955,
+    "toSpeciesId": 956,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 957,
+    "toSpeciesId": 958,
+    "minLevel": 24
+  },
+  {
+    "fromSpeciesId": 958,
+    "toSpeciesId": 959,
+    "minLevel": 38
+  },
+  {
+    "fromSpeciesId": 960,
+    "toSpeciesId": 961,
+    "minLevel": 26
+  },
+  {
+    "fromSpeciesId": 965,
+    "toSpeciesId": 966,
+    "minLevel": 40
+  },
+  {
+    "fromSpeciesId": 969,
+    "toSpeciesId": 970,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 996,
+    "toSpeciesId": 997,
+    "minLevel": 35
+  },
+  {
+    "fromSpeciesId": 997,
+    "toSpeciesId": 998,
+    "minLevel": 54
+  }
+]

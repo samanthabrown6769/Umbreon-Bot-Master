@@ -1,0 +1,135 @@
+{
+  "challenges": [
+    {
+      "name": "Pewter Gym — Brock",
+      "reward": 5000,
+      "team": [
+        { "pokemon_id": 74, "level": 12 },
+        { "pokemon_id": 95, "level": 14 }
+      ]
+    },
+    {
+      "name": "Cerulean Gym — Misty",
+      "reward": 7500,
+      "team": [
+        { "pokemon_id": 120, "level": 18 },
+        { "pokemon_id": 121, "level": 21 }
+      ]
+    },
+    {
+      "name": "Vermilion Gym — Lt. Surge",
+      "reward": 10000,
+      "team": [
+        { "pokemon_id": 100, "level": 21 },
+        { "pokemon_id": 25, "level": 18 },
+        { "pokemon_id": 26, "level": 24 }
+      ]
+    },
+    {
+      "name": "Celadon Gym — Erika",
+      "reward": 12500,
+      "team": [
+        { "pokemon_id": 71, "level": 29 },
+        { "pokemon_id": 114, "level": 24 },
+        { "pokemon_id": 45, "level": 29 }
+      ]
+    },
+    {
+      "name": "Fuchsia Gym — Koga",
+      "reward": 15000,
+      "team": [
+        { "pokemon_id": 109, "level": 37 },
+        { "pokemon_id": 89, "level": 39 },
+        { "pokemon_id": 109, "level": 37 },
+        { "pokemon_id": 110, "level": 43 }
+      ]
+    },
+    {
+      "name": "Saffron Gym — Sabrina",
+      "reward": 17500,
+      "team": [
+        { "pokemon_id": 64, "level": 38 },
+        { "pokemon_id": 122, "level": 37 },
+        { "pokemon_id": 49, "level": 38 },
+        { "pokemon_id": 65, "level": 43 }
+      ]
+    },
+    {
+      "name": "Cinnabar Gym — Blaine",
+      "reward": 20000,
+      "team": [
+        { "pokemon_id": 58, "level": 42 },
+        { "pokemon_id": 77, "level": 40 },
+        { "pokemon_id": 78, "level": 42 },
+        { "pokemon_id": 59, "level": 47 }
+      ]
+    },
+    {
+      "name": "Viridian Gym — Giovanni",
+      "reward": 25000,
+      "team": [
+        { "pokemon_id": 111, "level": 45 },
+        { "pokemon_id": 51, "level": 42 },
+        { "pokemon_id": 31, "level": 44 },
+        { "pokemon_id": 34, "level": 45 },
+        { "pokemon_id": 112, "level": 50 }
+      ]
+    },
+    {
+      "name": "Elite Four — Lorelei",
+      "reward": 40000,
+      "team": [
+        { "pokemon_id": 87, "level": 54 },
+        { "pokemon_id": 91, "level": 53 },
+        { "pokemon_id": 80, "level": 54 },
+        { "pokemon_id": 124, "level": 54 },
+        { "pokemon_id": 131, "level": 56 }
+      ]
+    },
+    {
+      "name": "Elite Four — Bruno",
+      "reward": 45000,
+      "team": [
+        { "pokemon_id": 95, "level": 53 },
+        { "pokemon_id": 107, "level": 53 },
+        { "pokemon_id": 106, "level": 53 },
+        { "pokemon_id": 95, "level": 56 },
+        { "pokemon_id": 68, "level": 55 }
+      ]
+    },
+    {
+      "name": "Elite Four — Agatha",
+      "reward": 50000,
+      "team": [
+        { "pokemon_id": 94, "level": 56 },
+        { "pokemon_id": 42, "level": 56 },
+        { "pokemon_id": 93, "level": 55 },
+        { "pokemon_id": 24, "level": 58 },
+        { "pokemon_id": 94, "level": 60 }
+      ]
+    },
+    {
+      "name": "Elite Four — Lance",
+      "reward": 60000,
+      "team": [
+        { "pokemon_id": 130, "level": 58 },
+        { "pokemon_id": 148, "level": 56 },
+        { "pokemon_id": 148, "level": 56 },
+        { "pokemon_id": 142, "level": 60 },
+        { "pokemon_id": 149, "level": 62 }
+      ]
+    },
+    {
+      "name": "Pokémon Champion — Blue",
+      "reward": 100000,
+      "team": [
+        { "pokemon_id": 18, "level": 61 },
+        { "pokemon_id": 65, "level": 59 },
+        { "pokemon_id": 112, "level": 59 },
+        { "pokemon_id": 103, "level": 61 },
+        { "pokemon_id": 130, "level": 61 },
+        { "pokemon_id": 6, "level": 65 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "_help": "Configure promos. Edits apply without a bot restart. Each promo: speciesId is the National Dex number of the BASE form (golden sprite auto-generated); itemName/itemEmoji is the promo currency; drops.<source>.oneIn sets the 1-in-N drop chance (set enabled to false to disable). Multiple promos run at once; ;promo shows buttons to switch between them.",
+  "promos": [
+    {
+      "name": "Golden Bulbasaur",
+      "speciesId": 1,
+      "costCoins": 1000000,
+      "costItems": 3,
+      "itemName": "Golden Leaf",
+      "itemEmoji": "<:goldenleaf:1559958369387815003>",
+      "endsAtText": "November 4, 2026 at 5:00 AM",
+      "endsAtFooter": "November 4, 2026 at 12am EST",
+      "drops": {
+        "catch": { "enabled": true, "oneIn": 1000 },
+        "fish": { "enabled": true, "oneIn": 1000 },
+        "battle": { "enabled": true, "oneIn": 500 },
+        "egg": { "enabled": true, "oneIn": 500 }
+      }
+    },
+    {
+      "name": "Golden Pumpkaboo",
+      "speciesId": 710,
+      "costCoins": 1000000,
+      "costItems": 3,
+      "itemName": "Golden Pumpkin",
+      "itemEmoji": "<:goldenpumpkin:1559965616733950033>",
+      "endsAtText": "November 4, 2026 at 5:00 AM",
+      "endsAtFooter": "November 4, 2026 at 12am EST",
+      "drops": {
+        "catch": { "enabled": true, "oneIn": 1000 },
+        "fish": { "enabled": true, "oneIn": 1000 },
+        "battle": { "enabled": true, "oneIn": 500 },
+        "egg": { "enabled": true, "oneIn": 500 }
+      }
+    }
+  ]
+}

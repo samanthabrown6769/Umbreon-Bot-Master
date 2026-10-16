@@ -1,0 +1,11 @@
+node_modules
+.git
+.gitignore
+.vscode
+*.log
+pokemon.sqlite.bak-*
+
+# pokemon.sqlite is uploaded on the FIRST deploy to seed your data.
+# After the first deploy, uncomment the line below so redeploys don't
+# overwrite the live database (Discloud replaces files on each deploy):
+# pokemon.sqlite

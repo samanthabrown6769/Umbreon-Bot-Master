@@ -1,0 +1,262 @@
+[
+  {
+    "quest_type": "catch_amount",
+    "target_type": "all",
+    "target": 100,
+    "reward_candies": 0,
+    "reward_coins": 25000,
+    "reward_lootboxes": 0,
+    "reward_masterballs": 1
+  },
+  {
+    "quest_type": "catch_type",
+    "target_type": "Grass",
+    "target": 5,
+    "reward_candies": 1,
+    "reward_coins": 7500,
+    "reward_lootboxes": 0,
+    "reward_ultraballs": 2
+  },
+  {
+    "quest_type": "catch_rarity",
+    "target_type": "Legendary",
+    "target": 1,
+    "reward_candies": 0,
+    "reward_coins": 7500,
+    "reward_lootboxes": 3,
+    "reward_ultraballs": 3,
+    "reward_grazz": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Dark",
+    "target": 10,
+    "reward_candies": 5,
+    "reward_coins": 12500,
+    "reward_lootboxes": 0
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Dark",
+    "target": 25,
+    "reward_candies": 10,
+    "reward_coins": 18500,
+    "reward_lootboxes": 2
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Water",
+    "target": 15,
+    "reward_candies": 6,
+    "reward_coins": 14000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Grass",
+    "target": 20,
+    "reward_candies": 8,
+    "reward_coins": 16000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Bug",
+    "target": 20,
+    "reward_candies": 8,
+    "reward_coins": 16000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Dragon",
+    "target": 10,
+    "reward_candies": 8,
+    "reward_coins": 17500,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Electric",
+    "target": 15,
+    "reward_candies": 6,
+    "reward_coins": 14500,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Fairy",
+    "target": 10,
+    "reward_candies": 7,
+    "reward_coins": 16000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Fighting",
+    "target": 15,
+    "reward_candies": 6,
+    "reward_coins": 14500,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Fire",
+    "target": 15,
+    "reward_candies": 6,
+    "reward_coins": 14500,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Flying",
+    "target": 20,
+    "reward_candies": 8,
+    "reward_coins": 16000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Ghost",
+    "target": 10,
+    "reward_candies": 6,
+    "reward_coins": 15000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Ground",
+    "target": 15,
+    "reward_candies": 6,
+    "reward_coins": 14500,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Ice",
+    "target": 10,
+    "reward_candies": 6,
+    "reward_coins": 15000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Normal",
+    "target": 25,
+    "reward_candies": 10,
+    "reward_coins": 18500,
+    "reward_lootboxes": 2
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Poison",
+    "target": 15,
+    "reward_candies": 6,
+    "reward_coins": 14500,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Psychic",
+    "target": 15,
+    "reward_candies": 6,
+    "reward_coins": 14500,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Rock",
+    "target": 15,
+    "reward_candies": 6,
+    "reward_coins": 14500,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "encounter_type",
+    "target_type": "Steel",
+    "target": 10,
+    "reward_candies": 6,
+    "reward_coins": 15000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "catch_rarity",
+    "target_type": "Rare",
+    "target": 5,
+    "reward_candies": 6,
+    "reward_coins": 15000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "catch_rarity",
+    "target_type": "Super Rare",
+    "target": 3,
+    "reward_candies": 8,
+    "reward_coins": 20000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "catch_rarity",
+    "target_type": "Legendary",
+    "target": 1,
+    "reward_candies": 10,
+    "reward_coins": 30000,
+    "reward_lootboxes": 2
+  },
+  {
+    "quest_type": "catch_rarity",
+    "target_type": "Shiny",
+    "target": 1,
+    "reward_candies": 10,
+    "reward_coins": 30000,
+    "reward_lootboxes": 2
+  },
+  {
+    "quest_type": "catch_amount",
+    "target_type": "Any",
+    "target": 20,
+    "reward_candies": 6,
+    "reward_coins": 15000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "catch_amount",
+    "target_type": "Any",
+    "target": 50,
+    "reward_candies": 10,
+    "reward_coins": 25000,
+    "reward_lootboxes": 2
+  },
+  {
+    "quest_type": "fish_amount",
+    "target_type": "Any",
+    "target": 10,
+    "reward_candies": 6,
+    "reward_coins": 15000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "fish_amount",
+    "target_type": "Any",
+    "target": 25,
+    "reward_candies": 10,
+    "reward_coins": 25000,
+    "reward_lootboxes": 2
+  },
+  {
+    "quest_type": "battle_wins",
+    "target_type": "Any",
+    "target": 1,
+    "reward_candies": 6,
+    "reward_coins": 15000,
+    "reward_lootboxes": 1
+  },
+  {
+    "quest_type": "battle_wins",
+    "target_type": "Any",
+    "target": 3,
+    "reward_candies": 10,
+    "reward_coins": 25000,
+    "reward_lootboxes": 2
+  }
+]

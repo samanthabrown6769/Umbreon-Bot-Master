@@ -1,5 +1,7 @@
 node_modules
 
 .env
+*.sqlite
+pokemon.sqlite.bak-*
 
 yarn.lock
