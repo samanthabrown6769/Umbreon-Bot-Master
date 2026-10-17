@@ -1,4 +1,4 @@
-// Adds G-Max learnsets and Eternatus Eternamax Max Moves to the move data files.
+// Adds G-Max learnsets, Eternatus Eternamax Max Moves, and Max moves for Charizard Gmax.
 const fs = require('fs');
 const path = require('path');
 
@@ -89,6 +89,8 @@ for (const [formSlug, name, type, category, description] of GMAX_MOVES) {
 
 const eternamaxForm = catalog.find((pokemon) => pokemon.slug === 'eternatus-eternamax');
 if (!eternamaxForm) throw new Error('Missing Eternatus Eternamax form in the Pokémon catalog.');
+const charizardGmaxForm = catalog.find((pokemon) => pokemon.slug === 'charizard-gmax');
+if (!charizardGmaxForm) throw new Error('Missing Charizard Gigantamax form in the Pokémon catalog.');
 const maxMoves = Object.entries(moveInfo)
   .filter(([moveSlug]) => moveSlug.startsWith('max-') && moveSlug !== 'max-guard');
 const eternamaxLearnset = movesData.form_learnsets[String(eternamaxForm.id)]
@@ -111,6 +113,21 @@ movesData.form_learnsets[String(eternamaxForm.id)] = [
   ...new Set([...eternamaxLearnset, ...maxMoves.map(([moveSlug]) => moveSlug)]),
 ];
 
+let charizardGmaxLearnset = movesData.form_learnsets[String(charizardGmaxForm.id)]
+  || movesData.learnsets[String(charizardGmaxForm.species_id)]
+  || [];
+for (const moveSlug of ['max-quake', 'max-flare']) {
+  if (!moveInfo[moveSlug]) throw new Error(`Missing move info for ${moveSlug}.`);
+  charizardGmaxLearnset = [...new Set([...charizardGmaxLearnset, moveSlug])];
+  movesData.form_learnsets[String(charizardGmaxForm.id)] = charizardGmaxLearnset;
+  if (!moveInfo[moveSlug].learners.includes(charizardGmaxForm.name)) {
+    moveInfo[moveSlug].learners.push(charizardGmaxForm.name);
+  }
+}
+
 fs.writeFileSync(MOVES_PATH, `${JSON.stringify(movesData)}\n`);
 fs.writeFileSync(INFO_PATH, JSON.stringify(moveInfo));
-console.log(`Added ${GMAX_MOVES.length} G-Max moves and ${maxMoves.length} Max moves to Eternatus Eternamax.`);
+console.log(
+  `Added ${GMAX_MOVES.length} G-Max moves, ${maxMoves.length} Max moves to Eternatus Eternamax, ` +
+  'and Max Quake/Max Flare to Charizard Gmax.'
+);

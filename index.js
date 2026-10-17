@@ -963,6 +963,7 @@ const CLAN_RANK_EMOJIS = {
   amethyst: EMOJIS.clanAmethyst,
   onyx: EMOJIS.clanOnyx,
 };
+const CLAN_PERK_RANKS = ['bronze', 'silver', 'gold', 'diamond', 'amethyst', 'onyx'];
 
 const EGG_HATCH_POOLS = Object.freeze({
   early: Object.freeze([
@@ -1899,7 +1900,7 @@ function getBallCatchRate(ballKey, ball, target, displayRarity, baseCatchChance,
 }
 
 function getCatchChance(baseChance, ballBonus, clanBonus = 0, channelBoost = 0) {
-  return Math.min(100, (baseChance + ballBonus + clanBonus) * (1 + channelBoost / 100));
+  return Math.min(100, baseChance + ballBonus + clanBonus + channelBoost);
 }
 
 function getCatchCoinReward(rarity, isShiny) {
@@ -5423,12 +5424,18 @@ function makeEmbed(title, description, color = 0x3498db) {
 
 const MOVES_PER_PAGE = 10;
 
+function isMaxMove(move) {
+  return move.name.startsWith('Max ');
+}
+
 function createBuddyMovesEmbed(buddy, learnsetData, equippedMoves, page = 0, moveChangeCost = 50000) {
   const availableMoveSlots = Math.min(4, learnsetData.moves.length);
   const moveLine = (moveName) => {
     const move = getPokemonMove(moveName);
     return move
-      ? `• **${move.name}** — ${getTypeEmoji(move.type)} ${move.type} • ${move.power ? `Power ${move.power}` : 'Status'} • Accuracy ${move.accuracy}%`
+      ? `• **${move.name}** — ${getTypeEmoji(move.type)} ${move.type} • ` +
+        `${isMaxMove(move) ? 'Power --' : move.power ? `Power ${move.power}` : 'Status'} • ` +
+        `Accuracy ${isMaxMove(move) ? '--' : `${move.accuracy}%`}`
       : `• ${moveName}`;
   };
   return new EmbedBuilder()
@@ -12573,8 +12580,8 @@ client.on('messageCreate', async (message) => {
           )
           .addFields(
             { name: 'Type', value: `${getTypeEmoji(move.type)} ${move.type}`, inline: true },
-            { name: '🔋 Power', value: move.power ? `${move.power}` : '—', inline: true },
-            { name: '💯 Accuracy', value: move.accuracy ? `${move.accuracy}` : '—', inline: true },
+            { name: '🔋 Power', value: isMaxMove(move) ? '--' : move.power ? `${move.power}` : '—', inline: true },
+            { name: '💯 Accuracy', value: isMaxMove(move) ? '--' : move.accuracy ? `${move.accuracy}` : '—', inline: true },
             { name: 'Priority', value: `${move.priority}`, inline: true },
             { name: 'Damage class', value: `🔘 ${move.damageClass}`, inline: true },
             { name: 'PP', value: `${move.pp}`, inline: true }
@@ -17768,10 +17775,14 @@ client.on('messageCreate', async (message) => {
       const profileFaction = getUserFaction(profileId);
       if (profileFaction?.team?.emoji) badges.push(profileFaction.team.emoji);
       const profileClan = getPlayerClan(profileId);
+      const clanPerkBadges = [];
       if (profileClan) {
-        for (let index = 1; index <= (profileClan.perk_rank || 0); index += 1) {
-          const rankName = Object.keys(CLAN_RANK_EMOJIS)[index];
-          if (rankName) badges.push(CLAN_RANK_EMOJIS[rankName]);
+        const perkRank = Number.isSafeInteger(profileClan.perk_rank)
+          ? Math.max(0, Math.min(profileClan.perk_rank, CLAN_PERK_RANKS.length))
+          : 0;
+        for (const rankName of CLAN_PERK_RANKS.slice(0, perkRank)) {
+          const rankLabel = `${rankName[0].toUpperCase()}${rankName.slice(1)}`;
+          clanPerkBadges.push(`${CLAN_RANK_EMOJIS[rankName]} ${rankLabel}`);
         }
       }
 
@@ -17793,7 +17804,10 @@ client.on('messageCreate', async (message) => {
             name: profileTarget.username,
             iconURL: getTrainerIconUrl(profileId) || profileTarget.displayAvatarURL(),
           })
-          .setDescription(`${badges.join(' ')}\n\n• ${favoriteLine}\n• ${collectionLine}`)],
+          .setDescription(
+            `${badges.join(' ')}${clanPerkBadges.length ? `\nClan Perks: ${clanPerkBadges.join(' ')}` : ''}` +
+            `\n\n• ${favoriteLine}\n• ${collectionLine}`
+          )],
       });
     }
 

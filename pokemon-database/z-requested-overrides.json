@@ -102,5 +102,10 @@
     "slug": "ho-oh",
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/hooh.gif",
     "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/hooh.gif"
+  },
+  {
+    "slug": "charizard-gmax",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/charizard-gmax.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/charizard-gmax.gif"
   }
 ]
