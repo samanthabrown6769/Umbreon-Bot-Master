@@ -816,7 +816,7 @@ function runSwitchTurn(ctx, enemyMove) {
 
 module.exports = {
   EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
-  applyStatusMove, canAct, performMove, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
+  applyStatusMove, canAct, performMove, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES, DAMAGE_STAT_DROPS,
   summarize(mon) {
     const f = fx(mon);
     const parts = [];

@@ -2703,6 +2703,8 @@ function worldBossCtx(bs, log, turn = bs.turn) {
   return makeBattleCtx(bs.field, log, bs.mon, bs.boss, turn, [bs.mon], []);
 }
 
+const worldBossDefenceDrops = new Map();
+
 function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult = 1) {
   if (!team.length) return { error: 'no_team' };
   const selectedTeamMember = getWorldBossTeamMoves(team)
@@ -2729,17 +2731,32 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
       * (move.power / 100)
       * effectiveness
       * stab
-      * 60
+      * 6
     )
   );
-  const damage = Math.max(1, Math.floor((isCritical ? Math.floor(baseDamage * 1.8) : baseDamage) * damageMult));
+  // Defence drops (e.g. Acid Spray) stack per raider and boost later damage of the matching category.
+  const dropKey = `${boss.id}:${userId}`;
+  const defKey = move.category === 'special' ? 'spdef' : 'def';
+  const bossStages = worldBossDefenceDrops.get(dropKey) || { def: 0, spdef: 0 };
+  const defenceMult = 1 / battleFx.stageMult(bossStages[defKey]);
+  const statDrop = battleFx.DAMAGE_STAT_DROPS[battleFx.slug(move.name)];
+  let dropText = '';
+  if (statDrop && Math.random() * 100 < statDrop[0]) {
+    for (const [key, delta] of Object.entries(statDrop[1])) {
+      if (key !== 'def' && key !== 'spdef') continue;
+      bossStages[key] = Math.max(-6, bossStages[key] + delta);
+      dropText = ` ${key === 'def' ? 'Defense' : 'Sp. Def'} of the boss ${Math.abs(delta) >= 2 ? 'harshly ' : ''}fell!`;
+    }
+    worldBossDefenceDrops.set(dropKey, bossStages);
+  }
+  const damage = Math.max(1, Math.floor((isCritical ? Math.floor(baseDamage * 1.8) : baseDamage) * damageMult * defenceMult));
   const result = applyWorldBossDamage(userId, boss.id, damage);
   if (result.error) return result;
   const battleLog = [
     `**${pokemon.is_shiny ? `${EMOJIS.shiny} ` : ''}${pokemon.name}** used **${move.name}** ` +
     `for **${result.damage.toLocaleString()}** DMG` +
     `${effectiveness > 1 ? ' — super effective!' : effectiveness < 1 ? ' — not very effective.' : ''}` +
-    `${stab > 1 ? ' Same-type bonus!' : ''}${isCritical ? ' 💥 *(CRITICAL HIT!)*' : ''}`,
+    `${stab > 1 ? ' Same-type bonus!' : ''}${isCritical ? ' 💥 *(CRITICAL HIT!)*' : ''}${dropText}`,
   ];
   const rewards = result.defeated ? distributeWorldBossRewards(boss.id) : null;
   return {
