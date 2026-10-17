@@ -400,6 +400,25 @@ const activeWorldBossPlayers = new Map();
 const activeWorldBossFainted = new Map();
 const activeWorldBossTeamStates = new Map();
 const activeDexEntries = new Map();
+
+function isInteractionAlreadyAcknowledgedOrExpired(error) {
+  return error?.code === 40060 || error?.code === 10062;
+}
+
+async function replyToInteractionFailure(interaction, content, context) {
+  try {
+    const response = { content, ephemeral: true };
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(response);
+    } else {
+      await interaction.reply(response);
+    }
+  } catch (error) {
+    if (isInteractionAlreadyAcknowledgedOrExpired(error)) return;
+    console.error(`Failed to send ${context} interaction error response:`, error);
+  }
+}
+
 const KANTO_LEAGUE = require('./data/kanto-league.json').challenges;
 const NPC_CAMPAIGN = [
   ...KANTO_LEAGUE.map((challenge) => ({ region: 'Kanto', ...challenge })),
@@ -433,6 +452,14 @@ const NPC_TRAINER_ICON_EMOJIS = {
   atticus: '<:atticus:1561091500010373221>',
   ortega: '<:ortega:1561091237769908375>',
   eri: '<:eri:1561091421488816160>',
+  stargruntfemale: '<:stargruntfemale:1561091678759030784>',
+  stargruntmale: '<:stargruntmale:1561091294795800596>',
+  staradmingiacomo: '<:giacomo:1561091482046177330>',
+  staradminmela: '<:mela:1561091314802495539>',
+  staradminatticus: '<:atticus:1561091500010373221>',
+  staradminortega: '<:ortega:1561091237769908375>',
+  staradmineri: '<:eri:1561091421488816160>',
+  plasmaadminn: '<:kingn:1561066703906144286>',
   iono: '<:iono:1561066683488280646>',
   kingn: '<:kingn:1561066703906144286>',
   hop: '<:hop:1561066662315167815>',
@@ -503,10 +530,11 @@ const FACTION_NPC_BATTLES = FACTION_NPC_BATTLE_DEFINITIONS.map(({
 }) => {
   const faction = FACTION_TEAMS[factionKey];
   if (!faction) throw new Error(`Missing faction configuration for ${factionKey}.`);
+  const trainerKey = trainer.toLowerCase().replace(/[^a-z0-9]/g, '');
   return {
     name: `${faction.name} — ${trainer}`,
     region: 'Factions',
-    iconEmoji: FACTION_NPC_ROLE_EMOJIS[role],
+    iconEmoji: NPC_TRAINER_ICON_EMOJIS[trainerKey] || FACTION_NPC_ROLE_EMOJIS[role],
     special: true,
     factionNpc: true,
     strengthMultiplier,
@@ -3119,12 +3147,11 @@ async function startWorldBossBattle(message, boss, userId, team) {
       });
     } catch (error) {
       console.error('Failed to process World Boss move:', error);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ The World Boss move could not be processed.',
-          ephemeral: true,
-        }).catch(() => {});
-      }
+      await replyToInteractionFailure(
+        interaction,
+        '❌ The World Boss move could not be processed.',
+        'World Boss move'
+      );
     }
   };
   activeWorldBossRaidHandlers.set(`${boss.id}:${userId}`, handler);
@@ -3805,14 +3832,13 @@ async function askForBall(
       }
       await handleCatch(selectedBall, interaction, true);
     } catch (error) {
+      if (isInteractionAlreadyAcknowledgedOrExpired(error)) return;
       console.error('Failed to process catch-button interaction:', error);
-      try {
-        const response = { content: '❌ The encounter could not be processed.', ephemeral: true };
-        if (interaction.replied || interaction.deferred) await interaction.followUp(response);
-        else await interaction.reply(response);
-      } catch (responseError) {
-        console.error('Failed to acknowledge catch-button processing error:', responseError);
-      }
+      await replyToInteractionFailure(
+        interaction,
+        '❌ The encounter could not be processed.',
+        'catch-button processing'
+      );
       actionTaken = true;
       buttonCollector.stop('error');
       textCollector.stop('error');
@@ -4652,9 +4678,7 @@ async function runPlayerSpar(message, userId, opponentUser) {
       }
     } catch (error) {
       console.error(`Failed to process player spar for user ${userId}:`, error);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'The battle could not be processed.', ephemeral: true });
-      }
+      await replyToInteractionFailure(interaction, 'The battle could not be processed.', 'player battle');
       collector.stop('error');
     }
   };
@@ -4904,9 +4928,11 @@ async function runMegaChamberGauntlet(message, userId, config) {
       }
     } catch (error) {
       console.error(`Failed to process Mega Chamber battle for user ${userId}:`, error);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'The Mega Chamber battle could not be processed.', ephemeral: true });
-      }
+      await replyToInteractionFailure(
+        interaction,
+        'The Mega Chamber battle could not be processed.',
+        'Mega Chamber battle'
+      );
       collector.stop('error');
     }
   };
@@ -5057,32 +5083,36 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
     componentType: ComponentType.Button,
     time: 90000,
   });
+  let actionInProgress = false;
   const handleMove = async (interaction) => {
     try {
       if (interaction.user.id !== userId) {
         await interaction.reply({ content: 'This is not your league battle.', ephemeral: true });
         return;
       }
+      if (actionInProgress) {
+        await interaction.reply({ content: 'Your previous battle action is still being processed.', ephemeral: true });
+        return;
+      }
+      if (finished) {
+        await interaction.reply({ content: 'This league battle has already ended.', ephemeral: true });
+        return;
+      }
       if (interaction.customId === 'league:forfeit') {
-        if (finished) {
-          await interaction.reply({ content: 'This league battle has already ended.', ephemeral: true });
-          return;
-        }
+        actionInProgress = true;
+        await interaction.deferUpdate();
         finished = true;
         resultSummary = '🏳️ You forfeited the battle. No rewards were earned.';
         incrementUser(userId, { battles_lost: 1 });
         log.push('🏳️ **You forfeited the battle.**');
         trackClanActivity(userId, 'battle');
-        await interaction.update({
+        await interaction.editReply({
           embeds: [battleEmbed(true, false)],
           components: [],
         });
+        actionInProgress = false;
         activeLeagueBattles.delete(battleMessage.id);
         collector.stop('forfeit');
-        return;
-      }
-      if (finished) {
-        await interaction.reply({ content: 'This league battle has already ended.', ephemeral: true });
         return;
       }
       const parts = interaction.customId.split(':');
@@ -5091,30 +5121,36 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
         await interaction.reply({ content: 'That battle action is no longer available.', ephemeral: true });
         return;
       }
-      log.length = 0;
-      turn += 1;
+      let nextPlayer = null;
+      let selectedMove = null;
       if (parts[1] === 'switch') {
-        const nextIndex = Number(parts[2]);
-        const nextPlayer = partyData[nextIndex];
-        if (!nextPlayer || nextIndex === partyIndex || nextPlayer.hp <= 0) {
-          turn -= 1;
+        nextPlayer = partyData[Number(parts[2])];
+        if (!nextPlayer || nextPlayer === partyData[partyIndex] || nextPlayer.hp <= 0) {
           await interaction.reply({ content: 'That Pokémon cannot be switched in.', ephemeral: true });
           return;
         }
-        partyIndex = nextIndex;
+      } else if (parts[1] === 'move') {
+        selectedMove = currentMoves()[Number(parts[2])];
+        if (!selectedMove || !partyData[partyIndex]) {
+          await interaction.reply({ content: 'That move is no longer available.', ephemeral: true });
+          return;
+        }
+      } else {
+        await interaction.reply({ content: 'That battle action is no longer available.', ephemeral: true });
+        return;
+      }
+      actionInProgress = true;
+      await interaction.deferUpdate();
+      log.length = 0;
+      turn += 1;
+      if (parts[1] === 'switch') {
+        partyIndex = partyData.indexOf(nextPlayer);
         log.push(`🔄 You switched to **${nextPlayer.name}**!`);
         const ctx = makeBattleCtx(field, log, nextPlayer, enemy, turn, partyData, opponents);
         onSwitchIn(ctx, nextPlayer, 'player', (text) => log.push(`↳ ${text}`));
         runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
       } else {
-        const moveIndex = Number(parts[2]);
         const player = partyData[partyIndex];
-        const selectedMove = currentMoves()[moveIndex];
-        if (!selectedMove || !player) {
-          turn -= 1;
-          await interaction.reply({ content: 'That move is no longer available.', ephemeral: true });
-          return;
-        }
         const ctx = makeBattleCtx(field, log, player, enemy, turn, partyData, opponents);
         runTurn(ctx, selectedMove, chooseEnemyMove(enemy, player, field));
       }
@@ -5265,22 +5301,22 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
         trackClanActivity(userId, 'battle');
         rollActivityPromoDrops(interaction.user, interaction.guild, interaction.channel, 'battle');
       }
-      await interaction.update({
+      await interaction.editReply({
         embeds: [battleEmbed(finished, won)],
         components: finished
           ? []
           : battleComponents(),
       });
+      actionInProgress = false;
       if (finished) {
         activeLeagueBattles.delete(battleMessage.id);
         collector.stop('finished');
       }
       else collector.resetTimer();
     } catch (error) {
+      actionInProgress = false;
       console.error(`Failed to process league battle for user ${userId}:`, error);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'The league battle could not be processed.', ephemeral: true });
-      }
+      await replyToInteractionFailure(interaction, 'The league battle could not be processed.', 'league battle');
       collector.stop('error');
     }
   };
@@ -5920,12 +5956,11 @@ client.on('interactionCreate', async (interaction) => {
   if (isSparMove) {
     const sparHandler = activeSparBattles.get(interaction.message.id);
     if (sparHandler) return sparHandler(interaction);
-    try {
-      await interaction.deferUpdate();
-      await interaction.followUp({ content: 'This player battle has expired. Start another with `.b user <@user|id>`.', ephemeral: true });
-    } catch (error) {
-      console.error('Failed to acknowledge expired player-battle interaction:', error);
-    }
+    await replyToInteractionFailure(
+      interaction,
+      'This player battle has expired. Start another with `.b user <@user|id>`.',
+      'expired player battle'
+    );
     return;
   }
   if (!isCatch && !isDexForm && !isLeagueMove && !isChamberMove && !isWorldBossMove) return;
@@ -5949,23 +5984,19 @@ client.on('interactionCreate', async (interaction) => {
         : isChamberMove
           ? 'Mega Chamber move-button'
           : 'World Boss move-button';
-  try {
-    await interaction.deferUpdate();
-    await interaction.followUp({
-      content: isCatch
-        ? 'This encounter has expired. Start a new one with `.p` or `.f`.'
-        : isDexForm
-          ? 'This Pokédex entry has expired. Run `.dex` again to browse its forms.'
-          : isLeagueMove
-            ? 'This NPC battle has expired. Check your next opponent with `.battle npc list`.'
-            : isChamberMove
-              ? 'This Mega Chamber battle has expired. Start another with `.mc battle <chamber>`.'
-              : 'This World Boss panel is outdated. Use `.wb` to view the active raid.',
-      ephemeral: true,
-    });
-  } catch (error) {
-    console.error(`Failed to acknowledge expired ${actionName} interaction:`, error);
-  }
+  await replyToInteractionFailure(
+    interaction,
+    isCatch
+      ? 'This encounter has expired. Start a new one with `.p` or `.f`.'
+      : isDexForm
+        ? 'This Pokédex entry has expired. Run `.dex` again to browse its forms.'
+        : isLeagueMove
+          ? 'This NPC battle has expired. Check your next opponent with `.battle npc list`.'
+          : isChamberMove
+            ? 'This Mega Chamber battle has expired. Start another with `.mc battle <chamber>`.'
+            : 'This World Boss panel is outdated. Use `.wb` to view the active raid.',
+    `expired ${actionName}`
+  );
 });
 
 const GIVEAWAY_MAX_MINUTES = 7 * 24 * 60;
