@@ -3390,7 +3390,10 @@ async function announcePromoItemFound(guild, user, promo, source, newTotal) {
 
 // Promo drop odds scale with active server incense and the Patreon golden perk.
 function getPromoChanceMultiplier(userId, incenseActive) {
-  return (incenseActive ? INCENSE_BOOST : 1) * (1 + getPatreonPerks(userId).goldenBoost);
+  const clanPromoBonus = getClanPerkMultipliers(getPlayerClan(userId)).prBonus;
+  return (incenseActive ? INCENSE_BOOST : 1)
+    * (1 + getPatreonPerks(userId).goldenBoost)
+    * (1 + clanPromoBonus / 100);
 }
 
 // Battles and egg hatches roll promo drops too; one server incense charge is used (for +10%)
@@ -3974,6 +3977,8 @@ async function askForBall(
       )
       : [];
     advanceEggCatchProgress(userId);
+    // Onyx clan perk: eggs hatch 2x faster (extra progress on every catch).
+    if (getClanPerkMultipliers(getPlayerClan(userId)).eggHatchBonus > 0) advanceEggCatchProgress(userId);
     const eggPerks = getPatreonPerks(userId);
     if (eggPerks.eggHatchSpeed > 0 && Math.random() < eggPerks.eggHatchSpeed) advanceEggCatchProgress(userId);
     if (eggPerks.autoEquipEggs) {
@@ -7307,8 +7312,9 @@ client.on('messageCreate', async (message) => {
         const charms = user.shiny_charms || 0;
         const amulet = getAmuletCoinBoost(targetId);
         const clan = getPlayerClan(targetId);
-        const clanText = clan?.amulet_boost
-          ? `• **${clan.name || 'Clan'}:** +${clan.amulet_boost} invisible Amulet Coin${clan.amulet_boost === 1 ? '' : 's'}`
+        const clanAmuletCoins = getClanPerkMultipliers(clan).amuletCoins;
+        const clanText = clanAmuletCoins
+          ? `• **${clan.name || 'Clan'}:** +${clanAmuletCoins} invisible Amulet Coin${clanAmuletCoins === 1 ? '' : 's'}`
           : '*No active clan perks.*';
         const patreonPerks = getPatreonPerks(targetId);
         const patreonText = user.patreon_tier
@@ -10565,7 +10571,7 @@ client.on('messageCreate', async (message) => {
             'Catch Rate III: increases catch rate by 5% total',
             'Shiny Rate III: increases shiny rate by 5% total',
             'Event Rate I: increases event shiny odds by 5%',
-            'Amulet Boost I: increases coin rewards by 10%',
+            'Amulet Boost I: increases coin rewards by 5%',
           ],
           diamond: [
             'Catch Rate IV: increases catch rate by 10% total',
@@ -10575,13 +10581,15 @@ client.on('messageCreate', async (message) => {
           ],
           amethyst: [
             'Event Rate III: increases event shiny odds by 15%',
-            'Amulet Boost II: increases coin rewards by 20% total',
-            'Promo Rate I: currently inactive',
+            'Promo Rate I: increases promo item drop rate by 5%',
+            'Quest Bonus: +1 quest slot in `.q`',
           ],
           onyx: [
             'Event Rate IV: increases event shiny odds by 20%',
             'Shop Boost II: discounts eligible shop purchases by 10% total',
-            'Promo Rate II: currently inactive',
+            'Amulet Boost II: increases coin rewards by 10% total',
+            'Promo Rate II: increases promo item drop rate by 10% total',
+            'Hatch Bonus: eggs hatch 2x faster',
           ],
         }[result.rank];
         return message.reply(
@@ -10639,8 +10647,8 @@ client.on('messageCreate', async (message) => {
           ['silver', '500,000 clan catches • Catch Rate II • Shiny Rate II', 12500000, 500000, 40, 500000],
           ['gold', '2,500,000 clan catches • Catch Rate III • Shiny Rate III • Event Rate I • Amulet Boost I', 62500000, 2500000, 45, 2500000],
           ['diamond', '5,000,000 clan catches • Catch Rate IV • Shiny Rate IV • Event Rate II • Shop Boost I', 125000000, 5000000, 50, 5000000],
-          ['amethyst', '15,000,000 clan catches • Event Rate III • Amulet Boost II • Promo Rate I • Quest bonus', 375000000, 15000000, 65, 7500000],
-          ['onyx', '30,000,000 clan catches • Event Rate IV • Shop Boost II • Promo Rate II • Hatch bonus', 750000000, 30000000, 75, 15000000],
+          ['amethyst', '15,000,000 clan catches • Event Rate III • Promo Rate I • Quest bonus', 375000000, 15000000, 65, 10000000],
+          ['onyx', '30,000,000 clan catches • Event Rate IV • Amulet Boost II • Shop Boost II • Promo Rate II • Hatch bonus', 750000000, 30000000, 75, 25000000],
         ];
         const description = ranks.map(([rank, perks, cost, catches, members, perkBase]) =>
           `${CLAN_RANK_EMOJIS[rank]} **${rank[0].toUpperCase()}${rank.slice(1)}**\n` +
@@ -10649,7 +10657,7 @@ client.on('messageCreate', async (message) => {
             ? `• Member limit: **${members}**\n`
             : `• Upgrade: **${catches.toLocaleString()} clan catches** + **${cost.toLocaleString()} treasury coins**\n` +
               `• Member perk purchase: **${perkBase.toLocaleString()} PokéCoins** + ` +
-              `floor(${perkBase.toLocaleString()} catches ÷ current members)\n` +
+              `floor(${getClanRankInfo({ clan_rank: rank }).perkCatches.toLocaleString()} catches ÷ current members)\n` +
               `• Member limit: **${members}**\n`) +
           (rank === 'onyx' ? '' : '\n')
         ).join('');
@@ -10676,12 +10684,12 @@ client.on('messageCreate', async (message) => {
           '**Perks are unlocked by clan rank, then purchased individually by each member.** Rank upgrades do not grant perks automatically.\n\n' +
           '• Bronze: Catch Rate I (+1%), Shiny Rate I (+1%)\n' +
           '• Silver: Catch Rate II (+3% total), Shiny Rate II (+3% total)\n' +
-          '• Gold: Catch/Shiny Rate III (+5% total), Event Rate I, Amulet Boost I (+10%)\n' +
+          '• Gold: Catch/Shiny Rate III (+5% total), Event Rate I, Amulet Boost I (+5%)\n' +
           '• Diamond: Catch/Shiny Rate IV (+10% total), Event Rate II, Shop Boost I (-5%)\n' +
-          '• Amethyst: Event Rate III, Amulet Boost II (+20%), Promo Rate I\n' +
-          '• Onyx: Event Rate IV, Shop Boost II (-10%), Promo Rate II\n\n' +
-          'Purchase unlocked perk tiers in order with `.clan purchase <rank>`. Each tier costs PokéCoins and requires personal catches: required catches are `floor(rank catch target ÷ current clan members)`. For example, Bronze requires 5,000 catches in a 20-member clan; Amethyst requires 115,384 in a 65-member clan. Catch Rate applies to `.p` and `.fish`; Shiny Rate applies to encounters and stacks with Shiny Charms. Event Rate boosts shiny odds for matching event Pokémon. Amulet Boost increases coin rewards; Shop Boost discounts eligible purchases.\n\n' +
-          'Promo Rate, Quest bonus, and Hatch bonus are not currently applied by the bot. Clan owners/co-owners upgrade the clan rank with `.clan upgrade <rank>`; donate with `.clan donate <amount>`.',
+          '• Amethyst: Event Rate III, Promo Rate I (+5%), +1 quest slot\n' +
+          '• Onyx: Event Rate IV, Amulet Boost II (+10%), Shop Boost II (-10%), Promo Rate II (+10%), eggs hatch 2x faster\n\n' +
+          'Purchase unlocked perk tiers in order with `.clan purchase <rank>`. Each tier costs PokéCoins and requires personal catches: required catches are `floor(rank catch target ÷ current clan members)`. For example, Bronze requires 5,000 catches in a 20-member clan; Amethyst requires 230,769 in a 65-member clan. Catch Rate applies to `.p` and `.fish`; Shiny Rate applies to encounters and stacks with Shiny Charms. Event Rate boosts shiny odds for matching event Pokémon. Amulet Boost increases coin rewards; Shop Boost discounts eligible purchases.\n\n' +
+          'Clan owners/co-owners upgrade the clan rank with `.clan upgrade <rank>`; donate with `.clan donate <amount>`.',
           0x3498db
         );
         return message.reply({ embeds: [embed] });

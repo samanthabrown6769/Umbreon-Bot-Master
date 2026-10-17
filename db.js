@@ -1858,7 +1858,7 @@ function getAmuletCoinBoost(userId) {
   const user = getUser(userId);
   const clan = getPlayerClan(userId);
   const owned = Math.max(0, user.amulet_coins || 0);
-  const invisible = Math.max(0, clan?.amulet_boost || 0) + getPatreonPerks(userId).amuletCoins;
+  const invisible = getClanPerkMultipliers(clan).amuletCoins + getPatreonPerks(userId).amuletCoins;
   const totalEffective = owned + invisible;
 
   return {
@@ -1877,8 +1877,7 @@ function awardCoinsWithBoost(userId, baseAmount) {
   }
 
   const amuletBoost = getAmuletCoinBoost(userId);
-  const clanBoost = getClanPerkMultipliers(getPlayerClan(userId)).amuletBoost;
-  const finalAmount = Math.floor(baseAmount * amuletBoost.multiplier * (1 + clanBoost));
+  const finalAmount = Math.floor(baseAmount * amuletBoost.multiplier);
   if (!Number.isSafeInteger(finalAmount)) {
     throw new RangeError('Boosted coin reward exceeds the safe integer range.');
   }
@@ -2262,8 +2261,12 @@ for (const [index, template] of QUEST_TEMPLATES.entries()) {
   }
 }
 
+const MAX_QUEST_SLOTS = 5;
+
 function getUserQuestSlots(userId) {
-  return (PATREON_TIER_PERKS[getUser(userId).patreon_tier] || NO_PATREON_PERKS).questSlots;
+  const patreonSlots = (PATREON_TIER_PERKS[getUser(userId).patreon_tier] || NO_PATREON_PERKS).questSlots;
+  const clanSlots = getClanPerkMultipliers(getPlayerClan(userId)).questSlotBonus;
+  return Math.min(MAX_QUEST_SLOTS, patreonSlots + clanSlots);
 }
 
 function getUserQuestRefreshWait(userId) {
@@ -5799,7 +5802,10 @@ function getPlayerClan(userId) {
 
 function getClanPerkMultipliers(clan) {
   if (!clan) {
-    return { crBonus: 0, srBonus: 0, erBonus: 0, prBonus: 0, shopDiscount: 0, amuletBoost: 0 };
+    return {
+      crBonus: 0, srBonus: 0, erBonus: 0, prBonus: 0, shopDiscount: 0, amuletBoost: 0,
+      amuletCoins: 0, questSlotBonus: 0, eggHatchBonus: 0,
+    };
   }
   const crTable = [0, 1, 3, 5, 10];
   const srTable = [0, 1, 3, 5, 10];
@@ -5815,7 +5821,11 @@ function getClanPerkMultipliers(clan) {
     erBonus: erTable[purchasedPerks.er] || 0,
     prBonus: prTable[purchasedPerks.pr] || 0,
     shopDiscount: (purchasedPerks.shop || 0) * 0.05,
-    amuletBoost: (purchasedPerks.amulet || 0) * 0.1,
+    // Each Amulet Boost level is one invisible Amulet Coin (+5% coins from catches).
+    amuletCoins: purchasedPerks.amulet || 0,
+    amuletBoost: (purchasedPerks.amulet || 0) * 0.05,
+    questSlotBonus: purchasedPerks.quest || 0,
+    eggHatchBonus: purchasedPerks.hatch || 0,
   };
 }
 
@@ -5828,14 +5838,15 @@ function getTotalEffectiveShinyBonus(userId) {
     + clanPerks.srBonus;
 }
 
+// perkCatches/perkCost are the per-member purchase requirements (catches are divided by member count).
 const CLAN_RANKS = [
-  { name: 'starter', catches: 0, cost: 0, perkCatches: 0, perkCost: 0, memberLimit: 25, cr: 0, sr: 0, er: 0, pr: 0, shop: 0, amulet: 0 },
-  { name: 'bronze', catches: 100000, cost: 2500000, perkCatches: 100000, perkCost: 100000, memberLimit: 35, cr: 1, sr: 1, er: 0, pr: 0, shop: 0, amulet: 0 },
-  { name: 'silver', catches: 500000, cost: 12500000, perkCatches: 500000, perkCost: 500000, memberLimit: 40, cr: 2, sr: 2, er: 0, pr: 0, shop: 0, amulet: 0 },
-  { name: 'gold', catches: 2500000, cost: 62500000, perkCatches: 2500000, perkCost: 2500000, memberLimit: 45, cr: 3, sr: 3, er: 1, pr: 0, shop: 0, amulet: 1 },
-  { name: 'diamond', catches: 5000000, cost: 125000000, perkCatches: 5000000, perkCost: 5000000, memberLimit: 50, cr: 4, sr: 4, er: 2, pr: 0, shop: 1, amulet: 1 },
-  { name: 'amethyst', catches: 15000000, cost: 375000000, perkCatches: 7500000, perkCost: 7500000, memberLimit: 65, cr: 4, sr: 4, er: 3, pr: 1, shop: 1, amulet: 2 },
-  { name: 'onyx', catches: 30000000, cost: 750000000, perkCatches: 15000000, perkCost: 15000000, memberLimit: 75, cr: 4, sr: 4, er: 4, pr: 2, shop: 2, amulet: 2 },
+  { name: 'starter', catches: 0, cost: 0, perkCatches: 0, perkCost: 0, memberLimit: 25, cr: 0, sr: 0, er: 0, pr: 0, shop: 0, amulet: 0, quest: 0, hatch: 0 },
+  { name: 'bronze', catches: 100000, cost: 2500000, perkCatches: 100000, perkCost: 100000, memberLimit: 35, cr: 1, sr: 1, er: 0, pr: 0, shop: 0, amulet: 0, quest: 0, hatch: 0 },
+  { name: 'silver', catches: 500000, cost: 12500000, perkCatches: 500000, perkCost: 250000, memberLimit: 40, cr: 2, sr: 2, er: 0, pr: 0, shop: 0, amulet: 0, quest: 0, hatch: 0 },
+  { name: 'gold', catches: 2500000, cost: 62500000, perkCatches: 2500000, perkCost: 500000, memberLimit: 45, cr: 3, sr: 3, er: 1, pr: 0, shop: 0, amulet: 1, quest: 0, hatch: 0 },
+  { name: 'diamond', catches: 5000000, cost: 125000000, perkCatches: 5000000, perkCost: 1000000, memberLimit: 50, cr: 4, sr: 4, er: 2, pr: 0, shop: 1, amulet: 1, quest: 0, hatch: 0 },
+  { name: 'amethyst', catches: 15000000, cost: 375000000, perkCatches: 15000000, perkCost: 10000000, memberLimit: 65, cr: 4, sr: 4, er: 3, pr: 1, shop: 1, amulet: 1, quest: 1, hatch: 0 },
+  { name: 'onyx', catches: 30000000, cost: 750000000, perkCatches: 30000000, perkCost: 25000000, memberLimit: 75, cr: 4, sr: 4, er: 4, pr: 2, shop: 2, amulet: 2, quest: 1, hatch: 1 },
 ];
 
 function getClanRankInfo(clan) {
