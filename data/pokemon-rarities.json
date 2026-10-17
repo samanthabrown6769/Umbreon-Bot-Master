@@ -6408,7 +6408,7 @@
     "id": 916,
     "dex_number": 916,
     "shiny_dex_number": 2916,
-    "name": "Oinkologne Male",
+    "name": "Oinkologne",
     "rarity": "Super Rare"
   },
   {
@@ -8734,13 +8734,6 @@
     "shiny_dex_number": 8049,
     "name": "Paldean Wooper",
     "rarity": "Super Rare"
-  },
-  {
-    "id": 10254,
-    "dex_number": 7142,
-    "shiny_dex_number": 8142,
-    "name": "Oinkologne Female",
-    "rarity": "Rare"
   },
   {
     "id": 10255,
