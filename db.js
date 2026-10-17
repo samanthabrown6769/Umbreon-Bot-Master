@@ -189,7 +189,7 @@ function rerollBuddyIv(userId, stat) {
       spd: buddy.spd,
     };
     if (stat === 'hp') {
-      nextValues.max_hp = calculateStat(buddy.base_hp ?? 50, newIv, buddy.level, true);
+      nextValues.max_hp = calculateStat(buddy.base_hp ?? 50, newIv, buddy.level, true, buddy.is_shiny);
       nextValues.hp = Math.min(
         nextValues.max_hp,
         buddy.hp + (nextValues.max_hp - buddy.max_hp)
@@ -200,7 +200,7 @@ function rerollBuddyIv(userId, stat) {
         def: buddy.base_def,
         spd: buddy.base_spd,
       }[stat] ?? 50;
-      nextValues[stat] = calculateStat(baseStat, newIv, buddy.level);
+      nextValues[stat] = calculateStat(baseStat, newIv, buddy.level, false, buddy.is_shiny);
     }
     const assignments = Object.keys(nextValues).map((field) => `${field} = ?`).join(', ');
     db.prepare(`UPDATE catches SET ${assignments} WHERE id = ? AND user_id = ?`)
@@ -2516,9 +2516,13 @@ function advanceQuestProgress(userId, event = {}) {
   }).immediate();
 }
 
-function calculateStat(base, iv, level, isHp = false) {
-  if (isHp) return Math.floor(((2 * base + iv) * level) / 100) + level + 10;
-  return Math.floor(((2 * base + iv) * level) / 100) + 5;
+const SHINY_STAT_MULTIPLIER = 1.05;
+
+function calculateStat(base, iv, level, isHp = false, isShiny = false) {
+  const stat = isHp
+    ? Math.floor(((2 * base + iv) * level) / 100) + level + 10
+    : Math.floor(((2 * base + iv) * level) / 100) + 5;
+  return isShiny ? Math.floor(stat * SHINY_STAT_MULTIPLIER) : stat;
 }
 
 const DUPLICATE_CATCH_STATE_FIELDS = [
@@ -2626,8 +2630,33 @@ function reconcileDuplicateCatchStates(userId = null) {
   return groups.length;
 }
 
-reconcileDuplicateCatchStates();
+// Existing shinies were stored without the shiny bonus; recomputing is idempotent.
+function applyShinyStatBonus() {
+  const rows = db.prepare(`
+    SELECT catches.id, catches.level, catches.hp, catches.max_hp, catches.atk, catches.def, catches.spd,
+      catches.hp_iv, catches.atk_iv, catches.def_iv, catches.spd_iv,
+      f.base_hp, f.base_atk, f.base_def, f.base_spd
+    FROM catches JOIN pokemon_forms f ON f.id = catches.pokemon_id
+    WHERE catches.is_shiny = 1
+  `).all();
+  const update = db.prepare('UPDATE catches SET hp = ?, max_hp = ?, atk = ?, def = ?, spd = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const row of rows) {
+      const maxHp = calculateStat(row.base_hp ?? 50, row.hp_iv, row.level, true, true);
+      const atk = calculateStat(row.base_atk ?? 50, row.atk_iv, row.level, false, true);
+      const def = calculateStat(row.base_def ?? 50, row.def_iv, row.level, false, true);
+      const spd = calculateStat(row.base_spd ?? 50, row.spd_iv, row.level, false, true);
+      if (maxHp === row.max_hp && atk === row.atk && def === row.def && spd === row.spd) continue;
+      const hp = row.max_hp > 0
+        ? Math.min(maxHp, Math.max(1, Math.round((row.hp / row.max_hp) * maxHp)))
+        : maxHp;
+      update.run(hp, maxHp, atk, def, spd, row.id);
+    }
+  })();
+}
 
+applyShinyStatBonus();
+reconcileDuplicateCatchStates();
 function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false) {
   assertUserId(userId);
   if (!pokemon || !Number.isSafeInteger(pokemon.id) || typeof pokemon.name !== 'string') {
@@ -2646,10 +2675,10 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
   const baseAtk = pokemon.baseAtk ?? 50;
   const baseDef = pokemon.baseDef ?? 50;
   const baseSpd = pokemon.baseSpd ?? 50;
-  const maxHp = calculateStat(baseHp, hpIv, level, true);
-  const atk = calculateStat(baseAtk, atkIv, level);
-  const def = calculateStat(baseDef, defIv, level);
-  const spd = calculateStat(baseSpd, spdIv, level);
+  const maxHp = calculateStat(baseHp, hpIv, level, true, isShiny);
+  const atk = calculateStat(baseAtk, atkIv, level, false, isShiny);
+  const def = calculateStat(baseDef, defIv, level, false, isShiny);
+  const spd = calculateStat(baseSpd, spdIv, level, false, isShiny);
   const speciesId = db.prepare(
     'SELECT species_id FROM pokemon_forms WHERE id = ?'
   ).get(pokemon.id)?.species_id;
@@ -3375,10 +3404,10 @@ function megaEvolvePokemon(userId, query) {
       return { error: 'stone_required', stoneName: config.rewardStone, pokemonName: config.monReq };
     }
 
-    const maxHp = calculateStat(megaForm.base_hp, pokemon.hp_iv, pokemon.level, true);
-    const atk = calculateStat(megaForm.base_atk, pokemon.atk_iv, pokemon.level);
-    const def = calculateStat(megaForm.base_def, pokemon.def_iv, pokemon.level);
-    const spd = calculateStat(megaForm.base_spd, pokemon.spd_iv, pokemon.level);
+    const maxHp = calculateStat(megaForm.base_hp, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny);
+    const atk = calculateStat(megaForm.base_atk, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny);
+    const def = calculateStat(megaForm.base_def, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny);
+    const spd = calculateStat(megaForm.base_spd, pokemon.spd_iv, pokemon.level, false, pokemon.is_shiny);
     const hp = pokemon.max_hp > 0
       ? Math.min(maxHp, Math.round((pokemon.hp / pokemon.max_hp) * maxHp))
       : maxHp;
@@ -3541,10 +3570,10 @@ function resolveItemEvolution(itemName, catchRow) {
 }
 
 function applyPokemonEvolution(userId, row, target, itemName = null, consumesHeldItem = false) {
-  const maxHp = calculateStat(target.base_hp, row.hp_iv, row.level, true);
-  const atk = calculateStat(target.base_atk, row.atk_iv, row.level);
-  const def = calculateStat(target.base_def, row.def_iv, row.level);
-  const spd = calculateStat(target.base_spd, row.spd_iv, row.level);
+  const maxHp = calculateStat(target.base_hp, row.hp_iv, row.level, true, row.is_shiny);
+  const atk = calculateStat(target.base_atk, row.atk_iv, row.level, false, row.is_shiny);
+  const def = calculateStat(target.base_def, row.def_iv, row.level, false, row.is_shiny);
+  const spd = calculateStat(target.base_spd, row.spd_iv, row.level, false, row.is_shiny);
   const hp = row.max_hp > 0
     ? Math.min(maxHp, Math.max(1, Math.round((row.hp / row.max_hp) * maxHp)))
     : maxHp;
@@ -4212,10 +4241,10 @@ function awardCatchExperience(userId, amount = 200) {
       const baseAtk = pokemon.base_atk ?? 50;
       const baseDef = pokemon.base_def ?? 50;
       const baseSpd = pokemon.base_spd ?? 50;
-      const maxHp = calculateStat(baseHp, pokemon.hp_iv, level, true);
-      const atk = calculateStat(baseAtk, pokemon.atk_iv, level);
-      const def = calculateStat(baseDef, pokemon.def_iv, level);
-      const spd = calculateStat(baseSpd, pokemon.spd_iv, level);
+      const maxHp = calculateStat(baseHp, pokemon.hp_iv, level, true, pokemon.is_shiny);
+      const atk = calculateStat(baseAtk, pokemon.atk_iv, level, false, pokemon.is_shiny);
+      const def = calculateStat(baseDef, pokemon.def_iv, level, false, pokemon.is_shiny);
+      const spd = calculateStat(baseSpd, pokemon.spd_iv, level, false, pokemon.is_shiny);
       const hp = Math.min(maxHp, pokemon.hp + (maxHp - pokemon.max_hp));
       db.prepare(`
         UPDATE catches
@@ -4278,10 +4307,10 @@ function useRareCandy(userId, amount = 1) {
     const levelsGained = Math.min(requested, user.rare_candies, 100 - pokemon.level);
     const level = pokemon.level + levelsGained;
     const experience = Math.max(pokemon.experience, experienceForNextLevel(level - 1));
-    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, level, true);
-    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, level);
-    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, level);
-    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, level);
+    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, level, true, pokemon.is_shiny);
+    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, level, false, pokemon.is_shiny);
+    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, level, false, pokemon.is_shiny);
+    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, level, false, pokemon.is_shiny);
     const hp = Math.min(maxHp, pokemon.hp + (maxHp - pokemon.max_hp));
 
     incrementUser(userId, {
@@ -5292,7 +5321,7 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
       const atkIv = Math.floor(Math.random() * 32);
       const defIv = Math.floor(Math.random() * 32);
       const spdIv = Math.floor(Math.random() * 32);
-      const maxHp = calculateStat(pokemon.base_hp, hpIv, 1, true);
+      const maxHp = calculateStat(pokemon.base_hp, hpIv, 1, true, isShiny);
       const inserted = insert.run(
         sellerId,
         pokemon.id,
@@ -5306,9 +5335,9 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
         spdIv,
         maxHp,
         maxHp,
-        calculateStat(pokemon.base_atk, atkIv, 1),
-        calculateStat(pokemon.base_def, defIv, 1),
-        calculateStat(pokemon.base_spd, spdIv, 1)
+        calculateStat(pokemon.base_atk, atkIv, 1, false, isShiny),
+        calculateStat(pokemon.base_def, defIv, 1, false, isShiny),
+        calculateStat(pokemon.base_spd, spdIv, 1, false, isShiny)
       );
       listings.push(db.prepare('SELECT * FROM market WHERE id = ?').get(Number(inserted.lastInsertRowid)));
     }
