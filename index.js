@@ -118,6 +118,7 @@ const {
   BASE_DOUBLE_XP_CHARGES,
   awardCoinsWithBoost,
   getUserTeam,
+  getUserRegisteredCollections,
   getUserBuddy,
   getSavedTeams,
   saveCurrentTeam,
@@ -17686,30 +17687,44 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'profile' || command === 'pr' || command === 'pro') {
-      const summary = getUserStatsSummary(userId);
-      const user = summary.user;
-      const totalCaught = summary.lifetimeCaught;
-      const totalShinies = db.prepare(
-        'SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND is_shiny = 1'
-      ).get(userId).count;
-      const team = getUserTeam(userId);
-      const teamLine = team.length
-        ? team.map((pokemon) => `${pokemon.is_shiny ? '✨' : ''}${pokemon.name} (Lv.${pokemon.level})`).join(', ')
-        : 'No team set';
+      const profileTarget = message.mentions.users.first() || message.author;
+      const profileId = profileTarget.id;
+      const user = getUser(profileId);
+
+      // Badge row: Patreon tier rarity emoji, faction logo, trainer icon, purchased clan perk tiers.
+      const badges = [];
+      if (user.patreon_tier && EMOJIS[user.patreon_tier]) badges.push(EMOJIS[user.patreon_tier]);
+      const profileFaction = getUserFaction(profileId);
+      if (profileFaction?.team?.emoji) badges.push(profileFaction.team.emoji);
+      const trainerEmoji = getTrainerIconEmoji(profileId);
+      if (trainerEmoji) badges.push(trainerEmoji);
+      const profileClan = getPlayerClan(profileId);
+      if (profileClan) {
+        for (let index = 1; index <= (profileClan.perk_rank || 0); index += 1) {
+          const rankName = Object.keys(CLAN_RANK_EMOJIS)[index];
+          if (rankName) badges.push(CLAN_RANK_EMOJIS[rankName]);
+        }
+      }
+
+      const favorites = db.prepare(
+        'SELECT name, is_shiny, is_golden FROM catches WHERE user_id = ? AND is_fav = 1 ORDER BY id LIMIT 10'
+      ).all(profileId);
+      const favoriteLine = favorites.length
+        ? `**Favorite Pokémon:** ${favorites.map((row) => `${row.is_golden ? EMOJIS.golden : row.is_shiny ? EMOJIS.shiny : ''}${row.name}`).join(', ')}`
+        : 'No favorite Pokémon to show! *Your favorite Pokémon will show on your profile if your box is unlocked.*';
+      const collections = getUserRegisteredCollections(profileId).filter((row) => !row.is_private);
+      const collectionLine = collections.length
+        ? `**Collections:** ${collections.slice(0, 10).map((row) => row.pokemon_name).join(', ')}`
+        : `No collections to show! *Pokémon from* \`${PREFIX}coll mine\` *will show here*`;
 
       return message.reply({
         embeds: [new EmbedBuilder()
-          .setColor(0x3498db)
-          .setTitle(`Trainer Profile: ${message.author.username}`)
-          .setThumbnail(message.author.displayAvatarURL())
-          .addFields(
-            { name: `${EMOJIS.pokecoin} Wallet`, value: `${user.coins.toLocaleString()} Coins`, inline: true },
-            { name: '📦 Lootboxes', value: `${user.lootboxes}`, inline: true },
-            { name: '🎣 Fishing Gear', value: user.fish_rods, inline: true },
-            { name: '📊 Total Caught', value: `${totalCaught}`, inline: true },
-            { name: '✨ Shinies Found', value: `${totalShinies}`, inline: true },
-            { name: '⚔️ Battle Team', value: teamLine, inline: false }
-          )],
+          .setColor(0x2b2d31)
+          .setAuthor({
+            name: profileTarget.username,
+            iconURL: getTrainerIconUrl(profileId) || profileTarget.displayAvatarURL(),
+          })
+          .setDescription(`${badges.join(' ')}\n\n• ${favoriteLine}\n• ${collectionLine}`)],
       });
     }
 
