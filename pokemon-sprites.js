@@ -59,6 +59,7 @@ const DEFAULT_FORM_ALIASES = {
   'tapu-koko': 'tapukoko',
   'tapu-lele': 'tapulele',
   'tapu-bulu': 'tapubulu',
+  'great-tusk': 'greattusk',
   'tapu-fini': 'tapufini',
   'raging-bolt': 'ragingbolt',
   'slither-wing': 'slitherwing',
@@ -87,7 +88,7 @@ const DIRECT_SHOWDOWN_SLUGS = new Set([
   'dudunsparce-two-segment',
   'dudunsparce-three-segment',
   'tapu-bulu',
-  'kommo-o',
+  'great-tusk',  'kommo-o',
   'urshifu-single-strike',
   'urshifu-rapid-strike',
   'tatsugiri-curly',
@@ -169,7 +170,6 @@ function getRawPokemonShowdownSprite(slug, isShiny = false, fallback = null) {
   if (typeof slug === 'string' && /gmax|gigantamax/i.test(slug)) return fallback;
   const spriteSlug = showdownSpriteSlug(slug);
   if (!spriteSlug) return fallback;
-  if (spriteSlug === 'great-tusk') return fallback;
   // Showdown has no Mega Meowstic sprite; both mega genders share the catalog artwork.
   if (/^meowstic-(male|female)-mega$/.test(slug)) return fallback;
   if (isCloudinaryEnabled()) {
