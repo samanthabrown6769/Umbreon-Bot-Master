@@ -3735,6 +3735,41 @@ function evolvePokemonWithItem(userId, pokemonQuery, itemQuery = null) {
   }).immediate();
 }
 
+// Compact next-step evolution options for a catch, e.g. "Lv.16 → Ivysaur".
+function getEvolutionRoute(catchId) {
+  const row = db.prepare(`
+    SELECT catches.*, pokemon_forms.species_id AS form_species, pokemon_forms.slug AS form_slug,
+      pokemon_forms.is_default AS form_default, pokemon_forms.rarity AS form_rarity
+    FROM catches JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+    WHERE catches.id = ?
+  `).get(catchId);
+  if (!row) return [];
+  const routes = [];
+  for (const rule of levelEvolutionRules.get(row.form_species) || []) {
+    const target = resolveSpeciesEvolution(rule.fromSpeciesId, rule.toSpeciesId, row);
+    if (target) routes.push(`Lv.${rule.minLevel} → ${target.name}`);
+  }
+  for (const rule of friendshipEvolutionRules.get(row.form_species) || []) {
+    const target = resolveSpeciesEvolution(rule.fromSpeciesId, rule.toSpeciesId, row);
+    if (!target) continue;
+    const time = rule.timeOfDay ? ` ${rule.timeOfDay === 'day' ? '☀️' : '🌙'}` : '';
+    routes.push(`💖${FRIENDSHIP_EVOLUTION_THRESHOLD}${time} → ${target.name}`);
+  }
+  const timeRule = TIME_LEVEL_EVOLUTIONS[row.form_species];
+  if (timeRule) {
+    const names = ['day', 'dusk', 'night'].map((phase) => {
+      const form = db.prepare('SELECT name FROM pokemon_forms WHERE slug = ?').get(timeRule.forms[phase]);
+      return form ? `${{ day: '☀️', dusk: '🌇', night: '🌙' }[phase]} ${form.name}` : null;
+    }).filter(Boolean);
+    routes.push(`Lv.${timeRule.minLevel} → ${names.join(' / ')}`);
+  }
+  for (const [itemName, item] of Object.entries(EVOLUTION_ITEMS)) {
+    const target = resolveItemEvolution(itemName, row);
+    if (target) routes.push(`${item.emoji || ''} ${itemName} → ${target.name}`.trim());
+  }
+  return routes;
+}
+
 function evolvePokemonByLevel(userId, pokemonQuery) {
   assertUserId(userId);
   return db.transaction(() => {
@@ -7182,6 +7217,7 @@ function getFactionLeaders(factionKey, perRank = 2) {
 }
 
 module.exports = {
+  getEvolutionRoute,
   db,
   getCooldownNotificationMode,
   setCooldownNotificationMode,

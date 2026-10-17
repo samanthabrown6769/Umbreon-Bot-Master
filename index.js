@@ -225,6 +225,7 @@ const {
   unholdEvolutionItem,
   evolvePokemonWithItem,
   evolvePokemonByLevel,
+  getEvolutionRoute,
   setGiveawayChannel,
   getGiveawayChannel,
   getAutoSpawnChannel,
@@ -12356,13 +12357,15 @@ client.on('messageCreate', async (message) => {
         ? `${ivStars(iv)} **${iv}**`
         : ivStars(iv);
       const buddyExpBar = '🟦'.repeat(Math.round(progress * 10)) + '⬛'.repeat(10 - Math.round(progress * 10));
+      const evoRoute = getEvolutionRoute(buddy.id);
       const embed = new EmbedBuilder()
         .setColor(0x3498db)
         .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
         .setDescription(
           `**Level:** ${level}\n` +
           `**Held Item:** ${buddy.held_item || 'None'}\n` +
-          `**Friendship:** 💖 ${buddy.friendship ?? 0}/255\n\n` +
+          `**Friendship:** 💖 ${buddy.friendship ?? 0}/255\n` +
+          (evoRoute.length ? `**Evolves:** ${evoRoute.join(' • ')}\n` : '') + '\n' +
           `**Type**\n${typeLabel}\n\n` +
           `**${expProgress}**\n${buddyExpBar}\n\n` +
           `**Pokémon IVs**\n` +
