@@ -2729,7 +2729,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
       * (move.power / 100)
       * effectiveness
       * stab
-      * 10
+      * 60
     )
   );
   const damage = Math.max(1, Math.floor((isCritical ? Math.floor(baseDamage * 1.8) : baseDamage) * damageMult));
