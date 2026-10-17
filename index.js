@@ -2967,9 +2967,19 @@ async function startWorldBossBattle(message, boss, userId, team) {
       // Acknowledge the click first so raid math cannot outlive the 3s interaction window.
       await interaction.deferUpdate();
       if (refreshWorldBossMoves(playerState, playerTeam)) {
-        await interaction.followUp({
-          content: '🔄 Your moves changed. Pick your Pokémon again from the World Boss post to see the new moves.',
-          ephemeral: true,
+        // Redraw the open panel with the new moves instead of making the player re-pick.
+        await interaction.editReply({
+          embeds: [createWorldBossPanelEmbed(currentBoss, {
+            state: playerState,
+            team: playerTeam,
+            faintedIds: faintedTeam,
+            user: interaction.user,
+            log: ['🔄 Your moves changed — the panel has been updated. Pick a move.'],
+          })],
+          components: [
+            ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
+            ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
+          ],
         });
         return;
       }
