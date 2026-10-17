@@ -17420,7 +17420,9 @@ client.on('messageCreate', async (message) => {
         ? `${EVOLUTION_ITEMS[result.itemName].emoji} using **${result.itemName}**`
         : result.friendship !== undefined
           ? `with **${result.friendship}** friendship 💖`
-          : `by reaching level **${result.level}**`;
+          : result.timeOfDay
+            ? `at **${result.timeOfDay}time** by reaching level **${result.level}**`
+            : `by reaching level **${result.level}**`;
       const embed = new EmbedBuilder()
         .setColor(getRarityColor(result.rarity, result.to, result.isShiny))
         .setTitle('What? Your Pokémon is evolving!')
@@ -17691,13 +17693,11 @@ client.on('messageCreate', async (message) => {
       const profileId = profileTarget.id;
       const user = getUser(profileId);
 
-      // Badge row: Patreon tier rarity emoji, faction logo, trainer icon, purchased clan perk tiers.
+      // Badge row: Patreon tier rarity emoji, faction logo, purchased clan perk tiers (trainer icon is the author image).
       const badges = [];
       if (user.patreon_tier && EMOJIS[user.patreon_tier]) badges.push(EMOJIS[user.patreon_tier]);
       const profileFaction = getUserFaction(profileId);
       if (profileFaction?.team?.emoji) badges.push(profileFaction.team.emoji);
-      const trainerEmoji = getTrainerIconEmoji(profileId);
-      if (trainerEmoji) badges.push(trainerEmoji);
       const profileClan = getPlayerClan(profileId);
       if (profileClan) {
         for (let index = 1; index <= (profileClan.perk_rank || 0); index += 1) {

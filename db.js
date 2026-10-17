@@ -317,6 +317,17 @@ function isDaytime(date = new Date()) {
   return hour >= 6 && hour < 18;
 }
 
+// Rockruff evolves at level 25 into a different Lycanroc depending on the time of day.
+const TIME_LEVEL_EVOLUTIONS = {
+  744: { minLevel: 25, forms: { day: 'lycanroc-midday', dusk: 'lycanroc-dusk', night: 'lycanroc-midnight' } },
+};
+
+function getTimeOfDayPhase(date = new Date()) {
+  const hour = date.getHours();
+  if (hour === 17) return 'dusk';
+  return hour >= 6 && hour < 17 ? 'day' : 'night';
+}
+
 const catchbotUpgradeCost = (baseCost, level) => {
   let cost = baseCost;
   for (let currentLevel = 0; currentLevel < level; currentLevel += 1) {
@@ -3747,6 +3758,18 @@ function evolvePokemonByLevel(userId, pokemonQuery) {
           continue;
         }
         return { ...applyPokemonEvolution(userId, row, target), friendship: row.friendship };
+      }
+      const timeRule = TIME_LEVEL_EVOLUTIONS[row.form_species];
+      if (timeRule) {
+        if (row.level < timeRule.minLevel) {
+          nextRequiredLevel = nextRequiredLevel === null
+            ? timeRule.minLevel
+            : Math.min(nextRequiredLevel, timeRule.minLevel);
+        } else {
+          const phase = getTimeOfDayPhase();
+          const target = db.prepare('SELECT * FROM pokemon_forms WHERE slug = ?').get(timeRule.forms[phase]);
+          if (target) return { ...applyPokemonEvolution(userId, row, target), timeOfDay: phase };
+        }
       }
       const rules = levelEvolutionRules.get(row.form_species) || [];
       for (const rule of rules) {
