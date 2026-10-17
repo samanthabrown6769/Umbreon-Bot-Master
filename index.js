@@ -453,6 +453,7 @@ const NPC_TRAINER_ICON_EMOJIS = {
   volo: '<:volo:1561053228131688488>',
   brock: '<:brock:1561053190198132816>',
   misty: '<:misty:1561091268233265232>',
+  erika: '<:erika:1561128013142163637>',
   penny: '<:penny:1561053211102683146>',
   giacomo: '<:giacomo:1561091482046177330>',
   mela: '<:mela:1561091314802495539>',
@@ -7894,7 +7895,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}clan upgrade <rank>\` — Clan leaders/co-owners unlock the next rank using catches and treasury coins\n` +
             `• \`${PREFIX}channel add boost\` — eligible Patreon supporters add a personal +5% rate boost in this channel (up to 10 channels)\n` +
             `• \`${PREFIX}evoitems\` — View your evolution stones/items and what they evolve\n` +
-            `• \`${PREFIX}evolve <Pokémon> [item]\` / \`${PREFIX}use <item> <Pokémon>\` — Evolve with an item or when its level requirement is met\n` +
+            `• \`${PREFIX}evolve <Pokémon> [item]\` / \`${PREFIX}use <item> <Pokémon>\` — Evolve with an item, level, or high friendship (catch Pokémon with a buddy to raise it)\n` +
             `• \`${PREFIX}hold <item> <Pokémon>\` / \`${PREFIX}unhold <Pokémon>\` — Hold an evolution item\n` +
             `• \`${PREFIX}giveaway set [#channel]\` / \`${PREFIX}gstart items|coins|pokemon ...\` — Manage Server: run giveaways\n` +
             `• \`${PREFIX}autospawn set [#channel]\` / \`${PREFIX}autospawn disable\` — Manage Channels: toggle button-guess wild spawns\n` +
@@ -12349,7 +12350,8 @@ client.on('messageCreate', async (message) => {
         .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
         .setDescription(
           `**Level:** ${level}\n` +
-          `**Held Item:** ${buddy.held_item || 'None'}\n\n` +
+          `**Held Item:** ${buddy.held_item || 'None'}\n` +
+          `**Friendship:** 💖 ${buddy.friendship ?? 0}/255\n\n` +
           `**Type**\n${typeLabel}\n\n` +
           `**${expProgress}**\n${buddyExpBar}\n\n` +
           `**Pokémon IVs**\n` +
@@ -13434,7 +13436,7 @@ client.on('messageCreate', async (message) => {
           value: `**HP:** ${pokemon.hp}/${pokemon.max_hp} | **ATK:** ${pokemon.atk} | ` +
             `**DEF:** ${pokemon.def} | **SPD:** ${pokemon.spd}\n` +
             `*IVs:* ${pokemon.hp_iv}H/${pokemon.atk_iv}A/${pokemon.def_iv}D/${pokemon.spd_iv}S\n` +
-            `**Held item:** ${pokemon.held_item || 'None'}`,
+            `**Held item:** ${pokemon.held_item || 'None'} | **Friendship:** 💖 ${pokemon.friendship ?? 0}`,
         });
       }
       return message.reply({ embeds: [embed] });
@@ -17396,13 +17398,18 @@ client.on('messageCreate', async (message) => {
         cannot_evolve: `**${result.pokemonName}** cannot evolve with **${result.itemName}**.`,
         cannot_evolve_by_level: `**${result.pokemonName}** has no available level-based evolution.`,
         level_required: `**${result.pokemonName}** must reach level **${result.requiredLevel}** to evolve.`,
+        friendship_required: `**${result.pokemonName}** needs **${result.requiredFriendship}** friendship to evolve (currently **${result.friendship}**). ` +
+          `Catch Pokémon while it is your buddy to raise it.`,
+        wrong_time: `**${result.pokemonName}** can only evolve with high friendship during the **${result.timeOfDay}**.`,
         no_item: `You do not have a **${result.itemName}**.`,
       };
       if (result.error) return message.reply(`❌ ${failures[result.error]}`);
       const emoji = getRarityEmojis(result.rarity, result.to, result.isShiny);
       const evolutionMethod = result.itemName
         ? `${EVOLUTION_ITEMS[result.itemName].emoji} using **${result.itemName}**`
-        : `by reaching level **${result.level}**`;
+        : result.friendship !== undefined
+          ? `with **${result.friendship}** friendship 💖`
+          : `by reaching level **${result.level}**`;
       const embed = new EmbedBuilder()
         .setColor(getRarityColor(result.rarity, result.to, result.isShiny))
         .setTitle('What? Your Pokémon is evolving!')

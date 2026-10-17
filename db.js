@@ -299,6 +299,24 @@ for (const rule of pokemonEvolutionRules) {
   levelEvolutionRules.set(rule.fromSpeciesId, rules);
 }
 
+const MAX_FRIENDSHIP = 255;
+const FRIENDSHIP_EVOLUTION_THRESHOLD = 160;
+const pokemonFriendshipEvolutions = JSON.parse(fs.readFileSync(
+  path.join(__dirname, 'data', 'pokemon-friendship-evolutions.json'),
+  'utf8'
+));
+const friendshipEvolutionRules = new Map();
+for (const rule of pokemonFriendshipEvolutions) {
+  const rules = friendshipEvolutionRules.get(rule.fromSpeciesId) || [];
+  rules.push(rule);
+  friendshipEvolutionRules.set(rule.fromSpeciesId, rules);
+}
+
+function isDaytime(date = new Date()) {
+  const hour = date.getHours();
+  return hour >= 6 && hour < 18;
+}
+
 const catchbotUpgradeCost = (baseCost, level) => {
   let cost = baseCost;
   for (let currentLevel = 0; currentLevel < level; currentLevel += 1) {
@@ -477,6 +495,7 @@ const catchDefinitions = {
   team_slot: 'INTEGER',
   is_locked: 'INTEGER NOT NULL DEFAULT 0',
   ever_buddy: 'INTEGER NOT NULL DEFAULT 0',
+  friendship: 'INTEGER NOT NULL DEFAULT 0',
   is_fav: 'INTEGER NOT NULL DEFAULT 0',
   experience: 'INTEGER NOT NULL DEFAULT 0',
   ability: 'TEXT',
@@ -2494,6 +2513,7 @@ const DUPLICATE_CATCH_STATE_FIELDS = [
   'moves',
   'sketched_moves',
   'held_item',
+  'friendship',
 ];
 
 function syncDuplicateCatchState(userId, catchId) {
@@ -2614,6 +2634,16 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
       JSON.stringify(startingMoves)
     );
     syncNewCatchState(userId, Number(result.lastInsertRowid));
+
+    if (recordSeen) {
+      const buddyCatchId = getUser(userId).buddy_catch_id;
+      if (buddyCatchId) {
+        const bumped = db.prepare(`
+          UPDATE catches SET friendship = MIN(?, friendship + 1) WHERE id = ? AND user_id = ?
+        `).run(MAX_FRIENDSHIP, buddyCatchId, userId);
+        if (bumped.changes) syncDuplicateCatchState(userId, buddyCatchId);
+      }
+    }
 
     if (recordSeen) {
       db.prepare(`
@@ -3698,7 +3728,23 @@ function evolvePokemonByLevel(userId, pokemonQuery) {
     if (!owned.length) return { error: 'pokemon_not_owned' };
 
     let nextRequiredLevel = null;
+    let friendshipNeeded = false;
+    let wrongTime = null;
     for (const row of owned) {
+      const friendshipRules = friendshipEvolutionRules.get(row.form_species) || [];
+      for (const rule of friendshipRules) {
+        const target = resolveSpeciesEvolution(rule.fromSpeciesId, rule.toSpeciesId, row);
+        if (!target) continue;
+        if (row.friendship < FRIENDSHIP_EVOLUTION_THRESHOLD) {
+          friendshipNeeded = true;
+          continue;
+        }
+        if (rule.timeOfDay && rule.timeOfDay !== (isDaytime() ? 'day' : 'night')) {
+          wrongTime = rule.timeOfDay;
+          continue;
+        }
+        return { ...applyPokemonEvolution(userId, row, target), friendship: row.friendship };
+      }
       const rules = levelEvolutionRules.get(row.form_species) || [];
       for (const rule of rules) {
         const target = resolveSpeciesEvolution(rule.fromSpeciesId, rule.toSpeciesId, row);
@@ -3713,6 +3759,17 @@ function evolvePokemonByLevel(userId, pokemonQuery) {
       }
     }
 
+    if (wrongTime) {
+      return { error: 'wrong_time', pokemonName: owned[0].name, timeOfDay: wrongTime };
+    }
+    if (friendshipNeeded) {
+      return {
+        error: 'friendship_required',
+        pokemonName: owned[0].name,
+        requiredFriendship: FRIENDSHIP_EVOLUTION_THRESHOLD,
+        friendship: Math.max(...owned.map((row) => row.friendship)),
+      };
+    }
     if (nextRequiredLevel !== null) {
       return {
         error: 'level_required',

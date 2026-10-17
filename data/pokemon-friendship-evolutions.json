@@ -1,0 +1,18 @@
+[
+  { "fromSpeciesId": 172, "toSpeciesId": 25 },
+  { "fromSpeciesId": 173, "toSpeciesId": 35 },
+  { "fromSpeciesId": 174, "toSpeciesId": 39 },
+  { "fromSpeciesId": 175, "toSpeciesId": 176 },
+  { "fromSpeciesId": 298, "toSpeciesId": 183 },
+  { "fromSpeciesId": 406, "toSpeciesId": 315, "timeOfDay": "day" },
+  { "fromSpeciesId": 427, "toSpeciesId": 428 },
+  { "fromSpeciesId": 433, "toSpeciesId": 358 },
+  { "fromSpeciesId": 446, "toSpeciesId": 143 },
+  { "fromSpeciesId": 447, "toSpeciesId": 448, "timeOfDay": "day" },
+  { "fromSpeciesId": 527, "toSpeciesId": 528 },
+  { "fromSpeciesId": 872, "toSpeciesId": 873, "timeOfDay": "night" },
+  { "fromSpeciesId": 42, "toSpeciesId": 169 },
+  { "fromSpeciesId": 113, "toSpeciesId": 242 },
+  { "fromSpeciesId": 133, "toSpeciesId": 196, "timeOfDay": "day" },
+  { "fromSpeciesId": 133, "toSpeciesId": 197, "timeOfDay": "night" }
+]
