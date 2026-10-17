@@ -9756,7 +9756,7 @@ client.on('messageCreate', async (message) => {
       if (subCommand === 'claim') {
         const claim = claimWorldBossReward(userId);
         if (!claim) return message.reply('❌ You have no World Boss rewards to claim.');
-        const { record, items, bossesFought } = claim;
+        const { record, items, bossesFought, pokemonDrop } = claim;
         const itemCount = items.reduce((sum, item) => sum + item.amount, 0);
         const itemEmoji = (name) => ({
           'Rare Candy': EMOJIS.rarecandy,
@@ -9764,14 +9764,21 @@ client.on('messageCreate', async (message) => {
           'Super Repel': EMOJIS.superRepel,
           'Max Repel': EMOJIS.maxRepel,
           'Swap Ticket': '🎟️',
-        }[name] || BOXES[name]?.emoji || '📦');
+          Masterball: EMOJIS.masterball,
+          Ultraball: EMOJIS.ultraball,
+          Lootbox: LOOTBOX_EMOJI,
+        }[name] || EVOLUTION_ITEMS[name]?.emoji || BOXES[name]?.emoji || '📦');
+        const bossTemplate = WORLD_BOSS_POOL.find((entry) => entry.name === record.boss_name);
         return message.reply({
           embeds: [new EmbedBuilder()
             .setColor(0x2ECC71)
             .setTitle(`🎁 Here are your rewards for the ${record.boss_name} challenge! (Boss id: ${record.boss_id})`)
             .setDescription(
               `📜 **Items received (${itemCount}):**\n` +
-              items.map((item) => `• ${item.amount}x ${itemEmoji(item.name)} **${item.name}**`).join('\n') + '\n\n' +
+              (items.length ? items.map((item) => `• ${item.amount}x ${itemEmoji(item.name)} **${item.name}**`).join('\n') : '• *None*') + '\n\n' +
+              (pokemonDrop
+                ? `🎉 **Pokémon drop:** You received **${bossTemplate?.catchName || record.boss_name}**!\n\n`
+                : '💨 **Pokémon drop:** No Pokémon dropped this time.\n\n') +
               `🪙 **PokeCoins earned:** ${record.coins.toLocaleString()}\n\n` +
               `🎖️ **You placed ${record.rank} / ${record.total_players} players in DMG!**\n` +
               `🌸 You have now fought **${bossesFought}** World Boss${bossesFought === 1 ? '' : 'es'}.`

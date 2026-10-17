@@ -1167,6 +1167,15 @@ if (db.prepare('PRAGMA table_info(users)').all().some((column) => column.name ==
 if (!db.prepare('PRAGMA table_info(event_catches)').all().some((column) => column.name === 'catch_count')) {
   db.exec('ALTER TABLE event_catches ADD COLUMN catch_count INTEGER NOT NULL DEFAULT 1');
 }
+const worldBossRewardColumns = new Set(
+  db.prepare('PRAGMA table_info(world_boss_rewards)').all().map((column) => column.name)
+);
+if (!worldBossRewardColumns.has('items_json')) {
+  db.exec("ALTER TABLE world_boss_rewards ADD COLUMN items_json TEXT NOT NULL DEFAULT ''");
+}
+if (!worldBossRewardColumns.has('pokemon_drop')) {
+  db.exec('ALTER TABLE world_boss_rewards ADD COLUMN pokemon_drop INTEGER NOT NULL DEFAULT 0');
+}
 const worldBossPostPrimaryKey = db.prepare(
   'PRAGMA table_info(world_boss_announcement_posts)'
 ).all().filter((column) => column.pk > 0).sort((left, right) => left.pk - right.pk);
@@ -4929,6 +4938,7 @@ function distributeWorldBossRewards(bossId) {
         bossId, entry.user_id, boss.name, boss.max_hp, entry.damage,
         index + 1, leaderboard.length, isMvp ? 30000 : 12000
       );
+      const received = [];
       if (isMvp) {
         incrementUser(entry.user_id, {
           masterballs: 2,
@@ -4936,13 +4946,17 @@ function distributeWorldBossRewards(bossId) {
           world_boss_mvps: 1,
         });
         awardCoinsWithBoost(entry.user_id, 30000);
+        received.push({ name: 'Masterball', amount: 2 }, { name: 'Lootbox', amount: 3 });
       } else {
         incrementUser(entry.user_id, { ultraballs: 5, lootboxes: 1 });
         awardCoinsWithBoost(entry.user_id, 12000);
+        received.push({ name: 'Ultraball', amount: 5 }, { name: 'Lootbox', amount: 1 });
       }
       const isSpawnerBoosted = !isMvp && boss.spawned_by === entry.user_id;
-      const dropChance = Math.min(1, (isMvp ? 0.35 : isSpawnerBoosted ? 0.35 : 0.1) * (isSpawnerBoosted ? 1.8 : 1));
+      const dropChance = Math.min(1, (isMvp ? 0.12 : isSpawnerBoosted ? 0.12 : 0.03) * (isSpawnerBoosted ? 1.8 : 1));
+      let gotPokemon = false;
       if (Math.random() < dropChance) {
+        gotPokemon = true;
         saveCatch(entry.user_id, {
           ...template,
           id: template.formId,
@@ -4958,18 +4972,23 @@ function distributeWorldBossRewards(bossId) {
           const boxName = boxNames[Math.floor(Math.random() * boxNames.length)];
           addUserItem(entry.user_id, boxName);
           boxDrops.push({ userId: entry.user_id, itemName: boxName });
+          received.push({ name: boxName, amount: 1 });
         }
       }
       if (isSpawnerBoosted) {
         incrementUser(entry.user_id, { ultraballs: 10, lootboxes: 2 });
         awardCoinsWithBoost(entry.user_id, 18000);
+        received.push({ name: 'Ultraball', amount: 10 }, { name: 'Lootbox', amount: 2 });
       }
       for (const extra of rollWorldBossExtraDrops(isMvp)) {
         if (extra.name === 'Rare Candy') incrementUser(entry.user_id, { rare_candies: extra.amount });
         else if (extra.name === 'Repel') incrementUser(entry.user_id, { repels: extra.amount });
         else addUserItem(entry.user_id, extra.name, extra.amount);
         extraDrops.push({ userId: entry.user_id, ...extra });
+        received.push(extra);
       }
+      db.prepare('UPDATE world_boss_rewards SET items_json = ?, pokemon_drop = ? WHERE boss_id = ? AND user_id = ?')
+        .run(JSON.stringify(received), gotPokemon ? 1 : 0, bossId, entry.user_id);
     }
     db.prepare('UPDATE world_boss SET rewards_claimed = 1 WHERE id = ?').run(bossId);
     return { boss, leaderboard, mvp, drops, boxDrops, extraDrops };
@@ -4991,13 +5010,13 @@ const WORLD_BOSS_REPEL_DROPS = ['Repel', 'Super Repel', 'Max Repel'];
 function rollWorldBossExtraDrops(isMvp) {
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   const drops = [];
-  if (Math.random() < (isMvp ? 0.9 : 0.5)) {
+  if (Math.random() < (isMvp ? 0.6 : 0.3)) {
     drops.push({ name: 'Rare Candy', amount: (isMvp ? 3 : 1) + Math.floor(Math.random() * 3) });
   }
-  if (Math.random() < (isMvp ? 0.6 : 0.3)) {
+  if (Math.random() < (isMvp ? 0.3 : 0.1)) {
     drops.push({ name: pick(Object.keys(EVOLUTION_ITEMS)), amount: 1 });
   }
-  if (Math.random() < (isMvp ? 0.5 : 0.25)) {
+  if (Math.random() < (isMvp ? 0.25 : 0.1)) {
     drops.push({ name: pick(WORLD_BOSS_REPEL_DROPS), amount: 1 + Math.floor(Math.random() * 2) });
   }
   return drops;
@@ -5019,15 +5038,19 @@ function claimWorldBossReward(userId) {
     if (!record) return null;
     db.prepare('UPDATE world_boss_rewards SET claimed = 1 WHERE boss_id = ? AND user_id = ?')
       .run(record.boss_id, userId);
-    const items = rollWorldBossClaimItems();
-    const increments = { world_bosses_fought: 1 };
-    for (const { name, amount } of items) {
-      if (name === 'Rare Candy') increments.rare_candies = amount;
-      else if (name === 'Repel') increments.repels = amount;
-      else addUserItem(userId, name, amount);
+    // Rewards were already granted when the boss died; claim only reports them.
+    let items = [];
+    try { items = JSON.parse(record.items_json || '[]'); } catch { items = []; }
+    const merged = [];
+    for (const item of items) {
+      const existing = merged.find((entry) => entry.name === item.name);
+      if (existing) existing.amount += item.amount;
+      else merged.push({ ...item });
     }
-    const user = incrementUser(userId, increments);
-    return { record, items, bossesFought: user.world_bosses_fought };
+    const user = incrementUser(userId, { world_bosses_fought: 1 });
+    return {
+      record, items: merged, bossesFought: user.world_bosses_fought, pokemonDrop: !!record.pokemon_drop,
+    };
   }).immediate();
 }
 
