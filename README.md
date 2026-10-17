@@ -97,7 +97,7 @@ The project ships with `discloud.config` (bot type, `index.js` entry, 256MB RAM,
 
 1. Zip the project (or use the Discloud VS Code extension / dashboard upload).
 2. Keep `.env` in the zip — dotenv reads it from the app filesystem.
-3. **First deploy:** keep `pokemon.sqlite` in the zip to seed your data. **Later deploys:** uncomment `pokemon.sqlite` in `.discloudignore` — Discloud replaces files on every deploy, so an included database would wipe live data.
+3. **First deploy:** temporarily remove `pokemon.sqlite` from `.discloudignore` to seed your data. **Later deploys:** keep it ignored — Discloud replaces files on every deploy, so an included database would wipe live data.
 4. `better-sqlite3` installs from prebuilt binaries; if the install ever fails on a native build, enable `APT=tools` in `discloud.config`.
 5. `RAM=256` needs a paid plan — on the free tier, change it to `RAM=100`. The bot loads its catalog data into memory, so watch for out-of-memory restarts on the free tier.
 
