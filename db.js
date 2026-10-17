@@ -4917,6 +4917,7 @@ function distributeWorldBossRewards(bossId) {
 
     const drops = [];
     const boxDrops = [];
+    const extraDrops = [];
     for (const [index, entry] of leaderboard.entries()) {
       const isMvp = index === 0;
       trackClanActivity(entry.user_id, 'battle');
@@ -4963,9 +4964,15 @@ function distributeWorldBossRewards(bossId) {
         incrementUser(entry.user_id, { ultraballs: 10, lootboxes: 2 });
         awardCoinsWithBoost(entry.user_id, 18000);
       }
+      for (const extra of rollWorldBossExtraDrops(isMvp)) {
+        if (extra.name === 'Rare Candy') incrementUser(entry.user_id, { rare_candies: extra.amount });
+        else if (extra.name === 'Repel') incrementUser(entry.user_id, { repels: extra.amount });
+        else addUserItem(entry.user_id, extra.name, extra.amount);
+        extraDrops.push({ userId: entry.user_id, ...extra });
+      }
     }
     db.prepare('UPDATE world_boss SET rewards_claimed = 1 WHERE id = ?').run(bossId);
-    return { boss, leaderboard, mvp, drops, boxDrops };
+    return { boss, leaderboard, mvp, drops, boxDrops, extraDrops };
   }).immediate();
 }
 
@@ -4979,6 +4986,22 @@ function getUnclaimedWorldBossReward(userId) {
 }
 
 const WORLD_BOSS_REPEL_DROPS = ['Repel', 'Super Repel', 'Max Repel'];
+
+// Extra per-player loot on top of the standard rewards; MVPs get better odds and amounts.
+function rollWorldBossExtraDrops(isMvp) {
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  const drops = [];
+  if (Math.random() < (isMvp ? 0.9 : 0.5)) {
+    drops.push({ name: 'Rare Candy', amount: (isMvp ? 3 : 1) + Math.floor(Math.random() * 3) });
+  }
+  if (Math.random() < (isMvp ? 0.6 : 0.3)) {
+    drops.push({ name: pick(Object.keys(EVOLUTION_ITEMS)), amount: 1 });
+  }
+  if (Math.random() < (isMvp ? 0.5 : 0.25)) {
+    drops.push({ name: pick(WORLD_BOSS_REPEL_DROPS), amount: 1 + Math.floor(Math.random() * 2) });
+  }
+  return drops;
+}
 
 function rollWorldBossClaimItems() {
   const pick = (list) => list[Math.floor(Math.random() * list.length)];

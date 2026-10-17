@@ -2469,9 +2469,13 @@ function createWorldBossAttackResult(attack, rewards = null) {
       ...rewards.boxDrops.map(({ userId, itemName }) =>
         `• <@${userId}> ${BOXES[itemName]?.emoji || (itemName === 'Lootbox' ? LOOTBOX_EMOJI : '📦')} **${itemName}**!`
       ),
+      ...(rewards.extraDrops || []).map(({ userId, name, amount }) =>
+        `• <@${userId}> ${EVOLUTION_ITEMS[name]?.emoji || (name === 'Rare Candy' ? EMOJIS.rarecandy : '🎁')} **${amount}x ${name}**`
+      ),
     ];
+    const dropText = specialDrops.join('\n');
     const drops = specialDrops.length
-      ? specialDrops.join('\n')
+      ? (dropText.length > 2200 ? `${dropText.slice(0, dropText.lastIndexOf('\n', 2200))}\n• *...and more!*` : dropText)
       : '• *No trainers rolled a Pokémon or box drop this raid.*';
     return new EmbedBuilder()
       .setColor(0xf47fb4)
@@ -2752,7 +2756,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   };
 }
 
-const WORLD_BOSS_PROGRESS_INTERVAL_MS = 3000;
+const WORLD_BOSS_PROGRESS_INTERVAL_MS = 1500;
 const worldBossProgressTimers = new Map();
 
 // Coalesces boss HP refreshes: many raiders hitting at once trigger at most one refresh per interval.
