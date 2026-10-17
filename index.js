@@ -2752,6 +2752,41 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   };
 }
 
+const WORLD_BOSS_PROGRESS_INTERVAL_MS = 3000;
+const worldBossProgressTimers = new Map();
+
+// Coalesces boss HP refreshes: many raiders hitting at once trigger at most one refresh per interval.
+function scheduleWorldBossProgressUpdate(bossId, clientUser) {
+  if (worldBossProgressTimers.has(bossId)) return;
+  const timer = setTimeout(async () => {
+    worldBossProgressTimers.delete(bossId);
+    try {
+      const liveBoss = getActiveWorldBoss();
+      if (!liveBoss || liveBoss.id !== bossId) return;
+      const progressEmbed = createWorldBossEmbed(liveBoss, clientUser);
+      const raidPosts = activeWorldBossPosts.get(bossId) || new Map();
+      await Promise.all([
+        updateWorldBossAnnouncement(liveBoss, progressEmbed),
+        ...[...raidPosts].map(async ([postId, post]) => {
+          try {
+            await post.message.edit({ embeds: [progressEmbed] });
+          } catch (error) {
+            console.error(`Failed to update World Boss post ${postId}:`, error);
+          }
+        }),
+      ]);
+    } catch (error) {
+      console.error('Failed to refresh World Boss progress:', error);
+    }
+  }, WORLD_BOSS_PROGRESS_INTERVAL_MS);
+  worldBossProgressTimers.set(bossId, timer);
+}
+
+function cancelWorldBossProgressUpdate(bossId) {
+  clearTimeout(worldBossProgressTimers.get(bossId));
+  worldBossProgressTimers.delete(bossId);
+}
+
 async function startWorldBossBattle(message, boss, userId, team) {
   const bossMessage = await message.reply({
     embeds: [createWorldBossEmbed(boss, message.client.user)],
@@ -3083,19 +3118,11 @@ async function startWorldBossBattle(message, boss, userId, team) {
 
       const refreshedBoss = getActiveWorldBoss();
       if (!attack.defeated && refreshedBoss) {
-        const progressEmbed = createWorldBossEmbed(refreshedBoss, message.client.user);
-        await Promise.all([
-          updateWorldBossAnnouncement(refreshedBoss, progressEmbed),
-          ...[...raidPosts].map(async ([postId, post]) => {
-            try {
-              await post.message.edit({ embeds: [progressEmbed] });
-            } catch (error) {
-              console.error(`Failed to update World Boss post ${postId}:`, error);
-            }
-          }),
-        ]);
+        // Shared raid posts are refreshed in the background, so a click only waits on the player's own panel.
+        scheduleWorldBossProgressUpdate(boss.id, message.client.user);
       }
       if (attack.defeated) {
+        cancelWorldBossProgressUpdate(boss.id);
         const victoryEmbed = createWorldBossAttackResult(attack, attack.rewards);
         const mvpUserId = attack.rewards.mvp.user_id;
         const mvpUser = await client.users.fetch(mvpUserId);
