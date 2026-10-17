@@ -404,6 +404,34 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     `${eff > 1 ? ' — super effective!' : eff === 0 ? ' — no effect.' : eff < 1 ? ' — not very effective.' : ''}` +
     `${crit && dmg > 0 ? ' A critical hit!' : ''}${survivedText}`);
   if (t.hp <= 0 && tf.destinyBond) { m.hp = 0; L(`${m.name} was taken down with ${t.name}!`); }
+  applyDamageSecondaryEffects(ctx, B, t, move, dmg, L);
+}
+
+// Stat drops that damaging moves inflict on the target: [chance %, stages].
+const DAMAGE_STAT_DROPS = {
+  'acid-spray': [100, { spdef: -2 }], 'seed-flare': [40, { spdef: -2 }], 'energy-ball': [10, { spdef: -1 }],
+  'focus-blast': [10, { spdef: -1 }], 'earth-power': [10, { spdef: -1 }], 'shadow-ball': [20, { spdef: -1 }],
+  'flash-cannon': [10, { spdef: -1 }], 'bug-buzz': [10, { spdef: -1 }], 'psychic': [10, { spdef: -1 }],
+  'acid': [10, { spdef: -1 }], 'crunch': [20, { def: -1 }], 'iron-tail': [30, { def: -1 }],
+  'rock-smash': [50, { def: -1 }], 'liquidation': [20, { def: -1 }], 'crush-claw': [50, { def: -1 }],
+  'razor-shell': [50, { def: -1 }], 'lunge': [100, { atk: -1 }], 'trop-kick': [100, { atk: -1 }],
+  'spirit-break': [100, { spa: -1 }], 'moonblast': [30, { spa: -1 }], 'mystical-fire': [100, { spa: -1 }],
+  'snarl': [100, { spa: -1 }], 'struggle-bug': [100, { spa: -1 }],
+  'icy-wind': [100, { spe: -1 }], 'electroweb': [100, { spe: -1 }], 'bulldoze': [100, { spe: -1 }],
+  'low-sweep': [100, { spe: -1 }], 'rock-tomb': [100, { spe: -1 }], 'mud-shot': [100, { spe: -1 }],
+  'constrict': [10, { spe: -1 }], 'bubble-beam': [10, { spe: -1 }], 'bubble': [10, { spe: -1 }],
+  'mud-slap': [100, { acc: -1 }], 'octazooka': [50, { acc: -1 }], 'mud-bomb': [30, { acc: -1 }],
+  'mirror-shot': [30, { acc: -1 }], 'muddy-water': [30, { acc: -1 }], 'night-daze': [40, { acc: -1 }],
+  'lumina-crash': [100, { spdef: -2 }], 'fire-lash': [100, { def: -1 }], 'thunderous-kick': [100, { def: -1 }],
+  'skitter-smack': [100, { spa: -1 }], 'apple-acid': [100, { spdef: -1 }], 'grav-apple': [100, { def: -1 }],
+  'triple-arrows': [50, { def: -1 }],
+};
+
+function applyDamageSecondaryEffects(ctx, B, t, move, dmg, L) {
+  const drop = DAMAGE_STAT_DROPS[slug(move.name)];
+  if (!drop || dmg <= 0 || t.hp <= 0 || fx(t).sub > 0) return;
+  if (Math.random() * 100 >= drop[0]) return;
+  for (const [key, delta] of Object.entries(drop[1])) changeStage(ctx, t, B.side, key, delta, L, true);
 }
 
 function applyStatusMove(ctx, A, B, move, L, depth = 0) {
