@@ -5748,6 +5748,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/250.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/250.png",
     "generation": "generation-ii",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/hooh.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/hooh.gif",
     "dex_number": 250
   },
   {
@@ -8860,7 +8862,7 @@
     "species_id": 386,
     "species_name": "Deoxys",
     "slug": "deoxys-normal",
-    "name": "Deoxys Normal",
+    "name": "Deoxys",
     "is_default": 1,
     "is_legendary": 0,
     "is_mythical": 1,
@@ -11183,7 +11185,7 @@
     "species_id": 487,
     "species_name": "Giratina",
     "slug": "giratina-altered",
-    "name": "Giratina Altered",
+    "name": "Giratina",
     "is_default": 1,
     "is_legendary": 1,
     "is_mythical": 0,
@@ -18008,6 +18010,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/783.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/783.png",
     "generation": "generation-vii",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/hakamoo.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/hakamoo.gif",
     "dex_number": 783
   },
   {
@@ -21397,7 +21401,7 @@
     "species_id": 931,
     "species_name": "Squawkabilly",
     "slug": "squawkabilly-green-plumage",
-    "name": "Squawkabilly Green Plumage",
+    "name": "Squawkabilly",
     "is_default": 1,
     "is_legendary": 0,
     "is_mythical": 0,
@@ -21413,6 +21417,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/931.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/931.png",
     "generation": "generation-ix",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/squawkabilly.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/squawkabilly.gif",
     "dex_number": 931
   },
   {
@@ -22679,6 +22685,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/986.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/986.png",
     "generation": "generation-ix",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/brutebonnet.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/brutebonnet.gif",
     "dex_number": 986
   },
   {
@@ -22702,6 +22710,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/987.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/987.png",
     "generation": "generation-ix",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/fluttermane.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/fluttermane.gif",
     "dex_number": 987
   },
   {
@@ -22749,6 +22759,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/989.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/989.png",
     "generation": "generation-ix",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/sandyshocks.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/sandyshocks.gif",
     "dex_number": 989
   },
   {
@@ -22769,9 +22781,11 @@
     "base_stat_total": 570,
     "types": "[\"ground\",\"steel\"]",
     "is_water": 0,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/990.png",
-    "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/990.png",
+    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/990.webp&w=120&output=png",
+    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/990.webp&w=120&output=png",
     "generation": "generation-ix",
+    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/990.webp&w=120&output=png",
+    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/990.webp&w=120&output=png",
     "dex_number": 990
   },
   {
@@ -22792,9 +22806,11 @@
     "base_stat_total": 570,
     "types": "[\"ice\",\"water\"]",
     "is_water": 1,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/991.png",
-    "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/991.png",
+    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp&w=120&output=png",
+    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp&w=120&output=png",
     "generation": "generation-ix",
+    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp&w=120&output=png",
+    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp&w=120&output=png",
     "dex_number": 991
   },
   {
@@ -22884,9 +22900,11 @@
     "base_stat_total": 570,
     "types": "[\"rock\",\"electric\"]",
     "is_water": 0,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/995.png",
-    "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/995.png",
+    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/995.webp&w=120&output=png",
+    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/995.webp&w=120&output=png",
     "generation": "generation-ix",
+    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/995.webp&w=120&output=png",
+    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/995.webp&w=120&output=png",
     "dex_number": 995
   },
   {
@@ -23117,6 +23135,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1005.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1005.png",
     "generation": "generation-ix",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/roaringmoon.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/roaringmoon.gif",
     "dex_number": 1005
   },
   {
@@ -23209,6 +23229,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1009.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1009.png",
     "generation": "generation-ix",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/walkingwake.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/walkingwake.gif",
     "dex_number": 1009
   },
   {
@@ -23574,9 +23596,11 @@
     "base_stat_total": 600,
     "types": "[\"poison\",\"ghost\"]",
     "is_water": 0,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1025.png",
-    "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1025.png",
+    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1025.webp&w=120&output=png",
+    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/1025.webp&w=120&output=png",
     "generation": "generation-ix",
+    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1025.webp&w=120&output=png",
+    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/1025.webp&w=120&output=png",
     "dex_number": 1025
   }
 ]

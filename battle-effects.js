@@ -687,7 +687,7 @@ function canAct(ctx, A, B, move, L) {
   return true;
 }
 
-function runAction(ctx, A, B, prefix) {
+function runAction(ctx, A, B, prefix = '') {
   let first = true;
   const L = (text) => { ctx.log.push(`${first ? prefix : '↳ '}${text}`); first = false; };
   const f = fx(A.mon);
@@ -772,18 +772,30 @@ function runTurn(ctx, playerMove, enemyMove) {
   for (const actor of order) {
     const foe = actor === P ? E : P;
     if (actor.mon.hp <= 0 || foe.mon.hp <= 0) continue;
-    runAction(ctx, actor, foe, actor.side === 'player' ? `**Turn ${ctx.turn}:** ` : '');
+    runAction(ctx, actor, foe);
+  }
+  endOfTurn(ctx);
+}
+
+function runSwitchTurn(ctx, enemyMove) {
+  const player = { mon: ctx.player, side: 'player', move: null };
+  const enemy = { mon: ctx.enemy, side: 'enemy', move: enemyMove };
+  if (enemy.mon.hp > 0 && player.mon.hp > 0) {
+    runAction(ctx, enemy, player);
   }
   endOfTurn(ctx);
 }
 
 module.exports = {
-  EFFECTS, slug, fx, createField, runTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
+  EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
   applyStatusMove, canAct, performMove, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
   summarize(mon) {
     const f = fx(mon);
     const parts = [];
-    if (f.status) parts.push({ slp: 'SLP', par: 'PAR', brn: 'BRN', psn: 'PSN', tox: 'TOX', frz: 'FRZ' }[f.status]);
+    if (f.status) {
+      const status = { slp: 'SLP', par: 'PAR', brn: 'BRN', psn: 'PSN', tox: 'TOX', frz: 'FRZ' }[f.status];
+      if (status) parts.push(status);
+    }
     if (f.confuse > 0) parts.push('CNF');
     if (f.leech) parts.push('SEEDED');
     if (f.sub > 0) parts.push('SUB');

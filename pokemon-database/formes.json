@@ -1970,7 +1970,7 @@
   {
     "id": 6083,
     "species_id": 570,
-    "species_name": "",
+    "species_name": "Zorua",
     "slug": "zorua-hisui",
     "name": "Hisuian Zorua",
     "is_default": 0,
@@ -2932,7 +2932,7 @@
     "species_id": 800,
     "species_name": "Necrozma",
     "slug": "necrozma-dusk",
-    "name": "Necrozma Dusk",
+    "name": "Necrozma Duskmane",
     "is_default": 0,
     "is_legendary": 1,
     "is_mythical": 0,
@@ -2948,6 +2948,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/10155.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10155.png",
     "generation": "generation-vii",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/necrozma-duskmane.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-duskmane.gif",
     "dex_number": 6123,
     "shiny_dex_number": 7123
   },
@@ -2956,7 +2958,7 @@
     "species_id": 800,
     "species_name": "Necrozma",
     "slug": "necrozma-dawn",
-    "name": "Necrozma Dawn",
+    "name": "Necrozma Dawnwings",
     "is_default": 0,
     "is_legendary": 1,
     "is_mythical": 0,
@@ -2972,6 +2974,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/10156.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10156.png",
     "generation": "generation-vii",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/necrozma-dawnwings.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-dawnwings.gif",
     "dex_number": 6124,
     "shiny_dex_number": 7124
   },
@@ -2996,6 +3000,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/10157.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10157.png",
     "generation": "generation-vii",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/necrozma-ultra.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-ultra.gif",
     "dex_number": 6125,
     "shiny_dex_number": 7125
   },

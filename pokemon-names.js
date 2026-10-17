@@ -9,6 +9,8 @@ const SPECIAL_NAMES = {
   'mime-jr': 'Mime Jr.',
   'mr-mime': 'Mr. Mime',
   'mr-rime': 'Mr. Rime',
+  'deoxys-normal': 'Deoxys',
+  'giratina-altered': 'Giratina',
   'type-null': 'Type: Null',
   'nidoran-f': 'Nidoran♀',
   'nidoran-m': 'Nidoran♂',

@@ -1,11 +1,12 @@
-// Adds the G-Max moves (https://www.serebii.net/swordshield/g-maxmoves.shtml) to data/pokemon-moves.json
-// and data/move-info.json. Each move is only added to the learnset of its own Gigantamax form.
+// Adds G-Max learnsets and Eternatus Eternamax Max Moves to the move data files.
 const fs = require('fs');
 const path = require('path');
 
 const MOVES_PATH = path.join(__dirname, '..', 'data', 'pokemon-moves.json');
 const INFO_PATH = path.join(__dirname, '..', 'data', 'move-info.json');
+const CATALOG_PATH = path.join(__dirname, '..', 'data', 'pokemon-catalog.json');
 const gmax = require('../pokemon-database/gmax.json');
+const catalog = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf8'));
 
 // [gmax form slug, move name, type, category, effect description]
 const GMAX_MOVES = [
@@ -55,11 +56,15 @@ movesData.form_learnsets ||= {};
 for (const [formSlug, name, type, category, description] of GMAX_MOVES) {
   const form = gmax.find((entry) => entry.slug === formSlug);
   if (!form) throw new Error(`Unknown Gigantamax form: ${formSlug}`);
+  const catalogForm = catalog.find((entry) => entry.slug === formSlug);
+  if (!catalogForm) throw new Error(`Missing catalog form for Gigantamax Pokémon: ${formSlug}`);
   const moveSlug = toSlug(name);
 
   movesData.moves[moveSlug] = { name, type, power: 150, accuracy: 100, pp: 5, category };
   const learners = moveInfo[moveSlug]?.learners || [];
-  if (!learners.includes(form.name)) learners.push(form.name);
+  for (const learner of [form.species_name, form.name]) {
+    if (!learners.includes(learner)) learners.push(learner);
+  }
   moveInfo[moveSlug] = {
     name,
     type: titleCase(type),
@@ -74,11 +79,38 @@ for (const [formSlug, name, type, category, description] of GMAX_MOVES) {
   };
 
   // Gigantamax forms start from their species learnset; the G-Max move is added to this form only.
-  const current = movesData.form_learnsets[String(form.id)]
+  const current = movesData.form_learnsets[String(catalogForm.id)]
     || movesData.learnsets[String(form.species_id)] || [];
-  movesData.form_learnsets[String(form.id)] = [...new Set([...current, moveSlug])];
+  movesData.form_learnsets[String(catalogForm.id)] = [...new Set([...current, moveSlug])];
+  movesData.learnsets[String(form.species_id)] = [
+    ...new Set([...(movesData.learnsets[String(form.species_id)] || []), moveSlug]),
+  ];
 }
+
+const eternamaxForm = catalog.find((pokemon) => pokemon.slug === 'eternatus-eternamax');
+if (!eternamaxForm) throw new Error('Missing Eternatus Eternamax form in the Pokémon catalog.');
+const maxMoves = Object.entries(moveInfo)
+  .filter(([moveSlug]) => moveSlug.startsWith('max-') && moveSlug !== 'max-guard');
+const eternamaxLearnset = movesData.form_learnsets[String(eternamaxForm.id)]
+  || movesData.learnsets[String(eternamaxForm.species_id)]
+  || [];
+for (const [moveSlug, move] of maxMoves) {
+  movesData.moves[moveSlug] = {
+    name: move.name,
+    type: move.type.toLowerCase(),
+    power: Math.max(100, move.power || 0),
+    accuracy: move.accuracy ?? 100,
+    pp: move.pp ?? 10,
+    category: move.damageClass.toLowerCase(),
+  };
+  const learners = move.learners || [];
+  if (!learners.includes(eternamaxForm.name)) learners.push(eternamaxForm.name);
+  move.learners = learners;
+}
+movesData.form_learnsets[String(eternamaxForm.id)] = [
+  ...new Set([...eternamaxLearnset, ...maxMoves.map(([moveSlug]) => moveSlug)]),
+];
 
 fs.writeFileSync(MOVES_PATH, `${JSON.stringify(movesData)}\n`);
 fs.writeFileSync(INFO_PATH, JSON.stringify(moveInfo));
-console.log(`Added ${GMAX_MOVES.length} G-Max move assignments.`);
+console.log(`Added ${GMAX_MOVES.length} G-Max moves and ${maxMoves.length} Max moves to Eternatus Eternamax.`);

@@ -2,6 +2,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DATABASE_DIR = path.join(__dirname, 'pokemon-database');
+const REQUESTED_OVERRIDES_PATH = path.join(DATABASE_DIR, 'z-requested-overrides.json');
+const OVERRIDE_FIELDS = new Set([
+  'name',
+  'sprite',
+  'shiny_sprite',
+  'animated_sprite',
+  'shiny_animated_sprite',
+]);
 
 // Reads every .json file in pokemon-database/ (including any you add) and merges the
 // entries by slug. Shiny entries supply the shiny sprite/number; golden entries are ignored.
@@ -50,4 +58,59 @@ function loadPokemonDatabase() {
   return cachedDatabase;
 }
 
-module.exports = { DATABASE_DIR, loadPokemonDatabase };
+function updatePokemonDatabaseOverride(slug, updates) {
+  if (typeof slug !== 'string' || !slug.trim()) throw new TypeError('A Pokémon form slug is required.');
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    throw new TypeError('Pokémon database updates must be an object.');
+  }
+  const fields = Object.keys(updates);
+  if (!fields.length || fields.some((field) => !OVERRIDE_FIELDS.has(field))) {
+    throw new TypeError('Pokémon database updates contain unsupported fields.');
+  }
+  for (const value of Object.values(updates)) {
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new TypeError('Pokémon database override values must be non-empty strings.');
+    }
+  }
+
+  const entries = JSON.parse(fs.readFileSync(REQUESTED_OVERRIDES_PATH, 'utf8'));
+  if (!Array.isArray(entries)) {
+    throw new Error(`${REQUESTED_OVERRIDES_PATH} must contain an array.`);
+  }
+  let entry;
+  for (const candidate of entries) {
+    if (candidate?.slug === slug) entry = candidate;
+  }
+  if (!entry) {
+    entry = { slug };
+    entries.push(entry);
+  }
+  Object.assign(entry, updates);
+
+  const temporaryPath = `${REQUESTED_OVERRIDES_PATH}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temporaryPath, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+    fs.renameSync(temporaryPath, REQUESTED_OVERRIDES_PATH);
+  } catch (error) {
+    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    throw error;
+  }
+
+  if (cachedDatabase) {
+    const record = cachedDatabase.get(slug) || { slug };
+    record.entry = { ...(record.entry || { slug }), ...updates };
+    for (const [field, property] of [
+      ['name', 'name'],
+      ['sprite', 'sprite'],
+      ['shiny_sprite', 'shinySprite'],
+      ['animated_sprite', 'animated'],
+      ['shiny_animated_sprite', 'shinyAnimated'],
+    ]) {
+      if (updates[field] !== undefined) record[property] = updates[field];
+    }
+    cachedDatabase.set(slug, record);
+  }
+  return entry;
+}
+
+module.exports = { DATABASE_DIR, loadPokemonDatabase, updatePokemonDatabaseOverride };

@@ -6,7 +6,7 @@ const { EVOLUTION_ITEMS, findEvolutionItem } = require('./evolution-items');
 const { BOXES, VOTE_BOXES } = require('./boxes');
 const { getPromoItemNames } = require('./promo');
 const { setSpriteOverrides } = require('./pokemon-sprites');
-const { loadPokemonDatabase } = require('./pokemon-database');
+const { loadPokemonDatabase, updatePokemonDatabaseOverride } = require('./pokemon-database');
 
 const db = new Database(path.join(__dirname, 'pokemon.sqlite'));
 db.pragma('foreign_keys = ON');
@@ -16,27 +16,258 @@ db.exec(`
     value TEXT NOT NULL
   )
 `);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_encounter_counters (
+    user_id TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('pokemon', 'fishing')),
+    category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny')),
+    encounters_since INTEGER NOT NULL DEFAULT 0,
+    last_caught_at INTEGER,
+    last_pokemon TEXT,
+    last_catcher_id TEXT,
+    PRIMARY KEY (user_id, source, category)
+  );
+  CREATE TABLE IF NOT EXISTS daily_catch_counts (
+    reset_day INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    catches INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (reset_day, user_id)
+  );
+`);
+const initializeEncounterCounter = db.prepare(`
+  INSERT OR IGNORE INTO user_encounter_counters (user_id, source, category)
+  VALUES (?, ?, ?)
+`);
 
-function getCooldownNotificationMode() {
+function getSpeciesGmaxMoves(speciesId) {
+  if (!Number.isSafeInteger(speciesId) || speciesId <= 0) return [];
+  const forms = db.prepare(`
+    SELECT id, slug FROM pokemon_forms
+    WHERE species_id = ? AND lower(slug) LIKE '%-gmax'
+  `).all(speciesId);
+  const pokemonDatabase = loadPokemonDatabase();
+  const moves = forms.flatMap(({ id, slug }) => {
+    const generatedFormId = pokemonDatabase.get(slug)?.entry?.id;
+    return [
+      ...getSpeciesLearnset(speciesId, id),
+      ...(Number.isSafeInteger(generatedFormId) && generatedFormId !== id
+        ? getSpeciesLearnset(speciesId, generatedFormId)
+        : []),
+    ].filter((move) => move.startsWith('g-max-'));
+  });
+  return [...new Set(moves)];
+}
+
+function getCooldownNotificationMode(userId) {
+  assertUserId(userId);
   const mode = db.prepare(
-    "SELECT value FROM bot_settings WHERE key = 'cooldown_notification_mode'"
-  ).get()?.value || 'ping';
+    'SELECT value FROM bot_settings WHERE key = ?'
+  ).get(`cooldown_notification_mode:${userId}`)?.value || 'ping';
   if (!['ping', 'username'].includes(mode)) {
     throw new Error(`Unknown cooldown notification mode "${mode}".`);
   }
   return mode;
 }
 
-function setCooldownNotificationMode(mode) {
+function setCooldownNotificationMode(userId, mode) {
+  assertUserId(userId);
   if (!['ping', 'username'].includes(mode)) {
     throw new TypeError('Cooldown notification mode must be "ping" or "username".');
   }
   db.prepare(`
     INSERT INTO bot_settings (key, value)
-    VALUES ('cooldown_notification_mode', ?)
+    VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).run(mode);
+  `).run(`cooldown_notification_mode:${userId}`, mode);
   return mode;
+}
+
+function getRareSpawnNameHidden(userId) {
+  assertUserId(userId);
+  const value = db.prepare(
+    'SELECT value FROM bot_settings WHERE key = ?'
+  ).get(`hide_rare_spawn_name:${userId}`)?.value || 'false';
+  if (!['true', 'false'].includes(value)) {
+    throw new Error(`Invalid rare-spawn name setting "${value}" for user ${userId}.`);
+  }
+  return value === 'true';
+}
+
+function setRareSpawnNameHidden(userId, hidden) {
+  assertUserId(userId);
+  if (typeof hidden !== 'boolean') throw new TypeError('hidden must be a boolean.');
+  db.prepare(`
+    INSERT INTO bot_settings (key, value)
+    VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(`hide_rare_spawn_name:${userId}`, String(hidden));
+  return hidden;
+}
+
+function getMarketCompletionNotificationsEnabled(userId) {
+  assertUserId(userId);
+  const value = db.prepare(
+    'SELECT value FROM bot_settings WHERE key = ?'
+  ).get(`market_completion_notifications:${userId}`)?.value || 'false';
+  if (!['true', 'false'].includes(value)) {
+    throw new Error(`Invalid market notification setting "${value}" for user ${userId}.`);
+  }
+  return value === 'true';
+}
+
+function setMarketCompletionNotificationsEnabled(userId, enabled) {
+  assertUserId(userId);
+  if (typeof enabled !== 'boolean') throw new TypeError('enabled must be a boolean.');
+  db.prepare(`
+    INSERT INTO bot_settings (key, value)
+    VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(`market_completion_notifications:${userId}`, String(enabled));
+  return enabled;
+}
+
+function setBuddyNickname(userId, nickname) {
+  assertUserId(userId);
+  const buddyId = getUser(userId).buddy_catch_id;
+  if (!buddyId) return { error: 'no_buddy' };
+  if (nickname !== null
+      && (typeof nickname !== 'string' || !nickname.trim() || nickname.trim().length > 32
+        || /[@\r\n]/.test(nickname))) {
+    throw new TypeError('Buddy nickname must be 1–32 characters and cannot contain @ or line breaks.');
+  }
+  const key = `buddy_nickname:${userId}:${buddyId}`;
+  if (nickname === null) {
+    db.prepare('DELETE FROM bot_settings WHERE key = ?').run(key);
+    return null;
+  }
+  const value = nickname.trim();
+  db.prepare(`
+    INSERT INTO bot_settings (key, value)
+    VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(key, value);
+  return value;
+}
+
+function rerollBuddyIv(userId, stat) {
+  assertUserId(userId);
+  const ivFields = {
+    atk: 'atk_iv',
+    def: 'def_iv',
+    hp: 'hp_iv',
+    spd: 'spd_iv',
+  };
+  const ivField = ivFields[stat];
+  if (!ivField) return { error: 'invalid_stat' };
+  return db.transaction(() => {
+    const user = getUser(userId);
+    const buddyId = user.buddy_catch_id;
+    if (!buddyId) return { error: 'no_buddy' };
+    if (user.vote_coins < 1) return { error: 'not_enough_vote_coins' };
+    const buddy = db.prepare(`
+      SELECT catches.*, pokemon_forms.base_hp, pokemon_forms.base_atk,
+        pokemon_forms.base_def, pokemon_forms.base_spd
+      FROM catches
+      LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+      WHERE catches.id = ? AND catches.user_id = ?
+    `).get(buddyId, userId);
+    if (!buddy) return { error: 'no_buddy' };
+
+    const newIv = Math.floor(Math.random() * 32);
+    const nextValues = {
+      [ivField]: newIv,
+      hp: buddy.hp,
+      max_hp: buddy.max_hp,
+      atk: buddy.atk,
+      def: buddy.def,
+      spd: buddy.spd,
+    };
+    if (stat === 'hp') {
+      nextValues.max_hp = calculateStat(buddy.base_hp ?? 50, newIv, buddy.level, true);
+      nextValues.hp = Math.min(
+        nextValues.max_hp,
+        buddy.hp + (nextValues.max_hp - buddy.max_hp)
+      );
+    } else {
+      const baseStat = {
+        atk: buddy.base_atk,
+        def: buddy.base_def,
+        spd: buddy.base_spd,
+      }[stat] ?? 50;
+      nextValues[stat] = calculateStat(baseStat, newIv, buddy.level);
+    }
+    const assignments = Object.keys(nextValues).map((field) => `${field} = ?`).join(', ');
+    db.prepare(`UPDATE catches SET ${assignments} WHERE id = ? AND user_id = ?`)
+      .run(...Object.values(nextValues), buddyId, userId);
+    incrementUser(userId, { vote_coins: -1 });
+    syncDuplicateCatchState(userId, buddyId);
+    return {
+      pokemon: buddy.name,
+      stat,
+      oldIv: buddy[ivField],
+      newIv,
+      voteCoins: getUser(userId).vote_coins,
+    };
+  }).immediate();
+}
+
+function renamePokemonForm(formId, name) {
+  if (!Number.isSafeInteger(formId) || formId <= 0) throw new TypeError('Invalid Pokémon form ID.');
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 80) {
+    throw new TypeError('Pokémon name must be 1–80 characters.');
+  }
+  const form = db.prepare('SELECT id, slug, name FROM pokemon_forms WHERE id = ?').get(formId);
+  if (!form) return null;
+  const nextName = name.trim();
+  updatePokemonDatabaseOverride(form.slug, { name: nextName });
+  db.transaction(() => {
+    db.prepare('UPDATE pokemon_forms SET name = ? WHERE id = ?').run(nextName, formId);
+    db.prepare('UPDATE catches SET name = ? WHERE pokemon_id = ?').run(nextName, formId);
+    db.prepare('UPDATE market SET name = ? WHERE pokemon_id = ?').run(nextName, formId);
+  }).immediate();
+  return { ...form, name: nextName };
+}
+
+function updatePokemonSpriteLinks(formId, normalUrl, shinyUrl = null) {
+  if (!Number.isSafeInteger(formId) || formId <= 0) throw new TypeError('Invalid Pokémon form ID.');
+  const validateUrl = (value) => {
+    if (typeof value !== 'string') return false;
+    try {
+      return new URL(value).protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+  if (!validateUrl(normalUrl) || (shinyUrl !== null && !validateUrl(shinyUrl))) {
+    throw new TypeError('Pokémon sprite URLs must use HTTPS.');
+  }
+  const form = db.prepare(
+    'SELECT id, slug, name, shiny_sprite FROM pokemon_forms WHERE id = ?'
+  ).get(formId);
+  if (!form) return null;
+  const updates = {
+    sprite: normalUrl,
+    animated_sprite: normalUrl,
+  };
+  if (shinyUrl) {
+    updates.shiny_sprite = shinyUrl;
+    updates.shiny_animated_sprite = shinyUrl;
+  }
+  updatePokemonDatabaseOverride(form.slug, updates);
+  db.prepare(`
+    UPDATE pokemon_forms
+    SET sprite = ?, shiny_sprite = ?
+    WHERE id = ?
+  `).run(normalUrl, shinyUrl || form.shiny_sprite || normalUrl, formId);
+  const animatedSprites = new Map();
+  for (const record of loadPokemonDatabase().values()) {
+    if (record.animated || record.shinyAnimated) {
+      animatedSprites.set(record.slug, { normal: record.animated, shiny: record.shinyAnimated });
+    }
+  }
+  setSpriteOverrides(animatedSprites);
+  return { ...form, sprite: normalUrl, shiny_sprite: shinyUrl || form.shiny_sprite || normalUrl };
 }
 
 const pokemonMovesPath = path.join(__dirname, 'data', 'pokemon-moves.json');
@@ -113,6 +344,8 @@ const userDefinitions = {
   quest_reward: 'INTEGER NOT NULL DEFAULT 500',
   catchbot_end: 'INTEGER NOT NULL DEFAULT 0',
   lootboxes: 'INTEGER NOT NULL DEFAULT 1',
+  cooldown_machine_catch_charges: 'INTEGER NOT NULL DEFAULT 0',
+  cooldown_machine_fish_charges: 'INTEGER NOT NULL DEFAULT 0',
   total_catches: 'INTEGER NOT NULL DEFAULT 0',
   shiny_catches: 'INTEGER NOT NULL DEFAULT 0',
   common_streak: 'INTEGER NOT NULL DEFAULT 0',
@@ -241,6 +474,7 @@ const catchDefinitions = {
   ever_buddy: 'INTEGER NOT NULL DEFAULT 0',
   is_fav: 'INTEGER NOT NULL DEFAULT 0',
   experience: 'INTEGER NOT NULL DEFAULT 0',
+  ability: 'TEXT',
   held_item: 'TEXT',
   moves: "TEXT NOT NULL DEFAULT '[]'",
   sketched_moves: "TEXT NOT NULL DEFAULT '[]'",
@@ -342,6 +576,55 @@ db.exec(`
     spd INTEGER NOT NULL DEFAULT 5,
     listed_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS market_sales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    seller_id TEXT NOT NULL,
+    buyer_id TEXT NOT NULL,
+    pokemon_id INTEGER,
+    name TEXT NOT NULL,
+    rarity TEXT,
+    is_shiny INTEGER NOT NULL DEFAULT 0,
+    sale_price INTEGER NOT NULL,
+    tax_amount INTEGER NOT NULL,
+    tax_rate INTEGER NOT NULL DEFAULT 15,
+    payout_amount INTEGER NOT NULL,
+    sold_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS market_sales_seller_id_idx ON market_sales(seller_id, id DESC);
+
+  CREATE TABLE IF NOT EXISTS patreon_token_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+    amount INTEGER NOT NULL,
+    remaining_amount INTEGER NOT NULL,
+    unit_price INTEGER NOT NULL,
+    fee_rate REAL NOT NULL DEFAULT 0,
+    fee_amount INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'filled', 'cancelled', 'expired')),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS patreon_token_orders_book_idx
+    ON patreon_token_orders(side, status, unit_price, id);
+  CREATE INDEX IF NOT EXISTS patreon_token_orders_user_idx
+    ON patreon_token_orders(user_id, status, id DESC);
+
+  CREATE TABLE IF NOT EXISTS patreon_token_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    buy_order_id INTEGER,
+    sell_order_id INTEGER,
+    buyer_id TEXT NOT NULL,
+    seller_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    unit_price INTEGER NOT NULL,
+    total_coins INTEGER NOT NULL,
+    traded_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS patreon_token_trades_time_idx
+    ON patreon_token_trades(traded_at);
 
   CREATE TABLE IF NOT EXISTS pokemon_forms (
     id INTEGER PRIMARY KEY,
@@ -481,6 +764,7 @@ db.exec(`
     reward_ultraballs INTEGER NOT NULL DEFAULT 0,
     reward_grazz INTEGER NOT NULL DEFAULT 0,
     reward_items TEXT NOT NULL DEFAULT '{}',
+    refresh_at INTEGER NOT NULL DEFAULT 0,
     UNIQUE (user_id, slot)
   );
 
@@ -540,9 +824,10 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS channel_catch_rate_boosts (
+    user_id TEXT NOT NULL,
     guild_id TEXT NOT NULL,
     channel_id TEXT NOT NULL,
-    PRIMARY KEY (guild_id, channel_id)
+    PRIMARY KEY (user_id, guild_id, channel_id)
   );
 
   CREATE TABLE IF NOT EXISTS clans (
@@ -641,6 +926,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS pokemon_forms_species_idx ON pokemon_forms(species_id);
   CREATE INDEX IF NOT EXISTS boss_damage_leaderboard_idx ON boss_damage(damage DESC);
 `);
+
+const channelBoostColumns = new Set(
+  db.prepare('PRAGMA table_info(channel_catch_rate_boosts)').all().map((column) => column.name)
+);
+if (!channelBoostColumns.has('user_id')) {
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE channel_catch_rate_boosts RENAME TO channel_catch_rate_boosts_legacy;
+      CREATE TABLE channel_catch_rate_boosts (
+        user_id TEXT NOT NULL,
+        guild_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        PRIMARY KEY (user_id, guild_id, channel_id)
+      );
+      INSERT INTO channel_catch_rate_boosts (user_id, guild_id, channel_id)
+      SELECT '', guild_id, channel_id FROM channel_catch_rate_boosts_legacy;
+      DROP TABLE channel_catch_rate_boosts_legacy;
+    `);
+  }).immediate();
+}
 
 const clanActivityTableSql = db.prepare(
   "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'clan_activity_periods'"
@@ -744,6 +1049,7 @@ ensureColumns('active_quests', {
   reward_ultraballs: 'INTEGER NOT NULL DEFAULT 0',
   reward_grazz: 'INTEGER NOT NULL DEFAULT 0',
   reward_items: "TEXT NOT NULL DEFAULT '{}'",
+  refresh_at: 'INTEGER NOT NULL DEFAULT 0',
 });
 // Patreon tiers unlock up to 5 quest slots, so widen the slot CHECK constraint.
 if (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'active_quests'").get()
@@ -782,7 +1088,11 @@ if (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'a
     `);
   }).immediate();
 }
-ensureColumns('world_boss', { rewards_claimed: 'INTEGER NOT NULL DEFAULT 0', spawned_by: 'TEXT' });
+ensureColumns('world_boss', {
+  rewards_claimed: 'INTEGER NOT NULL DEFAULT 0',
+  spawned_by: 'TEXT',
+  spawned_by_name: 'TEXT',
+});
 ensureColumns('giveaway_entries', { username: 'TEXT' });
 
 db.exec(`
@@ -922,6 +1232,9 @@ ensureColumns('market', {
   def: 'INTEGER NOT NULL DEFAULT 5',
   spd: 'INTEGER NOT NULL DEFAULT 5',
 });
+ensureColumns('market_sales', {
+  tax_rate: 'INTEGER NOT NULL DEFAULT 15',
+});
 
 const catalogPath = path.join(__dirname, 'data', 'pokemon-catalog.json');
 if (!fs.existsSync(catalogPath)) {
@@ -1024,6 +1337,9 @@ const upsertPokemonForm = db.prepare(`
     generation = excluded.generation,
     is_custom = 0
 `);
+const getExistingPokemonFormName = db.prepare('SELECT name FROM pokemon_forms WHERE id = ?');
+const renameExistingCatch = db.prepare('UPDATE catches SET name = ? WHERE pokemon_id = ? AND name = ?');
+const renameExistingMarketListing = db.prepare('UPDATE market SET name = ? WHERE pokemon_id = ? AND name = ?');
 db.exec('CREATE TEMP TABLE IF NOT EXISTS pokemon_catalog_import_ids (id INTEGER PRIMARY KEY)');
 const markCatalogId = db.prepare('INSERT INTO pokemon_catalog_import_ids (id) VALUES (?)');
 db.transaction(() => {
@@ -1035,6 +1351,11 @@ db.transaction(() => {
       || pokemon.species_id;
     if (!Number.isSafeInteger(evolutionChainId) || evolutionChainId <= 0) {
       throw new Error(`Invalid evolution-chain ID for Pokémon species ${pokemon.species_id}.`);
+    }
+    const existingName = getExistingPokemonFormName.get(pokemon.id)?.name;
+    if (existingName && existingName !== pokemon.name) {
+      renameExistingCatch.run(pokemon.name, pokemon.id, existingName);
+      renameExistingMarketListing.run(pokemon.name, pokemon.id, existingName);
     }
     upsertPokemonForm.run({ ...pokemon, evolution_chain_id: evolutionChainId, rarity });
     markCatalogId.run(pokemon.id);
@@ -1170,6 +1491,8 @@ const incrementableUserFields = new Set([
   'diveballs',
   'quest_progress',
   'lootboxes',
+  'cooldown_machine_catch_charges',
+  'cooldown_machine_fish_charges',
   'total_catches',
   'shiny_catches',
   'common_streak',
@@ -1324,9 +1647,10 @@ function incrementUser(userId, increments) {
 const NO_PATREON_PERKS = Object.freeze({
   catchBoost: 0, amuletCoins: 0, shinyCharms: 0, incenseBonus: 0,
   shinyRatePct: 0, eventShinyPct: 0, swapDiscount: 0, dailyCoinMult: 1, voteCoinMult: 1,
-  ivChecker: false, megaChamberDiscount: 0, quickHands: 0, fishingBoost: 0, eggHatchSpeed: 0,
+  ivChecker: false, megaChamberDiscount: 0, moveCostDiscount: 0, quickHands: 0, fishingBoost: 0, eggHatchSpeed: 0,
   autoEquipEggs: false, shopDiscount: 0, lootboxBoost: 0, goldenBoost: 0,
-  dailyTokens: 0, dailyCoins: 0, monthly: null, questSlots: 3,
+  dailyTokens: 0, dailyCoins: 0, monthly: null, questSlots: 3, questRefreshMultiplier: 1, releaseLocks: 0,
+  marketListingSlots: 0, marketTax: 0.1,
 });
 
 const PATREON_TIER_ORDER = ['common', 'uncommon', 'rare', 'superRare', 'legendary', 'shiny', 'golden'];
@@ -1334,36 +1658,41 @@ const PATREON_TIER_ORDER = ['common', 'uncommon', 'rare', 'superRare', 'legendar
 const PATREON_TIER_DELTAS = {
   common: {
     catchBoost: 5, shinyRatePct: 25, eventShinyPct: 5, swapDiscount: 0.5, dailyCoinMult: 2,
-    dailyTokens: 1, dailyCoins: 5000,
+    dailyTokens: 1, dailyCoins: 5000, releaseLocks: 5,
     monthly: { coins: 100000, masterballs: 3, rare_candies: 10, eggs: 1 },
   },
   uncommon: {
-    voteCoinMult: 2, questSlots: 4, ivChecker: true, megaChamberDiscount: 0.1, quickHands: 0.1,
-    dailyTokens: 6, dailyCoins: 30000,
+    voteCoinMult: 2, questSlots: 4, ivChecker: true, megaChamberDiscount: 0.1, moveCostDiscount: 0.5, quickHands: 0.1,
+    dailyTokens: 6, dailyCoins: 30000, releaseLocks: 5,
   },
   rare: {
-    questSlots: 5, fishingBoost: 0.05, eggHatchSpeed: 0.15, autoEquipEggs: true, incenseBonus: 50,
+    questSlots: 5, questRefreshMultiplier: 0.5, fishingBoost: 0.05, eggHatchSpeed: 0.15, autoEquipEggs: true, incenseBonus: 50,
+    releaseLocks: 5, marketListingSlots: 5,
     dailyTokens: 15, dailyCoins: 75000,
     monthly: { coins: 5000000, masterballs: 10, rare_candies: 100, eggs: 10, super_incubators: 3, Incense: 1 },
   },
   superRare: {
-    shopDiscount: 0.1, megaChamberDiscount: 0.2, eggHatchSpeed: 0.3, incenseBonus: 100,
+    shopDiscount: 0.1, megaChamberDiscount: 0.2, eggHatchSpeed: 0.3, incenseBonus: 100, releaseLocks: 5,
     dailyTokens: 38, dailyCoins: 200000,
   },
   legendary: {
-    lootboxBoost: 0.1, shinyRatePct: 50, incenseBonus: 150,
+    lootboxBoost: 0.1, shinyRatePct: 50, eventShinyPct: 30, incenseBonus: 150, releaseLocks: 5,
+    marketListingSlots: 15,
     dailyTokens: 75, dailyCoins: 500000,
     monthly: {
       coins: 15000000, masterballs: 15, rare_candies: 150, eggs: 50, super_incubators: 10,
       incubators: 5, Incense: 10, Pokeradar: 10, patreon_tokens: 500,
+      'Cooldown Machine': 50, 'Ability Capsule': 1, 'Ability Patch': 1,
     },
   },
   shiny: {
-    shinyCharms: 1, amuletCoins: 4, incenseBonus: 300,
+    shinyCharms: 1, amuletCoins: 4, incenseBonus: 300, megaChamberDiscount: 0.3,
+    marketListingSlots: 5, releaseLocks: 10, marketTax: 0,
     dailyTokens: 150, dailyCoins: 1000000,
     monthly: {
       coins: 15000000, masterballs: 15, rare_candies: 150, eggs: 100, super_incubators: 25,
       incubators: 5, Incense: 10, Pokeradar: 10, patreon_tokens: 2000,
+      'Cooldown Machine': 110, 'Ability Capsule': 3, 'Ability Patch': 2,
     },
   },
   golden: {
@@ -1372,6 +1701,7 @@ const PATREON_TIER_DELTAS = {
     monthly: {
       coins: 15000000, masterballs: 15, rare_candies: 150, eggs: 250, super_incubators: 75,
       incubators: 5, Incense: 10, Pokeradar: 10, 'Boss Coin': 1, patreon_tokens: 6000,
+      'Cooldown Machine': 300, 'Ability Capsule': 10, 'Ability Patch': 5,
     },
   },
 };
@@ -1380,7 +1710,13 @@ const PATREON_TIER_PERKS = (() => {
   let acc = { ...NO_PATREON_PERKS };
   for (const key of PATREON_TIER_ORDER) {
     const delta = PATREON_TIER_DELTAS[key];
-    acc = { ...acc, ...delta, dailyCoinMult: Math.max(acc.dailyCoinMult, delta.dailyCoinMult || 1) };
+    acc = {
+      ...acc,
+      ...delta,
+      dailyCoinMult: Math.max(acc.dailyCoinMult, delta.dailyCoinMult || 1),
+      releaseLocks: acc.releaseLocks + (delta.releaseLocks || 0),
+      marketListingSlots: acc.marketListingSlots + (delta.marketListingSlots || 0),
+    };
     result[key] = Object.freeze({ ...acc });
   }
   return Object.freeze(result);
@@ -1798,6 +2134,7 @@ db.exec(`
 
 const QUEST_REROLL_COST = 2500;
 const QUEST_SLOTS = 3;
+const QUEST_REFRESH_WAIT_MS = 2 * 60 * 60 * 1000;
 const QUEST_EXTRA_REWARDS = ['reward_masterballs', 'reward_ultraballs', 'reward_grazz', 'reward_items'];
 const QUEST_REWARD_ITEM_FIELDS = {
   Pokeball: 'pokeballs',
@@ -1836,7 +2173,8 @@ function writeQuestTemplate(questId, template) {
     UPDATE active_quests
     SET quest_type = ?, target_type = ?, progress = 0, target = ?,
       reward_coins = ?, reward_candies = ?, reward_lootboxes = ?,
-      reward_masterballs = ?, reward_ultraballs = ?, reward_grazz = ?, reward_items = ?
+      reward_masterballs = ?, reward_ultraballs = ?, reward_grazz = ?, reward_items = ?,
+      refresh_at = 0
     WHERE id = ?
   `).run(
     template.quest_type,
@@ -1904,6 +2242,10 @@ function getUserQuestSlots(userId) {
   return (PATREON_TIER_PERKS[getUser(userId).patreon_tier] || NO_PATREON_PERKS).questSlots;
 }
 
+function getUserQuestRefreshWait(userId) {
+  return Math.round(QUEST_REFRESH_WAIT_MS * getPatreonPerks(userId).questRefreshMultiplier);
+}
+
 // Only slots within the user's current tier allowance are returned, so a lapsed
 // Patreon keeps their extra quests stored but cannot see or progress them.
 function ensureUserQuests(userId) {
@@ -1913,6 +2255,13 @@ function ensureUserQuests(userId) {
     'SELECT * FROM active_quests WHERE user_id = ? ORDER BY slot'
   ).all(userId);
   const existingSlots = new Set(quests.map((quest) => quest.slot));
+  const now = Date.now();
+  for (const quest of quests) {
+    if (quest.refresh_at > 0 && quest.refresh_at <= now) {
+      const fresh = QUEST_TEMPLATES[Math.floor(Math.random() * QUEST_TEMPLATES.length)];
+      writeQuestTemplate(quest.id, fresh);
+    }
+  }
   for (let slot = 1; slot <= allowedSlots; slot += 1) {
     if (existingSlots.has(slot)) continue;
     const template = QUEST_TEMPLATES[(slot - 1) % QUEST_TEMPLATES.length];
@@ -2047,6 +2396,7 @@ function advanceQuestProgress(userId, event = {}) {
     const quests = ensureUserQuests(userId);
     const completed = [];
     for (const quest of quests) {
+      if (quest.refresh_at > 0) continue;
       let amount = 0;
       if (quest.quest_type === 'encounter_amount') amount = encounters;
       else if (quest.quest_type === 'encounter_type'
@@ -2081,6 +2431,7 @@ function advanceQuestProgress(userId, event = {}) {
       }
 
       const rewardCoins = awardCoinsWithBoost(userId, quest.reward_coins).finalAmount;
+      const refreshAt = Date.now() + getUserQuestRefreshWait(userId);
       incrementUser(userId, {
         rare_candies: quest.reward_candies,
         lootboxes: quest.reward_lootboxes,
@@ -2100,10 +2451,11 @@ function advanceQuestProgress(userId, event = {}) {
       } finally {
         suppressQuestItemTracking = false;
       }
-      const fresh = QUEST_TEMPLATES[Math.floor(Math.random() * QUEST_TEMPLATES.length)];
-      writeQuestTemplate(quest.id, fresh);
+      db.prepare('UPDATE active_quests SET progress = target, refresh_at = ? WHERE id = ?')
+        .run(refreshAt, quest.id);
       completed.push({
         slot: quest.slot,
+        refresh_at: refreshAt,
         reward_coins: rewardCoins,
         reward_candies: quest.reward_candies,
         reward_lootboxes: quest.reward_lootboxes,
@@ -2120,6 +2472,82 @@ function advanceQuestProgress(userId, event = {}) {
 function calculateStat(base, iv, level, isHp = false) {
   if (isHp) return Math.floor(((2 * base + iv) * level) / 100) + level + 10;
   return Math.floor(((2 * base + iv) * level) / 100) + 5;
+}
+
+const DUPLICATE_CATCH_STATE_FIELDS = [
+  'experience',
+  'level',
+  'hp_iv',
+  'atk_iv',
+  'def_iv',
+  'spd_iv',
+  'hp',
+  'max_hp',
+  'atk',
+  'def',
+  'spd',
+  'moves',
+  'sketched_moves',
+  'held_item',
+];
+
+function syncDuplicateCatchState(userId, catchId) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(catchId) || catchId <= 0) {
+    throw new TypeError('catchId must be a positive safe integer.');
+  }
+  const source = db.prepare(`
+    SELECT pokemon_id, is_shiny, is_golden, ${DUPLICATE_CATCH_STATE_FIELDS.join(', ')}
+    FROM catches
+    WHERE id = ? AND user_id = ?
+  `).get(catchId, userId);
+  if (!source) return false;
+  const assignments = DUPLICATE_CATCH_STATE_FIELDS.map((field) => `${field} = ?`).join(', ');
+  db.prepare(`
+    UPDATE catches
+    SET ${assignments}
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+  `).run(
+    ...DUPLICATE_CATCH_STATE_FIELDS.map((field) => source[field]),
+    userId,
+    source.pokemon_id,
+    source.is_shiny,
+    source.is_golden
+  );
+  return true;
+}
+
+function syncNewCatchState(userId, catchId) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(catchId) || catchId <= 0) {
+    throw new TypeError('catchId must be a positive safe integer.');
+  }
+  const identity = db.prepare(`
+    SELECT pokemon_id, is_shiny, is_golden
+    FROM catches
+    WHERE id = ? AND user_id = ?
+  `).get(catchId, userId);
+  if (!identity) return false;
+  const matchesIdentity = (pokemon) => pokemon
+    && pokemon.pokemon_id === identity.pokemon_id
+    && pokemon.is_shiny === identity.is_shiny
+    && pokemon.is_golden === identity.is_golden;
+  const buddyCatchId = getUser(userId).buddy_catch_id;
+  const buddy = buddyCatchId
+    ? db.prepare('SELECT id, pokemon_id, is_shiny, is_golden FROM catches WHERE id = ? AND user_id = ?')
+      .get(buddyCatchId, userId)
+    : null;
+  const firstCopy = db.prepare(`
+    SELECT id, pokemon_id, is_shiny, is_golden
+    FROM catches
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ? AND id != ?
+    ORDER BY id
+    LIMIT 1
+  `).get(userId, identity.pokemon_id, identity.is_shiny, identity.is_golden, catchId);
+  const sourceId = matchesIdentity(buddy)
+    ? buddy.id
+    : firstCopy?.id || catchId;
+  return syncDuplicateCatchState(userId, sourceId);
 }
 
 function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false) {
@@ -2180,6 +2608,7 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
       null,
       JSON.stringify(startingMoves)
     );
+    syncNewCatchState(userId, Number(result.lastInsertRowid));
 
     if (recordSeen) {
       db.prepare(`
@@ -2380,7 +2809,12 @@ function getPokemonLearnset(catchId, userId) {
     WHERE catches.id = ? AND catches.user_id = ?
   `).get(catchId, userId);
   if (!pokemon) return null;
-  const base = getSpeciesLearnset(pokemon.species_id, pokemon.pokemon_id);
+  const gmaxMoves = getSpeciesGmaxMoves(pokemon.species_id);
+  const base = [
+    ...getSpeciesLearnset(pokemon.species_id),
+    ...getSpeciesLearnset(pokemon.species_id, pokemon.pokemon_id),
+    ...gmaxMoves,
+  ];
   return {
     pokemon,
     moves: [...new Set([...base, ...parseSketchedMoves(pokemon.sketched_moves)])],
@@ -2417,6 +2851,7 @@ function recordSketchedMove(catchId, userId, moveSlug) {
     equipped = [...new Set(equipped)].slice(0, 4);
     db.prepare('UPDATE catches SET moves = ?, sketched_moves = ? WHERE id = ? AND user_id = ?')
       .run(JSON.stringify(equipped), JSON.stringify(sketched), catchId, userId);
+    syncDuplicateCatchState(userId, catchId);
     return true;
   }).immediate();
 }
@@ -2451,8 +2886,17 @@ function setBuddyMoves(userId, moveNames) {
     }
     db.prepare('UPDATE catches SET moves = ? WHERE id = ? AND user_id = ?')
       .run(JSON.stringify(normalizedMoves), buddyId, userId);
+    syncDuplicateCatchState(userId, buddyId);
     return { moves: normalizedMoves };
   }).immediate();
+}
+
+const BUDDY_MOVE_CHANGE_BASE_COST = 50000;
+
+function getBuddyMoveChangeCost(userId) {
+  return Math.floor(
+    BUDDY_MOVE_CHANGE_BASE_COST * (1 - getPatreonPerks(userId).moveCostDiscount)
+  );
 }
 
 function setBuddyMoveSlot(userId, slot, moveName) {
@@ -2481,9 +2925,49 @@ function setBuddyMoveSlot(userId, slot, moveName) {
     if (currentMoves.some((move, index) => index !== slot - 1 && move === knownMove)) {
       return { error: 'duplicate_move' };
     }
+    if (currentMoves[slot - 1] === knownMove) {
+      return { error: 'unchanged' };
+    }
+    const cost = getBuddyMoveChangeCost(userId);
+    const user = getUser(userId);
+    if (user.coins < cost) return { error: 'insufficient_coins', cost, coins: user.coins };
+    incrementUser(userId, { coins: -cost });
     currentMoves[slot - 1] = knownMove;
     db.prepare('UPDATE catches SET moves = ? WHERE id = ? AND user_id = ?')
       .run(JSON.stringify(currentMoves), buddyId, userId);
+    syncDuplicateCatchState(userId, buddyId);
+    return { moves: currentMoves, cost };
+  }).immediate();
+}
+
+function swapBuddyMoveSlots(userId, firstSlot, secondSlot) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(firstSlot) || !Number.isSafeInteger(secondSlot)
+      || firstSlot < 1 || firstSlot > 4 || secondSlot < 1 || secondSlot > 4) {
+    throw new TypeError('Move slots must be between 1 and 4.');
+  }
+  return db.transaction(() => {
+    const buddyId = getUser(userId).buddy_catch_id;
+    if (!buddyId) return { error: 'no_buddy' };
+    const learnset = getPokemonLearnset(buddyId, userId);
+    if (!learnset) return { error: 'no_buddy' };
+    const slotCount = Math.min(4, learnset.moves.length);
+    if (firstSlot > slotCount || secondSlot > slotCount) {
+      return { error: 'invalid_slot', slotCount };
+    }
+    if (firstSlot === secondSlot) return { error: 'unchanged' };
+
+    const currentMoves = JSON.parse(learnset.pokemon.moves || '[]');
+    while (currentMoves.length < 4) {
+      const nextMove = learnset.moves.find((move) => !currentMoves.includes(move));
+      if (!nextMove) break;
+      currentMoves.push(nextMove);
+    }
+    [currentMoves[firstSlot - 1], currentMoves[secondSlot - 1]] =
+      [currentMoves[secondSlot - 1], currentMoves[firstSlot - 1]];
+    db.prepare('UPDATE catches SET moves = ? WHERE id = ? AND user_id = ?')
+      .run(JSON.stringify(currentMoves), buddyId, userId);
+    syncDuplicateCatchState(userId, buddyId);
     return { moves: currentMoves };
   }).immediate();
 }
@@ -2500,6 +2984,31 @@ db.exec(`
     npc_index INTEGER NOT NULL
   );
 `);
+
+const ICON_DROP_TEST_USER_ID = '1514082847609061541';
+db.prepare(`
+  INSERT OR IGNORE INTO bot_settings (key, value)
+  VALUES (?, 'pending')
+`).run(`force_next_npc_icon_drop:${ICON_DROP_TEST_USER_ID}`);
+
+function grantGuaranteedBattleIconDrop(userId, preferredIndex, totalIcons) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(preferredIndex) || preferredIndex < 0
+      || !Number.isSafeInteger(totalIcons) || totalIcons <= 0
+      || preferredIndex >= totalIcons) {
+    throw new TypeError('A valid preferred icon index and positive icon count are required.');
+  }
+  return db.transaction(() => {
+    const key = `force_next_npc_icon_drop:${userId}`;
+    if (db.prepare('SELECT value FROM bot_settings WHERE key = ?').get(key)?.value !== 'pending') {
+      return null;
+    }
+    if (getUnlockedBattleIcons(userId).includes(preferredIndex)
+        || !unlockBattleIcon(userId, preferredIndex)) return null;
+    db.prepare('UPDATE bot_settings SET value = ? WHERE key = ?').run('done', key);
+    return preferredIndex;
+  }).immediate();
+}
 
 function unlockBattleIcon(userId, npcIndex) {
   assertUserId(userId);
@@ -2807,6 +3316,7 @@ function megaEvolvePokemon(userId, query) {
       pokemon.id,
       userId
     );
+    syncDuplicateCatchState(userId, pokemon.id);
     return {
       pokemon: { ...pokemon, pokemon_id: megaForm.id, name: megaForm.name, rarity: 'Mega' },
       stone: config.rewardStone,
@@ -2823,6 +3333,36 @@ const ROTOM_ITEMS = Object.freeze([
   'Rotom Lawnmower',
   'Rotom Washer',
 ]);
+const SPECIAL_USER_ITEM_NAMES = Object.freeze([
+  'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
+  'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
+]);
+
+function isSupportedUserItemName(itemName) {
+  return Boolean(
+    EVOLUTION_ITEMS[itemName]
+    || BOXES[itemName]
+    || VOTE_BOXES[itemName]
+    || getPromoItemNames().includes(itemName)
+    || QUEST_ITEM_NAMES.has(itemName)
+    || ROTOM_ITEMS.includes(itemName)
+    || SPECIAL_USER_ITEM_NAMES.includes(itemName)
+  );
+}
+
+function findUserItemName(query) {
+  if (typeof query !== 'string' || !query.trim()) return null;
+  const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return [
+    ...Object.keys(EVOLUTION_ITEMS),
+    ...Object.keys(BOXES),
+    ...Object.keys(VOTE_BOXES),
+    ...getPromoItemNames(),
+    ...QUEST_ITEM_NAMES,
+    ...ROTOM_ITEMS,
+    ...SPECIAL_USER_ITEM_NAMES,
+  ].find((itemName) => itemName.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedQuery) || null;
+}
 
 function getUserItems(userId) {
   assertUserId(userId);
@@ -2833,11 +3373,7 @@ function getUserItems(userId) {
 
 function addUserItem(userId, itemName, amount = 1) {
   assertUserId(userId);
-  if (!EVOLUTION_ITEMS[itemName] && !BOXES[itemName] && !VOTE_BOXES[itemName]
-      && !getPromoItemNames().includes(itemName)
-      && !QUEST_ITEM_NAMES.has(itemName) && !ROTOM_ITEMS.includes(itemName)
-      && !['Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin'].includes(itemName)
-      && itemName !== 'Mega Bracelet') {
+  if (!isSupportedUserItemName(itemName)) {
     throw new TypeError(`Unknown item: ${itemName}.`);
   }
   if (!Number.isSafeInteger(amount) || amount <= 0) {
@@ -2867,6 +3403,30 @@ function takeUserItem(userId, itemName, amount = 1) {
   return db.prepare(
     'UPDATE user_items SET amount = amount - ? WHERE user_id = ? AND item_name = ? AND amount >= ?'
   ).run(amount, userId, itemName, amount).changes > 0;
+}
+
+function changePokemonAbility(userId, catchId, ability, itemName) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(catchId) || catchId <= 0) {
+    throw new TypeError('Catch ID must be a positive integer.');
+  }
+  if (typeof ability !== 'string' || !ability.trim()) {
+    throw new TypeError('Ability must be a non-empty string.');
+  }
+  if (!['Ability Capsule', 'Ability Patch'].includes(itemName)) {
+    throw new TypeError('Ability changes require an Ability Capsule or Ability Patch.');
+  }
+  return db.transaction(() => {
+    const pokemon = db.prepare(
+      'SELECT id, ability FROM catches WHERE id = ? AND user_id = ?'
+    ).get(catchId, userId);
+    if (!pokemon) return { error: 'pokemon_not_found' };
+    if (pokemon.ability === ability) return { error: 'already_has_ability', ability };
+    if (!takeUserItem(userId, itemName)) return { error: 'item_not_owned', itemName };
+    db.prepare('UPDATE catches SET ability = ? WHERE id = ? AND user_id = ?')
+      .run(ability, catchId, userId);
+    return { ability, itemName };
+  }).immediate();
 }
 
 function resolveSpeciesEvolution(fromSpeciesId, toSpeciesId, catchRow) {
@@ -2918,6 +3478,7 @@ function applyPokemonEvolution(userId, row, target, itemName = null, consumesHel
     row.id,
     userId
   );
+  syncDuplicateCatchState(userId, row.id);
   return {
     itemName,
     from: row.name,
@@ -3048,6 +3609,7 @@ function holdEvolutionItem(userId, itemQuery, pokemonQuery) {
     if (!takeUserItem(userId, itemName)) return { error: 'no_item', itemName };
     db.prepare('UPDATE catches SET held_item = ? WHERE id = ? AND user_id = ?')
       .run(itemName, target.id, userId);
+    syncDuplicateCatchState(userId, target.id);
     return { itemName, pokemonName: target.name };
   }).immediate();
 }
@@ -3061,6 +3623,7 @@ function unholdEvolutionItem(userId, pokemonQuery) {
     if (!target) return { error: 'nothing_held' };
     db.prepare('UPDATE catches SET held_item = NULL WHERE id = ? AND user_id = ?')
       .run(target.id, userId);
+    syncDuplicateCatchState(userId, target.id);
     addUserItem(userId, target.held_item);
     return { itemName: target.held_item, pokemonName: target.name };
   }).immediate();
@@ -3248,11 +3811,29 @@ function getUserBuddyHistory(userId, sortBy = 'ivs') {
     ...mon,
     iv_percent: ((mon.hp_iv + mon.atk_iv + mon.def_iv + mon.spd_iv) / 124) * 100,
   }));
-  if (sortBy === 'num') return rows.sort((a, b) => a.pokemon_id - b.pokemon_id);
-  if (sortBy === 'stats' || sortBy === 'evs') {
-    return rows.sort((a, b) => (b.level * 1e6 + b.experience) - (a.level * 1e6 + a.experience));
+  const compareIv = (a, b) => b.iv_percent - a.iv_percent || b.id - a.id;
+  let compareRows = compareIv;
+  if (sortBy === 'num') {
+    compareRows = (a, b) => a.pokemon_id - b.pokemon_id || compareIv(a, b);
   }
-  return rows.sort((a, b) => b.iv_percent - a.iv_percent || b.id - a.id);
+  if (sortBy === 'stats' || sortBy === 'evs') {
+    compareRows = (a, b) =>
+      (b.level * 1e6 + b.experience) - (a.level * 1e6 + a.experience) || compareIv(a, b);
+  }
+  const uniqueBuddies = new Map();
+  for (const pokemon of rows.sort(compareRows)) {
+    const key = `${pokemon.pokemon_id}:${pokemon.is_shiny ? 1 : 0}:${pokemon.is_golden ? 1 : 0}`;
+    if (!uniqueBuddies.has(key)) uniqueBuddies.set(key, pokemon);
+  }
+  const activeBuddyId = getUser(userId).buddy_catch_id;
+  const activeBuddy = rows.find((pokemon) => pokemon.id === activeBuddyId);
+  if (activeBuddy) {
+    uniqueBuddies.set(
+      `${activeBuddy.pokemon_id}:${activeBuddy.is_shiny ? 1 : 0}:${activeBuddy.is_golden ? 1 : 0}`,
+      activeBuddy
+    );
+  }
+  return [...uniqueBuddies.values()].sort(compareRows);
 }
 
 function getUserTeam(userId) {
@@ -3279,6 +3860,9 @@ function getUserBuddy(userId) {
   `).get(buddyId, userId);
   if (!buddy) return null;
   if (buddy.is_golden) buddy.rarity = 'Golden';
+  buddy.nickname = db.prepare('SELECT value FROM bot_settings WHERE key = ?')
+    .get(`buddy_nickname:${userId}:${buddy.id}`)?.value || null;
+  buddy.display_name = buddy.nickname || buddy.name;
   const dexNumbers = getPokemonDexNumbersForForms().get(buddy.form_id);
   if (buddy.is_golden) {
     buddy.dex_number = getGoldenDexNumber(buddy.species_id);
@@ -3372,6 +3956,7 @@ function setUserBuddyByQuery(userId, query) {
     if (!pokemon) return null;
     updateUser(userId, { buddy_catch_id: pokemon.id });
     db.prepare('UPDATE catches SET ever_buddy = 1 WHERE id = ? AND user_id = ?').run(pokemon.id, userId);
+    syncDuplicateCatchState(userId, pokemon.id);
     return getUserBuddy(userId);
   }).immediate();
 }
@@ -3405,14 +3990,32 @@ function awardCatchExperience(userId, amount = 200) {
     }
     const team = user.team_exp_share ? getUserTeam(userId) : [];
     const recipientExperience = new Map();
-    if (user.buddy_catch_id) recipientExperience.set(user.buddy_catch_id, amount);
+    const recipientGroups = new Set();
+    if (user.buddy_catch_id) {
+      const buddy = db.prepare(`
+        SELECT pokemon_id, is_shiny, is_golden
+        FROM catches
+        WHERE id = ? AND user_id = ?
+      `).get(user.buddy_catch_id, userId);
+      if (buddy) {
+        const key = `${buddy.pokemon_id}:${buddy.is_shiny}:${buddy.is_golden}`;
+        const buddyIsOnTeam = team.some((pokemon) => pokemon.id === user.buddy_catch_id);
+        recipientExperience.set(
+          user.buddy_catch_id,
+          buddyIsOnTeam ? Math.floor(amount * 1.33) : amount
+        );
+        recipientGroups.add(key);
+      } else {
+        recipientExperience.set(user.buddy_catch_id, amount);
+      }
+    }
     if (user.team_exp_share) {
       for (const pokemon of team) {
-        const isBuddy = pokemon.id === user.buddy_catch_id;
-        recipientExperience.set(
-          pokemon.id,
-          isBuddy ? Math.floor(amount * 1.33) : Math.floor(amount / 3)
-        );
+        if (pokemon.id === user.buddy_catch_id) continue;
+        const key = `${pokemon.pokemon_id}:${pokemon.is_shiny}:${pokemon.is_golden}`;
+        if (recipientGroups.has(key)) continue;
+        recipientExperience.set(pokemon.id, Math.floor(amount / 3));
+        recipientGroups.add(key);
       }
     }
 
@@ -3461,6 +4064,20 @@ function awardCatchExperience(userId, amount = 200) {
     if (user.buddy_catch_id && awardedCatchIds.has(user.buddy_catch_id)) {
       incrementUser(userId, { buddy_exp: recipientExperience.get(user.buddy_catch_id) });
     }
+    const synchronizedGroups = new Set();
+    for (const catchId of [user.buddy_catch_id, ...awardedCatchIds]) {
+      if (!catchId) continue;
+      const identity = db.prepare(`
+        SELECT pokemon_id, is_shiny, is_golden
+        FROM catches
+        WHERE id = ? AND user_id = ?
+      `).get(catchId, userId);
+      if (!identity) continue;
+      const key = `${identity.pokemon_id}:${identity.is_shiny}:${identity.is_golden}`;
+      if (synchronizedGroups.has(key)) continue;
+      synchronizedGroups.add(key);
+      syncDuplicateCatchState(userId, catchId);
+    }
     return { awarded: awardedPokemon.length, pokemon: awardedPokemon, levelUps };
   }).immediate();
 }
@@ -3508,6 +4125,7 @@ function useRareCandy(userId, amount = 1) {
       SET experience = ?, level = ?, hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
       WHERE id = ? AND user_id = ?
     `).run(experience, level, hp, maxHp, atk, def, spd, catchId, userId);
+    syncDuplicateCatchState(userId, catchId);
     return { pokemon, levelsGained, level, experience };
   }).immediate();
 }
@@ -4056,7 +4674,9 @@ for (const form of worldBossForms) {
     formId: form.id,
     catchName: overrides.name || form.name,
     catchRarity: form.rarity,
-    maxHp: 2500000,
+    maxHp: form.id === 10190 || /eternatus-eternamax/i.test(form.slug)
+      ? 50000000
+      : 5000000,
     baseHp: form.base_hp,
     baseAtk: form.base_atk,
     baseDef: form.base_def,
@@ -4088,18 +4708,26 @@ function getActiveWorldBoss() {
   return db.prepare('SELECT * FROM world_boss WHERE is_active = 1 ORDER BY id DESC LIMIT 1').get() || null;
 }
 
-function spawnWorldBoss(template, spawnedBy = null) {
+function spawnWorldBoss(template, spawnedBy = null, spawnedByName = null) {
   if (!template || !WORLD_BOSS_POOL.some((boss) => boss.id === template.id)) {
     throw new TypeError('World Boss template must be selected from WORLD_BOSS_POOL.');
+  }
+  if (spawnedBy !== null && (typeof spawnedBy !== 'string' || !spawnedBy)) {
+    throw new TypeError('spawnedBy must be a non-empty user ID or null.');
+  }
+  if (spawnedByName !== null && (typeof spawnedByName !== 'string' || !spawnedByName.trim())) {
+    throw new TypeError('spawnedByName must be a non-empty username or null.');
   }
   return db.transaction(() => {
     db.prepare('UPDATE world_boss SET is_active = 0 WHERE is_active = 1').run();
     db.prepare('DELETE FROM boss_damage').run();
     db.prepare('DELETE FROM world_boss_announcement_posts').run();
     const result = db.prepare(`
-      INSERT INTO world_boss (name, current_hp, max_hp, image_url, is_active, spawned_by)
-      VALUES (?, ?, ?, ?, 1, ?)
-    `).run(template.name, template.maxHp, template.maxHp, template.img, spawnedBy);
+      INSERT INTO world_boss (
+        name, current_hp, max_hp, image_url, is_active, spawned_by, spawned_by_name
+      )
+      VALUES (?, ?, ?, ?, 1, ?, ?)
+    `).run(template.name, template.maxHp, template.maxHp, template.img, spawnedBy, spawnedByName);
     return db.prepare('SELECT * FROM world_boss WHERE id = ?').get(result.lastInsertRowid);
   }).immediate();
 }
@@ -4251,6 +4879,19 @@ function claimWorldBossReward(userId) {
   }).immediate();
 }
 
+const BASE_MARKET_LISTING_LIMIT = 15;
+function getMarketListingLimit(userId) {
+  assertUserId(userId);
+  return BASE_MARKET_LISTING_LIMIT + getPatreonPerks(userId).marketListingSlots;
+}
+
+function getUserMarketListingCount(userId) {
+  assertUserId(userId);
+  return db.prepare(
+    'SELECT COUNT(*) AS count FROM market WHERE seller_id = ?'
+  ).get(userId).count;
+}
+
 function listOnMarket(sellerId, catchId, price) {
   assertUserId(sellerId);
   if (!Number.isSafeInteger(catchId) || catchId <= 0
@@ -4259,6 +4900,11 @@ function listOnMarket(sellerId, catchId, price) {
   }
 
   return db.transaction(() => {
+    const listingLimit = getMarketListingLimit(sellerId);
+    const listingCount = getUserMarketListingCount(sellerId);
+    if (listingCount >= listingLimit) {
+      return { error: 'listing_limit', listingCount, listingLimit };
+    }
     const mon = db.prepare(
       'SELECT * FROM catches WHERE id = ? AND user_id = ?'
     ).get(catchId, sellerId);
@@ -4289,6 +4935,11 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price) {
   }
 
   return db.transaction(() => {
+    const listingLimit = getMarketListingLimit(sellerId);
+    const listingCount = getUserMarketListingCount(sellerId);
+    if (listingCount + amount > listingLimit) {
+      return { error: 'listing_limit', listingCount, listingLimit };
+    }
     const catches = db.prepare(`
       SELECT * FROM catches
       WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
@@ -4344,6 +4995,32 @@ function getMarketListingCount(search = null) {
   `).get(search, search).count;
 }
 
+function getUserMarketSales(userId, limit = 10, offset = 0) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(limit) || limit < 1
+      || !Number.isSafeInteger(offset) || offset < 0) {
+    throw new TypeError('Market sale limit and offset must be valid integers.');
+  }
+  return db.prepare(`
+    SELECT * FROM market_sales
+    WHERE seller_id = ?
+    ORDER BY id DESC
+    LIMIT ? OFFSET ?
+  `).all(userId, limit, offset);
+}
+
+function getUserMarketSaleSummary(userId) {
+  assertUserId(userId);
+  return db.prepare(`
+    SELECT COUNT(*) AS sale_count,
+      COALESCE(SUM(sale_price), 0) AS gross_amount,
+      COALESCE(SUM(tax_amount), 0) AS tax_amount,
+      COALESCE(SUM(payout_amount), 0) AS payout_amount
+    FROM market_sales
+    WHERE seller_id = ?
+  `).get(userId);
+}
+
 function clearMarketListings() {
   return db.transaction(() => {
     const playerListings = db.prepare(`
@@ -4360,7 +5037,7 @@ function clearMarketListings() {
     `);
     for (const listing of playerListings) {
       getUser(listing.seller_id);
-      restoreCatch.run(
+      const result = restoreCatch.run(
         listing.seller_id,
         listing.pokemon_id,
         listing.name,
@@ -4378,6 +5055,7 @@ function clearMarketListings() {
         listing.def,
         listing.spd
       );
+      syncNewCatchState(listing.seller_id, Number(result.lastInsertRowid));
     }
     const clearedCount = db.prepare('DELETE FROM market').run().changes;
     return { clearedCount, returnedCount: playerListings.length };
@@ -4403,13 +5081,14 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
       )
       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    const listings = [];
     for (let index = 0; index < quantity; index += 1) {
       const hpIv = Math.floor(Math.random() * 32);
       const atkIv = Math.floor(Math.random() * 32);
       const defIv = Math.floor(Math.random() * 32);
       const spdIv = Math.floor(Math.random() * 32);
       const maxHp = calculateStat(pokemon.base_hp, hpIv, 1, true);
-      insert.run(
+      const inserted = insert.run(
         sellerId,
         pokemon.id,
         pokemon.name,
@@ -4426,8 +5105,9 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
         calculateStat(pokemon.base_def, defIv, 1),
         calculateStat(pokemon.base_spd, spdIv, 1)
       );
+      listings.push(db.prepare('SELECT * FROM market WHERE id = ?').get(Number(inserted.lastInsertRowid)));
     }
-    return { pokemon, quantity, price, isShiny };
+    return { pokemon, quantity, price, isShiny, listings };
   }).immediate();
 }
 
@@ -4448,7 +5128,33 @@ function buyMarketItem(buyerId, listingId) {
     if (buyer.coins < item.price) return { error: 'Insufficient coins.' };
 
     incrementUser(buyerId, { coins: -item.price });
-    awardCoinsWithBoost(item.seller_id, item.price);
+    const isPlayerListing = item.seller_id !== null
+      && item.seller_id !== '999999999999999999';
+    const taxRate = isPlayerListing ? getPatreonPerks(item.seller_id).marketTax : 0;
+    const taxAmount = isPlayerListing ? Math.floor(item.price * taxRate) : 0;
+    const saleProceeds = item.price - taxAmount;
+    const coinAward = awardCoinsWithBoost(item.seller_id, saleProceeds);
+    if (isPlayerListing) {
+      db.prepare(`
+        INSERT INTO market_sales (
+          listing_id, seller_id, buyer_id, pokemon_id, name, rarity, is_shiny,
+          sale_price, tax_amount, tax_rate, payout_amount
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        item.id,
+        item.seller_id,
+        buyerId,
+        item.pokemon_id,
+        item.name,
+        item.rarity,
+        item.is_shiny,
+        item.price,
+        taxAmount,
+        Math.round(taxRate * 100),
+        coinAward.finalAmount
+      );
+    }
     db.prepare('DELETE FROM market WHERE id = ?').run(listingId);
     const newCatchId = saveCatch(buyerId, {
       id: item.pokemon_id,
@@ -4481,9 +5187,323 @@ function buyMarketItem(buyerId, listingId) {
       buyerId,
       newCatchId
     );
+    syncNewCatchState(buyerId, newCatchId);
 
-    return { success: true, item };
+    return {
+      success: true,
+      item,
+      sale: isPlayerListing
+        ? {
+          listingId: item.id,
+          salePrice: item.price,
+          taxAmount,
+          taxRate: Math.round(taxRate * 100),
+          payoutAmount: coinAward.finalAmount,
+          boostPercent: coinAward.boostPercent,
+        }
+        : null,
+    };
   }).immediate();
+}
+
+const TOKEN_ORDER_MAX_AMOUNT = 1000000;
+const TOKEN_ORDER_MAX_PRICE = 1000000000;
+const TOKEN_ORDER_DAY_MS = 24 * 60 * 60 * 1000;
+const TOKEN_SELL_FEE_RATE = 0.05;
+const TOKEN_PATRON_SELL_FEE_RATE = 0.025;
+
+function expirePatreonTokenOrdersInternal(now) {
+  const expired = db.prepare(`
+    SELECT id, user_id, side, remaining_amount, unit_price
+    FROM patreon_token_orders
+    WHERE status = 'open' AND expires_at <= ?
+  `).all(now);
+  for (const order of expired) {
+    if (order.side === 'buy') {
+      incrementUser(order.user_id, { coins: order.remaining_amount * order.unit_price });
+    } else {
+      incrementUser(order.user_id, { patreon_tokens: order.remaining_amount });
+    }
+    db.prepare(`
+      UPDATE patreon_token_orders
+      SET status = 'expired', remaining_amount = 0
+      WHERE id = ? AND status = 'open'
+    `).run(order.id);
+  }
+  return expired.length;
+}
+
+function expirePatreonTokenOrders(now = Date.now()) {
+  if (!Number.isSafeInteger(now) || now < 0) {
+    throw new TypeError('Token order expiry timestamp must be a non-negative safe integer.');
+  }
+  return db.transaction(() => expirePatreonTokenOrdersInternal(now)).immediate();
+}
+
+function recordPatreonTokenTrade({ buyOrderId, sellOrderId, buyerId, sellerId, amount, unitPrice, now }) {
+  db.prepare(`
+    INSERT INTO patreon_token_trades (
+      buy_order_id, sell_order_id, buyer_id, seller_id, amount, unit_price, total_coins, traded_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(buyOrderId, sellOrderId, buyerId, sellerId, amount, unitPrice, amount * unitPrice, now);
+}
+
+function createPatreonTokenOrder(userId, side, amount, unitPrice = null, now = Date.now()) {
+  assertUserId(userId);
+  if (!['buy', 'sell'].includes(side)) throw new TypeError('Token order side must be buy or sell.');
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > TOKEN_ORDER_MAX_AMOUNT) {
+    throw new TypeError(`Token order amount must be between 1 and ${TOKEN_ORDER_MAX_AMOUNT}.`);
+  }
+  if (unitPrice !== null
+      && (!Number.isSafeInteger(unitPrice) || unitPrice < 1 || unitPrice > TOKEN_ORDER_MAX_PRICE)) {
+    throw new TypeError(`Token order price must be between 1 and ${TOKEN_ORDER_MAX_PRICE}.`);
+  }
+  if (!Number.isSafeInteger(now) || now < 0) {
+    throw new TypeError('Token order timestamp must be a non-negative safe integer.');
+  }
+
+  return db.transaction(() => {
+    expirePatreonTokenOrdersInternal(now);
+    const user = getUser(userId);
+    const isPatron = Boolean(user.has_patreon || user.patreon_tier);
+    const feeRate = isPatron ? TOKEN_PATRON_SELL_FEE_RATE : TOKEN_SELL_FEE_RATE;
+    const expiresAt = now + TOKEN_ORDER_DAY_MS * (isPatron ? 5 : 2);
+    let resolvedPrice = unitPrice;
+
+    if (side === 'buy') {
+      const marketOrder = unitPrice === null;
+      if (marketOrder) {
+        const asks = db.prepare(`
+          SELECT * FROM patreon_token_orders
+          WHERE side = 'sell' AND status = 'open' AND expires_at > ? AND user_id != ?
+          ORDER BY unit_price ASC, id ASC
+        `).all(now, userId);
+        if (!asks.length) return { error: 'no_sell_orders' };
+        let remaining = amount;
+        let totalCost = 0;
+        const fills = [];
+        for (const ask of asks) {
+          if (remaining === 0) break;
+          const affordable = Math.floor((user.coins - totalCost) / ask.unit_price);
+          const quantity = Math.min(remaining, ask.remaining_amount, affordable);
+          if (quantity < 1) break;
+          totalCost += quantity * ask.unit_price;
+          remaining -= quantity;
+          fills.push({ ask, quantity });
+        }
+        if (!fills.length) return { error: 'insufficient_coins' };
+        if (!Number.isSafeInteger(totalCost)) return { error: 'amount_too_large' };
+        incrementUser(userId, { coins: -totalCost });
+        let filled = 0;
+        for (const { ask, quantity } of fills) {
+          const orderRemaining = ask.remaining_amount - quantity;
+          const total = quantity * ask.unit_price;
+          db.prepare(`
+            UPDATE patreon_token_orders SET remaining_amount = ?, status = ?
+            WHERE id = ? AND status = 'open'
+          `).run(orderRemaining, orderRemaining === 0 ? 'filled' : 'open', ask.id);
+          incrementUser(ask.user_id, { coins: total });
+          incrementUser(userId, { patreon_tokens: quantity });
+          recordPatreonTokenTrade({
+            buyOrderId: null, sellOrderId: ask.id, buyerId: userId, sellerId: ask.user_id,
+            amount: quantity, unitPrice: ask.unit_price, now,
+          });
+          filled += quantity;
+        }
+        return {
+          side,
+          amount,
+          price: Math.round(totalCost / filled),
+          filled,
+          remaining: 0,
+          unfilled: amount - filled,
+          order: null,
+          feeAmount: 0,
+        };
+      }
+
+      let remaining = amount;
+      let filled = 0;
+      let spentCoins = 0;
+      const asks = db.prepare(`
+        SELECT * FROM patreon_token_orders
+        WHERE side = 'sell' AND status = 'open' AND expires_at > ?
+          AND unit_price <= ? AND user_id != ?
+        ORDER BY unit_price ASC, id ASC
+      `).all(now, resolvedPrice, userId);
+      const fills = [];
+      for (const ask of asks) {
+        if (remaining === 0) break;
+        const affordable = Math.floor((user.coins - spentCoins) / ask.unit_price);
+        const quantity = Math.min(remaining, ask.remaining_amount, affordable);
+        if (quantity < 1) break;
+        const total = quantity * ask.unit_price;
+        if (!Number.isSafeInteger(total)) throw new Error('Token market trade value exceeded safe integer range.');
+        fills.push({ ask, quantity, total });
+        remaining -= quantity;
+        filled += quantity;
+        spentCoins += total;
+      }
+
+      const reservedCoins = remaining * resolvedPrice;
+      if (!Number.isSafeInteger(reservedCoins)) return { error: 'amount_too_large' };
+      const canReserveBuyOrder = remaining > 0 && user.coins - spentCoins >= reservedCoins;
+      if (!filled && !canReserveBuyOrder) return { error: 'insufficient_coins' };
+      const totalCoins = spentCoins + (canReserveBuyOrder ? reservedCoins : 0);
+      if (totalCoins > 0) incrementUser(userId, { coins: -totalCoins });
+
+      for (const { ask, quantity, total } of fills) {
+        const orderRemaining = ask.remaining_amount - quantity;
+        db.prepare(`
+          UPDATE patreon_token_orders SET remaining_amount = ?, status = ?
+          WHERE id = ? AND status = 'open'
+        `).run(orderRemaining, orderRemaining === 0 ? 'filled' : 'open', ask.id);
+        incrementUser(ask.user_id, { coins: total });
+        incrementUser(userId, { patreon_tokens: quantity });
+        recordPatreonTokenTrade({
+          buyOrderId: null, sellOrderId: ask.id, buyerId: userId, sellerId: ask.user_id,
+          amount: quantity, unitPrice: ask.unit_price, now,
+        });
+      }
+      let order = null;
+      if (canReserveBuyOrder) {
+        const inserted = db.prepare(`
+          INSERT INTO patreon_token_orders (
+            user_id, side, amount, remaining_amount, unit_price, fee_rate, created_at, expires_at
+          )
+          VALUES (?, 'buy', ?, ?, ?, 0, ?, ?)
+        `).run(userId, amount, remaining, resolvedPrice, now, expiresAt);
+        order = db.prepare('SELECT * FROM patreon_token_orders WHERE id = ?').get(Number(inserted.lastInsertRowid));
+      }
+      return {
+        side,
+        amount,
+        price: resolvedPrice,
+        filled,
+        averagePrice: filled ? Math.round(spentCoins / filled) : null,
+        remaining: order?.remaining_amount || 0,
+        unfilled: order ? 0 : remaining,
+        order,
+        feeAmount: 0,
+      };
+    }
+
+    if (resolvedPrice === null) return { error: 'sell_price_required' };
+    const matchingBids = db.prepare(`
+      SELECT * FROM patreon_token_orders
+      WHERE side = 'buy' AND status = 'open' AND expires_at > ?
+        AND unit_price >= ? AND user_id != ?
+      ORDER BY unit_price DESC, id ASC
+    `).all(now, resolvedPrice, userId);
+    let remaining = amount;
+    const fills = [];
+    for (const bid of matchingBids) {
+      if (remaining === 0) break;
+      const quantity = Math.min(remaining, bid.remaining_amount);
+      fills.push({ bid, quantity });
+      remaining -= quantity;
+    }
+    const feeAmount = Math.ceil(remaining * feeRate);
+    const requiredTokens = amount + feeAmount;
+    if (!Number.isSafeInteger(requiredTokens)) return { error: 'amount_too_large' };
+    if (user.patreon_tokens < requiredTokens) {
+      return { error: 'insufficient_tokens', required: requiredTokens, owned: user.patreon_tokens };
+    }
+    incrementUser(userId, { patreon_tokens: -requiredTokens });
+    let filled = 0;
+    for (const { bid, quantity } of fills) {
+      const orderRemaining = bid.remaining_amount - quantity;
+      const total = quantity * bid.unit_price;
+      if (!Number.isSafeInteger(total)) throw new Error('Token market trade value exceeded safe integer range.');
+      db.prepare(`
+        UPDATE patreon_token_orders SET remaining_amount = ?, status = ?
+        WHERE id = ? AND status = 'open'
+      `).run(orderRemaining, orderRemaining === 0 ? 'filled' : 'open', bid.id);
+      incrementUser(bid.user_id, { patreon_tokens: quantity });
+      incrementUser(userId, { coins: total });
+      recordPatreonTokenTrade({
+        buyOrderId: bid.id, sellOrderId: null, buyerId: bid.user_id, sellerId: userId,
+        amount: quantity, unitPrice: bid.unit_price, now,
+      });
+      filled += quantity;
+    }
+    let order = null;
+    if (remaining > 0) {
+      const inserted = db.prepare(`
+        INSERT INTO patreon_token_orders (
+          user_id, side, amount, remaining_amount, unit_price, fee_rate, fee_amount, created_at, expires_at
+        )
+        VALUES (?, 'sell', ?, ?, ?, ?, ?, ?, ?)
+      `).run(userId, amount, remaining, resolvedPrice, feeRate, feeAmount, now, expiresAt);
+      order = db.prepare('SELECT * FROM patreon_token_orders WHERE id = ?').get(Number(inserted.lastInsertRowid));
+    }
+    return { side, amount, price: resolvedPrice, filled, remaining: order?.remaining_amount || 0, order, feeAmount };
+  }).immediate();
+}
+
+function cancelPatreonTokenOrder(userId, orderId, now = Date.now()) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(orderId) || orderId < 1) {
+    throw new TypeError('Token order ID must be a positive safe integer.');
+  }
+  return db.transaction(() => {
+    expirePatreonTokenOrdersInternal(now);
+    const order = db.prepare(`
+      SELECT * FROM patreon_token_orders WHERE id = ? AND user_id = ? AND status = 'open'
+    `).get(orderId, userId);
+    if (!order) return null;
+    if (order.side === 'buy') {
+      incrementUser(userId, { coins: order.remaining_amount * order.unit_price });
+    } else {
+      incrementUser(userId, { patreon_tokens: order.remaining_amount });
+    }
+    db.prepare(`
+      UPDATE patreon_token_orders SET status = 'cancelled', remaining_amount = 0 WHERE id = ?
+    `).run(order.id);
+    return order;
+  }).immediate();
+}
+
+function getPatreonTokenOrderBook(side, limit = 10, now = Date.now()) {
+  if (!['buy', 'sell'].includes(side)) throw new TypeError('Token order book side must be buy or sell.');
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new TypeError('Token order book limit must be between 1 and 100.');
+  }
+  expirePatreonTokenOrders(now);
+  return db.prepare(`
+    SELECT id, user_id, remaining_amount, unit_price, expires_at
+    FROM patreon_token_orders
+    WHERE side = ? AND status = 'open' AND expires_at > ?
+    ORDER BY unit_price ${side === 'buy' ? 'DESC' : 'ASC'}, id ASC
+    LIMIT ?
+  `).all(side, now, limit);
+}
+
+function getUserPatreonTokenOrders(userId, now = Date.now()) {
+  assertUserId(userId);
+  expirePatreonTokenOrders(now);
+  return db.prepare(`
+    SELECT id, side, remaining_amount, unit_price, fee_amount, expires_at, created_at
+    FROM patreon_token_orders
+    WHERE user_id = ? AND status = 'open' AND expires_at > ?
+    ORDER BY id DESC
+  `).all(userId, now);
+}
+
+function getPatreonTokenMarketStats(now = Date.now()) {
+  const monthStart = new Date(now);
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  return db.prepare(`
+    SELECT COALESCE(SUM(amount), 0) AS volume,
+      COALESCE(SUM(total_coins), 0) AS total_coins,
+      CASE WHEN COALESCE(SUM(amount), 0) = 0 THEN 0
+        ELSE CAST(SUM(total_coins) AS REAL) / SUM(amount)
+      END AS average_price
+    FROM patreon_token_trades
+    WHERE traded_at >= ?
+  `).get(monthStart.getTime());
 }
 
 const DAILY_RESET_OFFSET_MS = 5 * 60 * 60 * 1000;
@@ -4491,6 +5511,104 @@ const DAILY_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 function getDailyResetDay(timestamp) {
   return Math.floor((timestamp - DAILY_RESET_OFFSET_MS) / DAILY_PERIOD_MS);
+}
+
+function recordDailyCatch(userId, username, timestamp = Date.now()) {
+  assertUserId(userId);
+  if (typeof username !== 'string' || !username.trim()) {
+    throw new TypeError('A non-empty username is required to record a daily catch.');
+  }
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    throw new TypeError('Catch timestamp must be a non-negative safe integer.');
+  }
+  const resetDay = getDailyResetDay(timestamp);
+  return db.transaction(() => {
+    db.prepare(`
+      INSERT INTO daily_catch_counts (reset_day, user_id, username, catches)
+      VALUES (?, ?, ?, 1)
+      ON CONFLICT(reset_day, user_id) DO UPDATE SET
+        username = excluded.username,
+        catches = daily_catch_counts.catches + 1
+    `).run(resetDay, userId, username.trim());
+    db.prepare('DELETE FROM daily_catch_counts WHERE reset_day < ?').run(resetDay);
+    return db.prepare(
+      'SELECT catches FROM daily_catch_counts WHERE reset_day = ? AND user_id = ?'
+    ).get(resetDay, userId).catches;
+  }).immediate();
+}
+
+function getDailyCatchLeaderboard(timestamp = Date.now()) {
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    throw new TypeError('Leaderboard timestamp must be a non-negative safe integer.');
+  }
+  return db.prepare(`
+    SELECT user_id, username, catches
+    FROM daily_catch_counts
+    WHERE reset_day = ?
+    ORDER BY catches DESC, username COLLATE NOCASE ASC, user_id ASC
+    LIMIT 10
+  `).all(getDailyResetDay(timestamp));
+}
+
+function recordWildEncounterCounter(userId, source) {
+  assertUserId(userId);
+  if (!['pokemon', 'fishing'].includes(source)) {
+    throw new TypeError('Encounter counter source must be pokemon or fishing.');
+  }
+  for (const category of ['legendary', 'shiny']) {
+    initializeEncounterCounter.run(userId, source, category);
+  }
+  db.prepare(`
+    UPDATE user_encounter_counters
+    SET encounters_since = encounters_since + 1
+    WHERE user_id = ? AND source = ?
+  `).run(userId, source);
+}
+
+function resetEncounterCounters(userId, source, categories, pokemonName, timestamp = Date.now()) {
+  assertUserId(userId);
+  if (!['pokemon', 'fishing'].includes(source)) {
+    throw new TypeError('Encounter counter source must be pokemon or fishing.');
+  }
+  if (!Array.isArray(categories) || categories.some((category) => !['legendary', 'shiny'].includes(category))) {
+    throw new TypeError('Encounter counter categories must be legendary or shiny.');
+  }
+  if (typeof pokemonName !== 'string' || !pokemonName.trim()) {
+    throw new TypeError('A Pokémon name is required to reset an encounter counter.');
+  }
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    throw new TypeError('Catch timestamp must be a non-negative safe integer.');
+  }
+  const uniqueCategories = [...new Set(categories)];
+  const update = db.prepare(`
+    UPDATE user_encounter_counters
+    SET encounters_since = 0, last_caught_at = ?, last_pokemon = ?, last_catcher_id = ?
+    WHERE user_id = ? AND source = ? AND category = ?
+  `);
+  db.transaction(() => {
+    for (const category of uniqueCategories) {
+      initializeEncounterCounter.run(userId, source, category);
+    }
+    for (const category of uniqueCategories) {
+      update.run(timestamp, pokemonName.trim(), userId, userId, source, category);
+    }
+  }).immediate();
+  return uniqueCategories;
+}
+
+function getEncounterCounters(userId) {
+  assertUserId(userId);
+  for (const source of ['pokemon', 'fishing']) {
+    for (const category of ['legendary', 'shiny']) {
+      initializeEncounterCounter.run(userId, source, category);
+    }
+  }
+  return db.prepare(`
+    SELECT source, category, encounters_since, last_caught_at, last_pokemon
+    FROM user_encounter_counters
+    WHERE user_id = ?
+    ORDER BY source, category
+  `).all(userId);
 }
 
 function getNextDailyReset(timestamp = Date.now()) {
@@ -5595,35 +6713,82 @@ function setWorldBossAnnouncementPost(bossId, guildId, channelId, messageId) {
   `).run(bossId, guildId, channelId, messageId);
 }
 
-function getChannelCatchRateBoost(guildId, channelId) {
-  if (typeof guildId !== 'string' || !guildId
+const GUILD_CHANNEL_CATCH_RATE_BOOSTS = new Map([
+  ['1560102297198006274', 5],
+]);
+
+function getChannelCatchRateBoost(userId, guildId, channelId) {
+  if (typeof userId !== 'string' || !userId
+      || typeof guildId !== 'string' || !guildId
       || typeof channelId !== 'string' || !channelId) {
     return 0;
   }
-  return db.prepare(`
+  const personalBoost = db.prepare(`
     SELECT 5 AS boost
     FROM channel_catch_rate_boosts
-    WHERE guild_id = ? AND channel_id = ?
-  `).get(guildId, channelId)?.boost || 0;
+    WHERE user_id = ? AND guild_id = ? AND channel_id = ?
+  `).get(userId, guildId, channelId)?.boost || 0;
+  return personalBoost + (GUILD_CHANNEL_CATCH_RATE_BOOSTS.get(guildId) || 0);
 }
 
-function setChannelCatchRateBoost(guildId, channelId, enabled) {
-  if (typeof guildId !== 'string' || !guildId
+function getBoostedChannels(userId) {
+  assertUserId(userId);
+  return db.prepare(`
+    SELECT guild_id, channel_id
+    FROM channel_catch_rate_boosts
+    WHERE user_id = ?
+    ORDER BY guild_id, channel_id
+  `).all(userId);
+}
+
+function removeAllChannelCatchRateBoosts(userId) {
+  assertUserId(userId);
+  return db.prepare(`
+    DELETE FROM channel_catch_rate_boosts
+    WHERE user_id = ?
+  `).run(userId).changes;
+}
+
+function addChannelCatchRateBoost(userId, guildId, channelId, limit = 10) {
+  if (typeof userId !== 'string' || !userId
+      || typeof guildId !== 'string' || !guildId
+      || typeof channelId !== 'string' || !channelId
+      || (limit !== null && (!Number.isSafeInteger(limit) || limit < 1))) {
+    throw new TypeError('Valid user/guild/channel IDs and a positive or unlimited channel limit are required.');
+  }
+  return db.transaction(() => {
+    const exists = db.prepare(`
+      SELECT 1 FROM channel_catch_rate_boosts
+      WHERE user_id = ? AND guild_id = ? AND channel_id = ?
+    `).get(userId, guildId, channelId);
+    if (exists) return 'already';
+    const count = db.prepare(`
+      SELECT COUNT(*) AS count FROM channel_catch_rate_boosts
+      WHERE user_id = ?
+    `).get(userId).count;
+    if (limit !== null && count >= limit) return 'limit';
+    db.prepare(`
+      INSERT INTO channel_catch_rate_boosts (user_id, guild_id, channel_id)
+      VALUES (?, ?, ?)
+    `).run(userId, guildId, channelId);
+    return 'added';
+  }).immediate();
+}
+
+function setChannelCatchRateBoost(userId, guildId, channelId, enabled) {
+  if (typeof userId !== 'string' || !userId
+      || typeof guildId !== 'string' || !guildId
       || typeof channelId !== 'string' || !channelId
       || typeof enabled !== 'boolean') {
-    throw new TypeError('Valid guild/channel IDs and a boolean setting are required.');
+    throw new TypeError('Valid user/guild/channel IDs and a boolean setting are required.');
   }
   if (enabled) {
-    db.prepare(`
-      INSERT OR IGNORE INTO channel_catch_rate_boosts (guild_id, channel_id)
-      VALUES (?, ?)
-    `).run(guildId, channelId);
-    return true;
+    return addChannelCatchRateBoost(userId, guildId, channelId) !== 'limit';
   }
   return db.prepare(`
     DELETE FROM channel_catch_rate_boosts
-    WHERE guild_id = ? AND channel_id = ?
-  `).run(guildId, channelId).changes > 0;
+    WHERE user_id = ? AND guild_id = ? AND channel_id = ?
+  `).run(userId, guildId, channelId).changes > 0;
 }
 
 function getPokemonFormBySlug(slug) {
@@ -5706,63 +6871,94 @@ const FACTION_TEAMS = {
   rocket: {
     id: 'rocket', name: 'Team Rocket', badge: '🚀', emoji: '<:teamrocketlogo:1560297373190725712>',
     emojiId: '1560297373190725712', emojiName: 'teamrocketlogo',
-    officers: 'Leader Giovanni, Admin Archer, Grunt Jessie & James',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: Rocket Grunt Male, Rocket Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: Ariana, Archer, Proton, Pretel\n' +
+      '<:leader:1560312904560025680> Leader: Giovanni',
     favoritePokemon: '👾 Persian, Meowth, Mewtwo',
     goals: 'Steal strong and rare Pokémon for global domination and criminal profit.',
   },
   magma: {
     id: 'magma', name: 'Team Magma', badge: '🌋', emoji: '<:teammagmalogo:1560297371479572480>',
     emojiId: '1560297371479572480', emojiName: 'teammagmalogo',
-    officers: 'Leader Maxie, Admin Tabitha, Admin Courtney',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: Magma Grunt Male, Magma Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: Courtney, Tabitha\n' +
+      '<:leader:1560312904560025680> Leader: Maxie',
     favoritePokemon: '👾 Groudon, Camerupt, Mightyena',
     goals: "Awaken ancient legendary power to expand the world's landmass.",
   },
   aqua: {
     id: 'aqua', name: 'Team Aqua', badge: '🌊', emoji: '<:teamaqualogo:1560297370174890015>',
     emojiId: '1560297370174890015', emojiName: 'teamaqualogo',
-    officers: 'Leader Archie, Admin Matt, Admin Shelly',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: Aqua Grunt Male, Aqua Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: Matt, Shelly\n' +
+      '<:leader:1560312904560025680> Leader: Archie',
     favoritePokemon: '👾 Kyogre, Sharpedo, Walrein',
     goals: 'Expand the global oceans to return the world to prehistoric beauty.',
   },
   galactic: {
     id: 'galactic', name: 'Team Galactic', badge: '🌌', emoji: '<:teamgalacticlogo:1560297368715534397>',
     emojiId: '1560297368715534397', emojiName: 'teamgalacticlogo',
-    officers: 'Leader Cyrus, Admin Mars, Admin Jupiter, Admin Saturn',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: Galactic Grunt Male, Galactic Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: Mars, Charon, Jupiter, Saturn\n' +
+      '<:leader:1560312904560025680> Leader: Cyrus',
     favoritePokemon: '👾 Dialga, Palkia, Weavile',
     goals: 'Create a brand new universe devoid of spirit, grief, and human emotion.',
   },
   plasma: {
     id: 'plasma', name: 'Team Plasma', badge: '🛡️', emoji: '<:teamplasmalogo:1560297367578738791>',
     emojiId: '1560297367578738791', emojiName: 'teamplasmalogo',
-    officers: 'Leader Ghetsis, King N, Sage Zinzolin, Colress',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: Plasma Grunt Male, Plasma Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: Plasma Admin Shadow, ' +
+      '<:kingn:1561066703906144286> Plasma Admin N\n' +
+      '<:leader:1560312904560025680> Leader: Ghetsis',
     favoritePokemon: '👾 Reshiram, Zekrom, Hydreigon',
     goals: 'Liberate Pokémon from trainers to monopolize total authority.',
   },
   flare: {
     id: 'flare', name: 'Team Flare', badge: '🔥', emoji: '<:teamflarelogo:1560297365540307036>',
     emojiId: '1560297365540307036', emojiName: 'teamflarelogo',
-    officers: 'Leader Lysandre, Scientist Xerosic, Admin Aliana, Admin Bryony',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: Flare Grunt Male, Flare Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: Flare Admin Male, Flare Admin Female\n' +
+      '<:leader:1560312904560025680> Leader: Lysandre',
     favoritePokemon: '👾 Yveltal, Xerneas, Pyroar, Malamar',
     goals: 'Purge imperfection to build a flawless, beautiful world of chosen elites.',
   },
   skull: {
     id: 'skull', name: 'Team Skull', badge: '💀', emoji: '<:teamskulllogo:1560297364793851934>',
     emojiId: '1560297364793851934', emojiName: 'teamskulllogo',
-    officers: 'Big Boss Guzma, Admin Plumeria, Enforcer Gladion',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: Skull Grunt Male, Skull Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: Plumeria\n' +
+      '<:leader:1560312904560025680> Leader: Guzma',
     favoritePokemon: '👾 Golisopod, Salazzle, Alolan Marowak',
     goals: 'Cause absolute chaos across the islands and reject the Island Challenge.',
   },
   yell: {
     id: 'yell', name: 'Team Yell', badge: '📣', emoji: '<:teamyelllogo:1560297363413794987>',
     emojiId: '1560297363413794987', emojiName: 'teamyelllogo',
-    officers: 'Gym Leader Piers, Rising Star Marnie, Yell Grunt Lead',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: Yell Grunt Male, Yell Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: Marnie\n' +
+      '<:leader:1560312904560025680> Leader: Piers',
     favoritePokemon: '👾 Obstagoon, Grimmsnarl, Morpeko',
     goals: 'Disrupt competitors and rally unwavering devotion to crown Marnie champion.',
   },
   star: {
     id: 'star', name: 'Team Star', badge: '⭐', emoji: '<:teamstarlogo:1560297361878552586>',
     emojiId: '1560297361878552586', emojiName: 'teamstarlogo',
-    officers: 'Big Boss Penny, Boss Giacomo, Boss Mela, Boss Atticus, Boss Ortega, Boss Eri',
+    npcs:
+      '<:grunt:1560312842039726150> Grunt: <:gruntfemale:1561091678759030784> Star Grunt Female, ' +
+      '<:gruntmale:1561091294795800596> Star Grunt Male\n' +
+      '<:admin:1560312876596461578> Admin: <:giacomo:1561091482046177330> Star Admin Giacomo, ' +
+      '<:mela:1561091314802495539> Star Admin Mela, <:atticus:1561091500010373221> Star Admin Atticus, ' +
+      '<:ortega:1561091237769908375> Star Admin Ortega, <:eri:1561091421488816160> Star Admin Eri\n' +
+      '<:leader:1560312904560025680> Leader: <:penny:1561053211102683146> Star Leader Penny',
     favoritePokemon: '👾 Revavroom, Kingambit, Armarouge, Ceruledge',
     goals: 'Stand against academy bullies, preserve camaraderie, and protect the Starmobiles.',
   },
@@ -5786,11 +6982,41 @@ const FACTION_DAILY_BALLS = [
   { key: 'mb', name: 'Masterball' },
 ];
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS faction_daily_balls (
+    faction_key TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    ball_key TEXT NOT NULL,
+    PRIMARY KEY (faction_key, day)
+  );
+`);
+
 function getDailyBall(factionKey = '', date = new Date()) {
   const day = Math.floor(date.getTime() / 86400000);
-  let hash = day;
-  for (const char of factionKey) hash = (hash * 31 + char.charCodeAt(0)) % 1000003;
-  return FACTION_DAILY_BALLS[hash % FACTION_DAILY_BALLS.length];
+  const storedBall = db.prepare(
+    'SELECT ball_key FROM faction_daily_balls WHERE faction_key = ? AND day = ?'
+  ).get(factionKey, day)?.ball_key;
+  if (storedBall) {
+    const ball = FACTION_DAILY_BALLS.find(({ key }) => key === storedBall);
+    if (!ball) throw new Error(`Unknown daily faction ball "${storedBall}".`);
+    return ball;
+  }
+
+  const previousBall = db.prepare(
+    'SELECT ball_key FROM faction_daily_balls WHERE faction_key = ? AND day = ?'
+  ).get(factionKey, day - 1)?.ball_key;
+  const availableBalls = FACTION_DAILY_BALLS.filter(({ key }) => key !== previousBall);
+  const chosenBall = availableBalls[Math.floor(Math.random() * availableBalls.length)];
+  db.prepare(`
+    INSERT OR IGNORE INTO faction_daily_balls (faction_key, day, ball_key)
+    VALUES (?, ?, ?)
+  `).run(factionKey, day, chosenBall.key);
+  const finalBall = db.prepare(
+    'SELECT ball_key FROM faction_daily_balls WHERE faction_key = ? AND day = ?'
+  ).get(factionKey, day).ball_key;
+  const ball = FACTION_DAILY_BALLS.find(({ key }) => key === finalBall);
+  if (!ball) throw new Error(`Unknown daily faction ball "${finalBall}".`);
+  return ball;
 }
 
 function getUserFaction(userId) {
@@ -5852,6 +7078,14 @@ module.exports = {
   db,
   getCooldownNotificationMode,
   setCooldownNotificationMode,
+  getRareSpawnNameHidden,
+  setRareSpawnNameHidden,
+  getMarketCompletionNotificationsEnabled,
+  setMarketCompletionNotificationsEnabled,
+  setBuddyNickname,
+  rerollBuddyIv,
+  renamePokemonForm,
+  updatePokemonSpriteLinks,
   SPECIAL_SPAWN_RESERVED_SPECIES,
   getFactionLeaders,
   FACTION_TEAMS,
@@ -5908,9 +7142,12 @@ module.exports = {
   setUserBuddyByQuery,
   getPokemonLearnset,
   getSpeciesLearnset,
+  getSpeciesGmaxMoves,
   recordSketchedMove,
   setBuddyMoves,
+  getBuddyMoveChangeCost,
   setBuddyMoveSlot,
+  swapBuddyMoveSlots,
   CB_CONFIG,
   getCatchbotData,
   upgradeCatchbot,
@@ -5920,6 +7157,7 @@ module.exports = {
   getLeagueProgress,
   clearLeagueChallenge,
   unlockBattleIcon,
+  grantGuaranteedBattleIconDrop,
   getUnlockedBattleIcons,
   getBattleIconRank,
   setSelectedBattleIcon,
@@ -5964,13 +7202,28 @@ module.exports = {
   claimWorldBossReward,
   listOnMarket,
   listPokemonOnMarket,
+  getMarketListingLimit,
+  getUserMarketListingCount,
   getMarketListings,
   getMarketListingCount,
+  getUserMarketSales,
+  getUserMarketSaleSummary,
   clearMarketListings,
   stockMarketPokemon,
   buyMarketItem,
+  expirePatreonTokenOrders,
+  createPatreonTokenOrder,
+  cancelPatreonTokenOrder,
+  getPatreonTokenOrderBook,
+  getUserPatreonTokenOrders,
+  getPatreonTokenMarketStats,
   getDailyResetDay,
   getNextDailyReset,
+  recordDailyCatch,
+  getDailyCatchLeaderboard,
+  recordWildEncounterCounter,
+  resetEncounterCounters,
+  getEncounterCounters,
   resetChecklistIfNewDay,
   trackEventCatch,
   recordEventCatch,
@@ -5992,6 +7245,9 @@ module.exports = {
   setWorldBossAnnouncementPost,
   setEventAnnouncementChannel,
   getChannelCatchRateBoost,
+  getBoostedChannels,
+  removeAllChannelCatchRateBoosts,
+  addChannelCatchRateBoost,
   setChannelCatchRateBoost,
   getPlayerClan,
   getClanPerkMultipliers,
@@ -6019,6 +7275,8 @@ module.exports = {
   getPokemonFormBySlug,
   getUserStatsSummary,
   getUserRegisteredCollections,
+  syncDuplicateCatchState,
+  syncNewCatchState,
   registerCollection,
   deleteCollection,
   setCollectionPrivacy,
@@ -6028,8 +7286,10 @@ module.exports = {
   setUserPokemonLockByQuery,
   ROTOM_ITEMS,
   addUserItem,
+  findUserItemName,
   findQuestItem,
   takeUserItem,
+  changePokemonAbility,
   holdEvolutionItem,
   unholdEvolutionItem,
   evolvePokemonWithItem,
