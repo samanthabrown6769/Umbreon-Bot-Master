@@ -8864,7 +8864,8 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin market stock <Pokémon|number> <quantity> <price> [shiny]\`\n` +
             `• \`${PREFIX}admin market clear confirm\` — Clear listings and return player Pokémon\n` +
             `• \`${PREFIX}admin return cb [@user]\` — Return CatchBot Pokémon\n` +
-            `• \`${PREFIX}admin icon @User <battle icon name|NPC number>\` — Unlock a battle icon for someone`
+            `• \`${PREFIX}admin icon @User <battle icon name|NPC number>\` — Unlock a battle icon for someone\n` +
+            `• \`${PREFIX}admin clan perks <@User|id> [bronze|silver|gold|diamond|amethyst|onyx|none]\` — Grant clan perks (default onyx)`
           ),
         ];
         return sendPagedEmbeds(message, adminPages, '🛠️ Admin Help');
@@ -9099,6 +9100,24 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           `Use \`${PREFIX}admin market setup\`, \`${PREFIX}admin market channel #channel\`, ` +
           `or \`${PREFIX}admin market channel off\`.`
+        );
+      }
+
+      if (command === 'admin' && subtype === 'clan' && action === 'perks') {
+        const targetId = message.mentions.users.first()?.id || args[2]?.match(/^\d{15,25}$/)?.[0];
+        const rankName = (args[3] || 'onyx').toLowerCase();
+        const rankIndex = rankName === 'none' ? 0 : CLAN_PERK_RANKS.indexOf(rankName) + 1;
+        if (!targetId || (rankName !== 'none' && rankIndex === 0)) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin clan perks <@User|id> [${CLAN_PERK_RANKS.join('|')}|none]\` (default onyx).`
+          );
+        }
+        if (!getPlayerClan(targetId)) {
+          return message.reply(`<@${targetId}> is not in a clan on this bot's database.`);
+        }
+        db.prepare('UPDATE clan_members SET perk_rank = ? WHERE user_id = ?').run(rankIndex, targetId);
+        return message.reply(
+          `✅ Set <@${targetId}>'s clan perks to **${rankName}** (rank ${rankIndex}).`
         );
       }
 
