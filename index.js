@@ -1878,7 +1878,7 @@ const PREMIERBALL_RATES = {
   Legendary: 55,
 };
 
-// Premierball uses fixed rates: event-checklist shinies 50%, any other shiny 100%.
+// Premierball uses fixed base rates (event-checklist shinies 50%, any other shiny 100%); clan and channel boosts still apply.
 function getBallCatchRate(ballKey, ball, target, displayRarity, baseCatchChance, clanBonus, channelBoost) {
   if (target.isExplore && ['pb', 'gb', 'ub', 'prb', 'mb'].includes(ballKey)) {
     const tableRarity = target.isShiny ? 'Shiny' : displayRarity;
@@ -1887,8 +1887,10 @@ function getBallCatchRate(ballKey, ball, target, displayRarity, baseCatchChance,
       : getCatchChance(getExploreCatchRate(ballKey, tableRarity), 0, clanBonus, channelBoost);
   }
   if (ballKey === 'prb') {
-    if (target.isShiny) return target.isEventShiny ? 50 : 100;
-    if (PREMIERBALL_RATES[displayRarity] !== undefined) return PREMIERBALL_RATES[displayRarity];
+    if (target.isShiny) return getCatchChance(target.isEventShiny ? 50 : 100, 0, clanBonus, channelBoost);
+    if (PREMIERBALL_RATES[displayRarity] !== undefined) {
+      return getCatchChance(PREMIERBALL_RATES[displayRarity], 0, clanBonus, channelBoost);
+    }
   }
   return ball.catchChance ?? getCatchChance(baseCatchChance, ball.bonus, clanBonus, channelBoost);
 }
