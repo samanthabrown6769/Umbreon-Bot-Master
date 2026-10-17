@@ -225,6 +225,7 @@ const {
   unholdEvolutionItem,
   evolvePokemonWithItem,
   evolvePokemonByLevel,
+  getTimeOfDayPhase,
   getEvolutionRoute,
   setGiveawayChannel,
   getGiveawayChannel,
@@ -17729,6 +17730,18 @@ client.on('messageCreate', async (message) => {
           })
           .setDescription(`${badges.join(' ')}\n\n• ${favoriteLine}\n• ${collectionLine}`)],
       });
+    }
+
+    if (command === 'time') {
+      const now = new Date();
+      const phase = getTimeOfDayPhase(now);
+      const phaseLabel = { day: '☀️ Day', dusk: '🌇 Dusk', night: '🌙 Night' }[phase];
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return message.reply(
+        `🕒 Bot time: **${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}** ` +
+        `(${zone}) — ${phaseLabel}\n` +
+        'Day: 06:00–17:00 • Dusk: 17:00–18:00 • Night: 18:00–06:00'
+      );
     }
 
     if (command === 'stats' || command === 's') {

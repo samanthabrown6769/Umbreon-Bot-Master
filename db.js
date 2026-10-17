@@ -7217,6 +7217,7 @@ function getFactionLeaders(factionKey, perRank = 2) {
 }
 
 module.exports = {
+  getTimeOfDayPhase,
   getEvolutionRoute,
   db,
   getCooldownNotificationMode,
