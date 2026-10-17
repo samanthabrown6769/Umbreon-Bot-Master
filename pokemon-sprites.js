@@ -88,6 +88,7 @@ const DIRECT_SHOWDOWN_SLUGS = new Set([
   'dudunsparce-two-segment',
   'dudunsparce-three-segment',
   'tapu-bulu',
+  'tapu-lele',  'kommo-o',
   'great-tusk',  'kommo-o',
   'urshifu-single-strike',
   'urshifu-rapid-strike',
