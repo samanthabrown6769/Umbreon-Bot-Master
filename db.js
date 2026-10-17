@@ -2598,6 +2598,36 @@ function syncNewCatchState(userId, catchId) {
   return syncDuplicateCatchState(userId, sourceId);
 }
 
+// Brings every group of identical catches (team, buddy, PC) to one shared state.
+// Source priority: buddy, then a team member, then the most experienced copy.
+function reconcileDuplicateCatchStates(userId = null) {
+  const stateKey = DUPLICATE_CATCH_STATE_FIELDS.map((field) => `COALESCE(${field}, '')`).join(" || '|' || ");
+  const groups = db.prepare(`
+    SELECT user_id, pokemon_id, is_shiny, is_golden
+    FROM catches
+    ${userId ? 'WHERE user_id = ?' : ''}
+    GROUP BY user_id, pokemon_id, is_shiny, is_golden
+    HAVING COUNT(*) > 1 AND COUNT(DISTINCT ${stateKey}) > 1
+  `).all(...(userId ? [userId] : []));
+  const pickSource = db.prepare(`
+    SELECT catches.id FROM catches
+    LEFT JOIN users ON users.buddy_catch_id = catches.id
+    WHERE catches.user_id = ? AND catches.pokemon_id = ? AND catches.is_shiny = ? AND catches.is_golden = ?
+    ORDER BY (users.buddy_catch_id IS NOT NULL) DESC, catches.in_team DESC,
+      catches.experience DESC, catches.id ASC
+    LIMIT 1
+  `);
+  db.transaction(() => {
+    for (const group of groups) {
+      const source = pickSource.get(group.user_id, group.pokemon_id, group.is_shiny, group.is_golden);
+      if (source) syncDuplicateCatchState(group.user_id, source.id);
+    }
+  })();
+  return groups.length;
+}
+
+reconcileDuplicateCatchStates();
+
 function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false) {
   assertUserId(userId);
   if (!pokemon || !Number.isSafeInteger(pokemon.id) || typeof pokemon.name !== 'string') {
@@ -7467,6 +7497,7 @@ module.exports = {
   getUserRegisteredCollections,
   syncDuplicateCatchState,
   syncNewCatchState,
+  reconcileDuplicateCatchStates,
   registerCollection,
   deleteCollection,
   setCollectionPrivacy,
