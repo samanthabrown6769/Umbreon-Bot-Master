@@ -8,7 +8,12 @@ const OUTPUT_DIR = path.join(ROOT, 'pokemon-database');
 const { regionalPokemonName } = require('../pokemon-names');
 const { loadPokemonDatabase } = require('../pokemon-database');
 const { getGoldenSpriteUrl } = require('../golden-pokemon');
-const { getGoldenDexNumber, getPokemonDexGroups, getPokemonDexNumbers } = require('../pokemon-dex-numbers');
+const {
+  getGoldenDexNumber,
+  getPokemonDexGroups,
+  getPokemonDexNumbers,
+  isGoldenFormSupported,
+} = require('../pokemon-dex-numbers');
 
 const catalog = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf8'));
 const rarityOverrides = JSON.parse(fs.readFileSync(RARITIES_PATH, 'utf8'));
@@ -86,6 +91,14 @@ for (const pokemon of catalog) {
       ...record,
       dex_number: getGoldenDexNumber(pokemon.species_id),
       sprite: getGoldenSpriteUrl(pokemon.species_id),
+      variant: 'golden',
+    });
+  } else if (isGoldenFormSupported(pokemon.species_id, pokemon.slug)) {
+    datasets['formes.json'].push({ ...record, dex_number: pokemon.species_id });
+    datasets['golden-dex.json'].push({
+      ...record,
+      dex_number: getGoldenDexNumber(pokemon.species_id, pokemon.slug),
+      sprite: getGoldenSpriteUrl(pokemon.species_id, pokemon.slug),
       variant: 'golden',
     });
   } else {

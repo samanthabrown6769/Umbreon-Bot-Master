@@ -1,4 +1,5 @@
 const { loadPokemonDatabase } = require('./pokemon-database');
+const { GOLDEN_REGIONAL_FORMS, isGoldenBaseForm } = require('./golden-pokemon');
 
 const FORM_DEX_STARTS = {
   mega: 4001,
@@ -116,9 +117,33 @@ function getPokemonDexNumbers(pokemonForms) {
   return numbers;
 }
 
-function getGoldenDexNumber(speciesId) {
+function getGoldenDexNumber(speciesId, formSlug = null) {
   if (!Number.isSafeInteger(speciesId) || speciesId <= 0 || speciesId > 1999) return null;
+  if (formSlug) {
+    const goldenForm = GOLDEN_REGIONAL_FORMS.get(formSlug);
+    if (goldenForm) return goldenForm.speciesId === speciesId ? goldenForm.dexNumber : null;
+    if (!isGoldenBaseForm(speciesId, formSlug)) return null;
+  }
   return GOLDEN_DEX_START - 1 + speciesId;
 }
 
-module.exports = { GOLDEN_DEX_START, getGoldenDexNumber, getPokemonDexGroups, getPokemonDexNumbers };
+function isGoldenFormSupported(speciesId, formSlug, isDefault = false) {
+  if (isDefault || isGoldenBaseForm(speciesId, formSlug)) return true;
+  const goldenForm = GOLDEN_REGIONAL_FORMS.get(formSlug);
+  return Boolean(goldenForm && goldenForm.speciesId === speciesId);
+}
+
+function isGoldenDexNumber(dexNumber) {
+  return Number.isSafeInteger(dexNumber)
+    && ((dexNumber >= GOLDEN_DEX_START && dexNumber < GOLDEN_DEX_START + 1999)
+      || [...GOLDEN_REGIONAL_FORMS.values()].some((form) => form.dexNumber === dexNumber));
+}
+
+module.exports = {
+  GOLDEN_DEX_START,
+  getGoldenDexNumber,
+  isGoldenFormSupported,
+  getPokemonDexGroups,
+  getPokemonDexNumbers,
+  isGoldenDexNumber,
+};

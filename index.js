@@ -311,7 +311,13 @@ const {
 const halloweenEvent = require('./events/halloween-2026');
 const { parseAmount } = require('./amounts');
 const { parseTradeMonInput } = require('./trade-parser');
-const { getPokemonDexNumbers, getGoldenDexNumber, GOLDEN_DEX_START } = require('./pokemon-dex-numbers');
+const {
+  getPokemonDexNumbers,
+  getGoldenDexNumber,
+  GOLDEN_DEX_START,
+  isGoldenFormSupported,
+  isGoldenDexNumber,
+} = require('./pokemon-dex-numbers');
 const { getPokemonShowdownSprite } = require('./pokemon-sprites');
 const battleFx = require('./battle-effects');
 const { runTurn, runSwitchTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves } = battleFx;
@@ -3329,7 +3335,7 @@ async function announceRareSpawn(guild, user, pokemon) {
       })
       .setTimestamp();
     const image = isGolden
-      ? getGoldenSpriteUrl(pokemon.species_id ?? pokemon.id)
+      ? getGoldenSpriteUrl(pokemon.species_id ?? pokemon.id, pokemon.slug)
       : getPokemonShowdownSprite(
         pokemon.slug,
         Boolean(pokemon.isShiny),
@@ -5037,7 +5043,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       name: `${namePrefix}${form.name}`,
       types: JSON.parse(form.types),
       spriteUrl: entry.sprite_url || (entry.is_golden
-        ? getGoldenSpriteUrl(form.species_id)
+        ? getGoldenSpriteUrl(form.species_id, form.slug)
         : getPokemonShowdownSprite(form.slug, Boolean(entry.is_shiny))),
       stats,
       hp: stats.hp,
@@ -5377,9 +5383,10 @@ function findTradeCatch(ownerId, spec) {
   let isShiny = Boolean(spec.isShiny);
   let isGolden = Boolean(spec.isGolden);
   let form;
-  if (spec.dexNumber && spec.dexNumber >= GOLDEN_DEX_START && spec.dexNumber < GOLDEN_DEX_START + 1999) {
-    form = db.prepare('SELECT * FROM pokemon_forms WHERE species_id = ? AND is_default = 1 ORDER BY id LIMIT 1')
-      .get(spec.dexNumber - GOLDEN_DEX_START + 1);
+  if (spec.dexNumber && isGoldenDexNumber(spec.dexNumber)) {
+    form = db.prepare('SELECT * FROM pokemon_forms ORDER BY species_id, id').all()
+      .find((pokemon) => isGoldenFormSupported(pokemon.species_id, pokemon.slug, Boolean(pokemon.is_default))
+        && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === spec.dexNumber);
     isGolden = true;
   } else if (spec.dexNumber) {
     form = resolvePokemonForm(spec.query);
@@ -6065,7 +6072,7 @@ function getGiveawayPokemonSprite(prizeData) {
   const form = db.prepare('SELECT id, species_id, slug, sprite, shiny_sprite FROM pokemon_forms WHERE id = ?')
     .get(pokemon.id);
   if (!form) return null;
-  if (pokemon.isGolden) return getGoldenSpriteUrl(form.species_id);
+  if (pokemon.isGolden) return getGoldenSpriteUrl(form.species_id, form.slug);
   return getPokemonShowdownSprite(
     form.slug,
     Boolean(pokemon.isShiny),
@@ -7655,7 +7662,7 @@ client.on('messageCreate', async (message) => {
           )
           .setFooter({ text: `${getUser(userId).vote_eggs.toLocaleString()} Eggs left` });
         const hatchSprite = result.isGolden
-          ? getGoldenSpriteUrl(hatch.pokemon.species_id ?? hatch.pokemon.id)
+          ? getGoldenSpriteUrl(hatch.pokemon.species_id ?? hatch.pokemon.id, hatch.pokemon.slug)
           : getPokemonShowdownSprite(
             hatch.pokemon.slug,
             result.isShiny,
@@ -8032,8 +8039,8 @@ client.on('messageCreate', async (message) => {
         const variant = args[flagIndex].toLowerCase();
         const isShiny = variant === 'true';
         const isGolden = variant === 'golden';
-        if (isGolden && !form.is_default) {
-          return message.reply('Golden giveaways are limited to base Pokémon forms (no Mega or Gmax forms).');
+        if (isGolden && !isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))) {
+          return message.reply('Golden giveaways are limited to base Pokémon and supported regional forms (no Mega or Gmax forms).');
         }
         [winnerArg, minuteArg] = [args[flagIndex + 1], args[flagIndex + 2]];
         prizeTitle = isGolden ? `${EMOJIS.golden} Golden ${form.name}` : `${isShiny ? '✨ Shiny ' : ''}${form.name}`;
@@ -8198,7 +8205,7 @@ client.on('messageCreate', async (message) => {
           iconURL: message.client.user.displayAvatarURL(),
         })
         .setDescription(
-          '• Purchase more lottery tickets to increase your winning odds!\n' +
+          '• Every ticket is a separate entry, so more tickets means a higher chance to win!\n' +
           '• Ticket buying is blocked **5 minutes before & after** the lottery ends.\n' +
           '• **75% of the purchase cost** is deposited into the jackpot (25% tax)\n\n' +
           `**1st winner:** 50% of the jackpot${nextGoldenPrize ? ` + ${EMOJIS.golden} **${nextGoldenPrize.name}**!` : ''}\n` +
@@ -9639,8 +9646,8 @@ client.on('messageCreate', async (message) => {
           const dexNumbers = getPokemonDexNumbers(forms);
           const dexMatch = forms.find((pokemon) => {
             if (isGolden) {
-              return pokemon.is_default
-                && getGoldenDexNumber(pokemon.species_id) === dexNumber;
+              return isGoldenFormSupported(pokemon.species_id, pokemon.slug, Boolean(pokemon.is_default))
+                && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === dexNumber;
             }
             const numbers = dexNumbers.get(pokemon.id);
             if (numbers?.dexNumber === dexNumber) return true;
@@ -9662,8 +9669,8 @@ client.on('messageCreate', async (message) => {
             `No exact Pokémon, form, or ${isGolden ? 'Golden ' : ''}Pokédex number **${pokemonName}** was found in the catalog.`
           );
         }
-        if (isGolden && !exactMatch.is_default) {
-          return message.reply('Golden Pokémon can only be granted in their base form, not alternate, Mega, or Gmax forms.');
+        if (isGolden && !isGoldenFormSupported(exactMatch.species_id, exactMatch.slug, Boolean(exactMatch.is_default))) {
+          return message.reply('Golden Pokémon can only be granted in base forms and supported regional forms, not Mega or Gmax forms.');
         }
         const catalogPokemon = {
           id: exactMatch.id,
@@ -11388,15 +11395,21 @@ client.on('messageCreate', async (message) => {
           });
       const numericMatchIsShiny = numericMatch
         && dexNumbersByFormId.get(numericMatch.id)?.shinyDexNumber === numericDex;
+      const goldenFormByNumber = numericDex === null
+        ? null
+        : catalogForms.find((pokemon) =>
+          !pokemon.is_default
+            && isGoldenFormSupported(pokemon.species_id, pokemon.slug)
+            && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === numericDex
+        );
       const goldenByNumber = !numericMatch
         && numericDex !== null
-        && numericDex >= GOLDEN_DEX_START
-        && numericDex <= 9999;
+        && isGoldenDexNumber(numericDex);
       const goldenEntry = previewGolden || goldenByNumber;
       const shinyEntry = !goldenEntry && (previewShiny || (
         numericMatch ? numericMatchIsShiny : numericDex !== null && numericDex > dexIndexOffset
       ));
-      const speciesId = numericDex === null || numericMatch
+      const speciesId = numericDex === null || numericMatch || goldenFormByNumber
         ? null
         : goldenByNumber
           ? numericDex - (GOLDEN_DEX_START - 1)
@@ -11404,6 +11417,8 @@ client.on('messageCreate', async (message) => {
       let selectedPokemon;
       if (numericMatch) {
         selectedPokemon = numericMatch;
+      } else if (goldenFormByNumber) {
+        selectedPokemon = goldenFormByNumber;
       } else if (speciesId !== null) {
         const maximumSpeciesId = db.prepare(
           'SELECT MAX(species_id) AS maximum FROM pokemon_forms WHERE is_default = 1'
@@ -11427,8 +11442,12 @@ client.on('messageCreate', async (message) => {
         ) || matches[0];
       }
       if (!selectedPokemon) return message.reply(`No Pokémon or form found for **${query}**.`);
-      if (goldenEntry && !selectedPokemon.is_default) {
-        // Golden entries exist for base forms only; show the base form's card.
+      if (goldenEntry && !isGoldenFormSupported(
+        selectedPokemon.species_id,
+        selectedPokemon.slug,
+        Boolean(selectedPokemon.is_default)
+      )) {
+        // Unsupported Golden alternate forms use their base species' card.
         selectedPokemon = db.prepare(
           'SELECT * FROM pokemon_forms WHERE species_id = ? AND is_default = 1 ORDER BY id LIMIT 1'
         ).get(selectedPokemon.species_id) || selectedPokemon;
@@ -11461,7 +11480,7 @@ client.on('messageCreate', async (message) => {
         const regularDexNumber = numbers?.dexNumber ?? pokemon.species_id;
         const shinyDexNumber = numbers?.shinyDexNumber
           ?? pokemon.species_id + dexIndexOffset;
-        const goldenDexNumber = getGoldenDexNumber(pokemon.species_id);
+        const goldenDexNumber = getGoldenDexNumber(pokemon.species_id, pokemon.slug);
         const dexNumber = goldenEntry
           ? goldenDexNumber ?? regularDexNumber
           : shinyEntry ? shinyDexNumber : regularDexNumber;
@@ -11495,7 +11514,7 @@ client.on('messageCreate', async (message) => {
           : '1560340193108566177';
         const dexIcon = `https://raw.githubusercontent.com/msikma/pokesprite/master/icons/pokemon/regular/${pokemon.slug}.png`;
         const sprite = goldenEntry
-          ? getGoldenSpriteUrl(pokemon.species_id)
+          ? getGoldenSpriteUrl(pokemon.species_id, pokemon.slug)
           : getPokemonShowdownSprite(
             pokemon.slug,
             shinyEntry,
@@ -12258,7 +12277,8 @@ client.on('messageCreate', async (message) => {
           SELECT catches.name, catches.is_shiny, catches.is_golden, catches.level,
             pokemon_forms.id AS form_id, pokemon_forms.species_id,
             COALESCE(pokemon_forms.species_id, catches.pokemon_id)
-              + CASE WHEN catches.is_shiny = 1 THEN ? ELSE 0 END AS dex_number
+              + CASE WHEN catches.is_shiny = 1 THEN ? ELSE 0 END AS dex_number,
+            pokemon_forms.slug
           FROM catches
           LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
           WHERE catches.user_id = ?
@@ -12273,7 +12293,7 @@ client.on('messageCreate', async (message) => {
         for (const pokemon of choices) {
           const dexNumbers = dexNumberByFormId.get(pokemon.form_id);
           if (pokemon.is_golden) {
-            pokemon.dex_number = getGoldenDexNumber(pokemon.species_id) ?? pokemon.dex_number;
+            pokemon.dex_number = getGoldenDexNumber(pokemon.species_id, pokemon.slug) ?? pokemon.dex_number;
           } else if (dexNumbers) {
             pokemon.dex_number = pokemon.is_shiny
               ? dexNumbers.shinyDexNumber ?? dexNumbers.dexNumber
@@ -12344,7 +12364,7 @@ client.on('messageCreate', async (message) => {
             (expShareEnabled ? ' • Exp. Share enabled' : ''),
         });
       const buddyImage = buddy.is_golden
-        ? getGoldenSpriteUrl(buddy.species_id)
+        ? getGoldenSpriteUrl(buddy.species_id, buddy.slug)
         : getPokemonShowdownSprite(
           buddy.slug,
           Boolean(buddy.is_shiny),
@@ -14148,6 +14168,7 @@ client.on('messageCreate', async (message) => {
       const catches = db.prepare(`
         SELECT c.*,
           p.species_id AS form_species_id,
+          p.slug AS form_slug,
           COALESCE(p.species_id, c.pokemon_id)
             + CASE WHEN c.is_shiny = 1 THEN ? ELSE 0 END AS dex_number,
           p.id AS form_id, p.generation, p.types,
@@ -14164,7 +14185,7 @@ client.on('messageCreate', async (message) => {
       `).all());
       for (const pokemon of catches) {
         if (pokemon.is_golden) {
-          const goldenDex = getGoldenDexNumber(pokemon.form_species_id);
+          const goldenDex = getGoldenDexNumber(pokemon.form_species_id, pokemon.form_slug);
           if (goldenDex) pokemon.dex_number = goldenDex;
           continue;
         }
@@ -16443,7 +16464,7 @@ client.on('messageCreate', async (message) => {
             ? `You spent 🎟️ **1 Swap Ticket** and have **${remainingTickets}** left.`
             : `You spent ${EMOJIS.pokecoin} **${result.cost.toLocaleString()} PokéCoins** for this swap.`;
         const rewardSprite = result.receivedGolden
-          ? getGoldenSpriteUrl(result.reward.species_id)
+          ? getGoldenSpriteUrl(result.reward.species_id, result.reward.slug)
           : getPokemonShowdownSprite(
             result.reward.slug,
             result.receivedShiny,

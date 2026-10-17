@@ -38,7 +38,20 @@ const DEFAULT_FORM_ALIASES = {
   'wishiwashi-solo': 'wishiwashi',
   'zygarde-50': 'zygarde',
   'indeedee-male': 'indeedee',
-  'indeedee-female': 'indeedee-f',
+  'indeedee-female': 'indeedee',
+  'jellicent-male': 'jellicent',
+  'oinkologne-male': 'oinkologne',
+  'oinkologne-female': 'oinkologne',
+  'maushold-family-of-three': 'maushold',
+  'maushold-family-of-four': 'maushold-four',
+  'dudunsparce-two-segment': 'dudunsparce',
+  'dudunsparce-three-segment': 'dudunsparce-threesegment',
+  'kommo-o': 'kommoo',
+  'urshifu-single-strike': 'urshifu',
+  'urshifu-rapid-strike': 'urshifu-rapidstrike',
+  'tatsugiri-curly': 'tatsugiri',
+  'gouging-fire': 'gougingfire',
+  'chi-yu': 'chiyu',
   'mr-mime': 'mrmime',
   'mr-mime-galar': 'mrmime-galar',
   'tapu-koko': 'tapukoko',
@@ -64,6 +77,7 @@ const FORM_ALIASES = {
 
 const CUSTOM_SPRITES = {
   inteleon: 'https://play.pokemonshowdown.com/sprites/ani/inteleon.gif',
+  'corviknight-gmax': 'https://play.pokemonshowdown.com/sprites/ani/corviknight-gmax.gif',
   'mr-rime': 'https://res.cloudinary.com/apffqia5/image/upload/v1792006172/mrrime.gif',
   'mime-jr': 'https://res.cloudinary.com/apffqia5/image/upload/v1792006177/mimejr.gif',
   'iron-hands': 'https://res.cloudinary.com/apffqia5/image/upload/v1792075108/ironhands.gif',
@@ -74,9 +88,13 @@ const CUSTOM_SPRITES = {
   'palafin-zero': 'https://play.pokemonshowdown.com/sprites/ani/palafin.gif',
   'jellicent-male': 'https://play.pokemonshowdown.com/sprites/ani/jellicent.gif',
   'pyroar-male': 'https://play.pokemonshowdown.com/sprites/ani/pyroar.gif',
+  'iron-leaves': 'https://res.cloudinary.com/apffqia5/image/upload/v1792270005/iron_leaves.webp',
+  'iron-boulder': 'https://res.cloudinary.com/apffqia5/image/upload/v1792270237/iron_boulder.webp',
 };
 const CUSTOM_SHINY_SPRITES = {
   'iron-valiant': 'https://res.cloudinary.com/apffqia5/image/upload/v1792084062/shiny_iron_valiant.gif',
+  'pyroar-male': 'https://play.pokemonshowdown.com/sprites/ani-shiny/pyroar.gif',
+  'jellicent-male': 'https://play.pokemonshowdown.com/sprites/ani-shiny/jellicent.gif',
 };
 
 function showdownSpriteSlug(slug) {

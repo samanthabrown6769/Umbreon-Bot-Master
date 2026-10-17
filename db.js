@@ -1,7 +1,12 @@
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
-const { getPokemonDexNumbers, getGoldenDexNumber, GOLDEN_DEX_START } = require('./pokemon-dex-numbers');
+const {
+  getPokemonDexNumbers,
+  getGoldenDexNumber,
+  isGoldenFormSupported,
+  isGoldenDexNumber,
+} = require('./pokemon-dex-numbers');
 const { EVOLUTION_ITEMS, findEvolutionItem } = require('./evolution-items');
 const { BOXES, VOTE_BOXES } = require('./boxes');
 const { getPromoItemNames } = require('./promo');
@@ -3512,11 +3517,12 @@ function findOwnedPokemonRows(userId, query) {
     return owned.filter((row) => {
       if (row.is_golden) {
         return (!requestedVariant || requestedVariant === 'golden')
-          && getGoldenDexNumber(row.form_species) === numericDex;
+          && isGoldenFormSupported(row.form_species, row.form_slug, Boolean(row.form_default))
+          && getGoldenDexNumber(row.form_species, row.form_slug) === numericDex;
       }
       if (requestedVariant === 'golden') return false;
       if (requestedVariant === 'shiny' && !row.is_shiny) return false;
-      if (!requestedVariant && numericDex >= GOLDEN_DEX_START) return false;
+      if (!requestedVariant && isGoldenDexNumber(numericDex)) return false;
       const numbers = dexNumbers.get(row.pokemon_id);
       const expectedDex = row.is_shiny ? numbers?.shinyDexNumber : numbers?.dexNumber;
       return expectedDex === numericDex;
@@ -3548,7 +3554,7 @@ function findUserPokemonMatches(userId, query) {
   const catches = db.prepare(`
     SELECT catches.*, pokemon_forms.species_id AS form_species,
       pokemon_forms.name AS form_name, pokemon_forms.species_name AS form_species_name,
-      pokemon_forms.slug AS form_slug
+      pokemon_forms.slug AS form_slug, pokemon_forms.is_default AS form_default
     FROM catches
     LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
     WHERE catches.user_id = ?
@@ -3561,7 +3567,10 @@ function findUserPokemonMatches(userId, query) {
     return catches.filter((pokemon) => {
       const numbers = dexNumbers.get(pokemon.pokemon_id);
       return pokemon.form_species === dexQuery
-        || getGoldenDexNumber(pokemon.form_species) === dexQuery
+        || (isGoldenFormSupported(
+          pokemon.form_species, pokemon.form_slug, Boolean(pokemon.form_default)
+        )
+          && getGoldenDexNumber(pokemon.form_species, pokemon.form_slug) === dexQuery)
         || numbers?.dexNumber === dexQuery
         || numbers?.shinyDexNumber === dexQuery;
     });
@@ -3865,7 +3874,7 @@ function getUserBuddy(userId) {
   buddy.display_name = buddy.nickname || buddy.name;
   const dexNumbers = getPokemonDexNumbersForForms().get(buddy.form_id);
   if (buddy.is_golden) {
-    buddy.dex_number = getGoldenDexNumber(buddy.species_id);
+    buddy.dex_number = getGoldenDexNumber(buddy.species_id, buddy.slug);
   } else if (dexNumbers) {
     buddy.dex_number = buddy.is_shiny
       ? dexNumbers.shinyDexNumber ?? dexNumbers.dexNumber
@@ -3897,14 +3906,16 @@ function setUserBuddyByQuery(userId, query) {
   return db.transaction(() => {
     const numericDex = /^\d+$/.test(name.trim()) ? Number(name.trim()) : null;
     let pokemon;
-    if (numericDex !== null && (forceGolden || numericDex >= GOLDEN_DEX_START)) {
+    if (numericDex !== null && (forceGolden || isGoldenDexNumber(numericDex))) {
       const match = db.prepare(`
-        SELECT catches.id, pokemon_forms.species_id
+        SELECT catches.id, pokemon_forms.species_id, pokemon_forms.slug, pokemon_forms.is_default
         FROM catches
         LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
         WHERE catches.user_id = ? AND catches.is_golden = 1
         ORDER BY catches.id DESC
-      `).all(userId).find((row) => getGoldenDexNumber(row.species_id) === numericDex
+      `).all(userId).find((row) =>
+        isGoldenFormSupported(row.species_id, row.slug, Boolean(row.is_default))
+        && getGoldenDexNumber(row.species_id, row.slug) === numericDex
         || (forceGolden && row.species_id === numericDex));
       if (match) pokemon = { id: match.id };
     } else if (numericDex !== null) {
@@ -6543,8 +6554,8 @@ function buyLotteryTickets(userId, amount) {
   }).immediate();
 }
 
-// Picks 3 distinct winners weighted by ticket count, pays 50/30/20% of the jackpot,
-// and grants 1st place the scheduled golden prize when the draw day has one.
+// Picks up to 3 distinct winners weighted by ticket count without expanding tickets into an array,
+// pays 50/30/20% of the jackpot, and grants 1st place the scheduled golden prize when applicable.
 function drawLottery(now = Date.now()) {
   return db.transaction(() => {
     const state = getLotteryState();
@@ -6554,17 +6565,22 @@ function drawLottery(now = Date.now()) {
       db.prepare('UPDATE lottery_state SET ends_at = ? WHERE id = 1').run(getNextLotteryDrawTime(now));
       return { error: 'no_participants' };
     }
-    const ticketPool = [];
-    for (const entry of tickets) {
-      for (let i = 0; i < entry.ticket_count; i++) ticketPool.push(entry.user_id);
-    }
+    const eligibleEntries = [...tickets];
     const winners = [];
-    while (ticketPool.length && winners.length < 3) {
-      const picked = ticketPool[Math.floor(Math.random() * ticketPool.length)];
-      if (!winners.includes(picked)) winners.push(picked);
-      for (let i = ticketPool.length - 1; i >= 0; i--) {
-        if (ticketPool[i] === picked) ticketPool.splice(i, 1);
+    while (eligibleEntries.length && winners.length < 3) {
+      const totalEligibleTickets = eligibleEntries.reduce(
+        (total, entry) => total + entry.ticket_count, 0
+      );
+      let selectedTicket = Math.floor(Math.random() * totalEligibleTickets);
+      const winnerIndex = eligibleEntries.findIndex((entry) => {
+        selectedTicket -= entry.ticket_count;
+        return selectedTicket < 0;
+      });
+      if (winnerIndex === -1) {
+        throw new Error('Could not select a lottery winner from the remaining tickets.');
       }
+      winners.push(eligibleEntries[winnerIndex].user_id);
+      eligibleEntries.splice(winnerIndex, 1);
     }
     const jackpot = state.jackpot;
     const prizes = [0.5, 0.3, 0.2].map((share) => Math.floor(jackpot * share));

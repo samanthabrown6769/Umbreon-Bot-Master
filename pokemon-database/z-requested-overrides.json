@@ -1,105 +1,106 @@
 [
-    {
-        "slug":  "palafin-zero",
-        "name":  "Palafin",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/palafin.gif"
-    },
-    {
-        "slug":  "slither-wing",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/slitherwing.gif"
-    },
-    {
-        "slug":  "mr-mime",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/mrmime.gif"
-    },
-    {
-        "slug":  "jellicent-male",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/jellicent.gif"
-    },
-    {
-        "slug":  "hakamo-o",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/hakamoo.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/hakamoo.gif"
-    },
-    {
-        "slug":  "walking-wake",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/walkingwake.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/walkingwake.gif"
-    },
-    {
-        "slug":  "roaring-moon",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/roaringmoon.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/roaringmoon.gif"
-    },
-    {
-        "slug":  "flutter-mane",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/fluttermane.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/fluttermane.gif"
-    },
-    {
-        "slug":  "squawkabilly-green-plumage",
-        "name":  "Squawkabilly",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/squawkabilly.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/squawkabilly.gif"
-    },
-    {
-        "slug":  "sandy-shocks",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/sandyshocks.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/sandyshocks.gif"
-    },
-    {
-        "slug":  "necrozma-dawn",
-        "name":  "Necrozma Dawnwings",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/necrozma-dawnwings.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-dawnwings.gif"
-    },
-    {
-        "slug":  "necrozma-dusk",
-        "name":  "Necrozma Duskmane",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/necrozma-duskmane.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-duskmane.gif"
-    },
-    {
-        "slug":  "necrozma-ultra",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/necrozma-ultra.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-ultra.gif"
-    },
-    {
-        "slug":  "brute-bonnet",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/brutebonnet.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/brutebonnet.gif"
-    },
-    {
-        "slug":  "iron-thorns",
-        "sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/995.webp\u0026w=120\u0026output=png",
-        "shiny_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/995.webp\u0026w=120\u0026output=png",
-        "animated_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/995.webp\u0026w=120\u0026output=png",
-        "shiny_animated_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/995.webp\u0026w=120\u0026output=png"
-    },
-    {
-        "slug":  "iron-treads",
-        "sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/990.webp\u0026w=120\u0026output=png",
-        "shiny_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/990.webp\u0026w=120\u0026output=png",
-        "animated_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/990.webp\u0026w=120\u0026output=png",
-        "shiny_animated_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/990.webp\u0026w=120\u0026output=png"
-    },
-    {
-        "slug":  "pecharunt",
-        "sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1025.webp\u0026w=120\u0026output=png",
-        "shiny_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/1025.webp\u0026w=120\u0026output=png",
-        "animated_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1025.webp\u0026w=120\u0026output=png",
-        "shiny_animated_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/1025.webp\u0026w=120\u0026output=png"
-    },
-    {
-        "slug":  "iron-bundle",
-        "sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp\u0026w=120\u0026output=png",
-        "shiny_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp\u0026w=120\u0026output=png",
-        "animated_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp\u0026w=120\u0026output=png",
-        "shiny_animated_sprite":  "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp\u0026w=120\u0026output=png"
-    },
-    {
-        "slug":  "ho-oh",
-        "animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani/hooh.gif",
-        "shiny_animated_sprite":  "https://play.pokemonshowdown.com/sprites/ani-shiny/hooh.gif"
-    }
+  {
+    "slug": "palafin-zero",
+    "name": "Palafin",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/palafin.gif"
+  },
+  {
+    "slug": "slither-wing",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/slitherwing.gif"
+  },
+  {
+    "slug": "mr-mime",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/mrmime.gif"
+  },
+  {
+    "slug": "jellicent-male",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/jellicent.gif",
+    "name": "Jellicent"
+  },
+  {
+    "slug": "hakamo-o",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/hakamoo.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/hakamoo.gif"
+  },
+  {
+    "slug": "walking-wake",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/walkingwake.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/walkingwake.gif"
+  },
+  {
+    "slug": "roaring-moon",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/roaringmoon.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/roaringmoon.gif"
+  },
+  {
+    "slug": "flutter-mane",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/fluttermane.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/fluttermane.gif"
+  },
+  {
+    "slug": "squawkabilly-green-plumage",
+    "name": "Squawkabilly",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/squawkabilly.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/squawkabilly.gif"
+  },
+  {
+    "slug": "sandy-shocks",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/sandyshocks.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/sandyshocks.gif"
+  },
+  {
+    "slug": "necrozma-dawn",
+    "name": "Necrozma Dawnwings",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/necrozma-dawnwings.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-dawnwings.gif"
+  },
+  {
+    "slug": "necrozma-dusk",
+    "name": "Necrozma Duskmane",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/necrozma-duskmane.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-duskmane.gif"
+  },
+  {
+    "slug": "necrozma-ultra",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/necrozma-ultra.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/necrozma-ultra.gif"
+  },
+  {
+    "slug": "brute-bonnet",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/brutebonnet.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/brutebonnet.gif"
+  },
+  {
+    "slug": "iron-thorns",
+    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/995.webp&w=120&output=png",
+    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/995.webp&w=120&output=png",
+    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/995.webp&w=120&output=png",
+    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/995.webp&w=120&output=png"
+  },
+  {
+    "slug": "iron-treads",
+    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/990.webp&w=120&output=png",
+    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/990.webp&w=120&output=png",
+    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/990.webp&w=120&output=png",
+    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/990.webp&w=120&output=png"
+  },
+  {
+    "slug": "pecharunt",
+    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1025.webp&w=120&output=png",
+    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/1025.webp&w=120&output=png",
+    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1025.webp&w=120&output=png",
+    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/1025.webp&w=120&output=png"
+  },
+  {
+    "slug": "iron-bundle",
+    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp&w=120&output=png",
+    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp&w=120&output=png",
+    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp&w=120&output=png",
+    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp&w=120&output=png"
+  },
+  {
+    "slug": "ho-oh",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/hooh.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/hooh.gif"
+  }
 ]

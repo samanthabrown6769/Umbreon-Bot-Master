@@ -17,7 +17,7 @@ rarity overrides to regenerate all eight files:
 - `gmax.json` — Gmax forms numbered from 5001.
 - `shiny-gmax.json` — shiny Gmax forms numbered from 5501.
 - `formes.json` — non-default forms excluding Mega and Gmax forms, numbered from 6001 (shiny form numbers from 7001).
-- `golden-dex.json` — golden variants of base Dex species, numbered 8000 + species ID (8001–9999), with `variant` set to `golden` and TPPC golden artwork as their `sprite`. Golden Pokémon never spawn in the wild; they are promo, event, and giveaway exclusives.
+- `golden-dex.json` — golden variants of base Dex species, numbered 8000 + species ID (8001–9999), plus regional forms from the catalog (starting at #10001), with `variant` set to `golden` and TPPC golden artwork as their `sprite` where available. If a regional Golden sprite is unavailable, `sprite` is `null` rather than showing the base form. Golden Pokémon never spawn in the wild; they are promo, event, and giveaway exclusives.
 
 Each entry retains the catalog fields and has a `dex_number`. In the numbered
 form datasets, `id` matches `dex_number`; the internal catalog ID is not
