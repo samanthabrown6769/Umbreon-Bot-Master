@@ -50,6 +50,8 @@ const DEFAULT_FORM_ALIASES = {
   'urshifu-single-strike': 'urshifu',
   'urshifu-rapid-strike': 'urshifu-rapidstrike',
   'tatsugiri-curly': 'tatsugiri',
+  'tatsugiri-droopy': 'tatsugiri-droopy',
+  'tatsugiri-stretchy': 'tatsugiri-stretchy',
   'gouging-fire': 'gougingfire',
   'chi-yu': 'chiyu',
   'mr-mime': 'mrmime',
@@ -74,6 +76,25 @@ const FORM_ALIASES = {
   'pikachu-kalos-cap': 'pikachu-kalos',
   'pikachu-partner-cap': 'pikachu-partner',
 };
+
+const DIRECT_SHOWDOWN_SLUGS = new Set([
+  'indeedee-male',
+  'indeedee-female',
+  'oinkologne-male',
+  'oinkologne-female',
+  'maushold-family-of-three',
+  'maushold-family-of-four',
+  'dudunsparce-two-segment',
+  'dudunsparce-three-segment',
+  'kommo-o',
+  'urshifu-single-strike',
+  'urshifu-rapid-strike',
+  'tatsugiri-curly',
+  'tatsugiri-droopy',
+  'tatsugiri-stretchy',
+  'gouging-fire',
+  'chi-yu',
+]);
 
 const CUSTOM_SPRITES = {
   inteleon: 'https://play.pokemonshowdown.com/sprites/ani/inteleon.gif',
@@ -131,6 +152,10 @@ function getRawPokemonShowdownSprite(slug, isShiny = false, fallback = null) {
   const overrideUrl = override && (isShiny ? override.shiny : override.normal);
   if (overrideUrl) return overrideUrl;
   if (isShiny && CUSTOM_SHINY_SPRITES[slug]) return CUSTOM_SHINY_SPRITES[slug];
+  // Explicitly requested Showdown sprites skip Cloudinary, which has no upload for these names.
+  if (DIRECT_SHOWDOWN_SLUGS.has(slug)) {
+    return `${SHOWDOWN_ANIMATED_SPRITE_BASE}/${isShiny ? 'ani-shiny' : 'ani'}/${FORM_ALIASES[slug]}.gif`;
+  }
   if (!isShiny && CUSTOM_SPRITES[slug]) return CUSTOM_SPRITES[slug];
   if (slug === 'pikachu-world-cap') return fallback;
   if (typeof slug === 'string' && /eternamax/i.test(slug)) {
