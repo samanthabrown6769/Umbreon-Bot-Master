@@ -86,9 +86,8 @@ const DIRECT_SHOWDOWN_SLUGS = new Set([
   'maushold-family-of-four',
   'dudunsparce-two-segment',
   'dudunsparce-three-segment',
+  'tapu-bulu',
   'kommo-o',
-  'urshifu-single-strike',
-  'urshifu-rapid-strike',
   'tatsugiri-curly',
   'tatsugiri-droopy',
   'tatsugiri-stretchy',
@@ -109,12 +108,16 @@ const CUSTOM_SPRITES = {
   'palafin-zero': 'https://play.pokemonshowdown.com/sprites/ani/palafin.gif',
   'jellicent-male': 'https://play.pokemonshowdown.com/sprites/ani/jellicent.gif',
   'pyroar-male': 'https://play.pokemonshowdown.com/sprites/ani/pyroar.gif',
+  'urshifu-single-strike': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifusinglestrike-ezgif.com-resize.webp',
+  'urshifu-rapid-strike': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifurapidstrike-ezgif.com-resize.webp',
   'iron-leaves': 'https://res.cloudinary.com/apffqia5/image/upload/v1792270005/iron_leaves.webp',
   'iron-boulder': 'https://res.cloudinary.com/apffqia5/image/upload/v1792270237/iron_boulder.webp',
 };
 const CUSTOM_SHINY_SPRITES = {
   'iron-valiant': 'https://res.cloudinary.com/apffqia5/image/upload/v1792084062/shiny_iron_valiant.gif',
   'pyroar-male': 'https://play.pokemonshowdown.com/sprites/ani-shiny/pyroar.gif',
+  'urshifu-single-strike': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifusinglestrikeshiny-ezgif.com-resize.webp',
+  'urshifu-rapid-strike': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifurapidstrikeshiny-ezgif.com-resize.webp',
   'jellicent-male': 'https://play.pokemonshowdown.com/sprites/ani-shiny/jellicent.gif',
 };
 
