@@ -446,6 +446,7 @@ const NPC_SPECIAL_BATTLES = [
 const NPC_TRAINER_ICON_EMOJIS = {
   volo: '<:volo:1561053228131688488>',
   brock: '<:brock:1561053190198132816>',
+  misty: '<:misty:1561091268233265232>',
   penny: '<:penny:1561053211102683146>',
   giacomo: '<:giacomo:1561091482046177330>',
   mela: '<:mela:1561091314802495539>',
@@ -2851,7 +2852,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
             }
             players.set(playerId, playerState);
           }
-          await interaction.reply({
+          const switchPayload = {
             embeds: [createWorldBossPanelEmbed(currentBoss, {
               state: playerState,
               team: playerTeam,
@@ -2863,8 +2864,10 @@ async function startWorldBossBattle(message, boss, userId, team) {
               ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
               ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
             ],
-            ephemeral: true,
-          });
+          };
+          // Switching from an existing battle panel edits it instead of posting another.
+          if (interaction.message.id === bossMessage.id) await interaction.reply(switchPayload);
+          else await interaction.update(switchPayload);
           return;
         }
         let teamStates = teamStatesByPlayer.get(playerId);
@@ -2883,7 +2886,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
           refreshWorldBossMoves(playerState, playerTeam);
         }
         players.set(playerId, playerState);
-        await interaction.reply({
+        const choosePayload = {
           embeds: [createWorldBossPanelEmbed(currentBoss, {
             state: playerState,
             team: playerTeam,
@@ -2895,8 +2898,9 @@ async function startWorldBossBattle(message, boss, userId, team) {
             ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
             ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
           ],
-          ephemeral: true,
-        });
+        };
+        if (interaction.message.id === bossMessage.id) await interaction.reply(choosePayload);
+        else await interaction.update(choosePayload);
         return;
       }
 
@@ -5964,6 +5968,19 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
   if (!isCatch && !isDexForm && !isLeagueMove && !isChamberMove && !isWorldBossMove) return;
+  if (isWorldBossMove && !activeWorldBossBattles.has(interaction.message.id)) {
+    // Public battle panels are replies, so Discord records who opened them.
+    const panelOwnerId = interaction.message.interactionMetadata?.user?.id
+      ?? interaction.message.interaction?.user?.id;
+    if (panelOwnerId && panelOwnerId !== interaction.user.id) {
+      await replyToInteractionFailure(
+        interaction,
+        'This is not your battle panel. Use `.wb fight` to open your own.',
+        'World Boss panel owner check'
+      );
+      return;
+    }
+  }
   const handler = isCatch
     ? activeCatchEncounters.get(interaction.message.id)
     : isDexForm
@@ -12530,9 +12547,11 @@ client.on('messageCreate', async (message) => {
             .setColor(0x9b59b6)
             .setTitle('⚔️ Faction NPCs')
             .setDescription(
-              FACTION_NPC_BATTLES.map((challenge) =>
-                `• ${challenge.iconEmoji || ''} **${challenge.name}**`.trim()
-              ).join('\n') +
+              FACTION_NPC_BATTLES.map((challenge) => {
+                const trainerKey = challenge.name.split('\u2014').pop().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                const iconEmoji = NPC_TRAINER_ICON_EMOJIS[trainerKey] || challenge.iconEmoji || '';
+                return `• ${iconEmoji} **${challenge.name}**`.trim();
+              }).join('\n') +
               `\n\nChallenge one with \`${PREFIX}faction battle <leader name|faction name>\`.`
             )],
         });
