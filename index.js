@@ -596,6 +596,7 @@ const FACTION_NPC_BATTLES = FACTION_NPC_BATTLE_DEFINITIONS.map(({
   if (!faction) throw new Error(`Missing faction configuration for ${factionKey}.`);
   const trainerKey = trainer.toLowerCase().replace(/[^a-z0-9]/g, '');
   return {
+    factionKey,
     name: `${faction.name} — ${trainer}`,
     region: 'Factions',
     iconEmoji: NPC_TRAINER_ICON_EMOJIS[trainerKey] || FACTION_NPC_ROLE_EMOJIS[role],
