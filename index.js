@@ -2513,13 +2513,7 @@ function getWorldBossTeamMoves(team) {
     const form = db.prepare('SELECT species_id, types FROM pokemon_forms WHERE id = ?')
       .get(pokemon.pokemon_id);
     if (!form) throw new Error(`Missing catalog form ${pokemon.pokemon_id} for team catch ${pokemon.id}.`);
-    const hyperBeam = getPokemonMove('hyper-beam');
-    // In World Boss raids Max Ooze is replaced by Hyper Beam (no stat boost).
-    const moves = [...new Map(
-      getEquippedBattleMoves(pokemon, form.species_id, form.id)
-        .map((move) => (move.name === 'Max Ooze' && hyperBeam ? hyperBeam : move))
-        .map((move) => [move.name, move])
-    ).values()];
+    const moves = getEquippedBattleMoves(pokemon, form.species_id, form.id);
     return {
       pokemon,
       types: JSON.parse(form.types),
@@ -3095,9 +3089,15 @@ async function startWorldBossBattle(message, boss, userId, team) {
           throw new Error(`Missing World Boss battle data for "${currentBoss.name}".`);
         }
         if (!bs.boss.moves) {
-          bs.boss.moves = buildEnemyMoves(getSpeciesLearnset(bossForm.species_id, bossForm.id)
-            .map((name) => getPokemonMove(name))
-            .filter(Boolean));
+          // The boss uses Hyper Beam in place of Max Ooze; players keep Max Ooze and its buff.
+          const hyperBeam = getPokemonMove('hyper-beam');
+          bs.boss.moves = buildEnemyMoves([...new Map(
+            getSpeciesLearnset(bossForm.species_id, bossForm.id)
+              .map((name) => getPokemonMove(name))
+              .filter(Boolean)
+              .map((move) => (move.name === 'Max Ooze' && hyperBeam ? hyperBeam : move))
+              .map((move) => [move.name, move])
+          ).values()]);
         }
         if (!bs.boss.moves.length) throw new Error(`${currentBoss.name} has no moves available for its counterattack.`);
         bs.mon.hp = playerState.hp;

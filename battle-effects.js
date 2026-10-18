@@ -404,7 +404,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     `${eff > 1 ? ' — super effective!' : eff === 0 ? ' — no effect.' : eff < 1 ? ' — not very effective.' : ''}` +
     `${crit && dmg > 0 ? ' A critical hit!' : ''}${survivedText}`);
   if (t.hp <= 0 && tf.destinyBond) { m.hp = 0; L(`${m.name} was taken down with ${t.name}!`); }
-  applyDamageSecondaryEffects(ctx, B, t, move, dmg, L);
+  applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L);
 }
 
 // Stat drops that damaging moves inflict on the target: [chance %, stages].
@@ -427,7 +427,14 @@ const DAMAGE_STAT_DROPS = {
   'triple-arrows': [50, { def: -1 }],
 };
 
-function applyDamageSecondaryEffects(ctx, B, t, move, dmg, L) {
+// Max Moves that boost the user's stats after hitting.
+const DAMAGE_SELF_BOOSTS = { 'max-ooze': { spa: 1 } };
+
+function applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L) {
+  const selfBoost = DAMAGE_SELF_BOOSTS[slug(move.name)];
+  if (selfBoost && dmg > 0) {
+    for (const [key, delta] of Object.entries(selfBoost)) changeStage(ctx, A.mon, A.side, key, delta, L);
+  }
   const drop = DAMAGE_STAT_DROPS[slug(move.name)];
   if (!drop || dmg <= 0 || t.hp <= 0 || fx(t).sub > 0) return;
   if (Math.random() * 100 >= drop[0]) return;
