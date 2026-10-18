@@ -621,7 +621,7 @@ for (const challenge of [...NPC_CAMPAIGN, ...NPC_SPECIAL_BATTLES]) {
 const NPC_ICON_ALIASES = {
   lorelei: 'lorelei-gen3',
   agatha: 'agatha-gen3',
-  tateandliza: 'tateandliza-gen3',
+  tate: 'tateandliza-gen3',
   phoebe: 'phoebe-gen3',
   drake: 'drake-gen3',
   stevenstone: 'steven',
