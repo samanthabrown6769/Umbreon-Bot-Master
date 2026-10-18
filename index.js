@@ -2550,7 +2550,7 @@ function createWorldBossAttackResult(attack, rewards = null) {
 
 function getWorldBossTeamMoves(team) {
   return team.map((pokemon, teamIndex) => {
-    const form = db.prepare('SELECT species_id, types FROM pokemon_forms WHERE id = ?')
+    const form = db.prepare('SELECT id, species_id, types FROM pokemon_forms WHERE id = ?')
       .get(pokemon.pokemon_id);
     if (!form) throw new Error(`Missing catalog form ${pokemon.pokemon_id} for team catch ${pokemon.id}.`);
     const moves = getEquippedBattleMoves(pokemon, form.species_id, form.id);
@@ -5123,6 +5123,23 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       max_hp: pokemon.max_hp,
     };
   });
+  const refreshLeaguePartyMoves = () => {
+    const latestTeam = new Map(getUserTeam(userId).map((pokemon) => [pokemon.id, pokemon]));
+    let changed = false;
+    for (const pokemon of partyData) {
+      const latestPokemon = latestTeam.get(pokemon.id);
+      if (!latestPokemon) continue;
+      const form = db.prepare('SELECT * FROM pokemon_forms WHERE id = ?').get(latestPokemon.pokemon_id);
+      if (!form) throw new Error(`Missing catalog form ${latestPokemon.pokemon_id} for team catch ${pokemon.id}.`);
+      const moves = getEquippedBattleMoves(latestPokemon, form.species_id, form.id);
+      if (moves.length !== pokemon.moves.length
+          || moves.some((move, index) => move.name !== pokemon.moves[index].name)) {
+        pokemon.moves = moves;
+        changed = true;
+      }
+    }
+    return changed;
+  };
   const averageLevel = Math.max(
     1,
     Math.floor(partyData.reduce((total, pokemon) => total + pokemon.level, 0) / partyData.length)
@@ -5267,6 +5284,14 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       }
       actionInProgress = true;
       await interaction.deferUpdate();
+      if (refreshLeaguePartyMoves()) {
+        await interaction.editReply({
+          embeds: [battleEmbed()],
+          components: battleComponents(),
+        });
+        actionInProgress = false;
+        return;
+      }
       log.length = 0;
       turn += 1;
       if (parts[1] === 'switch') {
