@@ -3,6 +3,7 @@
 // ({atk,def,spd}) or directly on the mon ({atk,def,spd}). Per-battle state lives on mon.fx.
 const moveInfo = require('./data/move-info.json');
 const movesData = require('./data/pokemon-moves.json');
+const { LEFTOVERS_ITEM, getHeldItemDamageMultiplier } = require('./held-item-effects');
 
 const slug = (name) => String(name || '').toLowerCase().replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const STAGE_KEYS = ['atk', 'def', 'spa', 'spdef', 'spe', 'acc', 'eva'];
@@ -366,9 +367,10 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   const eff = (type === 'ground' && levitating) ? 0 : typeEffOf(ctx, type, defTypes);
   const { atk, def, physical } = damageStats(m, t, move, ctx.field);
   let dmg = eff === 0 ? 0 : ctx.calc({ ...move, type }, atk, def, defTypes);
+  const heldItemMultiplier = getHeldItemDamageMultiplier(m.held_item, type);
   let crit = false;
   if (dmg > 0) {
-    let mult = 1;
+    let mult = heldItemMultiplier;
     const w = ctx.field.weather;
     if (w === 'rain') mult *= type === 'water' ? 1.5 : type === 'fire' ? 0.5 : 1;
     if (w === 'sun') mult *= type === 'fire' ? 1.5 : type === 'water' ? 0.5 : 1;
@@ -402,6 +404,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   if (t.hp <= 0 && tf.protect === 'endure') { t.hp = 1; survivedText = ` ${t.name} endured the hit!`; }
   L(`${m.name} used **${move.name}** for **${dmg}** damage` +
     `${eff > 1 ? ' — super effective!' : eff === 0 ? ' — no effect.' : eff < 1 ? ' — not very effective.' : ''}` +
+    `${heldItemMultiplier > 1 ? ` ${m.held_item} boosted the move!` : ''}` +
     `${crit && dmg > 0 ? ' A critical hit!' : ''}${survivedText}`);
   if (t.hp <= 0 && tf.destinyBond) { m.hp = 0; L(`${m.name} was taken down with ${t.name}!`); }
   applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L);
@@ -750,6 +753,9 @@ function endOfTurn(ctx) {
       const d = Math.max(1, Math.floor(mon.max_hp / 16)); mon.hp -= d; L(`${mon.name} is pelted by hail for **${d}** damage.`);
     }
     if (mon.hp > 0 && field.terrain === 'grassy' && isGrounded(mon, field) && mon.hp < mon.max_hp) healMon(mon, mon.max_hp / 16, L);
+    if (mon.hp > 0 && mon.held_item === LEFTOVERS_ITEM && mon.hp < mon.max_hp) {
+      healMon(mon, mon.max_hp / 16, L);
+    }
     if (mon.hp > 0 && f.status === 'brn') { const d = Math.max(1, Math.floor(mon.max_hp / 16)); mon.hp -= d; L(`${mon.name} was hurt by its burn for **${d}** damage.`); }
     if (mon.hp > 0 && f.status === 'psn') { const d = Math.max(1, Math.floor(mon.max_hp / 8)); mon.hp -= d; L(`${mon.name} was hurt by poison for **${d}** damage.`); }
     if (mon.hp > 0 && f.status === 'tox') { const d = Math.max(1, Math.floor(mon.max_hp * Math.min(15, f.tox) / 16)); f.tox += 1; mon.hp -= d; L(`${mon.name} was badly poisoned for **${d}** damage.`); }

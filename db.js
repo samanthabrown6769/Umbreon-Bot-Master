@@ -8,6 +8,7 @@ const {
   isGoldenDexNumber,
 } = require('./pokemon-dex-numbers');
 const { EVOLUTION_ITEMS, findEvolutionItem } = require('./evolution-items');
+const { BATTLE_HELD_ITEM_NAMES, findBattleHeldItem } = require('./held-item-effects');
 const { BOXES, VOTE_BOXES } = require('./boxes');
 const { getPromoItemNames } = require('./promo');
 const { setSpriteOverrides } = require('./pokemon-sprites');
@@ -747,11 +748,12 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     pokemon_id INTEGER NOT NULL,
+    is_shiny INTEGER NOT NULL DEFAULT 0,
     pokemon_name TEXT NOT NULL,
     buy_price INTEGER,
     is_private INTEGER NOT NULL DEFAULT 0,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (user_id, pokemon_id)
+    UNIQUE (user_id, pokemon_id, is_shiny)
   );
 
   CREATE TABLE IF NOT EXISTS autospawn_channels (
@@ -835,7 +837,8 @@ db.exec(`
     s_caught INTEGER NOT NULL DEFAULT 0,
     g_caught INTEGER NOT NULL DEFAULT 0,
     running_until INTEGER NOT NULL DEFAULT 0,
-    hours_running INTEGER NOT NULL DEFAULT 0
+    hours_running INTEGER NOT NULL DEFAULT 0,
+    completion_notified_until INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS mega_chambers (
@@ -973,6 +976,34 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS boss_damage_leaderboard_idx ON boss_damage(damage DESC);
 `);
 
+const collectionTableSql = db.prepare(
+  "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'global_collections'"
+).get()?.sql || '';
+if (!collectionTableSql.includes('is_shiny')) {
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE global_collections RENAME TO global_collections_legacy;
+      CREATE TABLE global_collections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        pokemon_id INTEGER NOT NULL,
+        is_shiny INTEGER NOT NULL DEFAULT 0,
+        pokemon_name TEXT NOT NULL,
+        buy_price INTEGER,
+        is_private INTEGER NOT NULL DEFAULT 0,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, pokemon_id, is_shiny)
+      );
+      INSERT INTO global_collections (
+        id, user_id, pokemon_id, is_shiny, pokemon_name, buy_price, is_private, updated_at
+      )
+      SELECT id, user_id, pokemon_id, 0, pokemon_name, buy_price, is_private, updated_at
+      FROM global_collections_legacy;
+      DROP TABLE global_collections_legacy;
+    `);
+  }).immediate();
+}
+
 const channelBoostColumns = new Set(
   db.prepare('PRAGMA table_info(channel_catch_rate_boosts)').all().map((column) => column.name)
 );
@@ -1042,6 +1073,9 @@ ensureColumns('clan_members', {
   swaps: 'INTEGER NOT NULL DEFAULT 0',
   catchbot: 'INTEGER NOT NULL DEFAULT 0',
   battles: 'INTEGER NOT NULL DEFAULT 0',
+});
+ensureColumns('catchbot_data', {
+  completion_notified_until: 'INTEGER NOT NULL DEFAULT 0',
 });
 db.exec(`
   UPDATE clans
@@ -2121,7 +2155,9 @@ function startCatchbotRun(userId, hours, now = Date.now()) {
     incrementUser(userId, { coins: -totalCost, catchbot_runs: 1 });
     trackClanActivity(userId, 'catchbot');
     db.prepare(`
-      UPDATE catchbot_data SET running_until = ?, hours_running = ? WHERE user_id = ?
+      UPDATE catchbot_data
+      SET running_until = ?, hours_running = ?, completion_notified_until = 0
+      WHERE user_id = ?
     `).run(runningUntil, hours, userId);
     updateUser(userId, { catchbot_end: runningUntil });
     return { hours, pokemonPerHour, totalPokemon, costPerPokemon, totalCost, runningUntil };
@@ -2213,6 +2249,7 @@ const QUEST_REWARD_ITEM_FIELDS = {
 };
 const QUEST_ITEM_NAMES = new Set([
   ...Object.keys(QUEST_REWARD_ITEM_FIELDS),
+  ...Object.keys(EVOLUTION_ITEMS),
   'Ancient Fossil',
   'Super Repel',
   'Max Repel',
@@ -2507,6 +2544,12 @@ function advanceQuestProgress(userId, event = {}) {
         quests_completed: 1,
       });
       const rewardItems = JSON.parse(quest.reward_items || '{}');
+      if (Math.random() < 0.2) {
+        const evolutionItem = Object.keys(EVOLUTION_ITEMS)[
+          Math.floor(Math.random() * Object.keys(EVOLUTION_ITEMS).length)
+        ];
+        rewardItems[evolutionItem] = (rewardItems[evolutionItem] || 0) + 1;
+      }
       suppressQuestItemTracking = true;
       try {
         for (const [itemName, quantity] of Object.entries(rewardItems)) {
@@ -3076,6 +3119,36 @@ function setBuddyMoveSlot(userId, slot, moveName) {
   }).immediate();
 }
 
+function deleteBuddyMoveSlot(userId, slot) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(slot) || slot < 1 || slot > 4) {
+    throw new TypeError('A move slot from 1 to 4 is required.');
+  }
+  return db.transaction(() => {
+    const buddyId = getUser(userId).buddy_catch_id;
+    if (!buddyId) return { error: 'no_buddy' };
+    const learnset = getPokemonLearnset(buddyId, userId);
+    if (!learnset) return { error: 'no_buddy' };
+    const slotCount = Math.min(4, learnset.moves.length);
+    if (slot > slotCount) return { error: 'invalid_slot', slotCount };
+
+    const currentMoves = JSON.parse(learnset.pokemon.moves || '[]');
+    while (currentMoves.length < 4) {
+      const nextMove = learnset.moves.find((move) => !currentMoves.includes(move));
+      if (!nextMove) break;
+      currentMoves.push(nextMove);
+    }
+    const removedMove = currentMoves[slot - 1];
+    if (!removedMove) return { error: 'not_equipped' };
+
+    currentMoves[slot - 1] = null;
+    db.prepare('UPDATE catches SET moves = ? WHERE id = ? AND user_id = ?')
+      .run(JSON.stringify(currentMoves), buddyId, userId);
+    syncDuplicateCatchState(userId, buddyId);
+    return { moves: currentMoves, removedMove };
+  }).immediate();
+}
+
 function swapBuddyMoveSlots(userId, firstSlot, secondSlot) {
   assertUserId(userId);
   if (!Number.isSafeInteger(firstSlot) || !Number.isSafeInteger(secondSlot)
@@ -3474,6 +3547,7 @@ const ROTOM_ITEMS = Object.freeze([
 const SPECIAL_USER_ITEM_NAMES = Object.freeze([
   'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
   'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
+  ...BATTLE_HELD_ITEM_NAMES,
 ]);
 
 function isSupportedUserItemName(itemName) {
@@ -3739,15 +3813,19 @@ function setUserPokemonLockByQuery(userId, query, locked) {
 
 function holdEvolutionItem(userId, itemQuery, pokemonQuery) {
   assertUserId(userId);
-  const itemName = findEvolutionItem(itemQuery);
+  const itemName = findEvolutionItem(itemQuery) || findBattleHeldItem(itemQuery);
   if (!itemName) return { error: 'unknown_item' };
-  if (EVOLUTION_ITEMS[itemName].kind !== 'held') return { error: 'not_holdable', itemName };
+  if (EVOLUTION_ITEMS[itemName]?.kind !== 'held' && !BATTLE_HELD_ITEM_NAMES.has(itemName)) {
+    return { error: 'not_holdable', itemName };
+  }
   return db.transaction(() => {
     const owned = findOwnedPokemonRows(userId, pokemonQuery);
     if (!owned.length) return { error: 'pokemon_not_owned' };
     const candidates = owned.filter((row) => !row.held_item);
     if (!candidates.length) return { error: 'item_held' };
-    const target = candidates.find((row) => resolveItemEvolution(itemName, row)) || candidates[0];
+    const target = EVOLUTION_ITEMS[itemName]
+      ? candidates.find((row) => resolveItemEvolution(itemName, row)) || candidates[0]
+      : candidates[0];
     if (!takeUserItem(userId, itemName)) return { error: 'no_item', itemName };
     db.prepare('UPDATE catches SET held_item = ? WHERE id = ? AND user_id = ?')
       .run(itemName, target.id, userId);
@@ -3761,7 +3839,10 @@ function unholdEvolutionItem(userId, pokemonQuery) {
   return db.transaction(() => {
     const owned = findOwnedPokemonRows(userId, pokemonQuery);
     if (!owned.length) return { error: 'pokemon_not_owned' };
-    const target = owned.find((row) => EVOLUTION_ITEMS[row.held_item]);
+    const target = owned.find((row) =>
+      EVOLUTION_ITEMS[row.held_item]?.kind === 'held'
+      || BATTLE_HELD_ITEM_NAMES.has(row.held_item)
+    );
     if (!target) return { error: 'nothing_held' };
     db.prepare('UPDATE catches SET held_item = NULL WHERE id = ? AND user_id = ?')
       .run(target.id, userId);
@@ -4393,40 +4474,59 @@ function setTeamCatchByQuery(userId, query, slot) {
     throw new TypeError('Team slot must be an integer from 1 to 3.');
   }
 
-  const normalized = query.trim().toLowerCase();
+  const rawQuery = query.trim().toLowerCase();
+  const variantMatch = rawQuery.match(/^(shiny|golden)[\s_-]+(.+)$/);
+  const requestedVariant = variantMatch?.[1] || null;
+  const normalized = (variantMatch ? variantMatch[2] : rawQuery).trim();
   const dexNumber = /^\d+$/.test(normalized) ? Number(normalized) : null;
   return db.transaction(() => {
     let pokemon;
     if (dexNumber !== null) {
       const dexNumbers = getPokemonDexNumbersForForms();
       const ownedCatches = db.prepare(`
-        SELECT catches.*
+        SELECT catches.*, pokemon_forms.species_id, pokemon_forms.slug
         FROM catches
+        LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
         WHERE catches.user_id = ?
         ORDER BY catches.id
       `).all(userId);
       pokemon = ownedCatches.find((catchRecord) => {
-        const formDex = dexNumbers.get(catchRecord.pokemon_id);
-        if (!formDex) return false;
-        const catchDex = catchRecord.is_shiny
-          ? formDex.shinyDexNumber ?? formDex.dexNumber
-          : formDex.dexNumber;
+        const isGoldenDex = isGoldenDexNumber(dexNumber);
+        if (Boolean(catchRecord.is_golden) !== isGoldenDex) return false;
+        if (requestedVariant === 'shiny' && !catchRecord.is_shiny) return false;
+        if (requestedVariant === 'golden' && !catchRecord.is_golden) return false;
+        let catchDex;
+        if (catchRecord.is_golden) {
+          catchDex = getGoldenDexNumber(catchRecord.species_id, catchRecord.slug);
+        } else {
+          const formDex = dexNumbers.get(catchRecord.pokemon_id);
+          if (!formDex) return false;
+          catchDex = catchRecord.is_shiny
+            ? formDex.shinyDexNumber ?? formDex.dexNumber
+            : formDex.dexNumber;
+        }
         return catchDex === dexNumber;
       });
     } else {
-      pokemon = db.prepare(`
-        SELECT catches.*
+      const normalizedName = normalized.replace(/[^a-z0-9]/g, '');
+      const requestedIsShiny = requestedVariant === 'shiny' ? 1 : 0;
+      const requestedIsGolden = requestedVariant === 'golden' ? 1 : 0;
+      const ownedCatches = db.prepare(`
+        SELECT catches.*, pokemon_forms.name AS form_name,
+          pokemon_forms.species_name AS form_species_name,
+          pokemon_forms.slug AS form_slug, pokemon_forms.is_default AS form_is_default
         FROM catches
         LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
-        WHERE catches.user_id = ?
-          AND (
-            lower(replace(catches.name, ' ', '-')) = ?
-            OR lower(replace(pokemon_forms.name, ' ', '-')) = ?
-            OR lower(replace(pokemon_forms.species_name, ' ', '-')) = ?
-          )
+        WHERE catches.user_id = ? AND catches.is_shiny = ? AND catches.is_golden = ?
         ORDER BY catches.id
-        LIMIT 1
-      `).get(userId, normalized, normalized, normalized);
+      `).all(userId, requestedIsShiny, requestedIsGolden);
+      pokemon = ownedCatches.find((catchRecord) => {
+        const matchesForm = [catchRecord.form_name, catchRecord.form_slug]
+          .some((name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedName);
+        const matchesDefaultSpecies = Boolean(catchRecord.form_is_default)
+          && String(catchRecord.form_species_name || '').toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedName;
+        return matchesForm || matchesDefaultSpecies;
+      });
     }
     if (!pokemon) return { error: 'not_found' };
 
@@ -6628,7 +6728,7 @@ function getUserRegisteredCollections(userId) {
   ).all(userId);
 }
 
-function registerCollection(userId, pokemonId, pokemonName, buyPrice) {
+function registerCollection(userId, pokemonId, pokemonName, buyPrice, isShiny = false) {
   assertUserId(userId);
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0) {
     throw new TypeError('pokemonId must be a positive safe integer.');
@@ -6639,43 +6739,46 @@ function registerCollection(userId, pokemonId, pokemonName, buyPrice) {
   if (buyPrice !== null && (!Number.isSafeInteger(buyPrice) || buyPrice <= 0)) {
     throw new TypeError('buyPrice must be a positive safe integer or null.');
   }
+  if (typeof isShiny !== 'boolean') throw new TypeError('isShiny must be a boolean.');
   return db.transaction(() => {
     const exists = db.prepare(
-      'SELECT 1 FROM global_collections WHERE user_id = ? AND pokemon_id = ?'
-    ).get(userId, pokemonId);
+      'SELECT 1 FROM global_collections WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?'
+    ).get(userId, pokemonId, Number(isShiny));
     if (!exists) {
       const count = db.prepare(
         'SELECT COUNT(*) AS count FROM global_collections WHERE user_id = ?'
       ).get(userId).count;
-      if (count >= 5) return false;
+      if (count >= 15) return false;
     }
     db.prepare(`
-      INSERT INTO global_collections (user_id, pokemon_id, pokemon_name, buy_price, is_private, updated_at)
-      VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
-      ON CONFLICT(user_id, pokemon_id) DO UPDATE SET
+      INSERT INTO global_collections (user_id, pokemon_id, is_shiny, pokemon_name, buy_price, is_private, updated_at)
+      VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, pokemon_id, is_shiny) DO UPDATE SET
         pokemon_name = excluded.pokemon_name,
         buy_price = excluded.buy_price,
         updated_at = CURRENT_TIMESTAMP
-    `).run(userId, pokemonId, pokemonName.trim(), buyPrice);
+    `).run(userId, pokemonId, Number(isShiny), pokemonName.trim(), buyPrice);
     return true;
   }).immediate();
 }
 
-function deleteCollection(userId, pokemonId) {
+function deleteCollection(userId, pokemonId, isShiny = false) {
   assertUserId(userId);
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0) {
     throw new TypeError('pokemonId must be a positive safe integer.');
   }
+  if (typeof isShiny !== 'boolean') throw new TypeError('isShiny must be a boolean.');
   return db.prepare(
-    'DELETE FROM global_collections WHERE user_id = ? AND pokemon_id = ?'
-  ).run(userId, pokemonId).changes > 0;
+    'DELETE FROM global_collections WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?'
+  ).run(userId, pokemonId, Number(isShiny)).changes > 0;
 }
 
-function setCollectionPrivacy(userId, pokemonIdOrAll, isPrivate) {
+function setCollectionPrivacy(userId, pokemonIdOrAll, isPrivate, isShiny = false) {
   assertUserId(userId);
   if (typeof isPrivate !== 'boolean') {
     throw new TypeError('isPrivate must be a boolean.');
   }
+  if (typeof isShiny !== 'boolean') throw new TypeError('isShiny must be a boolean.');
   if (pokemonIdOrAll === 'all') {
     return db.prepare(
       'UPDATE global_collections SET is_private = ? WHERE user_id = ?'
@@ -6685,8 +6788,8 @@ function setCollectionPrivacy(userId, pokemonIdOrAll, isPrivate) {
     throw new TypeError('pokemonIdOrAll must be a positive safe integer or "all".');
   }
   return db.prepare(
-    'UPDATE global_collections SET is_private = ? WHERE user_id = ? AND pokemon_id = ?'
-  ).run(isPrivate ? 1 : 0, userId, pokemonIdOrAll).changes;
+    'UPDATE global_collections SET is_private = ? WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?'
+  ).run(isPrivate ? 1 : 0, userId, pokemonIdOrAll, Number(isShiny)).changes;
 }
 
 function refreshAllCollections(userId) {
@@ -6698,6 +6801,7 @@ function refreshAllCollections(userId) {
         SELECT owned.name FROM catches owned
         WHERE owned.user_id = global_collections.user_id
           AND owned.pokemon_id = global_collections.pokemon_id
+          AND owned.is_shiny = global_collections.is_shiny
         LIMIT 1
       ), pokemon_name)
     WHERE user_id = ?
@@ -7427,6 +7531,7 @@ module.exports = {
   setBuddyMoves,
   getBuddyMoveChangeCost,
   setBuddyMoveSlot,
+  deleteBuddyMoveSlot,
   swapBuddyMoveSlots,
   CB_CONFIG,
   getCatchbotData,
