@@ -14516,9 +14516,11 @@ client.on('messageCreate', async (message) => {
         const megaSpecies = isShiny && !/mega/i.test(pokemon.name)
           ? null
           : pokemon.name.toLowerCase().match(/sableye|gengar|mawile|banette/)?.[0];
-        const spriteEmoji = megaSpecies && MEGA_SPECIES_EMOJIS[megaSpecies]
-          ? ` ${MEGA_SPECIES_EMOJIS[megaSpecies]}`
-          : ' \u2003\u2003';
+        const spriteEmoji = isShiny && megaSpecies === 'sableye'
+          ? ''
+          : megaSpecies && MEGA_SPECIES_EMOJIS[megaSpecies]
+            ? ` ${MEGA_SPECIES_EMOJIS[megaSpecies]}`
+            : ' \u2003\u2003';
         const name = isGolden ? `Golden ${pokemon.name}` : pokemon.name;
         return `${String(pokemon.dex_number).padStart(4, '0')} ${rarityEmoji}${spriteEmoji} **${name}**` +
           `${pokemon.count > 1 ? ` ×${pokemon.count}` : ''}${pokemon.is_favorite ? ' ⭐' : ''}`;
