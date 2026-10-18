@@ -471,9 +471,29 @@ const NPC_TRAINER_ICON_EMOJIS = {
   staradminatticus: '<:atticus:1561091500010373221>',
   staradminortega: '<:ortega:1561091237769908375>',
   staradmineri: '<:eri:1561091421488816160>',
-  plasmaadminn: '<:kingn:1561066703906144286>',
+  plasmaadminn: '<:plasmaadminN:1561371409140162561>',
+  plasmagruntmale: '<:plasmagruntmale:1561371323546996816>',
+  plasmagruntfemale: '<:plasmagruntfemale:1561371357038641212>',
+  plasmaadminshadow: '<:plasmaadminshadow:1561371380937789460>',
+  plasmaleaderghetsis: '<:plasmaleaderghetsis:1561371442153525370>',
+  rocketgruntmale: '<:rocketgruntmale:1561371468162408648>',
+  rocketgruntfemale: '<:rocketgruntfemale:1561371492577574912>',
+  rocketadminariana: '<:rocketadminariana:1561371515050528858>',
+  rocketadminarcher: '<:rocketadminarcher:1561371545971204117>',
+  rocketadminproton: '<:rocketadminproton:1561371568951525488>',
+  rocketadminpretel: '<:rocketadminpretel:1561371591466549450>',
+  rocketleadergiovanni: '<:rocketleadergiovanni:1561371612446457906>',
+  magmagruntmale: '<:magmagruntmale:1561376294648807466>',
+  magmagruntfemale: '<:magmagruntfemale:1561376313472847994>',
+  magmaadmincourtney: '<:magmaadmincourtney:1561376339523674232>',
+  magmaadmintabitha: '<:magmaadmintabitha:1561376360260182066>',
+  magmaleadermaxie: '<:magmaleadermaxie:1561376382016290866>',
+  aquagruntmale: '<:aquagruntmale:1561376172359815168>',
+  aquagruntfemale: '<:aquagruntfemale:1561376198305521674>',
+  aquaadminmatt: '<:aquaadminmatt:1561376222003462295>',
+  aquaadminshelly: '<:aquaadminshelly:1561376248322850867>',
+  aqualeaderarchie: '<:aqualeaderarchie:1561376270883889204>',
   iono: '<:iono:1561066683488280646>',
-  kingn: '<:kingn:1561066703906144286>',
   hop: '<:hop:1561066662315167815>',
 };
 const FACTION_NPC_ROLE_EMOJIS = {
@@ -488,17 +508,17 @@ const FACTION_NPC_BATTLE_DEFINITIONS = [
   { factionKey: 'rocket', trainer: 'Rocket Admin Archer', role: 'Admin', pokemon: ['Golbat', 'Koffing', 'Houndoom'], strengthMultiplier: 2.3 },
   { factionKey: 'rocket', trainer: 'Rocket Admin Proton', role: 'Admin', pokemon: ['Golbat', 'Weezing', 'Raticate'], strengthMultiplier: 2.3 },
   { factionKey: 'rocket', trainer: 'Rocket Admin Pretel', role: 'Admin', pokemon: ['Raticate', 'Koffing', 'Muk'], strengthMultiplier: 2.3 },
-  { factionKey: 'rocket', trainer: 'Giovanni', role: 'Leader', pokemon: ['Persian', 'Nidoking', 'Mewtwo'], strengthMultiplier: 2.5 },
+  { factionKey: 'rocket', trainer: 'Rocket Leader Giovanni', role: 'Leader', pokemon: ['Persian', 'Nidoking', 'Mewtwo'], strengthMultiplier: 2.5 },
   { factionKey: 'magma', trainer: 'Magma Grunt Male', role: 'Grunt', pokemon: ['Poochyena', 'Numel', 'Zubat'], strengthMultiplier: 2 },
   { factionKey: 'magma', trainer: 'Magma Grunt Female', role: 'Grunt', pokemon: ['Numel', 'Mightyena', 'Golbat'], strengthMultiplier: 2 },
   { factionKey: 'magma', trainer: 'Magma Admin Courtney', role: 'Admin', pokemon: ['Camerupt', 'Mightyena', 'Sableye'], strengthMultiplier: 2.3 },
   { factionKey: 'magma', trainer: 'Magma Admin Tabitha', role: 'Admin', pokemon: ['Camerupt', 'Golbat', 'Mightyena'], strengthMultiplier: 2.3 },
-  { factionKey: 'magma', trainer: 'Maxie', role: 'Leader', pokemon: ['Mightyena', 'Camerupt', 'Groudon'], strengthMultiplier: 2.7 },
+  { factionKey: 'magma', trainer: 'Magma Leader Maxie', role: 'Leader', pokemon: ['Mightyena', 'Camerupt', 'Groudon'], strengthMultiplier: 2.7 },
   { factionKey: 'aqua', trainer: 'Aqua Grunt Male', role: 'Grunt', pokemon: ['Carvanha', 'Zubat', 'Poochyena'], strengthMultiplier: 2 },
   { factionKey: 'aqua', trainer: 'Aqua Grunt Female', role: 'Grunt', pokemon: ['Carvanha', 'Mightyena', 'Golbat'], strengthMultiplier: 2 },
   { factionKey: 'aqua', trainer: 'Aqua Admin Matt', role: 'Admin', pokemon: ['Sharpedo', 'Mightyena', 'Crobat'], strengthMultiplier: 2.3 },
   { factionKey: 'aqua', trainer: 'Aqua Admin Shelly', role: 'Admin', pokemon: ['Sharpedo', 'Golbat', 'Muk'], strengthMultiplier: 2.3 },
-  { factionKey: 'aqua', trainer: 'Archie', role: 'Leader', pokemon: ['Sharpedo', 'Walrein', 'Kyogre'], strengthMultiplier: 2.7 },
+  { factionKey: 'aqua', trainer: 'Aqua Leader Archie', role: 'Leader', pokemon: ['Sharpedo', 'Walrein', 'Kyogre'], strengthMultiplier: 2.7 },
   { factionKey: 'galactic', trainer: 'Galactic Grunt Male', role: 'Grunt', pokemon: ['Stunky', 'Glameow', 'Croagunk'], strengthMultiplier: 2 },
   { factionKey: 'galactic', trainer: 'Galactic Grunt Female', role: 'Grunt', pokemon: ['Glameow', 'Stunky', 'Golbat'], strengthMultiplier: 2 },
   { factionKey: 'galactic', trainer: 'Galactic Admin Mars', role: 'Admin', pokemon: ['Purugly', 'Golbat', 'Bronzor'], strengthMultiplier: 2.3 },
@@ -510,7 +530,7 @@ const FACTION_NPC_BATTLE_DEFINITIONS = [
   { factionKey: 'plasma', trainer: 'Plasma Grunt Female', role: 'Grunt', pokemon: ['Purrloin', 'Watchog', 'Scraggy'], strengthMultiplier: 2 },
   { factionKey: 'plasma', trainer: 'Plasma Admin Shadow', role: 'Admin', pokemon: ['Liepard', 'Golbat', 'Krookodile'], strengthMultiplier: 2.3 },
   { factionKey: 'plasma', trainer: 'Plasma Admin N', role: 'Admin', pokemon: ['Zoroark', 'Klinklang', 'Zekrom'], strengthMultiplier: 2.7 },
-  { factionKey: 'plasma', trainer: 'Ghetsis', role: 'Leader', pokemon: ['Bisharp', 'Hydreigon', 'Zekrom'], strengthMultiplier: 3 },
+  { factionKey: 'plasma', trainer: 'Plasma Leader Ghetsis', role: 'Leader', pokemon: ['Bisharp', 'Hydreigon', 'Zekrom'], strengthMultiplier: 3 },
   { factionKey: 'flare', trainer: 'Flare Grunt Male', role: 'Grunt', pokemon: ['Houndour', 'Scraggy', 'Golbat'], strengthMultiplier: 2 },
   { factionKey: 'flare', trainer: 'Flare Grunt Female', role: 'Grunt', pokemon: ['Houndour', 'Liepard', 'Scraggy'], strengthMultiplier: 2 },
   { factionKey: 'flare', trainer: 'Flare Admin Male', role: 'Admin', pokemon: ['Houndoom', 'Pyroar', 'Golbat'], strengthMultiplier: 2.3 },
@@ -3652,7 +3672,7 @@ function announceQuestCompletions(userId, channel, completedQuests) {
         reward_items: quest.reward_items,
         reward_coins: quest.reward_coins,
       })}\n` +
-      `⏳ A new quest for this slot will be available <t:${Math.floor(quest.refresh_at / 1000)}:R>.`
+      `⏳ A new quest is available <t:${Math.floor(quest.refresh_at / 1000)}:R>. Use \`${PREFIX}quest\` then to fill the slot.`
     ).catch((error) => {
       console.error(`Failed to announce quest ${quest.slot} completion for user ${userId}:`, error);
     });
@@ -4194,7 +4214,7 @@ async function askForBall(
       ).join('\n')
       : '';
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
-      `🆙 • Congratulations, **${message.author.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
+      `<:lvlup:1561369467467071679> • Congratulations, **${message.author.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
     ).join('\n') || '';
     await spawnMessage.edit({
       content: [experienceMessage, levelUpMessage].filter(Boolean).join('\n'),
@@ -11316,13 +11336,16 @@ client.on('messageCreate', async (message) => {
       const activeQuests = getUserQuests(userId);
       const activeQuestText = activeQuests.map((quest) => {
         const isWaitingForRefresh = quest.refresh_at > 0;
-        const progressText = quest.refresh_at > 0
-          ? `└ ⏳ New quest available <t:${Math.floor(quest.refresh_at / 1000)}:R>`
-          : `└ 📋 Progress: ${quest.progress} / ${quest.target}`;
+        if (isWaitingForRefresh) {
+          return (
+            `**Quest #${quest.slot}:** 🕒 Empty slot\n` +
+            `└ ⏳ A new quest is available <t:${Math.floor(quest.refresh_at / 1000)}:R>`
+          );
+        }
         return (
-          `**Quest #${quest.slot}:** ${isWaitingForRefresh ? '✅ Completed' : formatQuestObjective(quest)}\n` +
-          `│ 💰 ${isWaitingForRefresh ? 'Rewards claimed' : 'Rewards'}: ${formatQuestRewards(quest)}\n` +
-          progressText
+          `**Quest #${quest.slot}:** ${formatQuestObjective(quest)}\n` +
+          `│ 💰 Rewards: ${formatQuestRewards(quest)}\n` +
+          `└ 📋 Progress: ${quest.progress} / ${quest.target}`
         );
       }).join('\n\n');
       return message.reply({
@@ -14760,6 +14783,27 @@ client.on('messageCreate', async (message) => {
             .setFooter({ text: `Item info: ${PREFIX}item info <item>` })],
         });
       }
+      if (['pokecoin', 'pokecoins', 'poke coin', 'poke coins', 'pokémon coin', 'coin', 'coins'].includes(query)) {
+        const user = getUser(userId);
+        return message.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x0099ff)
+            .setAuthor({ name: `${EMOJIS.pokecoin} Pokecoin — Item information` })
+            .setDescription(
+              `The main currency used in this bot.\n\n` +
+              `**You currently own:** ${EMOJIS.pokecoin} **${user.coins.toLocaleString()}x Pokecoin**\n\n` +
+              `**Usage**\nUsed for purchasing items in \`${PREFIX}shop\` or trading with other players.\n` +
+              `• Used when: upgrading \`${PREFIX}catchbot\` & \`${PREFIX}clan\`, purchasing \`${PREFIX}lottery\` tickets, new moves, or Pokémon on the \`${PREFIX}market\`\n` +
+              `• Can give to other players if you meet the standard trading requirements, using \`${PREFIX}give {@user} {amt}\`.\n\n` +
+              `**Method to obtain**\n` +
+              `• Catching Pokémon from \`${PREFIX}pokemon\` \`${PREFIX}fish\` \`${PREFIX}explore\`.\n` +
+              `• Daily streaks, Voting, Lootboxes, Quest rewards, Voting boxes, Lottery rewards, Worldboss rewards, Battling NPCs\n\n` +
+              `**Can be held by Pokémon?** ❌ No`
+            )
+            .setThumbnail('https://cdn.discordapp.com/emojis/1558834592067227688.png')
+            .setFooter({ text: `Item info: ${PREFIX}item info <item>` })],
+        });
+      }
       if (query === 'boss coin' || query === 'bosscoin') {
         const owned = getUserItems(userId).find((row) => row.item_name === 'Boss Coin')?.amount || 0;
         return message.reply({
@@ -17861,10 +17905,20 @@ client.on('messageCreate', async (message) => {
       }
 
       const favorites = db.prepare(
-        'SELECT name, is_shiny, is_golden FROM catches WHERE user_id = ? AND is_fav = 1 ORDER BY id LIMIT 10'
+        'SELECT name, rarity, is_shiny, is_golden FROM catches WHERE user_id = ? AND is_fav = 1 ORDER BY id'
       ).all(profileId);
-      const favoriteLine = favorites.length
-        ? `**Favorite Pokémon:** ${favorites.map((row) => `${row.is_golden ? EMOJIS.golden : row.is_shiny ? EMOJIS.shiny : ''}${row.name}`).join(', ')}`
+      const seenFavoriteSpecies = new Set();
+      const favoriteLabels = [];
+      for (const row of favorites) {
+        const speciesKey = row.name.toLowerCase();
+        if (seenFavoriteSpecies.has(speciesKey)) continue;
+        seenFavoriteSpecies.add(speciesKey);
+        const logo = row.is_golden ? EMOJIS.golden : getRarityEmojis(row.rarity, row.name, Boolean(row.is_shiny));
+        favoriteLabels.push(`${logo} ${row.name}`.trim());
+        if (favoriteLabels.length >= 10) break;
+      }
+      const favoriteLine = favoriteLabels.length
+        ? `**Favorite Pokémon:** ${favoriteLabels.join(', ')}`
         : 'No favorite Pokémon to show! *Your favorite Pokémon will show on your profile if your box is unlocked.*';
       const collections = getUserRegisteredCollections(profileId).filter((row) => !row.is_private);
       const collectionLine = collections.length

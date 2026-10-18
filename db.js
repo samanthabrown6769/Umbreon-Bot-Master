@@ -1358,6 +1358,13 @@ for (const pokemon of pokemonCatalog) {
   }
 }
 
+// Display Mega forms as "Mega <Pokémon>" (e.g. "Mega Charizard X") instead of "<Pokémon> Mega".
+function toMegaDisplayName(name) {
+  return typeof name === 'string'
+    ? name.replace(/^(.+?) Mega( [XYZ])?$/, 'Mega $1$2')
+    : name;
+}
+
 const upsertPokemonForm = db.prepare(`
   INSERT INTO pokemon_forms (
     id, species_id, species_name, slug, name, is_default, is_legendary, is_mythical,
@@ -1399,7 +1406,8 @@ db.exec('CREATE TEMP TABLE IF NOT EXISTS pokemon_catalog_import_ids (id INTEGER 
 const markCatalogId = db.prepare('INSERT INTO pokemon_catalog_import_ids (id) VALUES (?)');
 db.transaction(() => {
   db.exec('DELETE FROM pokemon_catalog_import_ids');
-  for (const pokemon of pokemonCatalog) {
+  for (const catalogEntry of pokemonCatalog) {
+    const pokemon = { ...catalogEntry, name: toMegaDisplayName(catalogEntry.name) };
     const rarity = pokemonRarityById.get(pokemon.id).rarity;
     const evolutionChainId = evolutionChainsBySpecies[pokemon.species_id]
       || persistedEvolutionChainsBySpecies.get(pokemon.species_id)
@@ -1473,7 +1481,7 @@ db.transaction(() => {
       );
       form = getFormBySlug.get(record.slug);
     }
-    const name = record.name || form.name;
+    const name = toMegaDisplayName(record.name || form.name);
     if (name !== form.name) {
       renameCatches.run(name, form.id, form.name);
       renameMarket.run(name, form.id, form.name);
@@ -7132,9 +7140,13 @@ const FACTION_TEAMS = {
     id: 'rocket', name: 'Team Rocket', badge: '🚀', emoji: '<:teamrocketlogo:1560297373190725712>',
     emojiId: '1560297373190725712', emojiName: 'teamrocketlogo',
     npcs:
-      '<:grunt:1560312842039726150> Grunt: Rocket Grunt Male, Rocket Grunt Female\n' +
-      '<:admin:1560312876596461578> Admin: Ariana, Archer, Proton, Pretel\n' +
-      '<:leader:1560312904560025680> Leader: Giovanni',
+      '<:grunt:1560312842039726150> Grunt: <:rocketgruntmale:1561371468162408648> Rocket Grunt Male, ' +
+      '<:rocketgruntfemale:1561371492577574912> Rocket Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: <:rocketadminariana:1561371515050528858> Rocket Admin Ariana, ' +
+      '<:rocketadminarcher:1561371545971204117> Rocket Admin Archer, ' +
+      '<:rocketadminproton:1561371568951525488> Rocket Admin Proton, ' +
+      '<:rocketadminpretel:1561371591466549450> Rocket Admin Pretel\n' +
+      '<:leader:1560312904560025680> Leader: <:rocketleadergiovanni:1561371612446457906> Rocket Leader Giovanni',
     favoritePokemon: '👾 Persian, Meowth, Mewtwo',
     goals: 'Steal strong and rare Pokémon for global domination and criminal profit.',
   },
@@ -7142,9 +7154,11 @@ const FACTION_TEAMS = {
     id: 'magma', name: 'Team Magma', badge: '🌋', emoji: '<:teammagmalogo:1560297371479572480>',
     emojiId: '1560297371479572480', emojiName: 'teammagmalogo',
     npcs:
-      '<:grunt:1560312842039726150> Grunt: Magma Grunt Male, Magma Grunt Female\n' +
-      '<:admin:1560312876596461578> Admin: Courtney, Tabitha\n' +
-      '<:leader:1560312904560025680> Leader: Maxie',
+      '<:grunt:1560312842039726150> Grunt: <:magmagruntmale:1561376294648807466> Magma Grunt Male, ' +
+      '<:magmagruntfemale:1561376313472847994> Magma Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: <:magmaadmincourtney:1561376339523674232> Magma Admin Courtney, ' +
+      '<:magmaadmintabitha:1561376360260182066> Magma Admin Tabitha\n' +
+      '<:leader:1560312904560025680> Leader: <:magmaleadermaxie:1561376382016290866> Magma Leader Maxie',
     favoritePokemon: '👾 Groudon, Camerupt, Mightyena',
     goals: "Awaken ancient legendary power to expand the world's landmass.",
   },
@@ -7152,9 +7166,11 @@ const FACTION_TEAMS = {
     id: 'aqua', name: 'Team Aqua', badge: '🌊', emoji: '<:teamaqualogo:1560297370174890015>',
     emojiId: '1560297370174890015', emojiName: 'teamaqualogo',
     npcs:
-      '<:grunt:1560312842039726150> Grunt: Aqua Grunt Male, Aqua Grunt Female\n' +
-      '<:admin:1560312876596461578> Admin: Matt, Shelly\n' +
-      '<:leader:1560312904560025680> Leader: Archie',
+      '<:grunt:1560312842039726150> Grunt: <:aquagruntmale:1561376172359815168> Aqua Grunt Male, ' +
+      '<:aquagruntfemale:1561376198305521674> Aqua Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: <:aquaadminmatt:1561376222003462295> Aqua Admin Matt, ' +
+      '<:aquaadminshelly:1561376248322850867> Aqua Admin Shelly\n' +
+      '<:leader:1560312904560025680> Leader: <:aqualeaderarchie:1561376270883889204> Aqua Leader Archie',
     favoritePokemon: '👾 Kyogre, Sharpedo, Walrein',
     goals: 'Expand the global oceans to return the world to prehistoric beauty.',
   },
@@ -7172,10 +7188,11 @@ const FACTION_TEAMS = {
     id: 'plasma', name: 'Team Plasma', badge: '🛡️', emoji: '<:teamplasmalogo:1560297367578738791>',
     emojiId: '1560297367578738791', emojiName: 'teamplasmalogo',
     npcs:
-      '<:grunt:1560312842039726150> Grunt: Plasma Grunt Male, Plasma Grunt Female\n' +
-      '<:admin:1560312876596461578> Admin: Plasma Admin Shadow, ' +
-      '<:kingn:1561066703906144286> Plasma Admin N\n' +
-      '<:leader:1560312904560025680> Leader: Ghetsis',
+      '<:grunt:1560312842039726150> Grunt: <:plasmagruntmale:1561371323546996816> Plasma Grunt Male, ' +
+      '<:plasmagruntfemale:1561371357038641212> Plasma Grunt Female\n' +
+      '<:admin:1560312876596461578> Admin: <:plasmaadminshadow:1561371380937789460> Plasma Admin Shadow, ' +
+      '<:plasmaadminN:1561371409140162561> Plasma Admin N\n' +
+      '<:leader:1560312904560025680> Leader: <:plasmaleaderghetsis:1561371442153525370> Plasma Leader Ghetsis',
     favoritePokemon: '👾 Reshiram, Zekrom, Hydreigon',
     goals: 'Liberate Pokémon from trainers to monopolize total authority.',
   },
@@ -7252,7 +7269,7 @@ db.exec(`
 `);
 
 function getDailyBall(factionKey = '', date = new Date()) {
-  const day = Math.floor(date.getTime() / 86400000);
+  const day = getDailyResetDay(date.getTime());
   const storedBall = db.prepare(
     'SELECT ball_key FROM faction_daily_balls WHERE faction_key = ? AND day = ?'
   ).get(factionKey, day)?.ball_key;
