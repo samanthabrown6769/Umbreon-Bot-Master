@@ -557,7 +557,7 @@ const FACTION_NPC_BATTLE_DEFINITIONS = [
   { factionKey: 'galactic', trainer: 'Galactic Admin Charon', role: 'Admin', pokemon: ['Magnezone', 'Houndoom', 'Golbat'], strengthMultiplier: 2.3 },
   { factionKey: 'galactic', trainer: 'Galactic Admin Jupiter', role: 'Admin', pokemon: ['Skuntank', 'Golbat', 'Bronzor'], strengthMultiplier: 2.3 },
   { factionKey: 'galactic', trainer: 'Galactic Admin Saturn', role: 'Admin', pokemon: ['Toxicroak', 'Golbat', 'Bronzor'], strengthMultiplier: 2.3 },
-  { factionKey: 'galactic', trainer: 'Cyrus', role: 'Leader', pokemon: ['Weavile', 'Honchkrow', 'Dialga'], strengthMultiplier: 2.8 },
+  { factionKey: 'galactic', trainer: 'Galactic Leader Cyrus', role: 'Leader', pokemon: ['Weavile', 'Honchkrow', 'Dialga'], strengthMultiplier: 2.8 },
   { factionKey: 'plasma', trainer: 'Plasma Grunt Male', role: 'Grunt', pokemon: ['Liepard', 'Watchog', 'Trubbish'], strengthMultiplier: 2 },
   { factionKey: 'plasma', trainer: 'Plasma Grunt Female', role: 'Grunt', pokemon: ['Purrloin', 'Watchog', 'Scraggy'], strengthMultiplier: 2 },
   { factionKey: 'plasma', trainer: 'Plasma Admin Shadow', role: 'Admin', pokemon: ['Liepard', 'Golbat', 'Krookodile'], strengthMultiplier: 2.3 },
@@ -567,15 +567,15 @@ const FACTION_NPC_BATTLE_DEFINITIONS = [
   { factionKey: 'flare', trainer: 'Flare Grunt Female', role: 'Grunt', pokemon: ['Houndour', 'Liepard', 'Scraggy'], strengthMultiplier: 2 },
   { factionKey: 'flare', trainer: 'Flare Admin Male', role: 'Admin', pokemon: ['Houndoom', 'Pyroar', 'Golbat'], strengthMultiplier: 2.3 },
   { factionKey: 'flare', trainer: 'Flare Admin Female', role: 'Admin', pokemon: ['Liepard', 'Pyroar', 'Malamar'], strengthMultiplier: 2.3 },
-  { factionKey: 'flare', trainer: 'Lysandre', role: 'Leader', pokemon: ['Pyroar', 'Malamar', 'Yveltal'], strengthMultiplier: 2.8 },
+  { factionKey: 'flare', trainer: 'Flare Leader Lysandre', role: 'Leader', pokemon: ['Pyroar', 'Malamar', 'Yveltal'], strengthMultiplier: 2.8 },
   { factionKey: 'skull', trainer: 'Skull Grunt Male', role: 'Grunt', pokemon: ['Rattata', 'Drowzee', 'Golbat'], strengthMultiplier: 2 },
   { factionKey: 'skull', trainer: 'Skull Grunt Female', role: 'Grunt', pokemon: ['Rattata', 'Golbat', 'Salandit'], strengthMultiplier: 2 },
   { factionKey: 'skull', trainer: 'Skull Admin Plumeria', role: 'Admin', pokemon: ['Golbat', 'Salazzle', 'Toxapex'], strengthMultiplier: 2.3 },
-  { factionKey: 'skull', trainer: 'Guzma', role: 'Leader', pokemon: ['Golisopod', 'Scizor', 'Alolan Marowak'], strengthMultiplier: 2.2 },
+  { factionKey: 'skull', trainer: 'Skull Leader Guzma', role: 'Leader', pokemon: ['Golisopod', 'Scizor', 'Alolan Marowak'], strengthMultiplier: 2.2 },
   { factionKey: 'yell', trainer: 'Yell Grunt Male', role: 'Grunt', pokemon: ['Zigzagoon', 'Thievul', 'Obstagoon'], strengthMultiplier: 2 },
   { factionKey: 'yell', trainer: 'Yell Grunt Female', role: 'Grunt', pokemon: ['Thievul', 'Liepard', 'Obstagoon'], strengthMultiplier: 2 },
   { factionKey: 'yell', trainer: 'Yell Admin Marnie', role: 'Admin', pokemon: ['Morpeko', 'Toxicroak', 'Grimmsnarl'], strengthMultiplier: 2.3 },
-  { factionKey: 'yell', trainer: 'Piers', role: 'Leader', pokemon: ['Skuntank', 'Obstagoon', 'Grimmsnarl'], strengthMultiplier: 2 },
+  { factionKey: 'yell', trainer: 'Yell Leader Piers', role: 'Leader', pokemon: ['Skuntank', 'Obstagoon', 'Grimmsnarl'], strengthMultiplier: 2 },
   { factionKey: 'star', trainer: 'Star Grunt Male', role: 'Grunt', pokemon: ['Pawniard', 'Grafaiai', 'Revavroom'], strengthMultiplier: 2 },
   { factionKey: 'star', trainer: 'Star Grunt Female', role: 'Grunt', pokemon: ['Pawniard', 'Lokix', 'Revavroom'], strengthMultiplier: 2 },
   { factionKey: 'star', trainer: 'Star Admin Giacomo', role: 'Admin', pokemon: ['Pawniard', 'Revavroom'], strengthMultiplier: 2.3 },
@@ -13054,7 +13054,9 @@ client.on('messageCreate', async (message) => {
               FACTION_NPC_BATTLES.map((challenge) => {
                 const trainerKey = challenge.name.split('\u2014').pop().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
                 const iconEmoji = NPC_TRAINER_ICON_EMOJIS[trainerKey] || challenge.iconEmoji || '';
-                return `• ${iconEmoji} **${challenge.name}**`.trim();
+                const trainerName = challenge.name.split('\u2014').pop().trim();
+                const teamEmoji = FACTION_TEAMS[challenge.factionKey].emoji;
+                return `• ${iconEmoji} ${teamEmoji} **${trainerName}**`.trim();
               }).join('\n') +
               `\n\nChallenge one with \`${PREFIX}faction battle <leader name|faction name>\`.`
             )],
@@ -13071,9 +13073,11 @@ client.on('messageCreate', async (message) => {
               .setColor(0x9b59b6)
               .setTitle('⚔️ Faction NPC Battles')
               .setDescription(
-                FACTION_NPC_BATTLES.map((challenge, index) =>
-                  `**${index + 1}. ${challenge.name}** — ${challenge.strengthMultiplier}× opponent stats`
-                ).join('\n') +
+                FACTION_NPC_BATTLES.map((challenge, index) => {
+                  const trainerName = challenge.name.split('\u2014').pop().trim();
+                  const teamEmoji = FACTION_TEAMS[challenge.factionKey].emoji;
+                  return `**${index + 1}. ${teamEmoji} ${trainerName}** — ${challenge.strengthMultiplier}× opponent stats`;
+                }).join('\n') +
                 `\n\nFaction NPCs have a **1/1,000** chance to drop their battle icon.\n` +
                 `Challenge one with \`${PREFIX}faction battle <leader name|faction name>\`.`
               )],
@@ -14290,7 +14294,7 @@ client.on('messageCreate', async (message) => {
           .setAuthor({ name: `${targetUser.username}'s Bag`, iconURL: targetUser.displayAvatarURL() });
         if (page === 1) {
           embed.setTitle(`🎒 Currencies & Gear (Page 1/${totalPages})`).addFields(
-            { name: 'Currency', value: `• ${EMOJIS.pokecoin} **PokéCoins:** ${bagUser.coins.toLocaleString()}\n• ${EMOJIS.votecoin} **Vote Coins:** ${bagUser.vote_coins.toLocaleString()}\n• 🎟️ **Swap Tickets:** ${(ownedItems.get('Swap Ticket') || 0).toLocaleString()}`, inline: false },
+            { name: 'Currency', value: `• ${EMOJIS.pokecoin} **PokéCoins:** ${bagUser.coins.toLocaleString()}\n• ${EMOJIS.votecoin} **Vote Coins:** ${bagUser.vote_coins.toLocaleString()}\n• ${EMOJIS.patreonToken} **Patreon Tokens:** ${bagUser.patreon_tokens.toLocaleString()}\n• ${EMOJIS.fishingtoken} **Fishing Tokens:** ${bagUser.fishing_tokens.toLocaleString()}\n• 🎟️ **Swap Tickets:** ${(ownedItems.get('Swap Ticket') || 0).toLocaleString()}`, inline: false },
             {
               name: 'Pokéballs',
               value:
@@ -14306,7 +14310,6 @@ client.on('messageCreate', async (message) => {
               name: 'Fishing',
               value:
                 `• ${EMOJIS.oldrod} **Rod:** ${bagUser.fish_rods}\n` +
-                `• ${EMOJIS.fishingtoken} **Fishing Tokens:** ${bagUser.fishing_tokens.toLocaleString()}\n` +
                 `• ${EMOJIS.pokeLure} **Poké Lures:** ${bagUser.active_poke_lures.toLocaleString()}\n` +
                 `• ${EMOJIS.mistysLure} **Misty's Lures:** ${bagUser.active_mistys_lures.toLocaleString()}`,
               inline: true,
@@ -14334,7 +14337,7 @@ client.on('messageCreate', async (message) => {
                 `• ${EMOJIS.honey} **Honey:** ${(ownedItems.get('Honey') || 0).toLocaleString()} (${bagUser.honey_encounters.toLocaleString()} active)\n` +
                 `• 📜 **Quest Reset Scroll:** ${bagUser.quest_reset_scrolls.toLocaleString()}\n` +
                 `• ${EMOJIS.expshare} **Exp. Share:** ${bagUser.exp_share_owned ? 'Owned' : 'Not owned'}\n` +
-                `• ${EMOJIS.amuletcoin} **Amulet Coin:** ${amuletBoost.owned}/10 (+${amuletBoost.percentBoost}% coin boost)`,
+                `• ${EMOJIS.amuletcoin} **Amulet Coin:** ${amuletBoost.owned}/10`,
               inline: true,
             },
             {
