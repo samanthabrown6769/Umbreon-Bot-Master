@@ -6024,7 +6024,17 @@ async function handleStatsCommand(message) {
   return message.reply({ embeds: [embed] });
 }
 
-client.on('interactionCreate', async (interaction) => {
+client.on('interactionCreate', (interaction) => {
+  handleInteractionCreate(interaction).catch((error) => {
+    console.error(`Interaction "${interaction.customId}" failed:`, error);
+    if (interaction.isRepliable?.()) {
+      replyToInteractionFailure(interaction, '❌ Something went wrong. Please try again.', 'interaction failure')
+        .catch(() => {});
+    }
+  });
+});
+
+async function handleInteractionCreate(interaction) {
   if (!interaction.isButton()) return;
   if (interaction.customId === 'ga_enter' || interaction.customId === 'ga_leave') {
     try {
@@ -6103,7 +6113,7 @@ client.on('interactionCreate', async (interaction) => {
             : 'This World Boss panel is outdated. Use `.wb` to view the active raid.',
     `expired ${actionName}`
   );
-});
+}
 
 const GIVEAWAY_MAX_MINUTES = 7 * 24 * 60;
 const giveawayTimers = new Map();
@@ -18067,9 +18077,12 @@ client.on('messageCreate', async (message) => {
     }
   } catch (error) {
     console.error(`Command "${command}" failed:`, error);
-    await message.reply('❌ Something went wrong while processing that command.');
+    await message.reply('❌ Something went wrong while processing that command.').catch(() => {});
   }
 });
+
+client.on('error', (error) => console.error('[client] error:', error));
+client.on('shardError', (error) => console.error('[client] shard error:', error));
 
 client.once('clientReady', () => {
   console.log(`🚀 Pokémon bot online as ${client.user.tag}`);
@@ -18093,8 +18106,11 @@ client.once('clientReady', () => {
   for (const pending of db.prepare('SELECT id, ends_at FROM active_giveaways WHERE ended = 0').all()) {
     scheduleGiveaway(pending.id, pending.ends_at);
   }
-  runDailyGiveaways();
-  setInterval(runDailyGiveaways, 60 * 1000);
+  const safely = (name, job) => () => {
+    Promise.resolve().then(job).catch((error) => console.error(`[${name}] failed:`, error));
+  };
+  safely('daily-giveaways', runDailyGiveaways)();
+  setInterval(safely('daily-giveaways', runDailyGiveaways), 60 * 1000);
   const expireTokenOrders = () => {
     try {
       expirePatreonTokenOrders();
@@ -18104,8 +18120,8 @@ client.once('clientReady', () => {
   };
   expireTokenOrders();
   setInterval(expireTokenOrders, 60 * 1000);
-  runPatreonMonthlyPayout();
-  setInterval(runPatreonMonthlyPayout, 5 * 60 * 1000);
+  safely('patreon-payout', runPatreonMonthlyPayout)();
+  setInterval(safely('patreon-payout', runPatreonMonthlyPayout), 5 * 60 * 1000);
   startAutospawnScheduler();
   startLotteryScheduler();
   const millisecondsUntilNextHour = () => {
@@ -18145,4 +18161,8 @@ client.once('clientReady', () => {
 
 const token = process.env.BOT_TOKEN || process.env.DISCORD_TOKEN;
 if (!token) throw new Error('Set BOT_TOKEN in .env before starting the bot.');
+// Keep the bot alive on stray async errors; log them for diagnosis instead of crashing.
+process.on('unhandledRejection', (reason) => console.error('[process] unhandled rejection:', reason));
+process.on('uncaughtException', (error) => console.error('[process] uncaught exception:', error));
+
 client.login(token);
