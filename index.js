@@ -133,6 +133,7 @@ const {
   getPokemonLearnset,
   getSpeciesLearnset,
   getSpeciesGmaxMoves,
+  restrictStyleExclusiveMoves,
   recordSketchedMove,
   getPokemonMove,
   getBuddyMoveChangeCost,
@@ -2467,12 +2468,11 @@ function createWorldBossAttackResult(attack, rewards = null) {
       ...rewards.drops.map((id) =>
         `• <@${id}> ${rarityEmojis} **${attack.boss.name}**! 🎉`
       ),
-      ...rewards.boxDrops.map(({ userId, itemName }) =>
-        `• <@${userId}> ${BOXES[itemName]?.emoji || (itemName === 'Lootbox' ? LOOTBOX_EMOJI : '📦')} **${itemName}**!`
-      ),
-      ...(rewards.extraDrops || []).map(({ userId, name, amount }) =>
-        `• <@${userId}> ${EVOLUTION_ITEMS[name]?.emoji || (name === 'Rare Candy' ? EMOJIS.rarecandy : '🎁')} **${amount}x ${name}**`
-      ),
+      ...rewards.boxDrops
+        .filter(({ itemName }) => /legendary box|shiny box/i.test(itemName))
+        .map(({ userId, itemName }) =>
+          `• <@${userId}> ${BOXES[itemName]?.emoji || '📦'} **${itemName}**!`
+        ),
     ];
     const dropText = specialDrops.join('\n');
     const drops = specialDrops.length
@@ -2513,7 +2513,13 @@ function getWorldBossTeamMoves(team) {
     const form = db.prepare('SELECT species_id, types FROM pokemon_forms WHERE id = ?')
       .get(pokemon.pokemon_id);
     if (!form) throw new Error(`Missing catalog form ${pokemon.pokemon_id} for team catch ${pokemon.id}.`);
-    const moves = getEquippedBattleMoves(pokemon, form.species_id, form.id);
+    const hyperBeam = getPokemonMove('hyper-beam');
+    // In World Boss raids Max Ooze is replaced by Hyper Beam (no stat boost).
+    const moves = [...new Map(
+      getEquippedBattleMoves(pokemon, form.species_id, form.id)
+        .map((move) => (move.name === 'Max Ooze' && hyperBeam ? hyperBeam : move))
+        .map((move) => [move.name, move])
+    ).values()];
     return {
       pokemon,
       types: JSON.parse(form.types),
@@ -4335,12 +4341,12 @@ function getEquippedBattleMoves(pokemon, speciesId, formId = null) {
   }
   let sketched = [];
   try { sketched = JSON.parse(pokemon.sketched_moves || '[]'); } catch (_) { /* ignore */ }
-  const learnset = [...new Set([
+  const learnset = restrictStyleExclusiveMoves([...new Set([
     ...getSpeciesLearnset(speciesId),
     ...getSpeciesLearnset(speciesId, formId),
-    ...getSpeciesGmaxMoves(speciesId),
+    ...getSpeciesGmaxMoves(speciesId, formId),
     ...sketched,
-  ])];
+  ])], formId);
   const selected = equipped.filter((name) => learnset.includes(name)).slice(0, 4);
   for (const moveName of learnset) {
     if (selected.length >= 4) break;
@@ -7017,11 +7023,48 @@ async function announceMarketListings(message, listings) {
   return { configured: true, failures };
 }
 
+const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
+const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
+const lastCommandAt = new Map();
+let globalWindowStart = 0;
+let globalWindowCount = 0;
+
+function isCommandThrottled(userId) {
+  const now = Date.now();
+  if (now - globalWindowStart > 10000) {
+    globalWindowStart = now;
+    globalWindowCount = 0;
+  }
+  if (++globalWindowCount > GLOBAL_COMMANDS_PER_10S) return true;
+  if (now - (lastCommandAt.get(userId) || 0) < USER_COMMAND_GAP_MS) return true;
+  lastCommandAt.set(userId, now);
+  if (lastCommandAt.size > 5000) {
+    for (const [id, at] of lastCommandAt) if (now - at > 60000) lastCommandAt.delete(id);
+  }
+  return false;
+}
+
+// Logs Discord REST usage per route every 30s to help find request floods.
+const restRouteCounts = new Map();
+client.rest.on('response', (request) => {
+  const key = `${request.method} ${request.route}`;
+  restRouteCounts.set(key, (restRouteCounts.get(key) || 0) + 1);
+});
+setInterval(() => {
+  const total = [...restRouteCounts.values()].reduce((a, b) => a + b, 0);
+  if (total > 100) {
+    const top = [...restRouteCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    console.warn(`[rate] ${total} Discord REST calls/30s. Top:`, top);
+  }
+  restRouteCounts.clear();
+}, 30000).unref();
+
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.content.startsWith(PREFIX)) {
     if (!message.author.bot) trackAutoSpawnMessage(message);
     return;
   }
+  if (isCommandThrottled(message.author.id)) return;
 
   const input = message.content.slice(PREFIX.length).trim();
   if (!input) return;
@@ -14437,7 +14480,9 @@ client.on('messageCreate', async (message) => {
         const rarityEmoji = isGolden
           ? EMOJIS.golden
           : RARITY_EMOJIS[displayRarity.toLowerCase()] || '\u2003';
-        const megaSpecies = pokemon.name.toLowerCase().match(/sableye|gengar|mawile|banette/)?.[0];
+        const megaSpecies = isShiny && !/mega/i.test(pokemon.name)
+          ? null
+          : pokemon.name.toLowerCase().match(/sableye|gengar|mawile|banette/)?.[0];
         const spriteEmoji = megaSpecies && MEGA_SPECIES_EMOJIS[megaSpecies]
           ? ` ${MEGA_SPECIES_EMOJIS[megaSpecies]}`
           : ' \u2003\u2003';

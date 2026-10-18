@@ -45,7 +45,18 @@ const initializeEncounterCounter = db.prepare(`
   VALUES (?, ?, ?)
 `);
 
-function getSpeciesGmaxMoves(speciesId) {
+// Urshifu's G-Max moves are style-exclusive: One Blow for Single Strike, Rapid Flow for Rapid Strike.
+const STYLE_EXCLUSIVE_MOVES = { 'g-max-one-blow': 'single-strike', 'g-max-rapid-flow': 'rapid-strike' };
+
+function restrictStyleExclusiveMoves(moves, formId) {
+  if (!moves.some((move) => STYLE_EXCLUSIVE_MOVES[move])) return moves;
+  const slug = Number.isSafeInteger(formId)
+    ? db.prepare('SELECT slug FROM pokemon_forms WHERE id = ?').get(formId)?.slug || ''
+    : '';
+  return moves.filter((move) => !STYLE_EXCLUSIVE_MOVES[move] || slug.includes(STYLE_EXCLUSIVE_MOVES[move]));
+}
+
+function getSpeciesGmaxMoves(speciesId, formId = null) {
   if (!Number.isSafeInteger(speciesId) || speciesId <= 0) return [];
   const forms = db.prepare(`
     SELECT id, slug FROM pokemon_forms
@@ -61,7 +72,7 @@ function getSpeciesGmaxMoves(speciesId) {
         : []),
     ].filter((move) => move.startsWith('g-max-'));
   });
-  return [...new Set(moves)];
+  return restrictStyleExclusiveMoves([...new Set(moves)], formId);
 }
 
 function getCooldownNotificationMode(userId) {
@@ -2926,12 +2937,12 @@ function getPokemonLearnset(catchId, userId) {
     WHERE catches.id = ? AND catches.user_id = ?
   `).get(catchId, userId);
   if (!pokemon) return null;
-  const gmaxMoves = getSpeciesGmaxMoves(pokemon.species_id);
-  const base = [
+  const gmaxMoves = getSpeciesGmaxMoves(pokemon.species_id, pokemon.pokemon_id);
+  const base = restrictStyleExclusiveMoves([
     ...getSpeciesLearnset(pokemon.species_id),
     ...getSpeciesLearnset(pokemon.species_id, pokemon.pokemon_id),
     ...gmaxMoves,
-  ];
+  ], pokemon.pokemon_id);
   return {
     pokemon,
     moves: [...new Set([...base, ...parseSketchedMoves(pokemon.sketched_moves)])],
@@ -3279,6 +3290,8 @@ function sacrificeForChamber(userId, chamberKey, amount) {
       WHERE catches.user_id = ?
         AND pokemon_forms.species_id = ?
         AND pokemon_forms.is_default = 1
+        AND catches.is_shiny = 0
+        AND catches.is_golden = 0
         AND catches.in_team = 0
         AND (users.buddy_catch_id IS NULL OR catches.id != users.buddy_catch_id)
       ORDER BY catches.id
@@ -7392,6 +7405,7 @@ module.exports = {
   getPokemonLearnset,
   getSpeciesLearnset,
   getSpeciesGmaxMoves,
+  restrictStyleExclusiveMoves,
   recordSketchedMove,
   setBuddyMoves,
   getBuddyMoveChangeCost,
