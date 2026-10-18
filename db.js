@@ -2337,6 +2337,37 @@ for (const [index, template] of QUEST_TEMPLATES.entries()) {
   }
 }
 
+function addRandomEvolutionReward(template) {
+  const rewardItems = { ...(template.reward_items || {}) };
+  if (Math.random() < 0.2) {
+    const evolutionItems = Object.keys(EVOLUTION_ITEMS);
+    const reward = evolutionItems[Math.floor(Math.random() * evolutionItems.length)];
+    rewardItems[reward] = (rewardItems[reward] || 0) + 1;
+  }
+  return { ...template, reward_items: rewardItems };
+}
+
+const questEvolutionRewardMigrationKey = 'quest_evolution_rewards_v1';
+db.transaction(() => {
+  if (db.prepare('SELECT 1 FROM bot_settings WHERE key = ?').get(questEvolutionRewardMigrationKey)) {
+    return;
+  }
+  const activeQuests = db.prepare(
+    'SELECT id, reward_items FROM active_quests WHERE refresh_at = 0'
+  ).all();
+  const updateRewards = db.prepare('UPDATE active_quests SET reward_items = ? WHERE id = ?');
+  for (const quest of activeQuests) {
+    const updated = addRandomEvolutionReward({
+      reward_items: JSON.parse(quest.reward_items || '{}'),
+    });
+    updateRewards.run(JSON.stringify(updated.reward_items), quest.id);
+  }
+  db.prepare('INSERT INTO bot_settings (key, value) VALUES (?, ?)').run(
+    questEvolutionRewardMigrationKey,
+    'done'
+  );
+}).immediate();
+
 const MAX_QUEST_SLOTS = 5;
 
 function getUserQuestSlots(userId) {
@@ -2362,7 +2393,7 @@ function ensureUserQuests(userId) {
   for (const quest of quests) {
     if (quest.refresh_at > 0 && quest.refresh_at <= now) {
       const fresh = QUEST_TEMPLATES[Math.floor(Math.random() * QUEST_TEMPLATES.length)];
-      writeQuestTemplate(quest.id, fresh);
+      writeQuestTemplate(quest.id, addRandomEvolutionReward(fresh));
     }
   }
   for (let slot = 1; slot <= allowedSlots; slot += 1) {
@@ -2375,7 +2406,7 @@ function ensureUserQuests(userId) {
       )
       VALUES (?, ?, ?, ?, 0, ?, 0, 0, 0)
     `).run(userId, slot, template.quest_type, template.target_type, template.target);
-    writeQuestTemplate(inserted.lastInsertRowid, template);
+    writeQuestTemplate(inserted.lastInsertRowid, addRandomEvolutionReward(template));
   }
   return db.prepare(
     'SELECT * FROM active_quests WHERE user_id = ? AND slot <= ? ORDER BY slot'
@@ -2419,7 +2450,7 @@ function rerollUserQuest(userId, slot) {
     const fresh = pool[Math.floor(Math.random() * pool.length)];
     if (useScroll) incrementUser(userId, { quest_reset_scrolls: -1 });
     else incrementUser(userId, { coins: -QUEST_REROLL_COST });
-    writeQuestTemplate(quest.id, fresh);
+    writeQuestTemplate(quest.id, addRandomEvolutionReward(fresh));
     return {
       quest: db.prepare('SELECT * FROM active_quests WHERE id = ?').get(quest.id),
       cost: useScroll ? 0 : QUEST_REROLL_COST,
@@ -2544,12 +2575,6 @@ function advanceQuestProgress(userId, event = {}) {
         quests_completed: 1,
       });
       const rewardItems = JSON.parse(quest.reward_items || '{}');
-      if (Math.random() < 0.2) {
-        const evolutionItem = Object.keys(EVOLUTION_ITEMS)[
-          Math.floor(Math.random() * Object.keys(EVOLUTION_ITEMS).length)
-        ];
-        rewardItems[evolutionItem] = (rewardItems[evolutionItem] || 0) + 1;
-      }
       suppressQuestItemTracking = true;
       try {
         for (const [itemName, quantity] of Object.entries(rewardItems)) {
