@@ -13046,21 +13046,36 @@ client.on('messageCreate', async (message) => {
         if (args[1]?.toLowerCase() !== 'list' || args.length > 2) {
           return message.reply(`Usage: \`${PREFIX}faction npc list\`.`);
         }
-        return message.reply({
-          embeds: [new EmbedBuilder()
+        const challengeLines = FACTION_NPC_BATTLES.map((challenge) => {
+          const trainerKey = challenge.name.split('\u2014').pop().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          const iconEmoji = NPC_TRAINER_ICON_EMOJIS[trainerKey] || challenge.iconEmoji || '';
+          const trainerName = challenge.name.split('\u2014').pop().trim();
+          const teamEmoji = FACTION_TEAMS[challenge.factionKey].emoji;
+          return `• ${iconEmoji} ${teamEmoji} **${trainerName}**`.trim();
+        });
+        const instruction = `\n\nChallenge one with \`${PREFIX}faction battle <leader name|faction name>\`.`;
+        const pages = [];
+        let pageLines = [];
+        let pageLength = instruction.length;
+        for (const line of challengeLines) {
+          if (pageLength + line.length + 1 > 3500 && pageLines.length) {
+            pages.push(new EmbedBuilder()
+              .setColor(0x9b59b6)
+              .setTitle('⚔️ Faction NPCs')
+              .setDescription(`${pageLines.join('\n')}${instruction}`));
+            pageLines = [];
+            pageLength = instruction.length;
+          }
+          pageLines.push(line);
+          pageLength += line.length + 1;
+        }
+        if (pageLines.length) {
+          pages.push(new EmbedBuilder()
             .setColor(0x9b59b6)
             .setTitle('⚔️ Faction NPCs')
-            .setDescription(
-              FACTION_NPC_BATTLES.map((challenge) => {
-                const trainerKey = challenge.name.split('\u2014').pop().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-                const iconEmoji = NPC_TRAINER_ICON_EMOJIS[trainerKey] || challenge.iconEmoji || '';
-                const trainerName = challenge.name.split('\u2014').pop().trim();
-                const teamEmoji = FACTION_TEAMS[challenge.factionKey].emoji;
-                return `• ${iconEmoji} ${teamEmoji} **${trainerName}**`.trim();
-              }).join('\n') +
-              `\n\nChallenge one with \`${PREFIX}faction battle <leader name|faction name>\`.`
-            )],
-        });
+            .setDescription(`${pageLines.join('\n')}${instruction}`));
+        }
+        return sendPagedEmbeds(message, pages, 'Faction NPCs');
       }
       if (args[0]?.toLowerCase() === 'battle') {
         if (!existing) {
