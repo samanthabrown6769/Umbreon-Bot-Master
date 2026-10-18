@@ -483,6 +483,13 @@ const NPC_TRAINER_ICON_EMOJIS = {
   rocketadminproton: '<:rocketadminproton:1561371568951525488>',
   rocketadminpretel: '<:rocketadminpretel:1561371591466549450>',
   rocketleadergiovanni: '<:rocketleadergiovanni:1561371612446457906>',
+  galacticgruntfemale: '<:galaticgruntfemale:1561383627022147614>',
+  galacticgruntmale: '<:galaticgruntmale:1561383594751033444>',
+  galacticadminmars: '<:galacticadminmars:1561383650157666325>',
+  galacticadmincharon: '<:galacticadmincharon:1561383676820852890>',
+  galacticadminjupiter: '<:galacticadminjupiter:1561383705342115940>',
+  galacticadminsaturn: '<:galacticadminsaturn:1561383728519848018>',
+  galacticleadercyrus: '<:galacticleadercyrus:1561383753832595486>',
   magmagruntmale: '<:magmagruntmale:1561376294648807466>',
   magmagruntfemale: '<:magmagruntfemale:1561376313472847994>',
   magmaadmincourtney: '<:magmaadmincourtney:1561376339523674232>',
@@ -14516,7 +14523,8 @@ client.on('messageCreate', async (message) => {
         const megaSpecies = isShiny && !/mega/i.test(pokemon.name)
           ? null
           : pokemon.name.toLowerCase().match(/sableye|gengar|mawile|banette/)?.[0];
-        const spriteEmoji = isShiny && megaSpecies === 'sableye'
+        const spriteEmoji = (isShiny && megaSpecies === 'sableye')
+          || (megaSpecies === 'gengar' && /gmax/i.test(pokemon.name))
           ? ''
           : megaSpecies && MEGA_SPECIES_EMOJIS[megaSpecies]
             ? ` ${MEGA_SPECIES_EMOJIS[megaSpecies]}`
