@@ -497,16 +497,20 @@ const NPC_TRAINER_ICON_EMOJIS = {
   galacticadmincharon: '<:galacticadmincharon:1561383676820852890>',
   galacticadminjupiter: '<:galacticadminjupiter:1561383705342115940>',
   galacticadminsaturn: '<:galacticadminsaturn:1561383728519848018>',
+  cyrus: '<:galacticleadercyrus:1561383753832595486>',
   galacticleadercyrus: '<:galacticleadercyrus:1561383753832595486>',
+  lysandre: '<:flareleaderlysandre:1561406820529213492>',
   flareleaderlysandre: '<:flareleaderlysandre:1561406820529213492>',
   flareadminfemale: '<:flareadminfemale:1561406822546538599>',
   flareadminmale: '<:flareadminmale:1561406824098562089>',
   flaregruntfemale: '<:flaregruntfemale:1561406825281229041>',
   flaregruntmale: '<:flaregruntmale:1561406826942169201>',
+  guzma: '<:skullleaderguzma:1561406857162002564>',
   skullleaderguzma: '<:skullleaderguzma:1561406857162002564>',
   skulladminplumeria: '<:skulladminplumeria:1561406858923606096>',
   skullgruntfemale: '<:skullgruntfemale:1561406860001550446>',
   skullgruntmale: '<:skullgruntmale:1561406861545046026>',
+  piers: '<:yellleaderpiers:1561406880616677487>',
   yellleaderpiers: '<:yellleaderpiers:1561406880616677487>',
   yelladminmarnie: '<:yelladminmarnie:1561406882047066162>',
   yellgruntfemale: '<:yellgruntfemale:1561406883095650344>',
@@ -3739,24 +3743,24 @@ const FUN_ITEM_EMOJIS = {
   'Twisted Spoon': '<:twistedspoon:1561413015402975382>',
 };
 const ENCOUNTER_ITEM_BAG_ENTRIES = [
-  ['Black Belt', 'Black belt', '<:black_belt:990455725287432242>'],
-  ['Black Glasses', 'Black glasses', '<:black_glasses:979476818203660329>'],
-  ['Charcoal', 'Charcoal', '<:c:1372997279996317839>'],
-  ['Dragon Fang', 'Dragon fang', '<:dragon_fang:718896817877680149>'],
-  ['Fairy Feather', 'Fairy feather', '<:fairy_feather:1368949010018078731>'],
-  ['Hard Stone', 'Hard stone', '<:hard_stone:1372997278884827167>'],
-  ['Magnet', 'Magnet', '<:magnet:796946036614627378>'],
-  ['Metal Coat', 'Metal coat', '<:metal_coat:1337515909186846771>'],
-  ['Miracle Seed', 'Miracle seed', '<:ms:1372997275848278107>'],
-  ['Mystic Water', 'Mystic water', '<:mystic_water:1372997274501775470>'],
-  ['Never-Melt Ice', 'Nevermeltice', '<:nevermeltice:772290187220877352>'],
-  ['Poison Barb', 'Poison barb', '<:pb:981955385516765194>'],
-  ['Sharp Beak', 'Sharp beak', '<:sb:981950939290275840>'],
-  ['Silk Scarf', 'Silk scarf', '<:ss:1372997270693220353>'],
-  ['Silver Powder', 'Silver powder', '<:sp:1372997269611217010>'],
-  ['Soft Sand', 'Soft sand', '<:soft_sand:1372997268126306447>'],
-  ['Spell Tag', 'Spell tag', '<:st:1372997267090571315>'],
-  ['Twisted Spoon', 'Twisted spoon', '<:twisted_spoon:782817062966788097>'],
+  ['Black Belt', 'Black belt', '<:blackbelt:1561413041525100717>'],
+  ['Black Glasses', 'Black glasses', '<:blackglasses:1561413040128397425>'],
+  ['Charcoal', 'Charcoal', '<:charcoal:1561413038286839869>'],
+  ['Dragon Fang', 'Dragon fang', '<:dragonfang:1561413036886069288>'],
+  ['Fairy Feather', 'Fairy feather', '<:fairyfeather:1561413035455815776>'],
+  ['Hard Stone', 'Hard stone', '<:hardstone:1561413033278971904>'],
+  ['Magnet', 'Magnet', '<:magnet:1561413031488004157>'],
+  ['Metal Coat', 'Metal coat', '<:metalcoat:1559927174859984896>'],
+  ['Miracle Seed', 'Miracle seed', '<:miracleseed:1561413029147443250>'],
+  ['Mystic Water', 'Mystic water', '<:mysticwater:1561413027482574898>'],
+  ['Never-Melt Ice', 'Nevermeltice', '<:nevermeltice:1561413025662238861>'],
+  ['Poison Barb', 'Poison barb', '<:poisonbarb:1561413024311418920>'],
+  ['Sharp Beak', 'Sharp beak', '<:sharpbeak:1561413022965301330>'],
+  ['Silk Scarf', 'Silk scarf', '<:silkscarf:1561413021933502625>'],
+  ['Silver Powder', 'Silver powder', '<:silverpowder:1561413020242944010>'],
+  ['Soft Sand', 'Soft sand', '<:softsand:1561413018628399104>'],
+  ['Spell Tag', 'Spell tag', '<:spelltag:1561413016619196476>'],
+  ['Twisted Spoon', 'Twisted spoon', '<:twistedspoon:1561413015402975382>'],
 ];
 
 function formatQuestRewards(quest) {
@@ -4017,7 +4021,7 @@ async function askForBall(
         : `${ICONS.grass} A wild Pokémon appeared!`
     )
     .setDescription(
-      `${trainerLabel} found a wild **${target.name}**!\n` +
+      `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ${target.heldItemEmoji} ` : ''}**${target.name}**!\n` +
       `${isFishing ? `🎣 Rod used: **${user.fish_rods}**\n` : ''}` +
       `\n**${getRarityEmojis(catchDisplayRarity)} ${catchDisplayRarity} ` +
       `(${rarityData.rateText})**\n` +
@@ -7044,7 +7048,7 @@ async function triggerAutoSpawn(channel, guildConfig, state, { legendaryOrShiny 
       .setTitle(title);
     if (target.heldItem) {
       spawnEmbed.setDescription(
-        `${HELD_ITEM_EMOJI} **${target.name} is holding ${target.heldItemEmoji} ${target.heldItem}!**`
+        `${HELD_ITEM_EMOJI} ${target.heldItemEmoji} **${target.name} is holding ${target.heldItem}!**`
       );
     }
     if (image) spawnEmbed.setImage(image);
@@ -13644,7 +13648,7 @@ client.on('messageCreate', async (message) => {
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
-          statusText = `\n❗ A wild ${wild.isShiny ? '✨ ' : ''}**${wild.name}** appeared! ` +
+          statusText = `\n❗ A wild ${wild.heldItem ? `${HELD_ITEM_EMOJI} ${wild.heldItemEmoji} ` : ''}${wild.isShiny ? '✨ ' : ''}**${wild.name}** appeared! ` +
             `(${getRarityEmojis(wildRarity)} ${wildRarity})` +
             `${wild.heldItem
               ? `\n${HELD_ITEM_EMOJI} **Holding an item:** ${wild.heldItemEmoji} **${wild.heldItem}**`
