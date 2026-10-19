@@ -183,6 +183,9 @@ const {
   removeTeamSlot,
   swapTeamSlots,
   getActiveWorldBoss,
+  registerWorldBossPlayer,
+  isWorldBossPlayerRegistered,
+  getWorldBossRegistrationCount,
   getWorldBossAnnouncementChannel,
   setWorldBossAnnouncementChannel,
   getWorldBossAnnouncementPosts,
@@ -207,6 +210,7 @@ const {
   getUserMarketSales,
   getUserMarketSaleSummary,
   clearMarketListings,
+  removeUserMarketListings,
   stockMarketPokemon,
   getRandomPokemon,
   buyMarketItem,
@@ -2751,25 +2755,30 @@ function getPokemonFormDexNumber(pokemon) {
 function createWorldBossEmbed(boss, clientUser) {
   const template = WORLD_BOSS_POOL.find((entry) => entry.name === boss.name);
   const leaderboard = getBossLeaderboard();
-  const players = db.prepare('SELECT COUNT(*) AS count FROM boss_damage').get().count;
+  const registrationCount = getWorldBossRegistrationCount(boss.id);
   const totalDamage = db.prepare('SELECT COALESCE(SUM(damage), 0) AS total FROM boss_damage').get().total;
   const progressSize = 18;
   const filled = Math.round(Math.max(0, Math.min(1, boss.current_hp / boss.max_hp)) * progressSize);
   const healthBar = '🟩'.repeat(filled) + '⬛'.repeat(progressSize - filled);
+  const defeated = boss.current_hp <= 0;
+  const registrationOpen = !defeated && Date.now() < boss.registration_ends_at;
   const topPlayers = leaderboard.length
     ? leaderboard.slice(0, 5).map((row, index) =>
       `**#${index + 1}** <@${row.user_id}> — 💥 DMG: \`${row.damage.toLocaleString()}\``
     ).join('\n')
     : '*No damage dealt yet. Be the first to strike!*';
   const spawnedMs = Date.parse(`${String(boss.spawned_at || '').replace(' ', 'T')}Z`);
-  const defeated = boss.current_hp <= 0;
   const bossFormRow = db.prepare('SELECT types FROM pokemon_forms WHERE id = ?')
     .get(template?.formId ?? template?.id);
   const bossTypeLine = bossFormRow ? `• Type: ${formatTypes(JSON.parse(bossFormRow.types))}\n` : '';
   const embed = new EmbedBuilder()
     .setColor(0xf47fb4)
     .setAuthor({
-      name: defeated ? 'The World Boss has been defeated!' : 'A World Boss has appeared! Register now!',
+      name: defeated
+        ? 'The World Boss has been defeated!'
+        : registrationOpen
+          ? 'A World Boss has appeared! Register now!'
+          : 'The World Boss challenge is underway!',
       iconURL: 'https://cdn.discordapp.com/emojis/1559925077167054978.png',
     })
     .setDescription(
@@ -2780,15 +2789,17 @@ function createWorldBossEmbed(boss, clientUser) {
       `Spawned by: ${boss.spawned_by
         ? `${getTrainerIconEmoji(boss.spawned_by)} **${boss.spawned_by_name || 'Trainer'}**`
         : 'Natural spawn'}\n\n` +
-      (Number.isFinite(spawnedMs)
-        ? `⚔️ Challenge ${defeated ? 'started' : 'starts'} <t:${Math.floor(spawnedMs / 1000)}:R>`
-        : '⚔️ Challenge starts soon') +
+      (registrationOpen
+        ? `📝 Registration closes <t:${Math.floor(boss.registration_ends_at / 1000)}:R>`
+        : defeated
+          ? '⚔️ The World Boss has been defeated.'
+          : '⚔️ Registered trainers can now use `.wb fight` to join the battle.') +
       (leaderboard.length
         ? `\n\n🏆 **Top Damage Contributors** (${totalDamage.toLocaleString()} total DMG)\n${topPlayers}`
         : '')
     )
     .setFooter({
-      text: `Register for the battle using ${PREFIX}wb fight • Boss id: ${boss.id} • Players: ${players}`,
+      text: `Register with ${PREFIX}wb register • Fight with ${PREFIX}wb fight • Boss id: ${boss.id} • Registered: ${registrationCount}`,
     })
     .setTimestamp(Number.isFinite(spawnedMs) ? spawnedMs : Date.now());
   if (boss.image_url) embed.setImage(boss.image_url).setThumbnail(template?.icon || boss.image_url);
@@ -3281,6 +3292,20 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
 
 const WORLD_BOSS_PROGRESS_INTERVAL_MS = 5000;
 const worldBossProgressTimers = new Map();
+const worldBossRegistrationTimers = new Map();
+
+function scheduleWorldBossRegistrationClose(boss) {
+  for (const timer of worldBossRegistrationTimers.values()) clearTimeout(timer);
+  worldBossRegistrationTimers.clear();
+  const timer = setTimeout(async () => {
+    worldBossRegistrationTimers.delete(boss.id);
+    const activeBoss = getActiveWorldBoss();
+    if (!activeBoss || activeBoss.id !== boss.id) return;
+    await updateWorldBossAnnouncement(activeBoss, createWorldBossEmbed(activeBoss, client.user));
+  }, Math.min(Math.max(0, boss.registration_ends_at - Date.now()), 2147483647));
+  timer.unref();
+  worldBossRegistrationTimers.set(boss.id, timer);
+}
 
 // Coalesces boss HP refreshes: many raiders hitting at once trigger at most one refresh per interval.
 function scheduleWorldBossProgressUpdate(bossId, clientUser) {
@@ -7796,7 +7821,7 @@ async function announceMarketListings(message, listings) {
       .setDescription(page.map((listing) =>
         `**#${listing.market_listing_id ?? listing.id} —** ${formatMarketPokemon(listing)} ×${listing.amount || 1}\n` +
         `Price each: ${EMOJIS.pokecoin} **${listing.price.toLocaleString()}**\n` +
-        `Buy with \`${PREFIX}mbuy ${listing.market_listing_id ?? listing.id}\``
+        `Buy with \`${PREFIX}market buy ${listing.market_listing_id ?? listing.id}\``
       ).join('\n\n'));
     try {
       await channel.send({ embeds: [embed] });
@@ -7861,6 +7886,13 @@ client.on('messageCreate', async (message) => {
   if (!input) return;
   let args = input.split(/\s+/);
   let command = args.shift().toLowerCase();
+  if (command === 'mbuy') {
+    command = 'market';
+    args.unshift('buy');
+  }
+  if ((command === 'market' || command === 'm') && args[0]?.toLowerCase() === 'b') {
+    args[0] = 'buy';
+  }
   if ((command === 'market' || command === 'm') && args[0]?.toLowerCase() === 'offer') {
     args[0] = 'list';
   }
@@ -8708,8 +8740,9 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}market listing mine\` — View your active listings and sold counts\n` +
             `• \`${PREFIX}market list\` / \`${PREFIX}m offer <Pokémon name|Pokédex number> <amount> <price>\` — List Pokémon\n` +
             `  One listing can contain up to 50,000 copies of one variant\n` +
+            `• \`${PREFIX}market remove <listing_id|all>\` — Remove your listing(s) and return unsold Pokémon\n` +
             `• \`${PREFIX}market view <Pokémon name|Pokédex number>\` / \`${PREFIX}m view <Pokémon name|Pokédex number>\` — Search listings\n` +
-            `• \`${PREFIX}mbuy <listing_id>\` — Buy a listing`,
+            `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy one Pokémon`,
         },
         trade: {
           title: '🔁 Trade Commands',
@@ -8859,7 +8892,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}market\` / \`${PREFIX}m\` — Browse market listings; use \`${PREFIX}market view <Pokémon name>\` or \`${PREFIX}m view <Pokémon name>\` to search\n` +
             `• \`${PREFIX}market listing mine\` — View your active market listings and sold counts\n` +
             `• \`${PREFIX}market list <Pokémon name|number> <amount 1-50000> <price>\` / \`${PREFIX}m offer\` — List owned Pokémon at the price per Pokémon; one listing can contain up to 50,000 copies of one variant\n` +
-            `• \`${PREFIX}mbuy <listing_id>\` — Buy a market listing`
+            `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy a market listing`
           )
           .setFooter({ text: 'Page 2/4 • Select a category below' }),
         battles: new EmbedBuilder()
@@ -8875,7 +8908,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}league\` — Check progress across Kanto, Johto, Hoenn, Sinnoh, Unova, Kalos, Alola, Galar, and Paldea\n` +
             `• \`${PREFIX}mc\` — View Mega Chambers; sacrifice Pokémon with \`${PREFIX}mc sacrifice <Pokémon> [amount]\`, then use move buttons in \`${PREFIX}mc battle <chamber>\`\n` +
             `• \`${PREFIX}mega evo [shiny] <Pokémon name|Pokédex number>\` / \`${PREFIX}use <Mega Stone> <Pokémon>\` — Mega Evolve a normal or shiny Pokémon with its matching Mega Stone\n` +
-            `• \`${PREFIX}wb\` — View the active shared World Boss; use \`${PREFIX}wb fight\` from any channel to battle\n` +
+            `• \`${PREFIX}wb\` — View the active shared World Boss; register with \`${PREFIX}wb register\` during its 2-minute wait, then use \`${PREFIX}wb fight\` to battle\n` +
             `• \`${PREFIX}quest\` / \`${PREFIX}q\` — View your daily quest and two type-encounter quests\n` +
             `• \`${PREFIX}cl\` / \`${PREFIX}checklist\` — Check daily goals and rewards\n` +
             `• \`${PREFIX}cb\` — View CatchBot upgrades and lifetime catches\n` +
@@ -9674,10 +9707,14 @@ client.on('messageCreate', async (message) => {
       }
 
       const boss = spawnWorldBoss(bossTemplate, userId, message.author.username);
+      scheduleWorldBossRegistrationClose(boss);
       try {
         const announced = await announceWorldBossEverywhere(boss, message);
         if (!announced.length) throw new Error('No World Boss announcement could be posted.');
-        return message.reply(`✅ **${boss.name}** spawned and announced in ${announced.map((channel) => `<#${channel.id}>`).join(', ')}. Trainers can use \`${PREFIX}wb fight\` from any channel.`);
+        return message.reply(
+          `✅ **${boss.name}** spawned and announced in ${announced.map((channel) => `<#${channel.id}>`).join(', ')}. ` +
+          `Trainers have 2 minutes to register with \`${PREFIX}wb register\`; registered trainers can fight after that.`
+        );
       } catch (error) {
         console.error(`Failed to announce World Boss ${boss.id}:`, error);
         return message.reply(
@@ -10801,13 +10838,14 @@ client.on('messageCreate', async (message) => {
             `❌ You need a ${EMOJIS.bosscoin} **Boss Coin** to spawn a World Boss. Buy one with \`${PREFIX}shop buy 50\`.`
           );
         }
+        scheduleWorldBossRegistrationClose(spent);
         const announced = await announceWorldBossEverywhere(spent, message);
         return message.reply(
           `${hasWorldBossSpawnPrivilege
             ? `✅ **${message.author.username}** spawned`
             : `${EMOJIS.bosscoin} **${message.author.username}** spent a Boss Coin and spawned`} **${spent.name}**! ` +
           (announced.length ? `Announced in ${announced.map((channel) => `<#${channel.id}>`).join(', ')}. ` : '') +
-          `Use \`${PREFIX}wb fight\` to join.`
+          `Register with \`${PREFIX}wb register\` during the next 2 minutes; registered trainers can fight afterward.`
         );
       }
       const boss = getActiveWorldBoss();
@@ -10816,8 +10854,41 @@ client.on('messageCreate', async (message) => {
           `💤 There is no active World Boss. Use \`${PREFIX}wb spawn\` with a Boss Coin, or a bot admin can start one with \`${PREFIX}adminboss random\`.`
         );
       }
+      if (subCommand === 'register') {
+        const registration = registerWorldBossPlayer(userId, boss.id);
+        if (registration.error === 'registration_closed') {
+          return message.reply(
+            `❌ Registration for **${boss.name}** has closed. ` +
+            (isWorldBossPlayerRegistered(userId, boss.id)
+              ? `You are registered; use \`${PREFIX}wb fight\` to battle.`
+              : 'This World Boss is already accepting battles from registered trainers.')
+          );
+        }
+        if (registration.error === 'inactive') {
+          return message.reply('❌ There is no active World Boss to register for.');
+        }
+        scheduleWorldBossRegistrationClose(boss);
+        await updateWorldBossAnnouncement(boss, createWorldBossEmbed(boss, message.client.user));
+        return message.reply(
+          registration.registered
+            ? `✅ You are registered for **${boss.name}**! **${registration.registrationCount}** trainer` +
+              `${registration.registrationCount === 1 ? '' : 's'} registered. You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`
+            : `✅ You are already registered for **${boss.name}**. You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`
+        );
+      }
       const team = getUserTeam(userId);
       if (subCommand === 'fight' || subCommand === 'f') {
+        if (Date.now() < boss.registration_ends_at) {
+          return message.reply(
+            `⏳ Registration is open for **${boss.name}** until <t:${Math.floor(boss.registration_ends_at / 1000)}:R>. ` +
+            `Register with \`${PREFIX}wb register\`, then fight after the 2-minute wait.`
+          );
+        }
+        if (!isWorldBossPlayerRegistered(userId, boss.id)) {
+          return message.reply(
+            `❌ You must register for **${boss.name}** with \`${PREFIX}wb register\` during its 2-minute registration period before fighting.`
+          );
+        }
         if (getUnclaimedWorldBossReward(userId)) {
           return message.reply(
             `🎁 Claim your pending World Boss reward with \`${PREFIX}wb claim\` before joining another raid.`
@@ -10841,11 +10912,16 @@ client.on('messageCreate', async (message) => {
         return;
       }
       if (subCommand && !['status'].includes(subCommand)) {
-        return message.reply(`Usage: \`${PREFIX}wb\` to view the raid or \`${PREFIX}wb fight\` to battle.`);
+        return message.reply(
+          `Usage: \`${PREFIX}wb register\` to register, \`${PREFIX}wb\` to view the raid, ` +
+          `or \`${PREFIX}wb fight\` to battle after the 2-minute registration period.`
+        );
       }
       return message.reply({
         embeds: [createWorldBossEmbed(boss, message.client.user)],
-        content: `Use \`${PREFIX}wb fight\` from any channel to join the raid.`,
+        content: Date.now() < boss.registration_ends_at
+          ? `Use \`${PREFIX}wb register\` within 2 minutes; registered trainers can then use \`${PREFIX}wb fight\`.`
+          : `Registered trainers can use \`${PREFIX}wb fight\` from any channel.`,
       });
     }
 
@@ -18724,6 +18800,50 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      if (args[0]?.toLowerCase() === 'buy') {
+        const listingId = /^\d+$/.test(args[1] || '') ? Number(args[1]) : NaN;
+        if (args.length !== 2 || !Number.isSafeInteger(listingId) || listingId <= 0) {
+          return message.reply(`Usage: \`${PREFIX}market buy <market_id>\` (alias: \`${PREFIX}m b <market_id>\`).`);
+        }
+        const result = buyMarketItem(userId, listingId);
+        if (result.error) return message.reply(`❌ ${result.error}`);
+        if (result.sale && getMarketCompletionNotificationsEnabled(result.item.seller_id)) {
+          try {
+            const seller = await client.users.fetch(result.item.seller_id);
+            await seller.send(
+              `✅ Your market listing **#${listingId}** sold: ${formatMarketPokemon(result.item)} ` +
+              `for ${EMOJIS.pokecoin} **${result.sale.salePrice.toLocaleString()} PokéCoins**.\n` +
+              `Market tax (${result.sale.taxRate}%): ${EMOJIS.pokecoin} **${result.sale.taxAmount.toLocaleString()}**\n` +
+              `Credited to your balance: ${EMOJIS.pokecoin} **${result.sale.payoutAmount.toLocaleString()} PokéCoins**.`
+            );
+          } catch (error) {
+            console.error(`Failed to send market completion DM to seller ${result.item.seller_id}:`, error);
+          }
+        }
+        return message.reply(
+          `🎉 You bought ${formatMarketPokemon(result.item)} for ${EMOJIS.pokecoin} **${result.item.price}** PokéCoins!`
+          + (result.remainingAmount ? ` **${result.remainingAmount.toLocaleString()}** remain in listing #${listingId}.` : '')
+        );
+      }
+
+      if (args[0]?.toLowerCase() === 'remove') {
+        const target = args[1]?.toLowerCase();
+        const listingId = target === 'all'
+          ? 'all'
+          : /^\d+$/.test(target || '') ? Number(target) : NaN;
+        if (args.length !== 2 || (listingId !== 'all'
+            && (!Number.isSafeInteger(listingId) || listingId <= 0))) {
+          return message.reply(`Usage: \`${PREFIX}market remove <listing_id|all>\`.`);
+        }
+        const result = removeUserMarketListings(userId, listingId);
+        if (!result) return message.reply(`You do not have an active market listing **#${listingId}**.`);
+        if (!result.removedCount) return message.reply('You have no active market listings to remove.');
+        return message.reply(
+          `✅ Removed **${result.removedCount}** listing${result.removedCount === 1 ? '' : 's'} and ` +
+          `returned **${result.returnedCount.toLocaleString()}** Pokémon to your box.`
+        );
+      }
+
       if (args[0]?.toLowerCase() === 'list') {
         const values = args.slice(1);
         const price = parseAmount(values.pop());
@@ -18922,33 +19042,6 @@ client.on('messageCreate', async (message) => {
         }
       });
       return;
-    }
-
-    if (command === 'mbuy') {
-      const listingId = Number.parseInt(args[0], 10);
-      if (!Number.isSafeInteger(listingId) || listingId <= 0) {
-        return message.reply('Usage: `.mbuy <market_id>`');
-      }
-      const result = buyMarketItem(userId, listingId);
-      if (result.error) return message.reply(`❌ ${result.error}`);
-      if (result.sale && getMarketCompletionNotificationsEnabled(result.item.seller_id)) {
-        try {
-          const seller = await client.users.fetch(result.item.seller_id);
-          await seller.send(
-            `✅ Your market listing **#${listingId}** sold: ${formatMarketPokemon(result.item)} ` +
-            `for ${EMOJIS.pokecoin} **${result.sale.salePrice.toLocaleString()} PokéCoins**.\n` +
-            `Market tax (${result.sale.taxRate}%): ${EMOJIS.pokecoin} **${result.sale.taxAmount.toLocaleString()}**\n` +
-            `Credited to your balance: ${EMOJIS.pokecoin} **${result.sale.payoutAmount.toLocaleString()} PokéCoins**` +
-            `${result.sale.boostPercent ? ` (includes ${result.sale.boostPercent}% coin boost)` : ''}.`
-          );
-        } catch (error) {
-          console.error(`Failed to send market completion DM to seller ${result.item.seller_id}:`, error);
-        }
-      }
-      return message.reply(
-        `🎉 You bought ${formatMarketPokemon(result.item)} for ${EMOJIS.pokecoin} **${result.item.price}** PokéCoins!`
-        + (result.remainingAmount ? ` **${result.remainingAmount.toLocaleString()}** remain in listing #${listingId}.` : '')
-      );
     }
 
     const parseEvolutionArguments = (parts, itemFirst) => {
@@ -19742,6 +19835,8 @@ client.once('clientReady', () => {
   setInterval(safely('patreon-payout', runPatreonMonthlyPayout), 5 * 60 * 1000);
   startAutospawnScheduler();
   startLotteryScheduler();
+  const activeBoss = getActiveWorldBoss();
+  if (activeBoss) scheduleWorldBossRegistrationClose(activeBoss);
   for (const run of db.prepare(`
     SELECT u.id AS user_id, MAX(COALESCE(cb.running_until, 0), u.catchbot_end) AS running_until
     FROM users u
@@ -19773,6 +19868,7 @@ client.once('clientReady', () => {
           );
         }
         const boss = spawnWorldBoss(template);
+        scheduleWorldBossRegistrationClose(boss);
         console.log(`Hourly World Boss spawned: ${boss.name}.`);
         await announceWorldBossEverywhere(boss);
       } catch (error) {

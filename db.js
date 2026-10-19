@@ -1051,7 +1051,15 @@ db.exec(`
     image_url TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     rewards_claimed INTEGER NOT NULL DEFAULT 0,
-    spawned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    spawned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    registration_ends_at INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS world_boss_registrations (
+    boss_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    registered_at INTEGER NOT NULL,
+    PRIMARY KEY (boss_id, user_id)
   );
 
   CREATE TABLE IF NOT EXISTS boss_damage (
@@ -1330,6 +1338,7 @@ ensureColumns('world_boss', {
   rewards_claimed: 'INTEGER NOT NULL DEFAULT 0',
   spawned_by: 'TEXT',
   spawned_by_name: 'TEXT',
+  registration_ends_at: 'INTEGER NOT NULL DEFAULT 0',
 });
 ensureColumns('giveaway_entries', { username: 'TEXT' });
 
@@ -3791,7 +3800,8 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
   const dexNumber = /^\d+$/.test(pokemonQuery) ? Number(pokemonQuery) : null;
   let isShiny = Boolean(shinyPrefix);
   const forms = db.prepare(`
-    SELECT id, species_id, species_name, name, slug, rarity, is_default
+    SELECT id, species_id, species_name, name, slug, rarity, is_default,
+      base_hp, base_atk, base_def, base_spd
     FROM pokemon_forms
     ORDER BY id
   `).all();
@@ -3901,6 +3911,7 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
     const options = candidates.map((megaForm) => {
       const baseForm = getBaseForm(megaForm);
       if (!baseForm) {
+        const baseSlug = megaForm.slug.replace(/-mega(?:-[xyz])?$/i, '');
         throw new Error(`Missing base form ${baseSlug} for Mega Evolution ${megaForm.name}.`);
       }
       const pokemon = db.prepare(`
@@ -5475,6 +5486,8 @@ function getActiveWorldBoss() {
   return db.prepare('SELECT * FROM world_boss WHERE is_active = 1 ORDER BY id DESC LIMIT 1').get() || null;
 }
 
+const WORLD_BOSS_REGISTRATION_DURATION_MS = 2 * 60 * 1000;
+
 function spawnWorldBoss(template, spawnedBy = null, spawnedByName = null) {
   if (!template || !WORLD_BOSS_POOL.some((boss) => boss.id === template.id)) {
     throw new TypeError('World Boss template must be selected from WORLD_BOSS_POOL.');
@@ -5489,14 +5502,65 @@ function spawnWorldBoss(template, spawnedBy = null, spawnedByName = null) {
     db.prepare('UPDATE world_boss SET is_active = 0 WHERE is_active = 1').run();
     db.prepare('DELETE FROM boss_damage').run();
     db.prepare('DELETE FROM world_boss_announcement_posts').run();
+    db.prepare('DELETE FROM world_boss_registrations').run();
     const result = db.prepare(`
       INSERT INTO world_boss (
-        name, current_hp, max_hp, image_url, is_active, spawned_by, spawned_by_name
+        name, current_hp, max_hp, image_url, is_active, spawned_by, spawned_by_name,
+        registration_ends_at
       )
-      VALUES (?, ?, ?, ?, 1, ?, ?)
-    `).run(template.name, template.maxHp, template.maxHp, template.img, spawnedBy, spawnedByName);
+      VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+    `).run(
+      template.name,
+      template.maxHp,
+      template.maxHp,
+      template.img,
+      spawnedBy,
+      spawnedByName,
+      Date.now() + WORLD_BOSS_REGISTRATION_DURATION_MS
+    );
     return db.prepare('SELECT * FROM world_boss WHERE id = ?').get(result.lastInsertRowid);
   }).immediate();
+}
+
+function registerWorldBossPlayer(userId, bossId, timestamp = Date.now()) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) throw new TypeError('timestamp must be non-negative.');
+
+  return db.transaction(() => {
+    const boss = db.prepare('SELECT * FROM world_boss WHERE id = ? AND is_active = 1').get(bossId);
+    if (!boss) return { error: 'inactive' };
+    if (timestamp >= boss.registration_ends_at) {
+      return { error: 'registration_closed', registrationEndsAt: boss.registration_ends_at };
+    }
+    const inserted = db.prepare(`
+      INSERT OR IGNORE INTO world_boss_registrations (boss_id, user_id, registered_at)
+      VALUES (?, ?, ?)
+    `).run(bossId, userId, timestamp);
+    const registrationCount = db.prepare(
+      'SELECT COUNT(*) AS count FROM world_boss_registrations WHERE boss_id = ?'
+    ).get(bossId).count;
+    return {
+      registered: inserted.changes > 0,
+      registrationCount,
+      registrationEndsAt: boss.registration_ends_at,
+    };
+  }).immediate();
+}
+
+function isWorldBossPlayerRegistered(userId, bossId) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
+  return Boolean(db.prepare(
+    'SELECT 1 FROM world_boss_registrations WHERE boss_id = ? AND user_id = ?'
+  ).get(bossId, userId));
+}
+
+function getWorldBossRegistrationCount(bossId) {
+  if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
+  return db.prepare(
+    'SELECT COUNT(*) AS count FROM world_boss_registrations WHERE boss_id = ?'
+  ).get(bossId).count;
 }
 
 function getBossLeaderboard(limit = 10) {
@@ -5866,45 +5930,73 @@ function getUserMarketSaleSummary(userId) {
   `).get(userId);
 }
 
+function restoreMarketListings(playerListings) {
+  const restoreCatch = db.prepare(`
+    INSERT INTO catches (
+      user_id, pokemon_id, name, rarity, is_shiny, is_golden, level,
+      hp_iv, atk_iv, def_iv, spd_iv, experience,
+      hp, max_hp, atk, def, spd, in_team, team_slot
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+  `);
+  for (const listing of playerListings) {
+    getUser(listing.seller_id);
+    for (let copyIndex = 0; copyIndex < listing.amount; copyIndex += 1) {
+      const result = restoreCatch.run(
+        listing.seller_id,
+        listing.pokemon_id,
+        listing.name,
+        listing.rarity,
+        listing.is_shiny,
+        listing.is_golden,
+        listing.level,
+        listing.hp_iv,
+        listing.atk_iv,
+        listing.def_iv,
+        listing.spd_iv,
+        listing.experience,
+        listing.hp,
+        listing.max_hp,
+        listing.atk,
+        listing.def,
+        listing.spd
+      );
+      syncNewCatchState(listing.seller_id, Number(result.lastInsertRowid));
+    }
+  }
+}
+
+function removeUserMarketListings(userId, listingId = 'all') {
+  assertUserId(userId);
+  if (listingId !== 'all' && (!Number.isSafeInteger(listingId) || listingId <= 0)) {
+    throw new TypeError('listingId must be "all" or a positive safe integer.');
+  }
+
+  return db.transaction(() => {
+    const listings = listingId === 'all'
+      ? db.prepare('SELECT * FROM market WHERE seller_id = ?').all(userId)
+      : [db.prepare('SELECT * FROM market WHERE id = ? AND seller_id = ?').get(listingId, userId)]
+        .filter(Boolean);
+    if (listingId !== 'all' && !listings.length) return null;
+
+    restoreMarketListings(listings);
+    const removedCount = listingId === 'all'
+      ? db.prepare('DELETE FROM market WHERE seller_id = ?').run(userId).changes
+      : db.prepare('DELETE FROM market WHERE id = ? AND seller_id = ?').run(listingId, userId).changes;
+    return {
+      removedCount,
+      returnedCount: listings.reduce((total, listing) => total + listing.amount, 0),
+    };
+  }).immediate();
+}
+
 function clearMarketListings() {
   return db.transaction(() => {
     const playerListings = db.prepare(`
       SELECT * FROM market
       WHERE seller_id IS NOT NULL AND seller_id != '999999999999999999'
     `).all();
-    const restoreCatch = db.prepare(`
-      INSERT INTO catches (
-        user_id, pokemon_id, name, rarity, is_shiny, is_golden, level,
-        hp_iv, atk_iv, def_iv, spd_iv, experience,
-        hp, max_hp, atk, def, spd, in_team, team_slot
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
-    `);
-    for (const listing of playerListings) {
-      getUser(listing.seller_id);
-      for (let copyIndex = 0; copyIndex < listing.amount; copyIndex += 1) {
-        const result = restoreCatch.run(
-          listing.seller_id,
-          listing.pokemon_id,
-          listing.name,
-          listing.rarity,
-          listing.is_shiny,
-          listing.is_golden,
-          listing.level,
-          listing.hp_iv,
-          listing.atk_iv,
-          listing.def_iv,
-          listing.spd_iv,
-          listing.experience,
-          listing.hp,
-          listing.max_hp,
-          listing.atk,
-          listing.def,
-          listing.spd
-        );
-        syncNewCatchState(listing.seller_id, Number(result.lastInsertRowid));
-      }
-    }
+    restoreMarketListings(playerListings);
     const clearedCount = db.prepare('DELETE FROM market').run().changes;
     const returnedCount = playerListings.reduce((total, listing) => total + listing.amount, 0);
     return { clearedCount, returnedCount };
@@ -5982,7 +6074,9 @@ function buyMarketItem(buyerId, listingId) {
     const taxRate = isPlayerListing ? getPatreonPerks(item.seller_id).marketTax : 0;
     const taxAmount = isPlayerListing ? Math.floor(item.price * taxRate) : 0;
     const saleProceeds = item.price - taxAmount;
-    const coinAward = awardCoinsWithBoost(item.seller_id, saleProceeds);
+    if (isPlayerListing) {
+      incrementUser(item.seller_id, { coins: saleProceeds, pkc_earned: saleProceeds });
+    }
     if (isPlayerListing) {
       db.prepare(`
         INSERT INTO market_sales (
@@ -6002,7 +6096,7 @@ function buyMarketItem(buyerId, listingId) {
         item.price,
         taxAmount,
         Math.round(taxRate * 100),
-        coinAward.finalAmount
+        saleProceeds
       );
     }
     if (item.amount > 1) {
@@ -6033,8 +6127,7 @@ function buyMarketItem(buyerId, listingId) {
           salePrice: item.price,
           taxAmount,
           taxRate: Math.round(taxRate * 100),
-          payoutAmount: coinAward.finalAmount,
-          boostPercent: coinAward.boostPercent,
+          payoutAmount: saleProceeds,
         }
         : null,
     };
@@ -8061,6 +8154,9 @@ module.exports = {
   WORLD_BOSS_POOL,
   getActiveWorldBoss,
   spawnWorldBoss,
+  registerWorldBossPlayer,
+  isWorldBossPlayerRegistered,
+  getWorldBossRegistrationCount,
   getBossLeaderboard,
   applyWorldBossDamage,
   distributeWorldBossRewards,
@@ -8076,6 +8172,7 @@ module.exports = {
   getUserMarketSales,
   getUserMarketSaleSummary,
   clearMarketListings,
+  removeUserMarketListings,
   stockMarketPokemon,
   buyMarketItem,
   expirePatreonTokenOrders,
