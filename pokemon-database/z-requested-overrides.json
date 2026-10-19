@@ -107,5 +107,20 @@
     "slug": "charizard-gmax",
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/charizard-gmax.gif",
     "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/charizard-gmax.gif"
+  },
+  {
+    "slug": "dragapult",
+    "sprite": "https://play.pokemonshowdown.com/sprites/ani/dragapult.gif",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/dragapult.gif"
+  },
+  {
+    "slug": "tapu-koko",
+    "sprite": "https://play.pokemonshowdown.com/sprites/ani/tapukoko.gif",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/tapukoko.gif"
+  },
+  {
+    "slug": "morpeko-full-belly",
+    "sprite": "https://play.pokemonshowdown.com/sprites/ani/morpeko.gif",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/morpeko.gif"
   }
 ]

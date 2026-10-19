@@ -46,6 +46,64 @@ const initializeEncounterCounter = db.prepare(`
   VALUES (?, ?, ?)
 `);
 
+// G-Max moves are exclusive to their matching Gigantamax forms (Bulbapedia: G-Max Move).
+const GMAX_MOVES_BY_FORM = Object.freeze({
+  'venusaur-gmax': 'g-max-vine-lash',
+  'charizard-gmax': 'g-max-wildfire',
+  'blastoise-gmax': 'g-max-cannonade',
+  'butterfree-gmax': 'g-max-befuddle',
+  'pikachu-gmax': 'g-max-volt-crash',
+  'meowth-gmax': 'g-max-gold-rush',
+  'machamp-gmax': 'g-max-chi-strike',
+  'gengar-gmax': 'g-max-terror',
+  'kingler-gmax': 'g-max-foam-burst',
+  'lapras-gmax': 'g-max-resonance',
+  'eevee-gmax': 'g-max-cuddle',
+  'snorlax-gmax': 'g-max-replenish',
+  'garbodor-gmax': 'g-max-malodor',
+  'melmetal-gmax': 'g-max-meltdown',
+  'rillaboom-gmax': 'g-max-drum-solo',
+  'cinderace-gmax': 'g-max-fireball',
+  'inteleon-gmax': 'g-max-hydrosnipe',
+  'corviknight-gmax': 'g-max-wind-rage',
+  'orbeetle-gmax': 'g-max-gravitas',
+  'drednaw-gmax': 'g-max-stonesurge',
+  'coalossal-gmax': 'g-max-volcalith',
+  'flapple-gmax': 'g-max-tartness',
+  'appletun-gmax': 'g-max-sweetness',
+  'sandaconda-gmax': 'g-max-sandblast',
+  'toxtricity-amped-gmax': 'g-max-stun-shock',
+  'toxtricity-low-key-gmax': 'g-max-stun-shock',
+  'centiskorch-gmax': 'g-max-centiferno',
+  'hatterene-gmax': 'g-max-smite',
+  'grimmsnarl-gmax': 'g-max-snooze',
+  'alcremie-gmax': 'g-max-finale',
+  'copperajah-gmax': 'g-max-steelsurge',
+  'duraludon-gmax': 'g-max-depletion',
+  'urshifu-single-strike-gmax': 'g-max-one-blow',
+  'urshifu-rapid-strike-gmax': 'g-max-rapid-flow',
+});
+const MAX_MOVES_BY_TYPE = Object.freeze({
+  normal: 'max-strike',
+  fighting: 'max-knuckle',
+  flying: 'max-airstream',
+  poison: 'max-ooze',
+  ground: 'max-quake',
+  rock: 'max-rockfall',
+  bug: 'max-flutterby',
+  ghost: 'max-phantasm',
+  steel: 'max-steelspike',
+  fire: 'max-flare',
+  water: 'max-geyser',
+  grass: 'max-overgrowth',
+  electric: 'max-lightning',
+  psychic: 'max-mindstorm',
+  ice: 'max-hailstorm',
+  dragon: 'max-wyrmwind',
+  dark: 'max-darkness',
+  fairy: 'max-starfall',
+});
+
 // Urshifu's G-Max moves are style-exclusive: One Blow for Single Strike, Rapid Flow for Rapid Strike.
 const STYLE_EXCLUSIVE_MOVES = { 'g-max-one-blow': 'single-strike', 'g-max-rapid-flow': 'rapid-strike' };
 
@@ -57,23 +115,43 @@ function restrictStyleExclusiveMoves(moves, formId) {
   return moves.filter((move) => !STYLE_EXCLUSIVE_MOVES[move] || slug.includes(STYLE_EXCLUSIVE_MOVES[move]));
 }
 
-function getSpeciesGmaxMoves(speciesId, formId = null) {
-  if (!Number.isSafeInteger(speciesId) || speciesId <= 0) return [];
-  const forms = db.prepare(`
-    SELECT id, slug FROM pokemon_forms
-    WHERE species_id = ? AND lower(slug) LIKE '%-gmax'
-  `).all(speciesId);
-  const pokemonDatabase = loadPokemonDatabase();
-  const moves = forms.flatMap(({ id, slug }) => {
-    const generatedFormId = pokemonDatabase.get(slug)?.entry?.id;
-    return [
-      ...getSpeciesLearnset(speciesId, id),
-      ...(Number.isSafeInteger(generatedFormId) && generatedFormId !== id
-        ? getSpeciesLearnset(speciesId, generatedFormId)
-        : []),
-    ].filter((move) => move.startsWith('g-max-'));
-  });
-  return restrictStyleExclusiveMoves([...new Set(moves)], formId);
+function getGigantamaxMoves(speciesId, formId = null) {
+  if (!Number.isSafeInteger(speciesId) || speciesId <= 0
+      || !Number.isSafeInteger(formId) || formId <= 0) return [];
+  const form = db.prepare(`
+    SELECT slug, types FROM pokemon_forms
+    WHERE id = ? AND species_id = ? AND rarity = 'Gmax'
+  `).get(formId, speciesId);
+  if (!form) return [];
+  const types = JSON.parse(form.types);
+  if (!Array.isArray(types) || types.some((type) => typeof type !== 'string')) {
+    throw new Error(`Invalid type data for Gigantamax form "${form.slug}".`);
+  }
+  const gmaxMove = GMAX_MOVES_BY_FORM[form.slug.toLowerCase()];
+  const maxMoves = types.map((type) => MAX_MOVES_BY_TYPE[type.toLowerCase()])
+    .filter(Boolean);
+  return [...new Set([gmaxMove, ...maxMoves].filter(Boolean))];
+}
+
+function getGigantamaxMoveLearners(moveName) {
+  if (typeof moveName !== 'string' || !moveName.trim()) return [];
+  const moveSlug = moveName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const maxType = Object.entries(MAX_MOVES_BY_TYPE)
+    .find(([, move]) => move === moveSlug)?.[0];
+  const gmaxForms = db.prepare(`
+    SELECT name, slug, types FROM pokemon_forms
+    WHERE rarity = 'Gmax'
+    ORDER BY species_id, id
+  `).all();
+  return gmaxForms.filter((form) => {
+    if (GMAX_MOVES_BY_FORM[form.slug.toLowerCase()] === moveSlug) return true;
+    if (!maxType) return false;
+    const types = JSON.parse(form.types);
+    if (!Array.isArray(types) || types.some((type) => typeof type !== 'string')) {
+      throw new Error(`Invalid type data for Gigantamax form "${form.slug}".`);
+    }
+    return types.some((type) => type.toLowerCase() === maxType);
+  }).map((form) => form.name);
 }
 
 function getCooldownNotificationMode(userId) {
@@ -167,8 +245,15 @@ function setBuddyNickname(userId, nickname) {
   return value;
 }
 
-function rerollBuddyIv(userId, stat) {
+function rerollBuddyIv(userId, stat, confirmMaxed = false, expectedBuddyId = null) {
   assertUserId(userId);
+  if (typeof confirmMaxed !== 'boolean') {
+    throw new TypeError('confirmMaxed must be a boolean.');
+  }
+  if (expectedBuddyId !== null
+      && (!Number.isSafeInteger(expectedBuddyId) || expectedBuddyId <= 0)) {
+    throw new TypeError('expectedBuddyId must be a positive safe integer or null.');
+  }
   const ivFields = {
     atk: 'atk_iv',
     def: 'def_iv',
@@ -181,7 +266,9 @@ function rerollBuddyIv(userId, stat) {
     const user = getUser(userId);
     const buddyId = user.buddy_catch_id;
     if (!buddyId) return { error: 'no_buddy' };
-    if (user.vote_coins < 1) return { error: 'not_enough_vote_coins' };
+    if (expectedBuddyId !== null && buddyId !== expectedBuddyId) {
+      return { error: 'buddy_changed' };
+    }
     const buddy = db.prepare(`
       SELECT catches.*, pokemon_forms.base_hp, pokemon_forms.base_atk,
         pokemon_forms.base_def, pokemon_forms.base_spd
@@ -190,6 +277,18 @@ function rerollBuddyIv(userId, stat) {
       WHERE catches.id = ? AND catches.user_id = ?
     `).get(buddyId, userId);
     if (!buddy) return { error: 'no_buddy' };
+    if (buddy[ivField] === 31 && !confirmMaxed) {
+      return {
+        error: 'max_iv_confirmation_required',
+        pokemon: buddy.name,
+        stat,
+        buddyId,
+      };
+    }
+    if (confirmMaxed && buddy[ivField] !== 31) {
+      return { error: 'iv_changed' };
+    }
+    if (user.vote_coins < 1) return { error: 'not_enough_vote_coins' };
 
     const newIv = Math.floor(Math.random() * 32);
     const nextValues = {
@@ -610,8 +709,10 @@ db.exec(`
     name TEXT,
     rarity TEXT,
     is_shiny INTEGER,
+    is_golden INTEGER NOT NULL DEFAULT 0,
     level INTEGER,
     price INTEGER,
+    amount INTEGER NOT NULL DEFAULT 1,
     hp_iv INTEGER NOT NULL DEFAULT 0,
     atk_iv INTEGER NOT NULL DEFAULT 0,
     def_iv INTEGER NOT NULL DEFAULT 0,
@@ -633,6 +734,7 @@ db.exec(`
     name TEXT NOT NULL,
     rarity TEXT,
     is_shiny INTEGER NOT NULL DEFAULT 0,
+    is_golden INTEGER NOT NULL DEFAULT 0,
     sale_price INTEGER NOT NULL,
     tax_amount INTEGER NOT NULL,
     tax_rate INTEGER NOT NULL DEFAULT 15,
@@ -1074,6 +1176,62 @@ ensureColumns('clan_members', {
   catchbot: 'INTEGER NOT NULL DEFAULT 0',
   battles: 'INTEGER NOT NULL DEFAULT 0',
 });
+const desiredClanIds = new Map([
+  ['ascension', 1],
+  ['shadow garden', 2],
+  ['feral faeries', 3],
+]);
+const normalizeClanName = (name) => name.normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/æ/gi, 'ae')
+  .trim()
+  .toLowerCase();
+const clansToRenumber = db.prepare('SELECT id, name FROM clans').all()
+  .map((clan) => ({
+    currentId: clan.id,
+    targetId: desiredClanIds.get(normalizeClanName(clan.name)),
+  }))
+  .filter((clan) => clan.targetId !== undefined && clan.currentId !== clan.targetId);
+if (clansToRenumber.length) {
+  const conflictingClan = db.prepare('SELECT id, name FROM clans WHERE id = ?');
+  for (const { targetId } of clansToRenumber) {
+    const conflict = conflictingClan.get(targetId);
+    if (conflict && !clansToRenumber.some(({ currentId }) => currentId === conflict.id)) {
+      throw new Error(`Cannot assign clan ID ${targetId}; it belongs to unrelated clan "${conflict.name}".`);
+    }
+  }
+  const clanIdChanges = clansToRenumber.map((clan, index) => ({
+    ...clan,
+    temporaryId: -1000000 - index,
+  }));
+  db.pragma('defer_foreign_keys = ON');
+  db.transaction(() => {
+    const updateActivityId = db.prepare(
+      'UPDATE clan_activity_periods SET clan_id = ? WHERE clan_id = ?'
+    );
+    const updateMemberId = db.prepare(
+      'UPDATE clan_members SET clan_id = ? WHERE clan_id = ?'
+    );
+    const updateClanId = db.prepare(
+      'UPDATE clans SET id = ? WHERE id = ?'
+    );
+    for (const { currentId, temporaryId } of clanIdChanges) {
+      updateActivityId.run(temporaryId, currentId);
+      updateMemberId.run(temporaryId, currentId);
+      updateClanId.run(temporaryId, currentId);
+    }
+    for (const { targetId, temporaryId } of clanIdChanges) {
+      updateActivityId.run(targetId, temporaryId);
+      updateMemberId.run(targetId, temporaryId);
+      updateClanId.run(targetId, temporaryId);
+    }
+    db.prepare(`
+      UPDATE sqlite_sequence
+      SET seq = (SELECT COALESCE(MAX(id), 0) FROM clans)
+      WHERE name = 'clans'
+    `).run();
+  }).immediate();
+}
 ensureColumns('catchbot_data', {
   completion_notified_until: 'INTEGER NOT NULL DEFAULT 0',
 });
@@ -1310,6 +1468,8 @@ db.exec(`
   WHERE in_team = 1 AND team_slot IS NULL;
 `);
 ensureColumns('market', {
+  amount: 'INTEGER NOT NULL DEFAULT 1',
+  is_golden: 'INTEGER NOT NULL DEFAULT 0',
   hp_iv: 'INTEGER NOT NULL DEFAULT 0',
   atk_iv: 'INTEGER NOT NULL DEFAULT 0',
   def_iv: 'INTEGER NOT NULL DEFAULT 0',
@@ -1322,6 +1482,7 @@ ensureColumns('market', {
   spd: 'INTEGER NOT NULL DEFAULT 5',
 });
 ensureColumns('market_sales', {
+  is_golden: 'INTEGER NOT NULL DEFAULT 0',
   tax_rate: 'INTEGER NOT NULL DEFAULT 15',
 });
 
@@ -2626,7 +2787,6 @@ const DUPLICATE_CATCH_STATE_FIELDS = [
   'spd',
   'moves',
   'sketched_moves',
-  'held_item',
   'friendship',
 ];
 
@@ -2687,6 +2847,66 @@ function syncNewCatchState(userId, catchId) {
     ? buddy.id
     : firstCopy?.id || catchId;
   return syncDuplicateCatchState(userId, sourceId);
+}
+
+function rebaseTransferredPokemon(userId, catchId) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(catchId) || catchId <= 0) {
+    throw new TypeError('catchId must be a positive safe integer.');
+  }
+  const pokemon = db.prepare(`
+    SELECT catches.*, pokemon_forms.species_id, pokemon_forms.base_hp,
+      pokemon_forms.base_atk, pokemon_forms.base_def, pokemon_forms.base_spd
+    FROM catches
+    JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+    WHERE catches.id = ? AND catches.user_id = ?
+  `).get(catchId, userId);
+  if (!pokemon) return false;
+
+  const recipientPokemon = db.prepare(`
+    SELECT catches.level, catches.experience
+    FROM catches
+    JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+    WHERE catches.user_id = ? AND catches.id != ? AND pokemon_forms.species_id = ?
+    ORDER BY catches.level DESC, catches.experience DESC, catches.id
+    LIMIT 1
+  `).get(userId, catchId, pokemon.species_id);
+  const recipientCopy = db.prepare(`
+    SELECT hp_iv, atk_iv, def_iv, spd_iv, level, experience, friendship
+    FROM catches
+    WHERE user_id = ? AND id != ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+    ORDER BY id
+    LIMIT 1
+  `).get(userId, catchId, pokemon.pokemon_id, pokemon.is_shiny, pokemon.is_golden);
+  const level = recipientCopy?.level ?? recipientPokemon?.level ?? 1;
+  const experience = recipientCopy?.experience ?? recipientPokemon?.experience ?? 0;
+  const friendship = recipientCopy?.friendship ?? 0;
+  const hpIv = recipientCopy?.hp_iv ?? Math.floor(Math.random() * 32);
+  const atkIv = recipientCopy?.atk_iv ?? Math.floor(Math.random() * 32);
+  const defIv = recipientCopy?.def_iv ?? Math.floor(Math.random() * 32);
+  const spdIv = recipientCopy?.spd_iv ?? Math.floor(Math.random() * 32);
+  const maxHp = calculateStat(
+    pokemon.base_hp ?? 50, hpIv, level, true, Boolean(pokemon.is_shiny)
+  );
+  const atk = calculateStat(
+    pokemon.base_atk ?? 50, atkIv, level, false, Boolean(pokemon.is_shiny)
+  );
+  const def = calculateStat(
+    pokemon.base_def ?? 50, defIv, level, false, Boolean(pokemon.is_shiny)
+  );
+  const spd = calculateStat(
+    pokemon.base_spd ?? 50, spdIv, level, false, Boolean(pokemon.is_shiny)
+  );
+  db.prepare(`
+    UPDATE catches
+    SET level = ?, experience = ?, hp_iv = ?, atk_iv = ?, def_iv = ?, spd_iv = ?,
+      friendship = ?, hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
+    WHERE id = ? AND user_id = ?
+  `).run(
+    level, experience, hpIv, atkIv, defIv, spdIv, friendship, maxHp, maxHp, atk, def, spd,
+    catchId, userId
+  );
+  return true;
 }
 
 // Brings every group of identical catches (team, buddy, PC) to one shared state.
@@ -2836,16 +3056,30 @@ function advanceEggCatchProgress(userId, amount = 1) {
   if (!Number.isSafeInteger(amount) || amount <= 0) {
     throw new TypeError('Egg catch progress amount must be a positive safe integer.');
   }
-  db.prepare(`
+  const heldEgg = db.prepare(`
     UPDATE users
     SET held_egg_progress = MIN(held_egg_target, held_egg_progress + ?)
     WHERE id = ? AND held_egg_target > 0 AND held_egg_progress < held_egg_target
-  `).run(amount, userId);
-  db.prepare(`
+    RETURNING held_egg_progress AS progress, held_egg_target AS target
+  `).get(amount, userId);
+  const progressedIncubators = db.prepare(`
     UPDATE egg_incubators
     SET progress = MIN(target, progress + ?)
     WHERE user_id = ? AND progress < target
-  `).run(amount, userId);
+    RETURNING incubator_type, slot, progress, target
+  `).all(amount, userId);
+  const newlyReady = [];
+  if (heldEgg && heldEgg.progress >= heldEgg.target) {
+    newlyReady.push({ type: 'held' });
+  }
+  newlyReady.push(...progressedIncubators
+    .filter((incubator) => incubator.progress >= incubator.target)
+    .map(({ incubator_type: incubatorType, slot }) => ({
+      type: 'incubator',
+      incubatorType,
+      slot,
+    })));
+  return newlyReady;
 }
 
 const EGG_INCUBATOR_LIMITS = Object.freeze({
@@ -3013,7 +3247,7 @@ function getPokemonLearnset(catchId, userId) {
     WHERE catches.id = ? AND catches.user_id = ?
   `).get(catchId, userId);
   if (!pokemon) return null;
-  const gmaxMoves = getSpeciesGmaxMoves(pokemon.species_id, pokemon.pokemon_id);
+  const gmaxMoves = getGigantamaxMoves(pokemon.species_id, pokemon.pokemon_id);
   const base = restrictStyleExclusiveMoves([
     ...getSpeciesLearnset(pokemon.species_id),
     ...getSpeciesLearnset(pokemon.species_id, pokemon.pokemon_id),
@@ -3356,7 +3590,86 @@ const MEGA_STONE_NAMES = Object.freeze([
   'Chesnaughtite', 'Delphoxite', 'Greninjite', 'Pyroarite', 'Floettite', 'Malamarite', 'Barbaracite',
   'Dragalgite', 'Hawluchanite', 'Zygardite', 'Drampanite', 'Falinksite', 'Golurkite', 'Crabominite',
   'Golisopite', 'Scovillainite', 'Glimmoranite', 'Victreebelite', 'Baxcalibrite', 'Magearnite',
+  'Darkanite', 'Meteor', 'Zeraorite', 'Heatranite', 'Meowsticite', 'Staraptite', 'Tatsugirinite',
 ]);
+
+const MEGA_STONE_SPECIES_ALIASES = Object.freeze({
+  abomas: 'abomasnow',
+  alakaz: 'alakazam',
+  altarian: 'altaria',
+  baxcalibr: 'baxcalibur',
+  blastoisin: 'blastoise',
+  barbarac: 'barbaracle',
+  banett: 'banette',
+  chandelur: 'chandelure',
+  clefabl: 'clefable',
+  chimech: 'chimecho',
+  crabomin: 'crabominable',
+  darkan: 'darkrai',
+  dianc: 'diancie',
+  dragalg: 'dragalge',
+  dragonin: 'dragonite',
+  drampan: 'drampa',
+  excadr: 'excadrill',
+  falink: 'falinks',
+  feralig: 'feraligatr',
+  floett: 'floette',
+  gallad: 'gallade',
+  glalit: 'glalie',
+  glimmoran: 'glimmora',
+  golisop: 'golisopod',
+  greninj: 'greninja',
+  hawluchan: 'hawlucha',
+  heracron: 'heracross',
+  houndoomin: 'houndoom',
+  lucarion: 'lucario',
+  lopunn: 'lopunny',
+  magearn: 'magearna',
+  manect: 'manectric',
+  mawil: 'mawile',
+  mewtwon: 'mewtwo',
+  pyroar: 'pyroar',
+  raichun: 'raichu',
+  sablen: 'sableye',
+  scraftin: 'scrafty',
+  scolip: 'scolipede',
+  sceptil: 'sceptile',
+  sharpedon: 'sharpedo',
+  salamenc: 'salamence',
+  skarmor: 'skarmory',
+  slowbron: 'slowbro',
+  starapt: 'staraptor',
+  starmin: 'starmie',
+  tatsugirin: 'tatsugiri',
+  audin: 'audino',
+  victreebel: 'victreebel',
+  zeraor: 'zeraora',
+  zygard: 'zygarde',
+  meteor: 'rayquaza',
+});
+
+function getMegaStoneSpecies(stoneName) {
+  const stoneKey = stoneName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const stem = stoneKey.replace(/ite(?:[xyz])?$/, '');
+  return MEGA_STONE_SPECIES_ALIASES[stem] || stem;
+}
+
+function getMegaStoneForForm(form) {
+  const speciesKey = form.species_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const candidates = MEGA_STONE_NAMES.filter((stoneName) =>
+    getMegaStoneSpecies(stoneName) === speciesKey
+  );
+  if (candidates.length <= 1) return candidates[0] || null;
+
+  const variant = form.slug.match(/-mega-([xyz])$/i)?.[1]?.toUpperCase();
+  if (variant) {
+    const variantStone = candidates.find((stoneName) =>
+      stoneName.toLowerCase().endsWith(` ${variant.toLowerCase()}`)
+    );
+    if (variantStone) return variantStone;
+  }
+  return candidates.find((stoneName) => !/ [XYZ]$/i.test(stoneName)) || candidates[0];
+}
 
 function getUserChambers(userId) {
   assertUserId(userId);
@@ -3465,16 +3778,116 @@ function completeMegaChamber(userId, chamberKey) {
   }).immediate();
 }
 
-function megaEvolvePokemon(userId, query) {
+function megaEvolvePokemon(userId, query, requestedStone = null) {
   assertUserId(userId);
   if (typeof query !== 'string' || !query.trim()) {
-    throw new TypeError('Pokémon name is required.');
+    throw new TypeError('Pokémon name or Pokédex number is required.');
   }
-  const normalizedQuery = query.trim().toLowerCase().replace(/[\s_-]+/g, '');
-  const config = Object.values(CHAMBER_CONFIG).find((entry) =>
-    entry.monReq.toLowerCase().replace(/[\s_-]+/g, '') === normalizedQuery
+  const rawQuery = query.trim().toLowerCase();
+  const shinyPrefix = rawQuery.match(/^shiny[\s_-]+(.+)$/);
+  const pokemonQuery = (shinyPrefix ? shinyPrefix[1] : rawQuery).trim();
+  const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizedQuery = normalize(pokemonQuery);
+  const dexNumber = /^\d+$/.test(pokemonQuery) ? Number(pokemonQuery) : null;
+  let isShiny = Boolean(shinyPrefix);
+  const forms = db.prepare(`
+    SELECT id, species_id, species_name, name, slug, rarity, is_default
+    FROM pokemon_forms
+    ORDER BY id
+  `).all();
+  const megaForms = forms
+    .filter((form) => form.rarity === 'Mega')
+    .map((form) => ({ ...form, stoneName: getMegaStoneForForm(form) }));
+  let explicitlySelectedMega = megaForms.find((form) =>
+    normalize(form.name) === normalizedQuery
+    || (normalize(form.name.replace(/\bmega\b/i, '')) === normalizedQuery
+      && normalize(form.species_name) !== normalizedQuery)
+    || normalize(form.slug) === normalizedQuery
   );
-  if (!config) return { error: 'unsupported_pokemon' };
+  let speciesId = explicitlySelectedMega?.species_id;
+  let selectedBaseFormId = null;
+  const getBaseForm = (megaForm) => {
+    const baseSlug = megaForm.slug.replace(/-mega(?:-[xyz])?$/i, '');
+    return forms.find((form) =>
+      form.species_id === megaForm.species_id
+      && form.slug.toLowerCase() === baseSlug.toLowerCase()
+    ) || forms.find((form) =>
+      form.species_id === megaForm.species_id && form.is_default === 1
+    );
+  };
+  if (explicitlySelectedMega) {
+    selectedBaseFormId = getBaseForm(explicitlySelectedMega)?.id ?? null;
+  }
+  if (speciesId === undefined && dexNumber === null) {
+    const namedForm = forms.find((form) =>
+      form.rarity !== 'Mega'
+      && (normalize(form.name) === normalizedQuery || normalize(form.slug) === normalizedQuery)
+    );
+    const namedSpecies = forms.find((form) =>
+      normalize(form.species_name) === normalizedQuery
+    );
+    const selectedForm = namedForm || namedSpecies;
+    speciesId = selectedForm?.species_id;
+    selectedBaseFormId = selectedForm?.id ?? null;
+  }
+  if (speciesId === undefined && dexNumber !== null) {
+    const dexNumbers = getPokemonDexNumbersForForms();
+    const matchingForm = forms.find((form) => {
+      const numbers = dexNumbers.get(form.id);
+      if (numbers?.shinyDexNumber === dexNumber) isShiny = true;
+      return numbers?.dexNumber === dexNumber || numbers?.shinyDexNumber === dexNumber;
+    });
+    if (matchingForm?.rarity === 'Mega') {
+      explicitlySelectedMega = matchingForm;
+      selectedBaseFormId = getBaseForm(matchingForm)?.id ?? null;
+    } else {
+      selectedBaseFormId = matchingForm?.id ?? null;
+    }
+    speciesId = matchingForm?.species_id;
+  }
+  if (speciesId === undefined) return { error: 'unsupported_pokemon' };
+
+  let candidates = megaForms.filter((form) =>
+    form.species_id === speciesId && form.stoneName
+    && (!explicitlySelectedMega || form.id === explicitlySelectedMega.id)
+    && (selectedBaseFormId === null || getBaseForm(form)?.id === selectedBaseFormId)
+  );
+  if (!candidates.length) return { error: 'unsupported_pokemon' };
+
+  const requiredStoneNames = [...new Set(candidates.map((form) => form.stoneName))];
+  if (requestedStone !== null) {
+    candidates = candidates.filter((form) => form.stoneName === requestedStone);
+    if (!candidates.length) {
+      return {
+        error: 'stone_required',
+        stoneNames: requiredStoneNames,
+        pokemonName: candidates[0]?.species_name || megaForms.find((form) => form.species_id === speciesId)?.species_name,
+        isShiny,
+      };
+    }
+  } else if (requiredStoneNames.length > 1) {
+    const ownedStones = new Set(getMegaStones(userId).map((stone) => stone.stone_name));
+    const availableStones = requiredStoneNames.filter((stoneName) => ownedStones.has(stoneName));
+    if (availableStones.length === 1) {
+      candidates = candidates.filter((form) => form.stoneName === availableStones[0]);
+    } else {
+      return {
+        error: 'choose_stone',
+        stoneNames: availableStones.length ? availableStones : requiredStoneNames,
+        pokemonName: megaForms.find((form) => form.species_id === speciesId)?.species_name,
+        isShiny,
+      };
+    }
+  }
+  if (candidates.length > 1 && !explicitlySelectedMega) {
+    return {
+      error: 'choose_form',
+      formNames: candidates.map((form) => form.name),
+      stoneName: candidates[0].stoneName,
+      pokemonName: candidates[0].species_name,
+      isShiny,
+    };
+  }
 
   return db.transaction(() => {
     const bracelet = db.prepare(`
@@ -3482,45 +3895,49 @@ function megaEvolvePokemon(userId, query) {
       WHERE user_id = ? AND item_name = 'Mega Bracelet' AND amount > 0
     `).get(userId);
     if (!bracelet) {
-      return { error: 'bracelet_required', pokemonName: config.monReq };
+      return { error: 'bracelet_required', pokemonName: candidates[0].species_name };
     }
 
-    const baseForm = db.prepare(`
-      SELECT * FROM pokemon_forms
-      WHERE species_id = ? AND is_default = 1
-    `).get(config.pokemonId);
-    if (!baseForm) throw new Error(`Missing base form for Mega Evolution species ${config.pokemonId}.`);
-
-    const megaForm = db.prepare(`
-      SELECT * FROM pokemon_forms
-      WHERE species_id = ? AND is_default = 0 AND rarity = 'Mega'
-        AND lower(slug) = lower(? || '-mega')
-      LIMIT 1
-    `).get(config.pokemonId, baseForm.slug);
-    if (!megaForm) throw new Error(`Missing Mega form for ${config.monReq}.`);
-
-    const pokemon = db.prepare(`
-      SELECT * FROM catches
-      WHERE user_id = ? AND pokemon_id = ?
-      ORDER BY id DESC
-      LIMIT 1
-    `).get(userId, baseForm.id);
-    if (!pokemon) {
-      const alreadyMega = db.prepare(`
-        SELECT id FROM catches
-        WHERE user_id = ? AND pokemon_id = ?
+    const options = candidates.map((megaForm) => {
+      const baseForm = getBaseForm(megaForm);
+      if (!baseForm) {
+        throw new Error(`Missing base form ${baseSlug} for Mega Evolution ${megaForm.name}.`);
+      }
+      const pokemon = db.prepare(`
+        SELECT * FROM catches
+        WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = 0
+        ORDER BY id DESC
         LIMIT 1
-      `).get(userId, megaForm.id);
-      if (alreadyMega) return { error: 'already_mega', pokemonName: config.monReq };
-      return { error: 'pokemon_not_owned', pokemonName: config.monReq };
+      `).get(userId, baseForm.id, isShiny ? 1 : 0);
+      const stone = db.prepare(`
+        SELECT amount FROM mega_stones
+        WHERE user_id = ? AND stone_name = ?
+      `).get(userId, megaForm.stoneName);
+      return { megaForm, pokemon, stone };
+    });
+    const available = options.filter((option) => option.pokemon && option.stone?.amount > 0);
+    if (available.length > 1
+        && new Set(available.map((option) => option.megaForm.stoneName)).size > 1) {
+      return {
+        error: 'choose_stone',
+        stoneNames: [...new Set(available.map((option) => option.megaForm.stoneName))],
+        pokemonName: candidates[0].species_name,
+        isShiny,
+      };
     }
-
-    const stone = db.prepare(`
-      SELECT amount FROM mega_stones
-      WHERE user_id = ? AND stone_name = ?
-    `).get(userId, config.rewardStone);
+    const selected = (available.length ? available : options)
+      .sort((a, b) => (b.pokemon?.id || 0) - (a.pokemon?.id || 0))[0];
+    const { megaForm, pokemon, stone } = selected;
+    if (!pokemon) {
+      return { error: 'pokemon_not_owned', pokemonName: megaForm.species_name, isShiny };
+    }
     if (!stone || stone.amount < 1) {
-      return { error: 'stone_required', stoneName: config.rewardStone, pokemonName: config.monReq };
+      return {
+        error: 'stone_required',
+        stoneName: megaForm.stoneName,
+        pokemonName: megaForm.species_name,
+        isShiny,
+      };
     }
 
     const maxHp = calculateStat(megaForm.base_hp, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny);
@@ -3533,8 +3950,8 @@ function megaEvolvePokemon(userId, query) {
     const consumedStone = db.prepare(`
       UPDATE mega_stones SET amount = amount - 1
       WHERE user_id = ? AND stone_name = ? AND amount > 0
-    `).run(userId, config.rewardStone);
-    if (!consumedStone.changes) return { error: 'stone_required', stoneName: config.rewardStone };
+    `).run(userId, megaForm.stoneName);
+    if (!consumedStone.changes) return { error: 'stone_required', stoneName: megaForm.stoneName };
 
     db.prepare(`
       UPDATE catches
@@ -3553,10 +3970,17 @@ function megaEvolvePokemon(userId, query) {
       userId
     );
     syncDuplicateCatchState(userId, pokemon.id);
+    const megaDexNumbers = getPokemonDexNumbersForForms().get(megaForm.id);
     return {
-      pokemon: { ...pokemon, pokemon_id: megaForm.id, name: megaForm.name, rarity: 'Mega' },
-      stone: config.rewardStone,
-      dexNumber: getPokemonDexNumbersForForms().get(megaForm.id)?.dexNumber,
+      pokemon: {
+        ...pokemon,
+        pokemon_id: megaForm.id,
+        name: megaForm.name,
+        rarity: 'Mega',
+        is_shiny: isShiny,
+      },
+      stone: megaForm.stoneName,
+      dexNumber: isShiny ? megaDexNumbers?.shinyDexNumber : megaDexNumbers?.dexNumber,
     };
   }).immediate();
 }
@@ -5292,60 +5716,79 @@ function listOnMarket(sellerId, catchId, price) {
 
     const inserted = db.prepare(`
       INSERT INTO market (
-        seller_id, pokemon_id, name, rarity, is_shiny, level, price,
+        seller_id, pokemon_id, name, rarity, is_shiny, is_golden, level, price, amount,
         hp_iv, atk_iv, def_iv, spd_iv, experience, hp, max_hp, atk, def, spd
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      sellerId, mon.pokemon_id, mon.name, mon.rarity, mon.is_shiny, mon.level, price,
+      sellerId, mon.pokemon_id, mon.name, mon.rarity, mon.is_shiny, mon.is_golden, mon.level, price,
       mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spd_iv, mon.experience, mon.hp, mon.max_hp, mon.atk, mon.def, mon.spd
     );
     db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(catchId);
     db.prepare('DELETE FROM catches WHERE id = ? AND user_id = ?').run(catchId, sellerId);
-    return { ...mon, market_listing_id: Number(inserted.lastInsertRowid) };
+    return { ...mon, amount: 1, market_listing_id: Number(inserted.lastInsertRowid) };
   }).immediate();
 }
 
 function listPokemonOnMarket(sellerId, pokemonId, amount, price) {
   assertUserId(sellerId);
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0
-      || !Number.isSafeInteger(amount) || amount <= 0 || amount > 100
+      || !Number.isSafeInteger(amount) || amount <= 0 || amount > 50000
       || !Number.isSafeInteger(price) || price <= 0) {
-    throw new TypeError('pokemonId and price must be positive; amount must be between 1 and 100.');
+    throw new TypeError('pokemonId and price must be positive; amount must be between 1 and 50000.');
   }
 
   return db.transaction(() => {
     const listingLimit = getMarketListingLimit(sellerId);
     const listingCount = getUserMarketListingCount(sellerId);
-    if (listingCount + amount > listingLimit) {
+    if (listingCount >= listingLimit) {
       return { error: 'listing_limit', listingCount, listingLimit };
+    }
+    const variant = db.prepare(`
+      SELECT is_shiny, is_golden, MAX(id) AS latest_id
+      FROM catches
+      WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
+      GROUP BY is_shiny, is_golden
+      HAVING COUNT(*) >= ?
+      ORDER BY latest_id DESC
+      LIMIT 1
+    `).get(sellerId, pokemonId, amount);
+    if (!variant) {
+      const available = db.prepare(`
+        SELECT COUNT(*) AS count FROM catches
+        WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
+      `).get(sellerId, pokemonId).count;
+      return available >= amount ? { error: 'mixed_variants' } : null;
     }
     const catches = db.prepare(`
       SELECT * FROM catches
       WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
+        AND is_shiny = ? AND is_golden = ?
       ORDER BY id DESC
       LIMIT ?
-    `).all(sellerId, pokemonId, amount);
-    if (catches.length !== amount) return null;
-
-    const listings = [];
-    for (const mon of catches) {
-      const result = db.prepare(`
-        INSERT INTO market (
-          seller_id, pokemon_id, name, rarity, is_shiny, level, price,
-          hp_iv, atk_iv, def_iv, spd_iv, experience, hp, max_hp, atk, def, spd
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        sellerId, mon.pokemon_id, mon.name, mon.rarity, mon.is_shiny, mon.level, price,
-        mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spd_iv, mon.experience,
-        mon.hp, mon.max_hp, mon.atk, mon.def, mon.spd
-      );
-      db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(mon.id);
-      db.prepare('DELETE FROM catches WHERE id = ? AND user_id = ?').run(mon.id, sellerId);
-      listings.push({ ...mon, market_listing_id: Number(result.lastInsertRowid) });
+    `).all(sellerId, pokemonId, variant.is_shiny, variant.is_golden, amount);
+    const mon = catches[0];
+    const result = db.prepare(`
+      INSERT INTO market (
+        seller_id, pokemon_id, name, rarity, is_shiny, is_golden, level, price, amount,
+        hp_iv, atk_iv, def_iv, spd_iv, experience, hp, max_hp, atk, def, spd
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      sellerId, mon.pokemon_id, mon.name, mon.rarity, mon.is_shiny, mon.is_golden,
+      mon.level, price, amount,
+      mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spd_iv, mon.experience,
+      mon.hp, mon.max_hp, mon.atk, mon.def, mon.spd
+    );
+    const deleteCatches = db.prepare(
+      'DELETE FROM catches WHERE id = ? AND user_id = ?'
+    );
+    const clearBuddy = db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?');
+    for (const catchRow of catches) {
+      clearBuddy.run(catchRow.id);
+      deleteCatches.run(catchRow.id, sellerId);
     }
-    return listings;
+    return [{ ...mon, amount, market_listing_id: Number(result.lastInsertRowid) }];
   }).immediate();
 }
 
@@ -5373,6 +5816,28 @@ function getMarketListingCount(search = null) {
     SELECT COUNT(*) AS count FROM market
     WHERE (? IS NULL OR instr(lower(name), lower(?)) > 0)
   `).get(search, search).count;
+}
+
+function getUserMarketListings(userId, limit = 10, offset = 0) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(limit) || limit < 1
+      || !Number.isSafeInteger(offset) || offset < 0) {
+    throw new TypeError('Market limit and offset must be valid integers.');
+  }
+  return db.prepare(`
+    SELECT market.*,
+      COALESCE(sales.sold_count, 0) AS sold_count
+    FROM market
+    LEFT JOIN (
+      SELECT listing_id, COUNT(*) AS sold_count
+      FROM market_sales
+      WHERE seller_id = ?
+      GROUP BY listing_id
+    ) AS sales ON sales.listing_id = market.id
+    WHERE market.seller_id = ?
+    ORDER BY market.id DESC
+    LIMIT ? OFFSET ?
+  `).all(userId, userId, limit, offset);
 }
 
 function getUserMarketSales(userId, limit = 10, offset = 0) {
@@ -5409,36 +5874,40 @@ function clearMarketListings() {
     `).all();
     const restoreCatch = db.prepare(`
       INSERT INTO catches (
-        user_id, pokemon_id, name, rarity, is_shiny, level,
+        user_id, pokemon_id, name, rarity, is_shiny, is_golden, level,
         hp_iv, atk_iv, def_iv, spd_iv, experience,
         hp, max_hp, atk, def, spd, in_team, team_slot
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
     `);
     for (const listing of playerListings) {
       getUser(listing.seller_id);
-      const result = restoreCatch.run(
-        listing.seller_id,
-        listing.pokemon_id,
-        listing.name,
-        listing.rarity,
-        listing.is_shiny,
-        listing.level,
-        listing.hp_iv,
-        listing.atk_iv,
-        listing.def_iv,
-        listing.spd_iv,
-        listing.experience,
-        listing.hp,
-        listing.max_hp,
-        listing.atk,
-        listing.def,
-        listing.spd
-      );
-      syncNewCatchState(listing.seller_id, Number(result.lastInsertRowid));
+      for (let copyIndex = 0; copyIndex < listing.amount; copyIndex += 1) {
+        const result = restoreCatch.run(
+          listing.seller_id,
+          listing.pokemon_id,
+          listing.name,
+          listing.rarity,
+          listing.is_shiny,
+          listing.is_golden,
+          listing.level,
+          listing.hp_iv,
+          listing.atk_iv,
+          listing.def_iv,
+          listing.spd_iv,
+          listing.experience,
+          listing.hp,
+          listing.max_hp,
+          listing.atk,
+          listing.def,
+          listing.spd
+        );
+        syncNewCatchState(listing.seller_id, Number(result.lastInsertRowid));
+      }
     }
     const clearedCount = db.prepare('DELETE FROM market').run().changes;
-    return { clearedCount, returnedCount: playerListings.length };
+    const returnedCount = playerListings.reduce((total, listing) => total + listing.amount, 0);
+    return { clearedCount, returnedCount };
   }).immediate();
 }
 
@@ -5518,9 +5987,9 @@ function buyMarketItem(buyerId, listingId) {
       db.prepare(`
         INSERT INTO market_sales (
           listing_id, seller_id, buyer_id, pokemon_id, name, rarity, is_shiny,
-          sale_price, tax_amount, tax_rate, payout_amount
+          is_golden, sale_price, tax_amount, tax_rate, payout_amount
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         item.id,
         item.seller_id,
@@ -5529,49 +5998,35 @@ function buyMarketItem(buyerId, listingId) {
         item.name,
         item.rarity,
         item.is_shiny,
+        item.is_golden,
         item.price,
         taxAmount,
         Math.round(taxRate * 100),
         coinAward.finalAmount
       );
     }
-    db.prepare('DELETE FROM market WHERE id = ?').run(listingId);
+    if (item.amount > 1) {
+      db.prepare('UPDATE market SET amount = amount - 1 WHERE id = ?').run(listingId);
+    } else {
+      db.prepare('DELETE FROM market WHERE id = ?').run(listingId);
+    }
+    const remainingAmount = db.prepare('SELECT amount FROM market WHERE id = ?').get(listingId)?.amount || 0;
     const newCatchId = saveCatch(buyerId, {
       id: item.pokemon_id,
       name: item.name,
       rarity: item.rarity,
-      level: item.level,
       hp_iv: item.hp_iv,
       atk_iv: item.atk_iv,
       def_iv: item.def_iv,
       spd_iv: item.spd_iv,
-      experience: item.experience,
-      hp: item.hp,
-      max_hp: item.max_hp,
-      atk: item.atk,
-      def: item.def,
-      spd: item.spd,
-    }, item.is_shiny);
-    db.prepare(`
-      UPDATE catches
-      SET level = ?, experience = ?, hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
-      WHERE user_id = ? AND id = ?
-    `).run(
-      item.level,
-      item.experience,
-      item.hp,
-      item.max_hp,
-      item.atk,
-      item.def,
-      item.spd,
-      buyerId,
-      newCatchId
-    );
+    }, item.is_shiny, false, Boolean(item.is_golden));
+    rebaseTransferredPokemon(buyerId, newCatchId);
     syncNewCatchState(buyerId, newCatchId);
 
     return {
       success: true,
       item,
+      remainingAmount,
       sale: isPlayerListing
         ? {
           listingId: item.id,
@@ -7550,7 +8005,8 @@ module.exports = {
   setUserBuddyByQuery,
   getPokemonLearnset,
   getSpeciesLearnset,
-  getSpeciesGmaxMoves,
+  getGigantamaxMoves,
+  getGigantamaxMoveLearners,
   restrictStyleExclusiveMoves,
   recordSketchedMove,
   setBuddyMoves,
@@ -7616,6 +8072,7 @@ module.exports = {
   getUserMarketListingCount,
   getMarketListings,
   getMarketListingCount,
+  getUserMarketListings,
   getUserMarketSales,
   getUserMarketSaleSummary,
   clearMarketListings,
@@ -7687,6 +8144,7 @@ module.exports = {
   getUserRegisteredCollections,
   syncDuplicateCatchState,
   syncNewCatchState,
+  rebaseTransferredPokemon,
   reconcileDuplicateCatchStates,
   registerCollection,
   deleteCollection,
