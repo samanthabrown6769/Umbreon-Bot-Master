@@ -3197,7 +3197,7 @@ function getWorldBossBattle(playerState, boss) {
 }
 
 function worldBossCtx(bs, log, turn = bs.turn) {
-  return makeBattleCtx(bs.field, log, bs.mon, bs.boss, turn, [bs.mon], []);
+  return makeBattleCtx(bs.field, log, bs.mon, bs.boss, turn, [bs.mon], [], false);
 }
 
 const worldBossDefenceDrops = new Map();
@@ -4920,9 +4920,14 @@ function getDamagingMoves(moves) {
   return damaging.length ? damaging : moves;
 }
 
-function makeBattleCtx(field, log, player, enemy, turn, partyData, opponents) {
+function makeBattleCtx(field, log, player, enemy, turn, partyData, opponents, persistSketch = true) {
   return {
     field, log, player, enemy, turn,
+    // Sketch permanently teaches the player's own Pokémon the copied move (enemies never persist).
+    onSketch: persistSketch ? (mon, moveSlug) => {
+      if (mon !== player || !mon.id || !mon.user_id) return;
+      recordSketchedMove(mon.id, mon.user_id, moveSlug);
+    } : null,
     calc: calculateMoveDamage,
     typeEff: typeEffectiveness,
     typeChart: TYPE_EFFECTIVENESS,

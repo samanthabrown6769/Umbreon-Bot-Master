@@ -668,7 +668,10 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
       const idx = m.moves.findIndex((x) => slug(x.name) === key);
       m.moves = m.moves.map((x, i) => (i === (idx < 0 ? 0 : idx) ? { ...tf.lastMove } : x));
       L(`${m.name} learned **${tf.lastMove.name}**!`);
-      if (key === 'sketch') m.sketchedMove = slug(tf.lastMove.name);
+      if (key === 'sketch') {
+        m.sketchedMove = slug(tf.lastMove.name);
+        if (typeof ctx.onSketch === 'function') ctx.onSketch(m, m.sketchedMove);
+      }
     } else L('But it failed!');
   }
   if (eff.typeSelf) {

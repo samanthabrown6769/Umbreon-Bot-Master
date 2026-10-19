@@ -2810,6 +2810,18 @@ function syncDuplicateCatchState(userId, catchId) {
     WHERE id = ? AND user_id = ?
   `).get(catchId, userId);
   if (!source) return false;
+  // Sketched moves are permanent: merge them across copies so no sync source can erase them.
+  const sketchedUnion = new Set();
+  for (const row of db.prepare(`
+    SELECT sketched_moves FROM catches
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+  `).all(userId, source.pokemon_id, source.is_shiny, source.is_golden)) {
+    for (const move of parseSketchedMoves(row.sketched_moves)) sketchedUnion.add(move);
+  }
+  source.sketched_moves = JSON.stringify([...new Set([
+    ...parseSketchedMoves(source.sketched_moves),
+    ...sketchedUnion,
+  ])]);
   const assignments = DUPLICATE_CATCH_STATE_FIELDS.map((field) => `${field} = ?`).join(', ');
   db.prepare(`
     UPDATE catches
