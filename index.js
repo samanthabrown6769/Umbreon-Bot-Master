@@ -10856,14 +10856,6 @@ client.on('messageCreate', async (message) => {
       }
       if (subCommand === 'register') {
         const registration = registerWorldBossPlayer(userId, boss.id);
-        if (registration.error === 'registration_closed') {
-          return message.reply(
-            `❌ Registration for **${boss.name}** has closed. ` +
-            (isWorldBossPlayerRegistered(userId, boss.id)
-              ? `You are registered; use \`${PREFIX}wb fight\` to battle.`
-              : 'This World Boss is already accepting battles from registered trainers.')
-          );
-        }
         if (registration.error === 'inactive') {
           return message.reply('❌ There is no active World Boss to register for.');
         }
@@ -10872,8 +10864,14 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           registration.registered
             ? `✅ You are registered for **${boss.name}**! **${registration.registrationCount}** trainer` +
-              `${registration.registrationCount === 1 ? '' : 's'} registered. You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`
-            : `✅ You are already registered for **${boss.name}**. You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`
+              `${registration.registrationCount === 1 ? '' : 's'} registered. ` +
+              (registration.battleStarted
+                ? `Use \`${PREFIX}wb fight\` to join the battle.`
+                : `You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`)
+            : `✅ You are already registered for **${boss.name}**. ` +
+              (registration.battleStarted
+                ? `Use \`${PREFIX}wb fight\` to join the battle.`
+                : `You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`)
         );
       }
       const team = getUserTeam(userId);
@@ -10886,7 +10884,8 @@ client.on('messageCreate', async (message) => {
         }
         if (!isWorldBossPlayerRegistered(userId, boss.id)) {
           return message.reply(
-            `❌ You must register for **${boss.name}** with \`${PREFIX}wb register\` during its 2-minute registration period before fighting.`
+            `❌ Register for **${boss.name}** with \`${PREFIX}wb register\` before joining the fight. ` +
+            'Registration remains open while this World Boss is active.'
           );
         }
         if (getUnclaimedWorldBossReward(userId)) {
@@ -10914,7 +10913,7 @@ client.on('messageCreate', async (message) => {
       if (subCommand && !['status'].includes(subCommand)) {
         return message.reply(
           `Usage: \`${PREFIX}wb register\` to register, \`${PREFIX}wb\` to view the raid, ` +
-          `or \`${PREFIX}wb fight\` to battle after the 2-minute registration period.`
+          `or \`${PREFIX}wb fight\` to battle after the 2-minute wait. You can register at any time while a boss is active.`
         );
       }
       return message.reply({

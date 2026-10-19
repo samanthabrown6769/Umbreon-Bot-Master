@@ -5530,9 +5530,6 @@ function registerWorldBossPlayer(userId, bossId, timestamp = Date.now()) {
   return db.transaction(() => {
     const boss = db.prepare('SELECT * FROM world_boss WHERE id = ? AND is_active = 1').get(bossId);
     if (!boss) return { error: 'inactive' };
-    if (timestamp >= boss.registration_ends_at) {
-      return { error: 'registration_closed', registrationEndsAt: boss.registration_ends_at };
-    }
     const inserted = db.prepare(`
       INSERT OR IGNORE INTO world_boss_registrations (boss_id, user_id, registered_at)
       VALUES (?, ?, ?)
@@ -5544,6 +5541,7 @@ function registerWorldBossPlayer(userId, bossId, timestamp = Date.now()) {
       registered: inserted.changes > 0,
       registrationCount,
       registrationEndsAt: boss.registration_ends_at,
+      battleStarted: timestamp >= boss.registration_ends_at,
     };
   }).immediate();
 }
