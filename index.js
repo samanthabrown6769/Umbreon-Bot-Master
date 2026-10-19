@@ -289,6 +289,7 @@ const {
   getTotalEffectiveShinyBonus,
   getUserStatsSummary,
   getDailyResetDay,
+  claimDailySwapTickets,
   getNextDailyReset,
   recordDailyCatch,
   getDailyCatchLeaderboard,
@@ -17895,6 +17896,10 @@ client.on('messageCreate', async (message) => {
         );
       }
       if (!legacySwap) {
+        const dailyTickets = claimDailySwapTickets(userId);
+        if (dailyTickets > 0) {
+          await message.reply(`🎟️ You received **${dailyTickets} daily Swap Tickets**!`);
+        }
         const variant = ['shiny', 'golden'].includes(args[0]?.toLowerCase())
           ? args.shift().toLowerCase()
           : 'regular';

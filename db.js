@@ -6451,6 +6451,25 @@ function getDailyResetDay(timestamp) {
   return Math.floor((timestamp - DAILY_RESET_OFFSET_MS) / DAILY_PERIOD_MS);
 }
 
+const DAILY_SWAP_TICKETS = 2;
+
+// Grants the daily Swap Tickets once per daily reset period; returns the amount granted (0 if already claimed).
+function claimDailySwapTickets(userId, timestamp = Date.now()) {
+  assertUserId(userId);
+  return db.transaction(() => {
+    const key = `daily_swap_tickets:${userId}`;
+    const today = getDailyResetDay(timestamp);
+    const last = Number(db.prepare('SELECT value FROM bot_settings WHERE key = ?').get(key)?.value);
+    if (Number.isSafeInteger(last) && last >= today) return 0;
+    db.prepare(`
+      INSERT INTO bot_settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(key, String(today));
+    addUserItem(userId, 'Swap Ticket', DAILY_SWAP_TICKETS);
+    return DAILY_SWAP_TICKETS;
+  }).immediate();
+}
+
 function recordDailyCatch(userId, username, timestamp = Date.now()) {
   assertUserId(userId);
   if (typeof username !== 'string' || !username.trim()) {
@@ -8193,6 +8212,7 @@ module.exports = {
   getPatreonTokenMarketStats,
   getDailyResetDay,
   getNextDailyReset,
+  claimDailySwapTickets,
   recordDailyCatch,
   getDailyCatchLeaderboard,
   recordWildEncounterCounter,
