@@ -1617,6 +1617,54 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   banette: { normal: '<:Banette:1562183890972708964>' },
   whimsicott: { normal: '<:Whimsicott:1562183892574670859>' },
   bulbasaur: { normal: '<:Bulbasaur:1562183894181089400>' },
+  moltres: {
+    normal: '<:moltres:1562188397802684496>',
+    shiny: '<:Smoltres:1562188396011458700>',
+  },
+  articuno: {
+    normal: '<:articuno:1562188394052849714>',
+    shiny: '<:Sarticuno:1562188391259308223>',
+  },
+  celebi: {
+    normal: '<:celebi:1562188388768030843>',
+    shiny: '<:Scelebi:1562188387224658141>',
+  },
+  zapdos: {
+    normal: '<:zapdos:1562188385643143271>',
+    shiny: '<:Szapdos:1562188383743123457>',
+  },
+  'ho-oh': {
+    normal: '<:hooh:1562188381021278301>',
+    shiny: '<:Shooh:1562188379339227306>',
+  },
+  lugia: {
+    normal: '<:lugia:1562188377812508682>',
+    shiny: '<:Slugia:1562188376059412571>',
+  },
+  rayquaza: {
+    normal: '<:rayquaza:1562188374524166194>',
+    shiny: '<:Srayquaza:1562188373060227212>',
+  },
+  jirachi: {
+    normal: '<:jirachi:1562188371575570532>',
+    shiny: '<:Sjirachi:1562188369969291295>',
+  },
+  keldeo: {
+    normal: '<:keldeo:1562188368207421610>',
+    shiny: '<:Skeldeo:1562188366391541903>',
+  },
+  genesect: {
+    normal: '<:genesect:1562188364688396308>',
+    shiny: '<:Sgenesect:1562188362717200465>',
+  },
+  phione: {
+    normal: '<:Phione:1562188361274236928>',
+    shiny: '<:Sphione:1562188359579738112>',
+  },
+  manaphy: {
+    normal: '<:manaphy:1562188357738696754>',
+    shiny: '<:Smanaphy:1562188355536420984>',
+  },
 });
 
 function getPokemonSpriteEmoji(pokemon) {
@@ -8326,9 +8374,9 @@ client.on('messageCreate', async (message) => {
               `Use \`${PREFIX}research\` or \`${PREFIX}res\` to visit Professor Oak's Research Lab.\n\n` +
               `• \`${PREFIX}res ex <n|p|bn|bp|sp|cs> [amount]\` — Exchange valuables for PokéCoins and Research Points.\n` +
               `• \`${PREFIX}res ex n bn\` / \`${PREFIX}res ex p bp\` — Exchange 10 Nuggets or Pearls for a Big item.\n` +
-              `• \`${PREFIX}res ex relics\` — Exchange one of each of the four relics for 125,000 PokéCoins and 40 RP.\n` +
+              `• \`${PREFIX}res ex relics\` — Exchange all four relics for 125,000 PokéCoins and 40 RP.\n` +
               `• \`${PREFIX}res shop\` — View Research Lab items.\n` +
-              `• \`${PREFIX}shop buy <item name|34-41> [amount]\` — Buy Research Lab shop items.\n` +
+              `• \`${PREFIX}shop buy <item name|available number> [amount]\` — Buy Research Lab shop items.\n` +
               `• \`${PREFIX}item info <item>\` — View research-item details.\n\n` +
               `Regular .pokemon encounters have a 10% chance to find a random valuable and a separate 10% chance to find a missing relic, while relics are available.`
             )],
@@ -8341,7 +8389,7 @@ client.on('messageCreate', async (message) => {
         return message.reply({
           embeds: [new EmbedBuilder()
             .setColor(0x00c9b7)
-            .setAuthor({ name: 'PokeMeow Research Shop' })
+            .setAuthor({ name: 'Umbreon Research Shop' })
             .setDescription(
               `Welcome to the Research Shop!\n\n` +
               `**${message.author.username}'s Research Points:** ${RESEARCH_POINT_EMOJI} ${user.research_points.toLocaleString()}\n\n` +
@@ -8406,7 +8454,7 @@ client.on('messageCreate', async (message) => {
 
         if (['relic', 'relics'].includes(requestedName)) {
           if (amount !== 1) {
-            return message.reply('You can exchange only one relic set at a time; you can hold at most one of each relic.');
+            return message.reply('You can exchange only one complete set of all four relics at a time.');
           }
           const requiredItems = RESEARCH_RELICS.map((item) => item.name);
           const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
@@ -8488,23 +8536,26 @@ client.on('messageCreate', async (message) => {
       const relicUnlockUntil = user.research_relic_unlock_until;
       const relicStatus = relicUnlockUntil > Date.now()
         ? `Relics unavailable until <t:${Math.floor(relicUnlockUntil / 1000)}:R>; relic-exclusive held items are active until then.`
-        : 'Relics are available from regular .pokemon encounters; you can hold one of each type.';
+        : 'Relics are available from regular .pokemon encounters.';
       return message.reply({
         embeds: [new EmbedBuilder()
           .setColor(0xf1c40f)
-          .setAuthor({ name: 'PokeMeow Research Lab', iconURL: client.user.displayAvatarURL() })
+          .setAuthor({ name: 'Umbreon Research Lab', iconURL: client.user.displayAvatarURL() })
           .setDescription(
             `Professor Oak: Hello Trainer! Welcome to our **Research Lab**, where we analyze ` +
-            `valuables, relics, and fossils.\n\n` +
+            `valuables and relics.\n\n` +
             `${RESEARCH_POINT_EMOJI} **Your Research Points:** ${user.research_points.toLocaleString()}\n\n` +
             `**Valuables exchange**\n` +
             `${valuableLines.join('\n')}\n` +
-            `🪙 10x Nugget → 1x Big Nugget • ⚪ 10x Pearl → 1x Big Pearl\n\n` +
+            `${RESEARCH_VALUABLES.find((item) => item.name === 'Nugget').emoji} 10x Nugget → ` +
+            `${RESEARCH_VALUABLES.find((item) => item.name === 'Big Nugget').emoji} 1x Big Nugget • ` +
+            `${RESEARCH_VALUABLES.find((item) => item.name === 'Pearl').emoji} 10x Pearl → ` +
+            `${RESEARCH_VALUABLES.find((item) => item.name === 'Big Pearl').emoji} 1x Big Pearl\n\n` +
             `**Research experiment discoveries**\n` +
             `${relicStatus} Regular .pokemon encounters have a **10% chance** to uncover a missing relic.\n\n` +
             `**Relic exchange**\n` +
             `${relicLines.join(' • ')}\n` +
-            `Exchange 1x of each relic for ${EMOJIS.pokecoin} **125,000** and ${RESEARCH_POINT_EMOJI} **40 RP** with ` +
+            `Exchange all 4 relics for ${EMOJIS.pokecoin} **125,000** and ${RESEARCH_POINT_EMOJI} **40 RP** with ` +
             `\`${PREFIX}res exchange relics\`.\n\n` +
             `**Research Exclusive**\n${shardLines.join('\n')}\n\n` +
             `ℹ️ Need help? Type \`${PREFIX}res help\`. Visit the shop with \`${PREFIX}res shop\`.`
@@ -9308,7 +9359,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}research\` / \`${PREFIX}res\` — Visit Professor Oak's Research Lab\n` +
             `• \`${PREFIX}res ex <n|p|bn|bp|sp|cs> [amount]\` — Exchange valuables for PokéCoins and Research Points\n` +
             `• \`${PREFIX}res ex n bn\` / \`${PREFIX}res ex p bp\` — Make a Big Nugget or Big Pearl\n` +
-            `• \`${PREFIX}res ex relics\` — Exchange one of each of the four relics\n` +
+            `• \`${PREFIX}res ex relics\` — Exchange all four relics\n` +
             `• \`${PREFIX}res shop\` / \`${PREFIX}res help\` — View research items and command help`,
         },
         trade: {
@@ -16492,7 +16543,7 @@ client.on('messageCreate', async (message) => {
             .find((item) => item.item_name === researchItem.name)?.amount || 0;
           const exchange = RESEARCH_VALUABLES.find((item) => item.name === researchItem.name);
           const relicText = researchRelic
-            ? 'Found from regular Pokémon encounters when relic drops are available. You can hold one of each relic.'
+            ? 'Found from regular Pokémon encounters when relic drops are available.'
             : null;
           const valuableText = exchange
             ? ({
@@ -16502,9 +16553,6 @@ client.on('messageCreate', async (message) => {
               'Big Pearl': `Obtained by exchanging 10 Pearls. Exchange one for ${EMOJIS.pokecoin} **30,000** and ${RESEARCH_POINT_EMOJI} **15 RP**.`,
               'Star Piece': `A random valuable found from regular .pokemon encounters. Exchange one for ${EMOJIS.pokecoin} **15,000** and ${RESEARCH_POINT_EMOJI} **10 RP**.`,
               'Comet Shard': `A random valuable found from regular .pokemon encounters. Exchange one for ${EMOJIS.pokecoin} **60,000** and ${RESEARCH_POINT_EMOJI} **25 RP**.`,
-              'Fusion Core': `A high-value Powerstation research item. Exchange one for ${EMOJIS.pokecoin} **250,000** and ${RESEARCH_POINT_EMOJI} **150 RP**.`,
-              Turbine: `A Powerstation research item. Exchange one for ${EMOJIS.pokecoin} **100,000** and ${RESEARCH_POINT_EMOJI} **75 RP**.`,
-              'Smart Grid': `A Powerstation research item. Exchange one for ${EMOJIS.pokecoin} **125,000** and ${RESEARCH_POINT_EMOJI} **90 RP**.`,
             })[researchItem.name]
             : null;
           const description = researchShopItem?.description || researchHeldItem?.description || valuableText || relicText
@@ -16517,11 +16565,9 @@ client.on('messageCreate', async (message) => {
               ? `Automatically consumed for a single encounter with **${researchShopItem.unlocks.flatMap((species) =>
                 researchShopItem.unlocksShiny ? [species, `Shiny ${species}`] : [species]
               ).join('** or **')}**. You can also give it to a team Pokémon.`
-              : researchShopItem.name === 'Research Badge'
-                ? 'A Research Lab badge.'
-                : `Its passive effect applies while it is in your inventory. Each \`${PREFIX}pokemon\` encounter has a **1% chance** to consume it.`
+              : `Its passive effect applies while it is in your inventory. Each \`${PREFIX}pokemon\` encounter has a **1% chance** to consume it.`
             : researchRelic
-              ? `Collect one of each relic, then use \`${PREFIX}res exchange relics\` to exchange the set.`
+              ? `Collect all four relics, then use \`${PREFIX}res exchange relics\` to exchange the set.`
               : `Use \`${PREFIX}res exchange ${researchItem.name.toLowerCase()} [amount]\` to exchange it for PokéCoins and Research Points.`;
           const shopMethod = researchShopItem
             ? `Buy for **${researchShopItem.price.toLocaleString()} ${RESEARCH_POINT_EMOJI} Research Points** with \`${PREFIX}shop buy ${researchShopItem.id} [amount]\`.`
@@ -17232,7 +17278,7 @@ client.on('messageCreate', async (message) => {
         const category = shopCategories[selectedCategory];
         if (selectedCategory === 'research') {
           return makeEmbed(
-            '🔬 PokeMeow Research Shop',
+            '🔬 Umbreon Research Shop',
             `**${message.author.username}'s Research Points:** ${RESEARCH_POINT_EMOJI} ${balance.research_points.toLocaleString()}\n\n` +
             `${category.description}\n\n` +
             `Buy with \`${PREFIX}shop buy <number|item> [amount]\`.`,

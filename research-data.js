@@ -2,30 +2,23 @@ const RESEARCH_SHOP_ITEMS = [
   {
     id: 34,
     name: 'Fluffy Tail',
-    emoji: '🐾',
+    emoji: '<:fluffytail:1562176205896155157>',
     price: 125,
     description: 'Increases the chance to find valuables and held items from Pokémon encounters by 30%.',
   },
   {
     id: 35,
     name: 'PokeDoll',
-    emoji: '🪆',
+    emoji: '<:pokedoll:1562176204486873108>',
     price: 150,
     description: 'Increases the chance to find relics and special battle held items from Pokémon encounters by 30%.',
   },
   {
     id: 36,
     name: 'PokeToy',
-    emoji: '🧸',
+    emoji: '<:poketoy:1562176202846904380>',
     price: 200,
     description: 'Increases the chance to find an Ancient Fossil on a successful catch by 30%.',
-  },
-  {
-    id: 37,
-    name: 'Research Badge',
-    emoji: '🏅',
-    price: 10000,
-    description: 'A Research Lab badge.',
   },
   {
     id: 38,
@@ -82,9 +75,6 @@ const RESEARCH_VALUABLES = [
   { name: 'Big Pearl', emoji: '<:bigpearl:1562173050554679476>', coins: 30000, points: 15 },
   { name: 'Star Piece', emoji: '<:starpiece:1562173048952594532>', coins: 15000, points: 10 },
   { name: 'Comet Shard', emoji: '<:cometshard:1562173046679408640>', coins: 60000, points: 25 },
-  { name: 'Fusion Core', emoji: '🔵', coins: 250000, points: 150 },
-  { name: 'Turbine', emoji: '⚒️', coins: 100000, points: 75 },
-  { name: 'Smart Grid', emoji: '▦', coins: 125000, points: 90 },
 ];
 
 const RESEARCH_RELICS = [
