@@ -5082,7 +5082,7 @@ async function askForBall(
     }
     trackClanActivity(userId, isFishing ? 'fish' : 'catch');
     const experienceAmount = getCatchExperienceReward(catchDisplayRarity);
-    const experienceResult = isFishing ? null : awardCatchExperience(userId, experienceAmount);
+    const experienceResult = awardCatchExperience(userId, experienceAmount);
     const fishingTokensEarned = isFishing ? getFishingTokenReward(catchDisplayRarity) : 0;
     const fishingConditions = [];
     if (isFishing) {
@@ -5181,7 +5181,7 @@ async function askForBall(
       target.isShiny ? (target.shinyImg || target.img) : target.img
     );
     if (successImage) successEmbed.setImage(successImage);
-    const experienceMessage = !isFishing && experienceResult.awarded
+    const experienceMessage = experienceResult?.awarded
       ? experienceResult.pokemon.map((pokemon) =>
         `${getTrainerIconEmoji(userId)} ${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}** gained **${experienceAmount.toLocaleString()} EXP!**`
       ).join('\n')
