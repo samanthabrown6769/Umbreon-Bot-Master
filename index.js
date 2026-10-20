@@ -8468,28 +8468,47 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'excl') {
       const exclusiveType = args[0]?.toLowerCase();
-      if (!['swap', 'egg', 'fish', 'catchbot', 'patreon'].includes(exclusiveType) || args.length > 1) {
-        return message.reply(`Usage: \`${PREFIX}excl <swap|egg|fish|catchbot|patreon>\`.`);
+      if (!['swap', 'egg', 'fish', 'catchbot', 'patreon', 'vote'].includes(exclusiveType) || args.length > 1) {
+        return message.reply(`Usage: \`${PREFIX}excl <swap|egg|fish|catchbot|vote|patreon>\`.`);
       }
       let embed;
-      if (exclusiveType === 'patreon') {
+      if (exclusiveType === 'vote') {
+        embed = new EmbedBuilder()
+          .setColor(0xff69b4)
+          .setTitle('🗳️ Vote Exclusives')
+          .setDescription(
+            '**Shiny Box Pokémon** (10% drop chance per Shiny Box, only if you voted in the last 12 hours)\n' +
+            `${BOX_ONLY_SHINY_SPECIES.map((entry) =>
+              `• ✨ ${entry.name}${entry.patreonOnly ? ' (Patreon)' : ''}`
+            ).join('\n')}\n\n` +
+            'No other Shiny Pokémon drop from Shiny Boxes.'
+          );
+      } else if (exclusiveType === 'patreon') {
         const shinyEggExclusives = EGG_RARE_HATCHES
           .filter((entry) => entry.patreonOnly && entry.isShiny)
           .map((entry) => `• ✨ ${entry.name} (1/${entry.denominator} per Egg hatch)`);
         const shinySwapExclusives = SWAP_EXCLUSIVE_SHINIES
           .filter((entry) => entry.patreonOnly)
           .map((entry) => `• ✨ ${entry.name} (1/2,000 base chance per PokeSwap)`);
+        const shinyFishExclusives = FISH_EXCLUSIVE_SHINIES
+          .filter((name) => FISH_PATREON_ONLY_SHINY_KEYS.has(name.toLowerCase()))
+          .map((name) => `• ✨ ${name}`);
+        const shinyBoxExclusives = BOX_ONLY_SHINY_SPECIES
+          .filter((entry) => entry.patreonOnly)
+          .map((entry) => `• ✨ ${entry.name} (10% drop chance from a Shiny Box if you voted in the last 12 hours)`);
         embed = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle('💖 Patreon-exclusive Shiny Pokémon')
           .setDescription(
             `**Egg hatches**\n${shinyEggExclusives.join('\n') || 'None configured.'}\n\n` +
             `**PokeSwap**\n${shinySwapExclusives.join('\n') || 'None configured.'}\n\n` +
+            `**Fishing**\n${shinyFishExclusives.join('\n') || 'None configured.'}\n\n` +
+            `**Shiny Box**\n${shinyBoxExclusives.join('\n') || 'None configured.'}\n\n` +
             'PokeSwap odds can increase with your daily swap multiplier and the Shiny Pokémon you offer.'
           );
       } else if (exclusiveType === 'swap') {
         const shinyExclusives = SWAP_EXCLUSIVE_SHINIES
-          .map(({ name }) => name)
+          .map(({ name, patreonOnly }) => `${name}${patreonOnly ? ' (Patreon)' : ''}`)
           .join(' • ');
         embed = new EmbedBuilder()
           .setColor(0x5865f2)
@@ -8522,7 +8541,7 @@ client.on('messageCreate', async (message) => {
         const formatSpecials = (entries) => entries
           .map((entry) =>
             `• ${entry.isGolden ? `${EMOJIS.golden} Golden ` : entry.isShiny ? '✨ Shiny ' : ''}` +
-            `${entry.name} (1/${entry.denominator})`
+            `${entry.name}${entry.patreonOnly ? ' (Patreon)' : ''} (1/${entry.denominator})`
           )
           .join('\n');
         embed = new EmbedBuilder()
@@ -11005,13 +11024,16 @@ client.on('messageCreate', async (message) => {
                 ? `Use \`${PREFIX}wb fight\` to join the battle.`
                 : `You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`);
         const previousTeam = getLastWorldBossTeam(userId);
-        const currentTeamIds = getUserTeam(userId).map((mon) => mon.id).join(',');
-        if (!previousTeam || previousTeam.map((mon) => mon.id).join(',') === currentTeamIds) {
+        if (!previousTeam || !previousTeam.length) {
           return message.reply(registrationText);
         }
         const formatTeam = (mons) => mons
           .map((mon, index) => `${index + 1}. ${formatMarketPokemon(mon)} (Lv. ${mon.level})`)
           .join('\n');
+        const teamEmbed = (title, body, color = 0x9b59b6) => new EmbedBuilder()
+          .setColor(color)
+          .setTitle(title)
+          .setDescription(body);
         const teamButtons = (disabled = false) => new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId('wb-team:previous')
@@ -11020,15 +11042,18 @@ client.on('messageCreate', async (message) => {
             .setDisabled(disabled),
           new ButtonBuilder()
             .setCustomId('wb-team:current')
-            .setLabel('Keep current team')
+            .setLabel('Use current team')
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(disabled)
         );
+        const currentTeam = getUserTeam(userId);
         const prompt = await message.reply({
-          content:
-            `${registrationText}\n\n` +
-            `🔁 Do you want to use the team from your last World Boss fight?\n` +
-            `**Previous team**\n${formatTeam(previousTeam)}`,
+          content: registrationText,
+          embeds: [teamEmbed(
+            '🔁 Which team do you want to use?',
+            `**Previous team** (from your last World Boss fight)\n${formatTeam(previousTeam)}\n\n` +
+            `**Current team**\n${currentTeam.length ? formatTeam(currentTeam) : '*Your team is empty.*'}`
+          )],
           components: [teamButtons()],
         });
         const collector = prompt.createMessageComponentCollector({
@@ -11044,14 +11069,20 @@ client.on('messageCreate', async (message) => {
             if (interaction.customId === 'wb-team:previous') {
               const equipped = equipLastWorldBossTeam(userId);
               await interaction.update({
-                content: equipped
-                  ? `${registrationText}\n\n✅ Equipped your previous World Boss team:\n${formatTeam(equipped)}`
-                  : `${registrationText}\n\n❌ Your previous team is no longer available.`,
+                content: registrationText,
+                embeds: [equipped
+                  ? teamEmbed('✅ Using your previous team', formatTeam(equipped), 0x2ecc71)
+                  : teamEmbed('❌ Previous team unavailable', 'Your previous team is no longer available.', 0xe74c3c)],
                 components: [],
               });
             } else {
               await interaction.update({
-                content: `${registrationText}\n\n✅ Keeping your current team.`,
+                content: registrationText,
+                embeds: [teamEmbed(
+                  '✅ Using your current team',
+                  currentTeam.length ? formatTeam(currentTeam) : '*Your team is empty.*',
+                  0x2ecc71
+                )],
                 components: [],
               });
             }
