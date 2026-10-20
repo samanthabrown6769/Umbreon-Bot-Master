@@ -1588,7 +1588,10 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
     normal: '<:HisuianTyphlosion:1562183795011096647>',
     shiny: '<:SHisuianTyphlosion:1562183793190637708>',
   },
-  'hisuian zorua': { normal: '<:HisuianZorua:1562183797502513233>' },
+  'hisuian zorua': {
+    normal: '<:HisuianZorua:1562183797502513233>',
+    shiny: '<:SHisuianZorua:1562192199188488294>',
+  },
   'giratina origin': {
     normal: '<:GiratinaOrigin:1562183799205396500>',
     shiny: '<:SGiratinaOrigin:1562183810659917934>',
@@ -1601,13 +1604,19 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   drifloon: { shiny: '<:SDrifloon:1562183820562931813>' },
   duskull: { shiny: '<:SDuskull:1562183822160699402>' },
   sableye: { shiny: '<:SSableye:1562183823511523500>' },
+  'mega sableye': { shiny: '<:Smegasableye:1562192196705452132>' },
   poochyena: { shiny: '<:SPoochyena:1562183825025405019>' },
   misdreavus: { shiny: '<:SMisdreavus:1562183826883485866>' },
   spinarak: { shiny: '<:SSpinarak:1562183828901072926>' },
   eevee: { golden: '<:GEevee:1562183877479375018>' },
   umbreon: { golden: '<:GUmbreon:1562183879152898129>' },
   espeon: { golden: '<:GEspeon:1562183880696529027>' },
-  mewtwo: { normal: '<:Mewtwo:1562183882885955674>' },
+  mewtwo: {
+    normal: '<:Mewtwo:1562183882885955674>',
+    shiny: '<:SMewtwo:1562192202782871722>',
+  },
+  'gengar gmax': { normal: '<:gengargmax:1562192194914361455>' },
+  'gmax gengar': { normal: '<:gengargmax:1562192194914361455>' },
   grimer: { normal: '<:Grimer:1562183885817778288>' },
   muk: { normal: '<:Muk:1562183887961194506>' },
   'eternatus eternamax': {
@@ -8907,26 +8916,40 @@ client.on('messageCreate', async (message) => {
       const { ownedSpecies, hasLegendaryTrio, ancientFossilCount } =
         getSpecialSpawnUnlocks(userId);
       const requiredTrio = ['Cobalion', 'Terrakion', 'Virizion'];
+      const pokemonDisplay = (name, isShiny = false) => {
+        const sprite = getPokemonSpriteEmoji({ name, isShiny });
+        return `${sprite ? `${sprite} ` : ''}${isShiny ? `Shiny ${name}` : name}`;
+      };
+      const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
       const catchableRows = [
-        `${hasLegendaryTrio ? '✅' : '❌'} **Keldeo**\n` +
+        `${hasLegendaryTrio ? '✅' : '❌'} **${pokemonDisplay('Keldeo')}**\n` +
           `└ Requires ${requiredTrio.map((species) =>
-            `${ownedSpecies.has(species.toLowerCase()) ? '✅' : '❌'} ${species}`
+            `${ownedSpecies.has(species.toLowerCase()) ? '✅' : '❌'} ${pokemonDisplay(species)}`
           ).join(' • ')} in your box.`,
-        `${ancientFossilCount > 0 ? '✅' : '❌'} **Genesect**\n` +
+        `${ancientFossilCount > 0 ? '✅' : '❌'} **${pokemonDisplay('Genesect')}**\n` +
           `└ Requires ${EMOJIS.ancientFossil} **Ancient Fossil** ` +
           `(${ancientFossilCount.toLocaleString()} owned; find one while catching Pokémon).`,
       ];
       const hatchRows = [
-        `✅ **Phione** — Egg-exclusive; 1/150 rare hatch chance.`,
-        `✅ **Manaphy** — Egg-exclusive; 1/150 rare hatch chance.`,
+        `✅ **${pokemonDisplay('Phione')}** — ${EMOJIS.pokeEgg} Egg-exclusive; 1/150 rare hatch chance.`,
+        `✅ **${pokemonDisplay('Manaphy')}** — ${EMOJIS.pokeEgg} Egg-exclusive; 1/150 rare hatch chance.`,
       ];
+      const researchRows = RESEARCH_SHOP_ITEMS.filter((item) => item.unlocks).map((item) => {
+        const amount = ownedItems.get(item.name) || 0;
+        const unlockNames = item.unlocks.flatMap((species) =>
+          item.unlocksShiny ? [pokemonDisplay(species), pokemonDisplay(species, true)] : [pokemonDisplay(species)]
+        );
+        return `${amount > 0 ? '✅' : '❌'} ${unlockNames.join(' / ')} — ` +
+          `${item.emoji} ${item.name} ${amount > 0 ? `(${amount} owned)` : `required; \`${PREFIX}res shop\``}`;
+      });
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle('🔓 Catch & Hatch Unlockables')
         .setDescription('View special catch and Egg-hatch unlock requirements.')
         .addFields(
           { name: '🔴 Catchable', value: catchableRows.join('\n') },
-          { name: '🥚 Hatch Exclusive', value: hatchRows.join('\n') },
+          { name: `${EMOJIS.pokeEgg} Hatch Exclusive`, value: hatchRows.join('\n') },
+          { name: '🔬 Research Exclusive', value: researchRows.join('\n') },
         )
         .setFooter({ text: '✅ Requirement met • ❌ Requirement not met' })
         .setTimestamp();
