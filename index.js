@@ -5170,11 +5170,7 @@ async function askForBall(
         `${/^[aeiou]/i.test(target.name) ? 'an' : 'a'} ` +
         `${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}** with a ` +
         `${ball.emoji} **${ball.name}**!` +
-        `${ballSaved ? `\n⚡ **${ball.name} not used!**` : ''}`
-      );
-    const successDetailsEmbed = new EmbedBuilder()
-      .setColor(successEmbed.data.color)
-      .setDescription(
+        `${ballSaved ? `\n⚡ **${ball.name} not used!**` : ''}\n\n` +
         `Rarity: ` +
         `${catchDisplayRarity} (${rarityData.rateText})\n` +
         `${target.heldItem
@@ -5201,7 +5197,7 @@ async function askForBall(
     if (successImage) successEmbed.setImage(successImage);
     const experienceMessage = !isFishing && experienceResult.awarded
       ? experienceResult.pokemon.map((pokemon) =>
-        `${getTrainerIconEmoji(userId)} ${pokemon.is_shiny ? `${EMOJIS.shiny} ` : ''}${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}** gained **${experienceAmount.toLocaleString()} EXP!**`
+        `${getTrainerIconEmoji(userId)} ${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}** gained **${experienceAmount.toLocaleString()} EXP!**`
       ).join('\n')
       : '';
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
@@ -5209,7 +5205,7 @@ async function askForBall(
     ).join('\n') || '';
     await spawnMessage.edit({
       content: [experienceMessage, levelUpMessage].filter(Boolean).join('\n'),
-      embeds: [successEmbed, successDetailsEmbed],
+      embeds: [successEmbed],
       components: [],
     });
     for (const promo of getActivePromos()) {
@@ -13228,11 +13224,11 @@ client.on('messageCreate', async (message) => {
             : seenBySpecies.has(pokemon.species_id)
               ? '<:uncaught:1560340193108566177>'
               : '<:empty:1560342156630167764>';
-          const rarityEmoji = pokemon.is_golden ? EMOJIS.golden : getRarityEmojis(
-            pokemon.rarity,
-            pokemon.name,
-            Boolean(pokemon.is_shiny)
-          );
+          const rarityEmoji = pokemon.is_golden
+            ? EMOJIS.golden
+            : getPokemonSpriteEmoji(pokemon)
+              ? RARITY_EMOJIS[getDisplayRarity(pokemon.rarity, pokemon.name, Boolean(pokemon.is_shiny)).toLowerCase()] || ''
+              : getRarityEmojis(pokemon.rarity, pokemon.name, Boolean(pokemon.is_shiny));
           const displayName = pokemon.is_golden ? `Golden ${pokemon.name}` : pokemon.is_shiny ? `Shiny ${pokemon.name}` : pokemon.name;
           return `\`${String(pokemon.dex_number).padStart(4, '0')}\` ${marker} ${rarityEmoji} ${getPokemonSpriteEmoji(pokemon)} **${displayName}**`;
         }).join('\n') || 'No entries.';
