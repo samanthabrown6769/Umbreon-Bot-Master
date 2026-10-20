@@ -1628,6 +1628,8 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   litleo: { golden: '<:goldenlitleo:1562202542203740261>' },
   croagunk: { golden: '<:goldencroagunk:1562202540521558026>' },
   varoom: { golden: '<:goldenvaroom:1562203391835381840>' },
+  aron: { golden: '<:goldenaron:1562208128618209310>' },
+  terapagos: { normal: '<:terapagos:1562208130325151744>' },
   mewtwo: {
     normal: '<:Mewtwo:1562183882885955674>',
     shiny: '<:SMewtwo:1562192202782871722>',
@@ -9000,7 +9002,10 @@ client.on('messageCreate', async (message) => {
           .setTitle('🤖 CatchBot Exclusives')
           .setDescription(
             `**Golden Pokémon**\n` +
-            `${EMOJIS.golden} Aron\n${EMOJIS.golden} Swablu\n\n` +
+            `${CATCHBOT_GOLDEN_EXCLUSIVES.map((pokemon) => {
+              const spriteEmoji = getPokemonSpriteEmoji({ name: `Golden ${pokemon.name}` });
+              return `${spriteEmoji ? `${spriteEmoji} ` : ''}${EMOJIS.golden} ${pokemon.name}`;
+            }).join('\n')}\n\n` +
             'Each CatchBot Pokémon has a **1/1,000** chance to be Golden at maximum Luck.'
           );
       } else {
