@@ -13468,20 +13468,13 @@ client.on('messageCreate', async (message) => {
               name: 'Rarity',
               value: goldenEntry
                 ? `${EMOJIS.golden} Golden`
-                : `${getRarityEmojis(pokemon.rarity, pokemon.name, shinyEntry)} ${getDisplayRarity(pokemon.rarity, pokemon.name, shinyEntry)}`,
+                : `${RARITY_EMOJIS[getDisplayRarity(pokemon.rarity, pokemon.name, shinyEntry).toLowerCase()] || ''} ${getDisplayRarity(pokemon.rarity, pokemon.name, shinyEntry)}`,
               inline: true,
             },
             { name: 'Ingame', value: `🌐 ${ingameCount.toLocaleString()}`, inline: true },
             { name: 'Seen / Owned', value: `📜 ${seenCount.toLocaleString()} / 👤 ${ownedCount.toLocaleString()}`, inline: true },
             { name: 'Base Stats', value: `⚔️ ${pokemon.base_atk}  🛡️ ${pokemon.base_def}  ❤️ ${pokemon.base_hp}  ⚡ ${pokemon.base_spd}`, inline: true },
-            { name: 'Base Stat Total', value: `${pokemon.base_stat_total}`, inline: true },
-            {
-              name: 'Obtainable From',
-              value: goldenEntry
-                ? 'Promo codes, event rewards, and admin giveaways'
-                : `\`${PREFIX}p\` land encounters${pokemon.is_water ? `\n\`${PREFIX}fish\` fishing encounters` : ''}`,
-              inline: true,
-            }
+            { name: 'Base Stat Total', value: `${pokemon.base_stat_total}`, inline: true }
           )
           .setFooter({
             text: 'Pokédex • Use the buttons below to browse forms and evolutions',
