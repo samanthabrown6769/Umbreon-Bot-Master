@@ -1886,9 +1886,11 @@ function rollWildHeldItem(target, userId = null, researchPokemonEncounter = fals
   if (eligibleItem && Math.random() < heldItemChance) return eligibleItem;
   if (!researchPokemonEncounter) return null;
 
-  if (relicExchangeActive && Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
-      * (target.researchToolBoosts?.pokeDoll ? 1.3 : 1)) {
-    return RESEARCH_HELD_ITEMS[Math.floor(Math.random() * RESEARCH_HELD_ITEMS.length)];
+  const eligibleResearchItems = speciesItems.filter((item) => item.requiresRelicExchange);
+  if (relicExchangeActive && eligibleResearchItems.length
+      && Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
+        * (target.researchToolBoosts?.pokeDoll ? 1.3 : 1)) {
+    return eligibleResearchItems[Math.floor(Math.random() * eligibleResearchItems.length)];
   }
 
   if (Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
