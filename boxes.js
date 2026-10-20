@@ -18,7 +18,6 @@ const BOXES = {
   'Shiny Box': {
     aliases: ['shinybox', 'sb'], emoji: '<a:shinybox:1559925068254154803>',
     rarity: null, shiny: true, pokemonDropChance: 0.1, coins: [50000, 50000],
-    description: 'Gives 50,000 PokéCoins and has a 10% chance to drop a random Shiny Pokémon; otherwise, it gives Greatballs and Ultraballs.',
   },
 };
 

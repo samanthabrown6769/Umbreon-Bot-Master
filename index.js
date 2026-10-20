@@ -360,9 +360,47 @@ const {
   EXPLORE_EXCLUSIVE_SPECIES_IDS,
   getExploreCatchRate,
 } = require('./exploreData');
+// Egg-exclusive species never spawn from catching, fishing, swapping or CatchBot.
+const EGG_ONLY_SPECIES = Object.freeze([
+  'Chingling', 'Bonsly', 'Mime Jr.', 'Happiny', 'Chatot', 'Munchlax', 'Riolu', 'Audino',
+  'Zorua', 'Emolga', 'Ferroseed', 'Golett', 'Pawniard', 'Pancham', 'Spritzee', 'Swirlix',
+  'Noibat', 'Crabrawler', 'Rockruff', 'Type: Null', 'Yamper', 'Carbink',
+  'Mimikyu', 'Manaphy', 'Phione', 'Victini',
+]);
+// Species whose shiny version is egg-exclusive (the regular version can still spawn).
+const EGG_ONLY_SHINY_SPECIES = Object.freeze([
+  'Chansey', 'Ditto', 'Scyther', 'Togepi', 'Gible', 'Larvesta', 'Elekid', 'Magby',
+]);
+// Species whose shiny version is swap-exclusive (the regular version can still spawn).
+const SWAP_ONLY_SHINY_SPECIES = Object.freeze([
+  'Oddish', 'Gastly', 'Tyrogue', 'Ralts', 'Beldum', 'Bronzor', 'Snorunt', 'Larvitar', 'Scraggy', 'Shelmet',
+]);
+// Species whose shiny version only comes from fishing (the regular version can still spawn).
+const FISH_ONLY_SHINY_SPECIES = Object.freeze([
+  'Horsea', 'Tentacool', 'Goldeen', 'Finneon', 'Poliwag', 'Krabby', 'Clamperl', 'Shellder',
+  'Wailmer', 'Carvanha', 'Magikarp', 'Remoraid', 'Feebas', 'Clauncher',
+]);
+const FISH_PATREON_ONLY_SHINY_KEYS = new Set(['feebas', 'clauncher']);
+// Shiny versions that only drop from Shiny Boxes (users must have voted; Patreon-only entries need Patreon).
+const BOX_ONLY_SHINY_SPECIES = Object.freeze([
+  { name: 'Meowth' }, { name: 'Psyduck' }, { name: 'Heracross' }, { name: 'Munchlax' }, { name: 'Corsola' },
+  { name: 'Swirlix', patreonOnly: true }, { name: 'Comfey', patreonOnly: true },
+]);
+const FISH_ONLY_SHINY_KEYS = new Set(FISH_ONLY_SHINY_SPECIES.map((name) => name.toLowerCase()));
+const NON_SPAWN_SHINY_SPECIES = Object.freeze([
+  ...EGG_ONLY_SHINY_SPECIES, ...SWAP_ONLY_SHINY_SPECIES, ...FISH_ONLY_SHINY_SPECIES,
+  ...BOX_ONLY_SHINY_SPECIES.map((entry) => entry.name),
+]);
+const EGG_ONLY_SHINY_SPECIES_KEYS = new Set(
+  [
+    ...EGG_ONLY_SPECIES, ...EGG_ONLY_SHINY_SPECIES, ...SWAP_ONLY_SHINY_SPECIES,
+    ...BOX_ONLY_SHINY_SPECIES.map((entry) => entry.name),
+  ].map((name) => name.toLowerCase())
+);
 // Explore exclusives never spawn outside of explore.
 const SPECIAL_SPAWN_RESERVED_SPECIES = Object.freeze([
   ...BASE_SPAWN_RESERVED_SPECIES,
+  ...EGG_ONLY_SPECIES,
   ...db.prepare(
     `SELECT species_name FROM pokemon_forms WHERE is_default = 1 AND species_id IN (${EXPLORE_EXCLUSIVE_SPECIES_IDS.map(() => '?').join(', ')})`
   ).all(...EXPLORE_EXCLUSIVE_SPECIES_IDS).map((row) => row.species_name),
@@ -1408,10 +1446,7 @@ const SWAP_EXCLUSIVE_SHINIES = Object.freeze([
   { name: 'Pancham', patreonOnly: true },
 ]);
 
-const FISH_EXCLUSIVE_SHINIES = Object.freeze([
-  'Horsea', 'Tentacool', 'Goldeen', 'Finneon', 'Poliwag', 'Krabby',
-  'Clamperl', 'Shellder', 'Wailmer', 'Carvanha', 'Magikarp', 'Feebas',
-]);
+const FISH_EXCLUSIVE_SHINIES = FISH_ONLY_SHINY_SPECIES;
 const FISH_EXCLUSIVE_GOLDENS = Object.freeze(['Poliwag', 'Tentacool', 'Wailmer', 'Kyogre']);
 const FISH_EXCLUSIVE_GOLDEN_DENOMINATOR = 5000;
 const CATCHBOT_GOLDEN_EXCLUSIVES = Object.freeze(
@@ -2249,6 +2284,17 @@ function rollSpawn(
       * (pokeradarActive ? 1.1 : 1);
     pokemon.incenseActive = incenseActive;
     pokemon.isShiny = isForcedEventSpawn ? forcedShiny : Math.random() < shinyChance;
+    if (pokemon.isShiny && !isForcedEventSpawn
+        && EGG_ONLY_SHINY_SPECIES_KEYS.has(String(pokemon.speciesName).toLowerCase())) {
+      pokemon.isShiny = false;
+    }
+    if (pokemon.isShiny && !isForcedEventSpawn) {
+      const speciesKey = String(pokemon.speciesName).toLowerCase();
+      if (FISH_ONLY_SHINY_KEYS.has(speciesKey)
+          && (!rod || (FISH_PATREON_ONLY_SHINY_KEYS.has(speciesKey) && !isPatreonUser))) {
+        pokemon.isShiny = false;
+      }
+    }
     // Event checklist Pokémon only spawn for ticket holders (never via CatchBot).
     if (pokemon.isShiny && !eventTicketActive && isEventOpen(halloweenEvent) && isEventChecklistSpawn(pokemon)) {
       pokemon.isShiny = false;
@@ -2335,7 +2381,9 @@ function rollExploreEncounter(userId, mapKey = 'grass') {
   const shinyBonus = getTotalEffectiveShinyBonus(userId);
   const shinyRate = (user.has_patreon ? PATREON_SHINY_RATE : BASE_SHINY_RATE)
     * (1 + getPatreonPerks(userId).shinyRatePct / 100) / (1 - shinyBonus / 100);
-  pokemon.isShiny = canShiny && Math.random() < shinyRate;
+  pokemon.isShiny = canShiny && Math.random() < shinyRate
+    && !EGG_ONLY_SHINY_SPECIES_KEYS.has(String(pokemon.speciesName).toLowerCase())
+    && !FISH_ONLY_SHINY_KEYS.has(String(pokemon.speciesName).toLowerCase());
   pokemon.isEventShiny = false;
   pokemon.isExplore = true;
   pokemon.encounterModifier = 'normal';
@@ -7604,20 +7652,23 @@ function getAutospawnRarityForThreshold(threshold) {
 }
 
 // Uniform picks across every form over-represent Legendaries, so roll a weighted rarity that never includes them.
-function rollNonLegendaryAutospawn() {
+function rollNonLegendaryAutospawn(shiny = false) {
+  const excluded = shiny
+    ? [...SPECIAL_SPAWN_RESERVED_SPECIES, ...NON_SPAWN_SHINY_SPECIES]
+    : SPECIAL_SPAWN_RESERVED_SPECIES;
   const pool = getRaritySettings().filter((rarity) =>
     !['legendary', 'gmax', 'mega', 'shiny mega'].includes(rarity.name.toLowerCase())
     && rarity.spawn_weight > 0
     && rarity.pokemon_count > 0
   );
   const totalWeight = pool.reduce((total, rarity) => total + rarity.spawn_weight, 0);
-  if (!totalWeight) return getRandomPokemon('Common', false, true, true, []);
+  if (!totalWeight) return getRandomPokemon('Common', false, true, true, [], excluded);
   let random = Math.random() * totalWeight;
   for (const entry of pool) {
     random -= entry.spawn_weight;
-    if (random < 0) return getRandomPokemon(entry.name, false, true, true, []);
+    if (random < 0) return getRandomPokemon(entry.name, false, true, true, [], excluded);
   }
-  return getRandomPokemon(pool[pool.length - 1].name, false, true, true, []);
+  return getRandomPokemon(pool[pool.length - 1].name, false, true, true, [], excluded);
 }
 
 const AUTOSPAWN_SPECIAL_LEGENDARY_CHANCE = 0.3;
@@ -7637,12 +7688,14 @@ function rollAutospawnTarget({ legendaryOrShiny = false, messageThreshold = null
       target.isShiny = false;
       return target;
     }
-    const target = rollNonLegendaryAutospawn();
+    const target = rollNonLegendaryAutospawn(true);
     target.isShiny = true;
     return target;
   }
   if (messageThreshold !== null) {
-    return getRandomPokemon(getAutospawnRarityForThreshold(messageThreshold), false, true, true, []);
+    return getRandomPokemon(
+      getAutospawnRarityForThreshold(messageThreshold), false, true, true, [], SPECIAL_SPAWN_RESERVED_SPECIES
+    );
   }
   return rollNonLegendaryAutospawn();
 }
@@ -8451,7 +8504,7 @@ client.on('messageCreate', async (message) => {
           .setColor(0x3498db)
           .setTitle('🎣 Fishing Exclusives')
           .setDescription(
-            `**Shiny Pokémon**\n${FISH_EXCLUSIVE_SHINIES.map((name) => `• ${name}`).join('\n')}\n\n` +
+            `**Shiny Pokémon**\n${FISH_EXCLUSIVE_SHINIES.map((name) => `• ${name}${FISH_PATREON_ONLY_SHINY_KEYS.has(name.toLowerCase()) ? ' (Patreon)' : ''}`).join('\n')}\n\n` +
             `**Golden Pokémon**\n${FISH_EXCLUSIVE_GOLDENS.map((name) => `• ${EMOJIS.golden} ${name}`).join('\n')}\n\n` +
             `Golden-exclusive fishing encounters are **1/${FISH_EXCLUSIVE_GOLDEN_DENOMINATOR.toLocaleString()}**; Golden Patreon raises this rate by 25%.`
           );
@@ -16112,7 +16165,7 @@ client.on('messageCreate', async (message) => {
             .setColor(0x0099ff)
             .setAuthor({ name: `${infoBox} — Item Information` })
             .setDescription(
-              `${box.description}\n\n` +
+              `${box.description ? `${box.description}\n\n` : ''}` +
               `**You currently own:** ${box.emoji} **${ownedBoxes}x ${infoBox}**\n\n` +
               `**Usage**\nOpen with \`${PREFIX}open ${box.aliases[0]} [amount|all]\`.\n\n` +
               '**How to obtain**\n• 🎉 Item giveaways\n• Special events\n\n' +
@@ -18153,8 +18206,12 @@ client.on('messageCreate', async (message) => {
             if (!reward) throw new Error(`Could not find default form for Shiny PokeSwap exclusive ${exclusiveShiny.name}.`);
             saveCatch(userId, reward, true);
           } else {
-            reward = getRandomPokemon(null, false, true, true, []);
-            if (!reward) throw new Error('The Pokémon pool is empty; cannot complete PokeSwap.');
+            reward = getRandomPokemon(
+              null, false, true, true, [],
+              receivedShiny
+                ? [...SPECIAL_SPAWN_RESERVED_SPECIES, ...NON_SPAWN_SHINY_SPECIES]
+                : SPECIAL_SPAWN_RESERVED_SPECIES
+            );
             saveCatch(userId, reward, receivedShiny);
           }
           return {
@@ -19540,7 +19597,26 @@ client.on('messageCreate', async (message) => {
         for (let index = 0; index < amount; index += 1) {
           coins += box.coins[0] + Math.floor(Math.random() * (box.coins[1] - box.coins[0] + 1));
           if (Math.random() < box.pokemonDropChance) {
-            const pokemon = getRandomPokemon(box.rarity, false, true, true);
+            let pokemon = null;
+            if (box.shiny) {
+              const boxUser = getUser(userId);
+              const hasVoted = Date.now() - (boxUser.last_vote_at || 0) < 12 * 60 * 60 * 1000;
+              const eligible = hasVoted
+                ? BOX_ONLY_SHINY_SPECIES.filter((entry) => !entry.patreonOnly || boxUser.has_patreon)
+                : [];
+              if (eligible.length) {
+                const chosen = eligible[Math.floor(Math.random() * eligible.length)];
+                pokemon = findPokemonForms(chosen.name, 50)
+                  .find((form) => form.is_default && form.species_name === chosen.name) || null;
+              }
+            } else {
+              pokemon = getRandomPokemon(box.rarity, false, true, true);
+            }
+            if (!pokemon) {
+              greatballs += Math.floor(Math.random() * 5) + 2;
+              ultraballs += Math.floor(Math.random() * 3) + 1;
+              continue;
+            }
             saveCatch(userId, pokemon, box.shiny);
             results.push({ ...pokemon, isShiny: box.shiny });
           } else {

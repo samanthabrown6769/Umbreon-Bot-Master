@@ -5508,7 +5508,7 @@ for (const form of worldBossForms) {
     catchRarity: form.rarity,
     maxHp: form.id === 10190 || /eternatus-eternamax/i.test(form.slug)
       ? 50000000
-      : 5000000,
+      : 10000000,
     baseHp: form.base_hp,
     baseAtk: form.base_atk,
     baseDef: form.base_def,
