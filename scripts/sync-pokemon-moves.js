@@ -5,6 +5,9 @@ const API = 'https://pokeapi.co/api/v2';
 const CATALOG_PATH = path.join(__dirname, '..', 'data', 'pokemon-catalog.json');
 const OUTPUT_PATH = path.join(__dirname, '..', 'data', 'pokemon-moves.json');
 const CONCURRENCY = 8;
+const LEARNSET_OVERRIDES = {
+  528: ['confide', 'captivate'],
+};
 
 async function fetchJson(url) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -103,6 +106,19 @@ async function main() {
         moves[right].power - moves[left].power || left.localeCompare(right)
       );
     if (learnable.length) learnsets[speciesId] = learnable;
+  }
+
+  for (const [speciesId, names] of Object.entries(LEARNSET_OVERRIDES)) {
+    const learnable = new Set(learnsets[speciesId] || []);
+    for (const name of names) {
+      if (!moves[name]) {
+        throw new Error(`Learnset override references unknown move: ${name}`);
+      }
+      learnable.add(name);
+    }
+    learnsets[speciesId] = [...learnable].sort((left, right) =>
+      moves[right].power - moves[left].power || left.localeCompare(right)
+    );
   }
 
   const output = {
