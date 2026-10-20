@@ -2827,6 +2827,20 @@ function createWorldBossPanelEmbed(boss, { state, team, faintedIds, log = [], us
     if (fainted) return `💫 ~~${label}~~ **FNT**`;
     return isActive ? `🟩 **${label}** ⚔️` : `🟩 ${label}`;
   }).join('\n');
+  const battleState = state?.battle;
+  const playerSummary = battleState?.mon ? battleFx.summarize(battleState.mon) : '';
+  const bossBattleSummary = battleState?.boss ? battleFx.summarize(battleState.boss) : '';
+  const raiderDrops = worldBossDefenceDrops.get(`${boss.id}:${user.id}`);
+  const dropParts = raiderDrops
+    ? [['def', 'Defense'], ['spdef', 'Sp. Def']]
+      .filter(([key]) => raiderDrops[key])
+      .map(([key, label]) => `${label} ${raiderDrops[key] > 0 ? '+' : ''}${raiderDrops[key]}`)
+    : [];
+  const bossSummary = [bossBattleSummary, ...dropParts].filter(Boolean).join(' · ');
+  const stageLines = (playerSummary || bossSummary)
+    ? `${playerSummary ? `📈 **${state.pokemon.name}:** ${playerSummary}\n` : ''}` +
+      `${bossSummary ? `📉 **${boss.name}:** ${bossSummary}\n` : ''}\n`
+    : '';
   const embed = new EmbedBuilder()
     .setColor(0xf47fb4)
     .setAuthor({ name: `${boss.name} Challenge`, iconURL: boss.image_url || undefined })
@@ -2834,6 +2848,7 @@ function createWorldBossPanelEmbed(boss, { state, team, faintedIds, log = [], us
       `⚔️ ${getRarityEmojis(template?.rarity || 'Legendary', boss.name)} ` +
       `${boss.name}: ${boss.current_hp.toLocaleString()} / ${boss.max_hp.toLocaleString()} HP\n\n` +
       (log.length ? `${log.join('\n')}\n\n` : '') +
+      stageLines +
       `⚔️ **${user.username}'s Team**\n${teamLines}\n\n` +
       (state && state.hp > 0
         ? 'Choose a move or switch Pokémon. The boss counterattacks after each move.'
@@ -3203,7 +3218,7 @@ function worldBossCtx(bs, log, turn = bs.turn) {
 
 const worldBossDefenceDrops = new Map();
 
-function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult = 1, battleMon) {
+function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult = 1, battleMon, bossMon = null) {
   if (!team.length) return { error: 'no_team' };
   const selectedTeamMember = getWorldBossTeamMoves(team)
     .find((teamMember) => teamMember.teamIndex === teamIndex);
@@ -3223,15 +3238,11 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   const stab = types.includes(move.type) ? 1.5 : 1;
   const heldItemMultiplier = getHeldItemDamageMultiplier(pokemon.held_item, move.type);
   const stages = battleMon ? battleFx.fx(battleMon).stages : null;
-  const specialAttackMultiplier = move.category === 'special' && stages
-    ? battleFx.stageMult(stages.spa)
-    : 1;
   const isCritical = Math.random() < 0.15;
   const baseDamage = Math.max(
     1,
     Math.floor(
       (pokemon.atk * 3.5 + pokemon.level * 4 + (pokemon.atk_iv || 15))
-      * specialAttackMultiplier
       * (move.power / 100)
       * effectiveness
       * stab
@@ -3248,9 +3259,17 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   let dropText = '';
   if (statDrop && Math.random() * 100 < statDrop[0]) {
     for (const [key, delta] of Object.entries(statDrop[1])) {
-      if (key !== 'def' && key !== 'spdef') continue;
-      bossStages[key] = Math.max(-6, bossStages[key] + delta);
-      dropText = ` ${key === 'def' ? 'Defense' : 'Sp. Def'} of the boss ${Math.abs(delta) >= 2 ? 'harshly ' : ''}fell!`;
+      if (key === 'def' || key === 'spdef') {
+        bossStages[key] = Math.max(-6, bossStages[key] + delta);
+        dropText = ` ${key === 'def' ? 'Defense' : 'Sp. Def'} of the boss ${Math.abs(delta) >= 2 ? 'harshly ' : ''}fell!`;
+      } else if (bossMon && bossMon.fx?.stages && key in bossMon.fx.stages) {
+        const bossFxStages = bossMon.fx.stages;
+        const previousStage = bossFxStages[key];
+        bossFxStages[key] = Math.max(-6, previousStage + delta);
+        if (bossFxStages[key] < previousStage) {
+          dropText += ` ${battleFx.STAGE_NAMES[key]} of the boss ${Math.abs(delta) >= 2 ? 'harshly ' : ''}fell!`;
+        }
+      }
     }
     worldBossDefenceDrops.set(dropKey, bossStages);
   }
@@ -3259,12 +3278,14 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   if (result.error) return result;
   let selfBoostText = '';
   const selfBoost = battleFx.DAMAGE_SELF_BOOSTS[battleFx.slug(move.name)];
-  if (selfBoost && stages) {
-    for (const [key, delta] of Object.entries(selfBoost)) {
+  if (selfBoost && stages && Math.random() * 100 < selfBoost[0]) {
+    for (const [key, delta] of Object.entries(selfBoost[1])) {
       const previousStage = stages[key];
       stages[key] = Math.max(-6, Math.min(6, previousStage + delta));
       if (stages[key] > previousStage) {
         selfBoostText += ` ${pokemon.name}'s ${battleFx.STAGE_NAMES[key]} rose!`;
+      } else if (stages[key] < previousStage) {
+        selfBoostText += ` ${pokemon.name}'s ${battleFx.STAGE_NAMES[key]} fell!`;
       }
     }
   }
@@ -3603,7 +3624,8 @@ async function startWorldBossBattle(message, boss, userId, team) {
           playerState.pokemon.team_slot - 1,
           moveIndex,
           damageMult,
-          bs.mon
+          bs.mon,
+          bs.boss
         );
         if (!attack.error && turnLog.length) attack.battleLog.unshift(...turnLog);
       }

@@ -428,15 +428,40 @@ const DAMAGE_STAT_DROPS = {
   'lumina-crash': [100, { spdef: -2 }], 'fire-lash': [100, { def: -1 }], 'thunderous-kick': [100, { def: -1 }],
   'skitter-smack': [100, { spa: -1 }], 'apple-acid': [100, { spdef: -1 }], 'grav-apple': [100, { def: -1 }],
   'triple-arrows': [50, { def: -1 }],
+  'bitter-malice': [100, { atk: -1 }], glaciate: [100, { spe: -1 }], pounce: [100, { spe: -1 }],
+  'breaking-swipe': [100, { atk: -1 }], 'chilling-water': [100, { atk: -1 }], 'drum-beating': [100, { spe: -1 }],
+  'play-rough': [10, { atk: -1 }], 'aurora-beam': [10, { atk: -1 }], 'mist-ball': [50, { spa: -1 }],
+  'luster-purge': [50, { spdef: -1 }], 'shadow-bone': [20, { def: -1 }], 'leaf-tornado': [50, { acc: -1 }],
+  'max-strike': [100, { spe: -1 }], 'max-wyrmwind': [100, { atk: -1 }], 'max-phantasm': [100, { def: -1 }],
+  'max-darkness': [100, { spdef: -1 }], 'max-flutterby': [100, { spa: -1 }],
 };
 
-// Max Moves that boost the user's stats after hitting.
-const DAMAGE_SELF_BOOSTS = { 'max-ooze': { spa: 1 } };
+// Stat changes the user gets after a damaging move hits: [chance %, stages].
+const DAMAGE_SELF_BOOSTS = {
+  'max-ooze': [100, { spa: 1 }], 'max-knuckle': [100, { atk: 1 }], 'max-steelspike': [100, { def: 1 }],
+  'max-quake': [100, { spdef: 1 }], 'max-airstream': [100, { spe: 1 }],
+  'power-up-punch': [100, { atk: 1 }], 'flame-charge': [100, { spe: 1 }], 'trailblaze': [100, { spe: 1 }],
+  'aqua-step': [100, { spe: 1 }], 'rapid-spin': [100, { spe: 1 }], 'esper-wing': [100, { spe: 1 }],
+  'mystical-power': [100, { spa: 1 }], 'torch-song': [100, { spa: 1 }], 'charge-beam': [70, { spa: 1 }],
+  'fiery-dance': [50, { spa: 1 }], 'metal-claw': [10, { atk: 1 }], 'steel-wing': [10, { def: 1 }],
+  'diamond-storm': [50, { def: 2 }], 'scale-shot': [100, { spe: 1, def: -1 }],
+  'ancient-power': [10, { atk: 1, def: 1, spa: 1, spdef: 1, spe: 1 }],
+  'silver-wind': [10, { atk: 1, def: 1, spa: 1, spdef: 1, spe: 1 }],
+  'ominous-wind': [10, { atk: 1, def: 1, spa: 1, spdef: 1, spe: 1 }],
+  'close-combat': [100, { def: -1, spdef: -1 }], superpower: [100, { atk: -1, def: -1 }],
+  'draco-meteor': [100, { spa: -2 }], overheat: [100, { spa: -2 }], 'leaf-storm': [100, { spa: -2 }],
+  'psycho-boost': [100, { spa: -2 }], 'fleur-cannon': [100, { spa: -2 }], 'make-it-rain': [100, { spa: -1 }],
+  'v-create': [100, { def: -1, spdef: -1, spe: -1 }], 'hammer-arm': [100, { spe: -1 }],
+  'ice-hammer': [100, { spe: -1 }], 'dragon-ascent': [100, { def: -1, spdef: -1 }],
+  'clanging-scales': [100, { def: -1 }], 'hyperspace-fury': [100, { def: -1 }],
+  'armor-cannon': [100, { def: -1, spdef: -1 }], 'headlong-rush': [100, { def: -1, spdef: -1 }],
+  'spin-out': [100, { spe: -2 }],
+};
 
 function applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L) {
   const selfBoost = DAMAGE_SELF_BOOSTS[slug(move.name)];
-  if (selfBoost && dmg > 0) {
-    for (const [key, delta] of Object.entries(selfBoost)) changeStage(ctx, A.mon, A.side, key, delta, L);
+  if (selfBoost && dmg > 0 && Math.random() * 100 < selfBoost[0]) {
+    for (const [key, delta] of Object.entries(selfBoost[1])) changeStage(ctx, A.mon, A.side, key, delta, L);
   }
   const drop = DAMAGE_STAT_DROPS[slug(move.name)];
   if (!drop || dmg <= 0 || t.hp <= 0 || fx(t).sub > 0) return;
