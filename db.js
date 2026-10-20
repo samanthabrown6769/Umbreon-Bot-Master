@@ -4572,6 +4572,47 @@ function equipSavedTeam(userId, teamName) {
   }).immediate();
 }
 
+// Stored in saved_teams with is_defending = 2 so favorites/defending lists ignore it.
+const LAST_WORLD_BOSS_TEAM_NAME = '__last_world_boss__';
+
+function saveLastWorldBossTeam(userId, team) {
+  assertUserId(userId);
+  if (!team.length) return false;
+  db.prepare(`
+    INSERT INTO saved_teams (user_id, team_name, is_defending, pokemon_ids)
+    VALUES (?, ?, 2, ?)
+    ON CONFLICT(user_id, team_name) DO UPDATE SET pokemon_ids = excluded.pokemon_ids
+  `).run(userId, LAST_WORLD_BOSS_TEAM_NAME, JSON.stringify(team.slice(0, 3).map((mon) => mon.id)));
+  return true;
+}
+
+// Returns the Pokémon still owned from the last World Boss team, or null if none remain.
+function getLastWorldBossTeam(userId) {
+  assertUserId(userId);
+  const saved = db.prepare(
+    'SELECT pokemon_ids FROM saved_teams WHERE user_id = ? AND team_name = ?'
+  ).get(userId, LAST_WORLD_BOSS_TEAM_NAME);
+  if (!saved) return null;
+  const owned = JSON.parse(saved.pokemon_ids || '[]').slice(0, 3)
+    .map((id) => db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?').get(id, userId))
+    .filter(Boolean);
+  return owned.length ? owned : null;
+}
+
+function equipLastWorldBossTeam(userId) {
+  assertUserId(userId);
+  return db.transaction(() => {
+    const team = getLastWorldBossTeam(userId);
+    if (!team) return null;
+    db.prepare('UPDATE catches SET in_team = 0, team_slot = NULL WHERE user_id = ?').run(userId);
+    team.forEach((mon, index) => {
+      db.prepare('UPDATE catches SET in_team = 1, team_slot = ? WHERE id = ? AND user_id = ?')
+        .run(index + 1, mon.id, userId);
+    });
+    return team;
+  }).immediate();
+}
+
 function getUserBuddyHistory(userId, sortBy = 'ivs') {
   assertUserId(userId);
   const rows = db.prepare(`
@@ -5804,11 +5845,12 @@ function listOnMarket(sellerId, catchId, price) {
   }).immediate();
 }
 
-function listPokemonOnMarket(sellerId, pokemonId, amount, price) {
+function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceShiny = false) {
   assertUserId(sellerId);
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0
       || !Number.isSafeInteger(amount) || amount <= 0 || amount > 50000
-      || !Number.isSafeInteger(price) || price <= 0) {
+      || !Number.isSafeInteger(price) || price <= 0
+      || typeof forceShiny !== 'boolean') {
     throw new TypeError('pokemonId and price must be positive; amount must be between 1 and 50000.');
   }
 
@@ -5822,12 +5864,14 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price) {
       SELECT is_shiny, is_golden, MAX(id) AS latest_id
       FROM catches
       WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
+        AND (? = 0 OR (is_shiny = 1 AND is_golden = 0))
       GROUP BY is_shiny, is_golden
       HAVING COUNT(*) >= ?
       ORDER BY latest_id DESC
       LIMIT 1
-    `).get(sellerId, pokemonId, amount);
+    `).get(sellerId, pokemonId, Number(forceShiny), amount);
     if (!variant) {
+      if (forceShiny) return null;
       const available = db.prepare(`
         SELECT COUNT(*) AS count FROM catches
         WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
@@ -8106,6 +8150,9 @@ module.exports = {
   deleteSavedTeam,
   clearDefendingTeam,
   equipSavedTeam,
+  saveLastWorldBossTeam,
+  getLastWorldBossTeam,
+  equipLastWorldBossTeam,
   getUserBuddyHistory,
   awardCoinsWithBoost,
   getUserQuests,

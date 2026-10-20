@@ -127,6 +127,9 @@ const {
   deleteSavedTeam,
   clearDefendingTeam,
   equipSavedTeam,
+  saveLastWorldBossTeam,
+  getLastWorldBossTeam,
+  equipLastWorldBossTeam,
   getUserBuddyHistory,
   setUserBuddyByQuery,
   syncDuplicateCatchState,
@@ -8766,7 +8769,7 @@ client.on('messageCreate', async (message) => {
           description:
             `• \`${PREFIX}market\` / \`${PREFIX}m\` — Browse Pokémon listings\n` +
             `• \`${PREFIX}market listing mine\` — View your active listings and sold counts\n` +
-            `• \`${PREFIX}market list\` / \`${PREFIX}m offer <Pokémon name|Pokédex number> <amount> <price>\` — List Pokémon\n` +
+            `• \`${PREFIX}market list [shiny]\` / \`${PREFIX}m offer [shiny] <Pokémon name|Pokédex number> <amount> <price>\` — List Pokémon\n` +
             `  One listing can contain up to 50,000 copies of one variant\n` +
             `• \`${PREFIX}market remove <listing_id|all>\` — Remove your listing(s) and return unsold Pokémon\n` +
             `• \`${PREFIX}market view <Pokémon name|Pokédex number>\` / \`${PREFIX}m view <Pokémon name|Pokédex number>\` — Search listings\n` +
@@ -8919,7 +8922,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}shop buy <number|item> [amount]\` / \`${PREFIX}s b <number|item> [amount]\` — Buy shop items\n` +
             `• \`${PREFIX}market\` / \`${PREFIX}m\` — Browse market listings; use \`${PREFIX}market view <Pokémon name>\` or \`${PREFIX}m view <Pokémon name>\` to search\n` +
             `• \`${PREFIX}market listing mine\` — View your active market listings and sold counts\n` +
-            `• \`${PREFIX}market list <Pokémon name|number> <amount 1-50000> <price>\` / \`${PREFIX}m offer\` — List owned Pokémon at the price per Pokémon; one listing can contain up to 50,000 copies of one variant\n` +
+            `• \`${PREFIX}market list [shiny] <Pokémon name|number> <amount 1-50000> <price>\` / \`${PREFIX}m offer [shiny]\` — List owned Pokémon at the price per Pokémon; prefix the name with \`shiny\` to select Shiny copies; one listing can contain up to 50,000 copies of one variant\n` +
             `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy a market listing`
           )
           .setFooter({ text: 'Page 2/4 • Select a category below' }),
@@ -10889,8 +10892,7 @@ client.on('messageCreate', async (message) => {
         }
         scheduleWorldBossRegistrationClose(boss);
         await updateWorldBossAnnouncement(boss, createWorldBossEmbed(boss, message.client.user));
-        return message.reply(
-          registration.registered
+        const registrationText = registration.registered
             ? `✅ You are registered for **${boss.name}**! **${registration.registrationCount}** trainer` +
               `${registration.registrationCount === 1 ? '' : 's'} registered. ` +
               (registration.battleStarted
@@ -10899,10 +10901,69 @@ client.on('messageCreate', async (message) => {
             : `✅ You are already registered for **${boss.name}**. ` +
               (registration.battleStarted
                 ? `Use \`${PREFIX}wb fight\` to join the battle.`
-                : `You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`)
+                : `You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`);
+        const previousTeam = getLastWorldBossTeam(userId);
+        const currentTeamIds = getUserTeam(userId).map((mon) => mon.id).join(',');
+        if (!previousTeam || previousTeam.map((mon) => mon.id).join(',') === currentTeamIds) {
+          return message.reply(registrationText);
+        }
+        const formatTeam = (mons) => mons
+          .map((mon, index) => `${index + 1}. ${formatMarketPokemon(mon)} (Lv. ${mon.level})`)
+          .join('\n');
+        const teamButtons = (disabled = false) => new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('wb-team:previous')
+            .setLabel('Use previous team')
+            .setStyle(ButtonStyle.Success)
+            .setDisabled(disabled),
+          new ButtonBuilder()
+            .setCustomId('wb-team:current')
+            .setLabel('Keep current team')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled)
         );
+        const prompt = await message.reply({
+          content:
+            `${registrationText}\n\n` +
+            `🔁 Do you want to use the team from your last World Boss fight?\n` +
+            `**Previous team**\n${formatTeam(previousTeam)}`,
+          components: [teamButtons()],
+        });
+        const collector = prompt.createMessageComponentCollector({
+          componentType: ComponentType.Button,
+          time: 60000,
+        });
+        collector.on('collect', async (interaction) => {
+          try {
+            if (interaction.user.id !== userId) {
+              return interaction.reply({ content: 'This prompt is not for you.', ephemeral: true });
+            }
+            collector.stop('answered');
+            if (interaction.customId === 'wb-team:previous') {
+              const equipped = equipLastWorldBossTeam(userId);
+              await interaction.update({
+                content: equipped
+                  ? `${registrationText}\n\n✅ Equipped your previous World Boss team:\n${formatTeam(equipped)}`
+                  : `${registrationText}\n\n❌ Your previous team is no longer available.`,
+                components: [],
+              });
+            } else {
+              await interaction.update({
+                content: `${registrationText}\n\n✅ Keeping your current team.`,
+                components: [],
+              });
+            }
+          } catch (error) {
+            console.error(`Failed to handle World Boss team choice for user ${userId}:`, error);
+          }
+        });
+        collector.on('end', (_collected, reason) => {
+          if (reason === 'answered') return;
+          prompt.edit({ content: registrationText, components: [] }).catch(() => {});
+        });
+        return;
       }
-      const team = getUserTeam(userId);
+      let team = getUserTeam(userId);
       if (subCommand === 'fight' || subCommand === 'f') {
         if (Date.now() < boss.registration_ends_at) {
           return message.reply(
@@ -10922,8 +10983,16 @@ client.on('messageCreate', async (message) => {
           );
         }
         if (!team.length) {
+          const restored = equipLastWorldBossTeam(userId);
+          if (restored) {
+            team = restored;
+            await message.reply(`🔁 Your active team was empty, so your last World Boss team was equipped: ${restored.map((mon) => `**${mon.name}**`).join(', ')}.`);
+          }
+        }
+        if (!team.length) {
           return message.reply(`❌ Add a Pokémon to your active team before fighting. Use \`${PREFIX}team\`.`);
         }
+        saveLastWorldBossTeam(userId, team);
         const faintedTeam = activeWorldBossFainted.get(boss.id)?.get(userId) || new Set();
         const teamStates = activeWorldBossTeamStates.get(boss.id)?.get(userId);
         const revived = isWorldBossTeamFainted(team, faintedTeam, teamStates);
@@ -18879,19 +18948,22 @@ client.on('messageCreate', async (message) => {
         const values = args.slice(1);
         const price = parseAmount(values.pop());
         const amount = parseAmount(values.pop());
-        const pokemonQuery = values.join(' ').trim();
+        const variantQuery = values.join(' ').trim();
+        const shinyMatch = variantQuery.match(/^shiny(?:[\s_-]+(.+)|\[(.+)\])$/i);
+        const forceShiny = Boolean(shinyMatch);
+        const pokemonQuery = (shinyMatch ? shinyMatch[1] || shinyMatch[2] : variantQuery).trim();
         if (!pokemonQuery
             || !Number.isSafeInteger(amount) || amount < 1 || amount > 50000
             || !Number.isSafeInteger(price) || price <= 0) {
           return message.reply(
-            `Usage: \`${PREFIX}market list <Pokémon number or name> <amount 1-50000> <price per Pokémon>\`.`
+            `Usage: \`${PREFIX}market list [shiny] <Pokémon number or name> <amount 1-50000> <price per Pokémon>\`.`
           );
         }
         const pokemon = resolvePokemonForm(pokemonQuery);
         if (!pokemon) {
           return message.reply(`No exact Pokémon or form named **${pokemonQuery}** was found in the catalog.`);
         }
-        const listed = listPokemonOnMarket(userId, pokemon.id, amount, price);
+        const listed = listPokemonOnMarket(userId, pokemon.id, amount, price, forceShiny);
         if (listed?.error === 'listing_limit') {
           return message.reply(
             `❌ You have **${listed.listingCount}/${listed.listingLimit}** active market listings. ` +
@@ -18907,9 +18979,10 @@ client.on('messageCreate', async (message) => {
           const available = db.prepare(`
             SELECT COUNT(*) AS count FROM catches
             WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
-          `).get(userId, pokemon.id).count;
+              AND (? = 0 OR (is_shiny = 1 AND is_golden = 0))
+          `).get(userId, pokemon.id, Number(forceShiny)).count;
           return message.reply(
-            `You have **${available}** eligible ${pokemon.name} in your box; ` +
+            `You have **${available}** eligible ${forceShiny ? 'Shiny ' : ''}${pokemon.name} in your box; ` +
             `you need **${amount}** to create that listing. Pokémon on your active team cannot be listed.`
           );
         }
@@ -18922,7 +18995,7 @@ client.on('messageCreate', async (message) => {
           ? ' The listings were created, but their channel announcement failed.'
           : '';
         return message.reply(
-          `🏪 Listed **${amount}x ${pokemon.name}** in one market listing for ${EMOJIS.pokecoin} ` +
+          `🏪 Listed **${amount}x** ${formatMarketPokemon(listed[0])} in one market listing for ${EMOJIS.pokecoin} ` +
           `**${price.toLocaleString()} PokéCoins each**. Listing ID: ` +
           `${listed.map((entry) => `#${entry.market_listing_id}`).join(', ')}.${announcementWarning}`
         );
