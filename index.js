@@ -1662,6 +1662,9 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
     normal: '<:keldeo:1562188368207421610>',
     shiny: '<:Skeldeo:1562188366391541903>',
   },
+  cobalion: { normal: '<:cobalion:1562193601767936111>' },
+  terrakion: { normal: '<:terrakion:1562193599142305903>' },
+  virizion: { normal: '<:virizion:1562193596583510097>' },
   genesect: {
     normal: '<:genesect:1562188364688396308>',
     shiny: '<:Sgenesect:1562188362717200465>',
@@ -1677,7 +1680,9 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
 });
 
 function getPokemonSpriteEmoji(pokemon) {
-  const rawName = String(pokemon?.name || '').trim();
+  const rawName = String(
+    pokemon?.form_name || pokemon?.form_slug?.replace(/-/g, ' ') || pokemon?.name || ''
+  ).trim();
   const name = rawName.replace(/^(?:shiny|golden)\s+/i, '').toLowerCase();
   const isShiny = Boolean(pokemon?.isShiny ?? pokemon?.is_shiny) || /^shiny\s+/i.test(rawName);
   const isGolden = Boolean(pokemon?.isGolden ?? pokemon?.is_golden) || /^golden\s+/i.test(rawName);
@@ -3428,7 +3433,7 @@ function createWorldBossPlayerMoveRows(bossId, pokemon, moves) {
     .setCustomId(`worldboss:attack:${bossId}:${pokemon.id}:${index}`)
     .setLabel(move.name.slice(0, 80))
     .setStyle(ButtonStyle.Danger)
-    .setEmoji('⚔️'));
+    .setEmoji(getTypeEmoji(move.type)));
   const rows = [];
   for (let index = 0; index < buttons.length; index += 5) {
     rows.push(new ActionRowBuilder().addComponents(buttons.slice(index, index + 5)));
@@ -5193,7 +5198,7 @@ async function askForBall(
     if (successImage) successEmbed.setImage(successImage);
     const experienceMessage = !isFishing && experienceResult.awarded
       ? experienceResult.pokemon.map((pokemon) =>
-        `${pokemon.is_shiny ? `${EMOJIS.shiny} ` : ''}**${pokemon.name}** gained **${experienceAmount.toLocaleString()} EXP!**`
+        `${pokemon.is_shiny ? `${EMOJIS.shiny} ` : ''}${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}** gained **${experienceAmount.toLocaleString()} EXP!**`
       ).join('\n')
       : '';
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
@@ -5561,6 +5566,7 @@ function makeMegaChamberButtons(moves, disabled = false) {
         .setCustomId(`chamber:move:${index}`)
         .setLabel(move.name.slice(0, 80))
         .setStyle(ButtonStyle.Primary)
+        .setEmoji(getTypeEmoji(move.type))
         .setDisabled(disabled)
     )
   );
@@ -5583,6 +5589,7 @@ function makeSparButtons(moves) {
         .setCustomId(`spar:move:${index}`)
         .setLabel(move.name.slice(0, 80))
         .setStyle(ButtonStyle.Primary)
+        .setEmoji(getTypeEmoji(move.type))
     )
   );
 }
@@ -6065,6 +6072,7 @@ function makeLeagueButtons(moves, disabled = false) {
         .setCustomId(`league:move:${index}`)
         .setLabel(move.name.slice(0, 80))
         .setStyle(ButtonStyle.Primary)
+        .setEmoji(getTypeEmoji(move.type))
         .setDisabled(disabled)
     )
   );
@@ -8915,43 +8923,46 @@ client.on('messageCreate', async (message) => {
 
       const { ownedSpecies, hasLegendaryTrio, ancientFossilCount } =
         getSpecialSpawnUnlocks(userId);
-      const requiredTrio = ['Cobalion', 'Terrakion', 'Virizion'];
+      const requiredTrio = ['Virizion', 'Terrakion', 'Cobalion'];
       const pokemonDisplay = (name, isShiny = false) => {
         const sprite = getPokemonSpriteEmoji({ name, isShiny });
         return `${sprite ? `${sprite} ` : ''}${isShiny ? `Shiny ${name}` : name}`;
       };
+      const pokemonVariantsDisplay = (name) => {
+        const normalSprite = getPokemonSpriteEmoji({ name });
+        const shinySprite = getPokemonSpriteEmoji({ name, isShiny: true });
+        return `${normalSprite}${shinySprite ? ` ${shinySprite}` : ''} ${name}`;
+      };
       const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
+      const emptyEmoji = '<:empty:669078464351043584>';
       const catchableRows = [
-        `${hasLegendaryTrio ? '✅' : '❌'} **${pokemonDisplay('Keldeo')}**\n` +
-          `└ Requires ${requiredTrio.map((species) =>
-            `${ownedSpecies.has(species.toLowerCase()) ? '✅' : '❌'} ${pokemonDisplay(species)}`
-          ).join(' • ')} in your box.`,
-        `${ancientFossilCount > 0 ? '✅' : '❌'} **${pokemonDisplay('Genesect')}**\n` +
-          `└ Requires ${EMOJIS.ancientFossil} **Ancient Fossil** ` +
-          `(${ancientFossilCount.toLocaleString()} owned; find one while catching Pokémon).`,
+        `${hasLegendaryTrio ? '✅' : '❌'} ${pokemonVariantsDisplay('Keldeo')}\n` +
+          `${emptyEmoji} You need ${requiredTrio.map(pokemonDisplay).join(' ')} in your box.`,
+        `${ancientFossilCount > 0 ? '✅' : '❌'} ${pokemonVariantsDisplay('Genesect')}\n` +
+          `${emptyEmoji} Requires ${EMOJIS.ancientFossil} **Ancient Fossil**. ` +
+          `Obtained from catching \`${PREFIX}pokemon\`.`,
       ];
       const hatchRows = [
-        `✅ **${pokemonDisplay('Phione')}** — ${EMOJIS.pokeEgg} Egg-exclusive; 1/150 rare hatch chance.`,
-        `✅ **${pokemonDisplay('Manaphy')}** — ${EMOJIS.pokeEgg} Egg-exclusive; 1/150 rare hatch chance.`,
+        `${ownedSpecies.has('manaphy') ? '✅' : '❌'} ${pokemonVariantsDisplay('Phione')}\n` +
+          `${emptyEmoji} You need ${pokemonDisplay('Manaphy')} or ${pokemonDisplay('Manaphy', true)} in your box.`,
+        `✅ ${pokemonVariantsDisplay('Manaphy')} — ${EMOJIS.pokeEgg} Egg-exclusive; 1/150 rare hatch chance.`,
       ];
       const researchRows = RESEARCH_SHOP_ITEMS.filter((item) => item.unlocks).map((item) => {
         const amount = ownedItems.get(item.name) || 0;
-        const unlockNames = item.unlocks.flatMap((species) =>
-          item.unlocksShiny ? [pokemonDisplay(species), pokemonDisplay(species, true)] : [pokemonDisplay(species)]
-        );
-        return `${amount > 0 ? '✅' : '❌'} ${unlockNames.join(' / ')} — ` +
-          `${item.emoji} ${item.name} ${amount > 0 ? `(${amount} owned)` : `required; \`${PREFIX}res shop\``}`;
+        const unlockNames = item.unlocks.map(pokemonVariantsDisplay);
+        return `${amount > 0 ? '✅' : '❌'} ${unlockNames.join(' ')} — ` +
+          `${item.emoji} ${amount > 0 ? `${item.name} (${amount} owned)` : `required \`${PREFIX}res shop\``}`;
       });
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle('🔓 Catch & Hatch Unlockables')
-        .setDescription('View special catch and Egg-hatch unlock requirements.')
+        .setDescription('View catchable, hatch-exclusive, and research-exclusive unlocks.')
         .addFields(
-          { name: '🔴 Catchable', value: catchableRows.join('\n') },
-          { name: `${EMOJIS.pokeEgg} Hatch Exclusive`, value: hatchRows.join('\n') },
-          { name: '🔬 Research Exclusive', value: researchRows.join('\n') },
+          { name: '<:dexcaught:667082939632189451> Catchable', value: catchableRows.join('\n') },
+          { name: '<:poke_egg:1372992365664403558> Hatch Exclusive', value: hatchRows.join('\n') },
+          { name: `${RESEARCH_POINT_EMOJI} Research Exclusive`, value: researchRows.join('\n') },
         )
-        .setFooter({ text: '✅ Requirement met • ❌ Requirement not met' })
+        .setFooter({ text: '✅ Checked means UNLOCKED • ❌ X means LOCKED' })
         .setTimestamp();
       return message.reply({ embeds: [embed] });
     }
@@ -11502,14 +11513,14 @@ client.on('messageCreate', async (message) => {
             .setColor(0x2ECC71)
             .setTitle(`🎁 Here are your rewards for the ${record.boss_name} challenge! (Boss id: ${record.boss_id})`)
             .setDescription(
-              `📜 **Items received (${itemCount}):**\n` +
+              `${HELD_ITEM_EMOJI} **Items received (${itemCount}):**\n` +
               (items.length ? items.map((item) => `• ${item.amount}x ${itemEmoji(item.name)} **${item.name}**`).join('\n') : '• *None*') + '\n\n' +
               (pokemonDrop
-                ? `🎉 **Pokémon drop:** You received **${bossTemplate?.catchName || record.boss_name}**!\n\n`
-                : '💨 **Pokémon drop:** No Pokémon dropped this time.\n\n') +
-              `🪙 **PokeCoins earned:** ${record.coins.toLocaleString()}\n\n` +
+                ? `<:caught:1560340176713031711> **Pokémon received:** **${bossTemplate?.catchName || record.boss_name}**!\n\n`
+                : '<:caught:1560340176713031711> **Pokémon received:** None this time.\n\n') +
+              `${EMOJIS.pokecoin} **PokéCoins earned:** ${record.coins.toLocaleString()}\n\n` +
               `🎖️ **You placed ${record.rank} / ${record.total_players} players in DMG!**\n` +
-              `🌸 You have now fought **${bossesFought}** World Boss${bossesFought === 1 ? '' : 'es'}.`
+              `${WORLD_BOSS_EMOJI} You have now fought **${bossesFought}** World Boss${bossesFought === 1 ? '' : 'es'}.`
             )
             .setFooter({
               text: `💥 You dealt ${record.damage.toLocaleString()} / ${record.max_hp.toLocaleString()} DMG`,
@@ -11582,9 +11593,13 @@ client.on('messageCreate', async (message) => {
         const registeredTeam = registration.registered
           ? team
           : getWorldBossPlayerTeam(userId, boss.id);
+        const registeredTeamDisplay = registeredTeam?.map((mon) => {
+          const sprite = getPokemonSpriteEmoji(mon);
+          return `**${sprite || mon.name}**`;
+        }).join(', ') || 'Unavailable';
         return message.reply(
           `${registrationText}\n` +
-          `**Registered team:** ${registeredTeam?.map((mon) => `**${mon.name}**`).join(', ') || 'Unavailable'}\n` +
+          `**Registered team:** ${registeredTeamDisplay}\n` +
           `This lineup stays fixed; use \`${PREFIX}wb update\` to register your current team instead.`
         );
       }
@@ -11605,9 +11620,13 @@ client.on('messageCreate', async (message) => {
         if (result.error === 'invalid_team') {
           return message.reply('❌ Your active team changed while updating. Set your team and try again.');
         }
+        const updatedTeamDisplay = team.map((mon) => {
+          const sprite = getPokemonSpriteEmoji(mon);
+          return `**${sprite || mon.name}**`;
+        }).join(', ');
         return message.reply(
           `✅ Your registered team for **${boss.name}** is now: ` +
-          `${team.map((mon) => `**${mon.name}**`).join(', ')}.`
+          `${updatedTeamDisplay}.`
         );
       }
       if (subCommand === 'fight' || subCommand === 'f') {
@@ -15504,8 +15523,9 @@ client.on('messageCreate', async (message) => {
       }
       const embed = makeEmbed(`⚔️ ${message.author.username}'s Battle Team (Top 3)`, '', 0x34495e);
       for (const pokemon of team) {
+        const sprite = getPokemonSpriteEmoji(pokemon);
         embed.addFields({
-          name: `Slot ${pokemon.team_slot} ${pokemon.is_shiny ? '✨ ' : ''}${pokemon.name} (Lv. ${pokemon.level})`,
+          name: `Slot ${pokemon.team_slot} ${sprite ? `${sprite} ` : ''}${pokemon.is_shiny ? '✨ ' : ''}${pokemon.name} (Lv. ${pokemon.level})`,
           value: `**HP:** ${pokemon.hp}/${pokemon.max_hp} | **ATK:** ${pokemon.atk} | ` +
             `**DEF:** ${pokemon.def} | **SPD:** ${pokemon.spd}\n` +
             `*IVs:* ${pokemon.hp_iv}H/${pokemon.atk_iv}A/${pokemon.def_iv}D/${pokemon.spd_iv}S\n` +

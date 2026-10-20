@@ -4670,7 +4670,11 @@ function getUserBuddyHistory(userId, sortBy = 'ivs') {
 function getUserTeam(userId) {
   assertUserId(userId);
   return db.prepare(
-    'SELECT * FROM catches WHERE user_id = ? AND in_team = 1 ORDER BY team_slot, id LIMIT 3'
+    `SELECT catches.*, pokemon_forms.name AS form_name, pokemon_forms.slug AS form_slug
+    FROM catches
+    LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+    WHERE catches.user_id = ? AND catches.in_team = 1
+    ORDER BY catches.team_slot, catches.id LIMIT 3`
   ).all(userId);
 }
 
@@ -5672,7 +5676,12 @@ function getWorldBossPlayerTeam(userId, bossId) {
   const teamPokemonIds = JSON.parse(registration.team_pokemon_ids || '[]');
   if (!Array.isArray(teamPokemonIds) || teamPokemonIds.length < 1 || teamPokemonIds.length > 3) return null;
   const team = teamPokemonIds.map((id) =>
-    db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?').get(id, userId)
+    db.prepare(`
+      SELECT catches.*, pokemon_forms.name AS form_name, pokemon_forms.slug AS form_slug
+      FROM catches
+      LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+      WHERE catches.id = ? AND catches.user_id = ?
+    `).get(id, userId)
   );
   return team.every(Boolean)
     ? team.map((pokemon, index) => ({ ...pokemon, team_slot: index + 1 }))
