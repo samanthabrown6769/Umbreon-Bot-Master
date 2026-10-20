@@ -1697,13 +1697,13 @@ function getRarityEmojis(rarity, pokemonName = '', isShiny = false, isGolden = f
   const displayRarity = getDisplayRarity(rarity, pokemonName, isShiny);
   const base = RARITY_EMOJIS[displayRarity.toLowerCase()] || '';
   const spriteEmoji = getPokemonSpriteEmoji({ name: pokemonName, isShiny, isGolden });
-  const spritePrefix = spriteEmoji ? `${spriteEmoji} ` : '';
+  const spriteSuffix = spriteEmoji ? ` ${spriteEmoji}` : '';
   if (/^(shiny )?mega$/i.test(displayRarity)) {
     const species = String(pokemonName).toLowerCase().match(/sableye|gengar|mawile|banette/)?.[0];
     const speciesEmoji = species && MEGA_SPECIES_EMOJIS[species];
-    if (speciesEmoji) return `${spritePrefix}${/^shiny/i.test(displayRarity) ? `${speciesEmoji}${base}` : speciesEmoji}`;
+    if (speciesEmoji) return `${/^shiny/i.test(displayRarity) ? `${speciesEmoji}${base}` : speciesEmoji}${spriteSuffix}`;
   }
-  return `${spritePrefix}${base}`;
+  return `${base}${spriteSuffix}`;
 }
 
 function formatPokemonReward(pokemon) {
@@ -4835,13 +4835,13 @@ async function askForBall(
         : `${ICONS.grass} A wild Pokémon appeared!`
     )
     .setDescription(
-      `${trainerLabel} found a wild ${heldItemNameMarker(target, getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden))}**${target.name}**!\n` +
+      `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!\n` +
       heldItemEncounterHint(target) +
       (target.researchToolsConsumed?.length
         ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
         : '') +
       `${isFishing ? `🎣 Rod used: **${user.fish_rods}**\n` : ''}` +
-      `\n**${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} ${catchDisplayRarity} ` +
+      `\n**${RARITY_EMOJIS[String(catchDisplayRarity).toLowerCase()] || ''} ${catchDisplayRarity} ` +
       `(${rarityData.rateText})**\n` +
       catchRateText +
       `${Array.isArray(target.types) && target.types.length ? `Type: ${formatTypes(target.types)}\n` : ''}` +
@@ -5169,15 +5169,18 @@ async function askForBall(
         `✅ ${getTrainerIconEmoji(userId)} You caught ` +
         `${/^[aeiou]/i.test(target.name) ? 'an' : 'a'} ` +
         `${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} **${target.name}** with a ` +
-        `${ball.emoji} **${ball.name}**!\n` +
-        `${ballSaved ? `⚡ **${ball.name} not used!**\n` : ''}\n` +
+        `${ball.emoji} **${ball.name}**!` +
+        `${ballSaved ? `\n⚡ **${ball.name} not used!**` : ''}`
+      );
+    const successDetailsEmbed = new EmbedBuilder()
+      .setColor(successEmbed.data.color)
+      .setDescription(
         `Rarity: ${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} ` +
         `${catchDisplayRarity} (${rarityData.rateText})\n` +
         `${target.heldItem
           ? `${HELD_ITEM_EMOJI} **It was holding ${target.heldItemEmoji} ${target.heldItem}; the item was added to your inventory.**\n`
           : ''}` +
         `${tracksRarityStreak ? `${catchDisplayRarity} catches: ${nextStreak}\n` : ''}` +
-        `${streakResult ? `General catches: ${streakResult.generalStreak}\n` : ''}` +
         `${streakRewardText}\n` +
         `${isNewDexEntry ? `${target.name} has been added to your Pokédex.\n\n` : ''}` +
         `${huntRewardText}` +
@@ -5198,7 +5201,7 @@ async function askForBall(
     if (successImage) successEmbed.setImage(successImage);
     const experienceMessage = !isFishing && experienceResult.awarded
       ? experienceResult.pokemon.map((pokemon) =>
-        `${pokemon.is_shiny ? `${EMOJIS.shiny} ` : ''}${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}** gained **${experienceAmount.toLocaleString()} EXP!**`
+        `${getTrainerIconEmoji(userId)} ${pokemon.is_shiny ? `${EMOJIS.shiny} ` : ''}${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}** gained **${experienceAmount.toLocaleString()} EXP!**`
       ).join('\n')
       : '';
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
@@ -5206,7 +5209,7 @@ async function askForBall(
     ).join('\n') || '';
     await spawnMessage.edit({
       content: [experienceMessage, levelUpMessage].filter(Boolean).join('\n'),
-      embeds: [successEmbed],
+      embeds: [successEmbed, successDetailsEmbed],
       components: [],
     });
     for (const promo of getActivePromos()) {
