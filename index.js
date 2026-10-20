@@ -4841,7 +4841,7 @@ async function askForBall(
         ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
         : '') +
       `${isFishing ? `🎣 Rod used: **${user.fish_rods}**\n` : ''}` +
-      `\n**${RARITY_EMOJIS[String(catchDisplayRarity).toLowerCase()] || ''} ${catchDisplayRarity} ` +
+      `\n**${catchDisplayRarity} ` +
       `(${rarityData.rateText})**\n` +
       catchRateText +
       `${Array.isArray(target.types) && target.types.length ? `Type: ${formatTypes(target.types)}\n` : ''}` +
@@ -5168,14 +5168,14 @@ async function askForBall(
       .setDescription(
         `✅ ${getTrainerIconEmoji(userId)} You caught ` +
         `${/^[aeiou]/i.test(target.name) ? 'an' : 'a'} ` +
-        `${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} **${target.name}** with a ` +
+        `${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}** with a ` +
         `${ball.emoji} **${ball.name}**!` +
         `${ballSaved ? `\n⚡ **${ball.name} not used!**` : ''}`
       );
     const successDetailsEmbed = new EmbedBuilder()
       .setColor(successEmbed.data.color)
       .setDescription(
-        `Rarity: ${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} ` +
+        `Rarity: ` +
         `${catchDisplayRarity} (${rarityData.rateText})\n` +
         `${target.heldItem
           ? `${HELD_ITEM_EMOJI} **It was holding ${target.heldItemEmoji} ${target.heldItem}; the item was added to your inventory.**\n`
