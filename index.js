@@ -8025,6 +8025,9 @@ client.on('messageCreate', async (message) => {
   if ((command === 'market' || command === 'm') && args[0]?.toLowerCase() === 'b') {
     args[0] = 'buy';
   }
+  if ((command === 'market' || command === 'm') && args[0]?.toLowerCase() === 'mb') {
+    args[0] = 'multibuy';
+  }
   if ((command === 'market' || command === 'm') && args[0]?.toLowerCase() === 'offer') {
     args[0] = 'list';
   }
@@ -8894,7 +8897,8 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}market remove <listing_id|all>\` — Remove your listing(s) and return unsold Pokémon\n` +
             `• \`${PREFIX}market view <Pokémon name|Pokédex number>\` / \`${PREFIX}m view <Pokémon name|Pokédex number>\` — Search listings\n` +
             `• \`${PREFIX}market search [shiny] <Pokémon name|Pokédex number>\` / \`${PREFIX}m search [shiny] <Pokémon name|Pokédex number>\` — Find listings of one exact Pokémon and variant\n` +
-            `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy one Pokémon`,
+            `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy one Pokémon\n` +
+            `• \`${PREFIX}market multibuy <id1> <id2> ...\` / \`${PREFIX}m mb <id1> <id2> ...\` — Buy one Pokémon from each listed ID`,
         },
         trade: {
           title: '🔁 Trade Commands',
@@ -9639,6 +9643,12 @@ client.on('messageCreate', async (message) => {
       }
       if (!message.guildId) {
         return message.reply('Add or remove channel boosts from the server channel you want to manage.');
+      }
+      // Re-sync the Patreon role from the main server so the check works in any server.
+      try {
+        await getPatreonTier(userId);
+      } catch (error) {
+        console.error(`Could not refresh Patreon tier for channel boost check (user ${userId}):`, error);
       }
       const tierIndex = PATREON_TIER_ORDER.indexOf(getUser(userId).patreon_tier);
       const canManageBoost = tierIndex >= PATREON_TIER_ORDER.indexOf('legendary');
@@ -19069,6 +19079,49 @@ client.on('messageCreate', async (message) => {
         );
       }
 
+      if (args[0]?.toLowerCase() === 'multibuy') {
+        const ids = [...new Set(args.slice(1).map((value) => (/^\d+$/.test(value) ? Number(value) : NaN)))];
+        if (!ids.length || ids.length > 25 || ids.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+          return message.reply(
+            `Usage: \`${PREFIX}market multibuy <id1> <id2> <id3> ...\` (alias: \`${PREFIX}m mb\`, up to 25 listings, one Pokémon from each).`
+          );
+        }
+        const bought = [];
+        const failed = [];
+        let totalSpent = 0;
+        for (const listingId of ids) {
+          const result = buyMarketItem(userId, listingId);
+          if (result.error) {
+            failed.push(`**#${listingId}** — ${result.error}`);
+            continue;
+          }
+          totalSpent += result.item.price;
+          bought.push(
+            `**#${listingId}** — ${formatMarketPokemon(result.item)} for ${EMOJIS.pokecoin} **${result.item.price.toLocaleString()}**`
+            + (result.remainingAmount ? ` (${result.remainingAmount.toLocaleString()} remain)` : '')
+          );
+          if (result.sale && getMarketCompletionNotificationsEnabled(result.item.seller_id)) {
+            try {
+              const seller = await client.users.fetch(result.item.seller_id);
+              await seller.send(
+                `✅ Your market listing **#${listingId}** sold: ${formatMarketPokemon(result.item)} ` +
+                `for ${EMOJIS.pokecoin} **${result.sale.salePrice.toLocaleString()} PokéCoins**.\n` +
+                `Market tax (${result.sale.taxRate}%): ${EMOJIS.pokecoin} **${result.sale.taxAmount.toLocaleString()}**\n` +
+                `Credited to your balance: ${EMOJIS.pokecoin} **${result.sale.payoutAmount.toLocaleString()} PokéCoins**.`
+              );
+            } catch (error) {
+              console.error(`Failed to send market completion DM to seller ${result.item.seller_id}:`, error);
+            }
+          }
+        }
+        return message.reply(
+          (bought.length
+            ? `🎉 Bought **${bought.length}** Pokémon for ${EMOJIS.pokecoin} **${totalSpent.toLocaleString()}** PokéCoins:\n${bought.join('\n')}`
+            : '❌ No purchases were made.')
+          + (failed.length ? `\n\n⚠️ Could not buy:\n${failed.join('\n')}` : '')
+        );
+      }
+
       if (args[0]?.toLowerCase() === 'remove') {
         const target = args[1]?.toLowerCase();
         const listingId = target === 'all'
@@ -19092,21 +19145,22 @@ client.on('messageCreate', async (message) => {
         const price = parseAmount(values.pop());
         const amount = parseAmount(values.pop());
         const variantQuery = values.join(' ').trim();
-        const shinyMatch = variantQuery.match(/^shiny(?:[\s_-]+(.+)|\[(.+)\])$/i);
-        const forceShiny = Boolean(shinyMatch);
-        const pokemonQuery = (shinyMatch ? shinyMatch[1] || shinyMatch[2] : variantQuery).trim();
+        const shinyMatch = variantQuery.match(/^(shiny|golden)(?:[\s_-]+(.+)|\[(.+)\])$/i);
+        const forceVariant = shinyMatch ? shinyMatch[1].toLowerCase() : null;
+        const forceShiny = forceVariant === 'shiny';
+        const pokemonQuery = (shinyMatch ? shinyMatch[2] || shinyMatch[3] : variantQuery).trim();
         if (!pokemonQuery
             || !Number.isSafeInteger(amount) || amount < 1 || amount > 50000
             || !Number.isSafeInteger(price) || price <= 0) {
           return message.reply(
-            `Usage: \`${PREFIX}market list [shiny] <Pokémon number or name> <amount 1-50000> <price per Pokémon>\`.`
+            `Usage: \`${PREFIX}market list [shiny|golden] <Pokémon number or name> <amount 1-50000> <price per Pokémon>\`.`
           );
         }
         const pokemon = resolvePokemonForm(pokemonQuery);
         if (!pokemon) {
           return message.reply(`No exact Pokémon or form named **${pokemonQuery}** was found in the catalog.`);
         }
-        const listed = listPokemonOnMarket(userId, pokemon.id, amount, price, forceShiny);
+        const listed = listPokemonOnMarket(userId, pokemon.id, amount, price, forceVariant);
         if (listed?.error === 'listing_limit') {
           return message.reply(
             `❌ You have **${listed.listingCount}/${listed.listingLimit}** active market listings. ` +
@@ -19122,10 +19176,12 @@ client.on('messageCreate', async (message) => {
           const available = db.prepare(`
             SELECT COUNT(*) AS count FROM catches
             WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
-              AND (? = 0 OR (is_shiny = 1 AND is_golden = 0))
-          `).get(userId, pokemon.id, Number(forceShiny)).count;
+              AND (? IS NULL
+                OR (? = 'shiny' AND is_shiny = 1 AND is_golden = 0)
+                OR (? = 'golden' AND is_golden = 1))
+          `).get(userId, pokemon.id, forceVariant, forceVariant, forceVariant).count;
           return message.reply(
-            `You have **${available}** eligible ${forceShiny ? 'Shiny ' : ''}${pokemon.name} in your box; ` +
+            `You have **${available}** eligible ${forceVariant ? `${forceShiny ? 'Shiny' : 'Golden'} ` : ''}${pokemon.name} in your box; ` +
             `you need **${amount}** to create that listing. Pokémon on your active team cannot be listed.`
           );
         }
@@ -19188,22 +19244,27 @@ client.on('messageCreate', async (message) => {
       let search = null;
       let searchFilter = null;
       const marketSubCommand = args[0]?.toLowerCase();
-      if (marketSubCommand === 'search') {
+      const isVariantView = marketSubCommand === 'view'
+        && /^(shiny|golden)(?:[\s_-]+.+|\[.+\])$/i.test(args.slice(1).join(' ').trim());
+      if (marketSubCommand === 'search' || isVariantView) {
         const variantQuery = args.slice(1).join(' ').trim();
-        const shinyMatch = variantQuery.match(/^shiny(?:[\s_-]+(.+)|\[(.+)\])$/i);
-        const searchShiny = Boolean(shinyMatch);
-        const pokemonQuery = (shinyMatch ? shinyMatch[1] || shinyMatch[2] : variantQuery).trim();
+        const shinyMatch = variantQuery.match(/^(shiny|golden)(?:[\s_-]+(.+)|\[(.+)\])$/i);
+        const searchVariant = shinyMatch ? shinyMatch[1].toLowerCase() : null;
+        const searchShiny = searchVariant === 'shiny';
+        const searchGolden = searchVariant === 'golden';
+        const pokemonQuery = (shinyMatch ? shinyMatch[2] || shinyMatch[3] : variantQuery).trim();
         if (!pokemonQuery) {
-          return message.reply(`Usage: \`${PREFIX}m search [shiny] <Pokémon name|Pokédex number>\`.`);
+          return message.reply(`Usage: \`${PREFIX}m search [shiny|golden] <Pokémon name|Pokédex number>\`.`);
         }
         const searchForm = resolvePokemonForm(pokemonQuery);
         if (!searchForm) {
           return message.reply(`No exact Pokémon or form named **${pokemonQuery}** was found in the catalog.`);
         }
-        search = `${searchShiny ? 'Shiny ' : ''}${searchForm.name}`;
-        searchFilter = { pokemonId: searchForm.id, isShiny: searchShiny };
+        search = `${searchShiny ? 'Shiny ' : searchGolden ? 'Golden ' : ''}${searchForm.name}`;
+        searchFilter = { pokemonId: searchForm.id, isShiny: searchShiny, isGolden: searchGolden };
       }
-      if (marketSubCommand === 'view') {
+      if (marketSubCommand === 'view' && !isVariantView) {
+        search = args.slice(1).join(' ').trim();
         search = args.slice(1).join(' ').trim();
         if (!search) {
           return message.reply(`Usage: \`${PREFIX}m view <Pokémon name|Pokédex number>\`.`);

@@ -5700,7 +5700,7 @@ function distributeWorldBossRewards(bossId) {
       const isSpawnerBoosted = !isMvp && boss.spawned_by === entry.user_id;
       const dropChance = Math.min(1, (isMvp ? 0.12 : isSpawnerBoosted ? 0.12 : 0.03) * (isSpawnerBoosted ? 1.8 : 1));
       let gotPokemon = false;
-      if (Math.random() < dropChance) {
+      if (Math.random() < dropChance * 0.4) {
         gotPokemon = true;
         saveCatch(entry.user_id, {
           ...template,
@@ -5846,12 +5846,14 @@ function listOnMarket(sellerId, catchId, price) {
   }).immediate();
 }
 
-function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceShiny = false) {
+function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceVariant = false) {
   assertUserId(sellerId);
+  // forceVariant: false/'normal' (auto), true/'shiny', or 'golden'.
+  const forced = forceVariant === true ? 'shiny' : forceVariant === false ? null : forceVariant;
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0
       || !Number.isSafeInteger(amount) || amount <= 0 || amount > 50000
       || !Number.isSafeInteger(price) || price <= 0
-      || typeof forceShiny !== 'boolean') {
+      || ![null, 'shiny', 'golden'].includes(forced)) {
     throw new TypeError('pokemonId and price must be positive; amount must be between 1 and 50000.');
   }
 
@@ -5865,14 +5867,16 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceShiny = fa
       SELECT is_shiny, is_golden, MAX(id) AS latest_id
       FROM catches
       WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
-        AND (? = 0 OR (is_shiny = 1 AND is_golden = 0))
+        AND (? IS NULL
+          OR (? = 'shiny' AND is_shiny = 1 AND is_golden = 0)
+          OR (? = 'golden' AND is_golden = 1))
       GROUP BY is_shiny, is_golden
       HAVING COUNT(*) >= ?
       ORDER BY latest_id DESC
       LIMIT 1
-    `).get(sellerId, pokemonId, Number(forceShiny), amount);
+    `).get(sellerId, pokemonId, forced, forced, forced, amount);
     if (!variant) {
-      if (forceShiny) return null;
+      if (forced) return null;
       const available = db.prepare(`
         SELECT COUNT(*) AS count FROM catches
         WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
@@ -5918,8 +5922,10 @@ function marketFilterSql(filter) {
     throw new TypeError('Market filter requires a valid pokemonId.');
   }
   return {
-    sql: ' AND pokemon_id = ? AND is_shiny = ? AND is_golden = 0',
-    params: [filter.pokemonId, filter.isShiny ? 1 : 0],
+    sql: filter.isGolden
+      ? ' AND pokemon_id = ? AND is_golden = 1'
+      : ' AND pokemon_id = ? AND is_shiny = ? AND is_golden = 0',
+    params: filter.isGolden ? [filter.pokemonId] : [filter.pokemonId, filter.isShiny ? 1 : 0],
   };
 }
 
