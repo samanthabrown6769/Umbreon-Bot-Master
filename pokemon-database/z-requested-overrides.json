@@ -2,7 +2,8 @@
   {
     "slug": "palafin-zero",
     "name": "Palafin",
-    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/palafin.gif"
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/palafin.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/palafin.gif"
   },
   {
     "slug": "slither-wing",
@@ -121,6 +122,32 @@
   {
     "slug": "morpeko-full-belly",
     "sprite": "https://play.pokemonshowdown.com/sprites/ani/morpeko.gif",
-    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/morpeko.gif"
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/morpeko.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/morpeko.gif"
+  },
+  {
+    "slug": "terapagos",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792508785/terapagos-ezgif.com-resize.webp",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792508785/terapagosshiny-ezgif.com-resize.webp"
+  },
+  {
+    "slug": "ogerpon",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509192/ogerponshiny-ezgif.com-resize.webp",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509192/ogerpon-ezgif.com-resize.webp"
+  },
+  {
+    "slug": "ogerpon-wellspring-mask",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509191/ogerponwellspring-ezgif.com-resize.webp",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509191/ogerponwellspringshiny-ezgif.com-resize.webp"
+  },
+  {
+    "slug": "ogerpon-hearthflame-mask",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509191/ogerponhearthflame-ezgif.com-resize.webp",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509191/ogerponhearthflameshiny-ezgif.com-resize.webp"
+  },
+  {
+    "slug": "ogerpon-cornerstone-mask",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509191/ogerponcornerstone-ezgif.com-resize.webp",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509191/ogerponcornerstoneshiny-ezgif.com-resize.webp"
   }
 ]
