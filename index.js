@@ -1853,6 +1853,11 @@ function rollWildHeldItem(target, userId = null, researchPokemonEncounter = fals
   if (eligibleItem && Math.random() < heldItemChance) return eligibleItem;
   if (!researchPokemonEncounter) return null;
 
+  if (relicExchangeActive && Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
+      * (target.researchToolBoosts?.pokeDoll ? 1.3 : 1)) {
+    return RESEARCH_HELD_ITEMS[Math.floor(Math.random() * RESEARCH_HELD_ITEMS.length)];
+  }
+
   if (Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
       * (target.researchToolBoosts?.pokeDoll ? 1.3 : 1)) {
     const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
@@ -8528,7 +8533,13 @@ client.on('messageCreate', async (message) => {
         const unlockNames = item.unlocks.flatMap((species) =>
           item.unlocksShiny ? [species, `Shiny ${species}`] : [species]
         );
-        return `${marker} ${unlockNames.join(' / ')} — ${item.emoji} ${item.name} ${amount > 0 ? `(${amount} owned)` : `required; \`${PREFIX}res shop\``}`;
+        const unlockDisplays = unlockNames.map((name) => {
+          const isShiny = name.startsWith('Shiny ');
+          const species = isShiny ? name.slice('Shiny '.length) : name;
+          const spriteEmoji = getPokemonSpriteEmoji({ name: species, isShiny });
+          return `${spriteEmoji ? `${spriteEmoji} ` : ''}${name}`;
+        });
+        return `${marker} ${unlockDisplays.join(' / ')} — ${item.emoji} ${item.name} ${amount > 0 ? `(${amount} owned)` : `required; \`${PREFIX}res shop\``}`;
       });
       const valuableLines = RESEARCH_VALUABLES.map((item) =>
         `${itemsByName.get(item.name) || 0}x ${item.emoji} **${item.name}** → ${EMOJIS.pokecoin} ${item.coins.toLocaleString()} + ${RESEARCH_POINT_EMOJI} ${item.points} RP`
@@ -10375,7 +10386,8 @@ client.on('messageCreate', async (message) => {
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Give & Spawn').setDescription(
             `• \`${PREFIX}admin coins @User <amount>\` — Add or remove PokéCoins\n` +
             `• \`${PREFIX}admin token @User <amount>\` — Add or remove Patreon tokens\n` +
-            `• \`${PREFIX}admin item @User <item or currency> <amount>\` — Give or remove items and balances (PokéCoins, Patreon/Vote/Fishing tokens, and more)\n` +
+            `• \`${PREFIX}admin research points @User [amount]\` — Check or adjust a user's Research Points\n` +
+            `• \`${PREFIX}admin item @User <item or currency> <amount>\` — Give or remove items (including Research items) and balances\n` +
             `• \`${PREFIX}admin incense [amount]\` — Add 1,000 shared Incense charges per amount to this server\n` +
             `• \`${PREFIX}admin pokemon @User <Pokémon|form|number> [amount] [shiny|golden]\` — Give Pokémon\n` +
             `• \`${PREFIX}p admin [shiny] <Pokémon name>\` — Spawn a catalog Pokémon for a guaranteed catch\n` +
@@ -11059,13 +11071,46 @@ client.on('messageCreate', async (message) => {
         );
       }
 
+      if (command === 'admin' && subtype === 'research' && action === 'points') {
+        const target = message.mentions.users.first();
+        if (!target) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin research points @User [amount]\``
+          );
+        }
+        const amountTokens = args.slice(2)
+          .filter((argument) => !/^<@!?\d+>$/.test(argument));
+        if (amountTokens.length === 0) {
+          const points = getUser(target.id).research_points;
+          return message.reply(
+            `${RESEARCH_POINT_EMOJI} <@${target.id}> has **${points.toLocaleString()} Research Points**.`
+          );
+        }
+        const amount = amountTokens.length === 1 ? parseAmount(amountTokens[0]) : NaN;
+        const currentPoints = getUser(target.id).research_points;
+        const updatedPoints = currentPoints + amount;
+        if (!Number.isSafeInteger(amount) || amount === 0
+            || !Number.isSafeInteger(updatedPoints) || updatedPoints < 0) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin research points @User [non-zero amount]\`. ` +
+            `A removal cannot exceed the user's current balance (${currentPoints.toLocaleString()}).`
+          );
+        }
+        incrementUser(target.id, { research_points: amount });
+        return message.reply(
+          `${RESEARCH_POINT_EMOJI} ${amount > 0 ? 'Added' : 'Removed'} **${Math.abs(amount).toLocaleString()} Research Points** ` +
+          `${amount > 0 ? 'to' : 'from'} <@${target.id}> (${updatedPoints.toLocaleString()} owned).`
+        );
+      }
+
       const target = message.mentions.users.first();
       if (!target) {
         return message.reply(
           '**Usage:**\n' +
           `• \`${PREFIX}admin coins @User <amount>\`\n` +
           `• \`${PREFIX}admin token @User <amount>\`\n` +
-          `• \`${PREFIX}admin item @User <item or currency> <amount>\`\n` +
+          `• \`${PREFIX}admin research points @User [amount]\`\n` +
+          `• \`${PREFIX}admin item @User <item or currency> <amount>\` — includes Research items\n` +
           `• \`${PREFIX}admin pokemon @User <Pokémon name, form, or Pokédex number> [amount] [shiny|golden]\`\n` +
           `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
           `• \`${PREFIX}admin pokemon sprite <Pokémon|form|number> <https URL> [shiny https URL]\`\n` +
@@ -11263,7 +11308,11 @@ client.on('messageCreate', async (message) => {
           `).run(target.id, stoneName, amount);
           return message.reply(`${MEGA_STONE_EMOJIS[stoneName] || '🔮'} Added **${amount.toLocaleString()}x ${stoneName}** to <@${target.id}>'s inventory.`);
         }
-        const storedItem = findEvolutionItem(itemQuery)
+        const researchItem = RESEARCH_ITEM_NAMES.find((name) =>
+          name.toLowerCase().replace(/[^a-z0-9]/g, '') === item
+        );
+        const storedItem = researchItem
+          || findEvolutionItem(itemQuery)
           || findBox(itemQuery)
           || findVoteBox(itemQuery)
           || findQuestItem(itemQuery)
@@ -11686,32 +11735,44 @@ client.on('messageCreate', async (message) => {
         }
         const heldItemSpawn = args[1]?.toLowerCase() === 'helditem';
         if (heldItemSpawn) {
-          const speciesKeys = [...WILD_HELD_ITEMS_BY_SPECIES.keys()];
-          const shuffled = speciesKeys.sort(() => Math.random() - 0.5);
-          for (const speciesKey of shuffled) {
-            const form = db.prepare(
-              'SELECT * FROM pokemon_forms WHERE lower(species_name) = ? ORDER BY id LIMIT 1'
-            ).get(speciesKey);
-            if (!form) continue;
-            const item = WILD_HELD_ITEMS_BY_SPECIES.get(speciesKey);
-            return await askForBall(message, userId, {
-              id: form.id,
-              slug: form.slug,
-              name: form.name,
-              rarity: form.rarity,
-              baseHp: form.base_hp,
-              baseAtk: form.base_atk,
-              baseDef: form.base_def,
-              baseSpd: form.base_spd,
-              types: JSON.parse(form.types),
-              img: form.sprite,
-              shinyImg: form.shiny_sprite,
-              isShiny: false,
-              heldItem: item.name,
-              heldItemEmoji: item.emoji,
-            }, 'catch', { guaranteedCatch: true });
+          const requestedName = args.slice(2).join(' ').trim();
+          const form = requestedName
+            ? resolvePokemonForm(requestedName)
+            : db.prepare('SELECT * FROM pokemon_forms ORDER BY RANDOM() LIMIT 1').get();
+          if (!form) {
+            return message.reply(
+              requestedName
+                ? `No exact Pokémon or form named **${requestedName}** was found in the catalog.`
+                : 'No Pokémon were found in the catalog.'
+            );
           }
-          return message.reply('No Pokémon with a wild held item were found in the catalog.');
+          const heldItems = new Map([
+            ...WILD_HELD_ITEM_GROUPS,
+            ...RESEARCH_HOLDABLE_ITEM_NAMES.map((name) => ({
+              name,
+              emoji: RESEARCH_ITEM_EMOJIS[name],
+            })),
+            ...RESEARCH_VALUABLES,
+            ...RESEARCH_RELICS,
+          ].map((item) => [item.name, item]));
+          const itemOptions = [...heldItems.values()];
+          const item = itemOptions[Math.floor(Math.random() * itemOptions.length)];
+          return await askForBall(message, userId, {
+            id: form.id,
+            slug: form.slug,
+            name: form.name,
+            rarity: form.rarity,
+            baseHp: form.base_hp,
+            baseAtk: form.base_atk,
+            baseDef: form.base_def,
+            baseSpd: form.base_spd,
+            types: JSON.parse(form.types),
+            img: form.sprite,
+            shinyImg: form.shiny_sprite,
+            isShiny: false,
+            heldItem: item.name,
+            heldItemEmoji: item.emoji,
+          }, 'catch', { guaranteedCatch: true });
         }
         const shinySpawn = args[1]?.toLowerCase() === 'shiny';
         const requestedName = args.slice(shinySpawn ? 2 : 1).join(' ').trim();
@@ -15935,8 +15996,8 @@ client.on('messageCreate', async (message) => {
               inline: false,
             }] : []),
             ...[
-              [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS, ...RESEARCH_HELD_ITEMS].slice(0, 12),
-              [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS, ...RESEARCH_HELD_ITEMS].slice(12),
+              [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS].slice(0, 12),
+              [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS].slice(12),
             ].map((researchItems, index) => ({
               name: index === 0 ? 'Research Items' : '\u200b',
               value: researchItems.map((item) =>
@@ -15950,7 +16011,10 @@ client.on('messageCreate', async (message) => {
             name: 'Battle Items',
             value:
               `• ${FUN_ITEM_EMOJIS['Sitrus Berry']} **Sitrus Berry:** ${(ownedItems.get('Sitrus Berry') || 0).toLocaleString()}x\n` +
-              `• ${FUN_ITEM_EMOJIS.Leftovers} **Leftovers:** ${(ownedItems.get('Leftovers') || 0).toLocaleString()}x`,
+              `• ${FUN_ITEM_EMOJIS.Leftovers} **Leftovers:** ${(ownedItems.get('Leftovers') || 0).toLocaleString()}x\n` +
+              RESEARCH_HELD_ITEMS.map((item) =>
+                `• ${item.emoji} **${item.name}:** ${(ownedItems.get(item.name) || 0).toLocaleString()}x`
+              ).join('\n'),
             inline: false,
           });
         } else {
