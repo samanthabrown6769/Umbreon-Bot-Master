@@ -13,7 +13,11 @@ const { BOXES, VOTE_BOXES } = require('./boxes');
 const { getPromoItemNames } = require('./promo');
 const { setSpriteOverrides } = require('./pokemon-sprites');
 const { loadPokemonDatabase, updatePokemonDatabaseOverride } = require('./pokemon-database');
-const { RESEARCH_ITEM_NAMES, RESEARCH_RELICS } = require('./research-data');
+const {
+  RESEARCH_HELD_ITEMS,
+  RESEARCH_ITEM_NAMES,
+  RESEARCH_RELICS,
+} = require('./research-data');
 
 const db = new Database(path.join(__dirname, 'pokemon.sqlite'));
 db.pragma('foreign_keys = ON');
@@ -4029,6 +4033,7 @@ const ROTOM_ITEMS = Object.freeze([
 const SPECIAL_USER_ITEM_NAMES = Object.freeze([
   'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
   'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
+  'Team Medallion',
   ...RESEARCH_ITEM_NAMES,
   ...BATTLE_HELD_ITEM_NAMES,
 ]);
@@ -4311,20 +4316,47 @@ function holdEvolutionItem(userId, itemQuery, pokemonQuery) {
   if (EVOLUTION_ITEMS[itemName]?.kind !== 'held' && !BATTLE_HELD_ITEM_NAMES.has(itemName)) {
     return { error: 'not_holdable', itemName };
   }
+  const researchHeldItem = RESEARCH_HELD_ITEMS.find((item) => item.name === itemName);
   return db.transaction(() => {
+    if (researchHeldItem?.requiresRelicExchange
+        && getUser(userId).research_relic_unlock_until <= Date.now()) {
+      return { error: 'relic_exchange_required', itemName };
+    }
     const owned = findOwnedPokemonRows(userId, pokemonQuery);
     if (!owned.length) return { error: 'pokemon_not_owned' };
     const candidates = owned.filter((row) => !row.held_item);
     if (!candidates.length) return { error: 'item_held' };
+    const eligibleCandidates = researchHeldItem
+      ? candidates.filter((row) => researchHeldItem.species.includes(row.form_species_name))
+      : candidates;
+    if (!eligibleCandidates.length) return { error: 'ineligible_pokemon', itemName };
     const target = EVOLUTION_ITEMS[itemName]
-      ? candidates.find((row) => resolveItemEvolution(itemName, row)) || candidates[0]
-      : candidates[0];
+      ? eligibleCandidates.find((row) => resolveItemEvolution(itemName, row)) || eligibleCandidates[0]
+      : eligibleCandidates[0];
     if (!takeUserItem(userId, itemName)) return { error: 'no_item', itemName };
     db.prepare('UPDATE catches SET held_item = ? WHERE id = ? AND user_id = ?')
       .run(itemName, target.id, userId);
     syncDuplicateCatchState(userId, target.id);
     return { itemName, pokemonName: target.name };
   }).immediate();
+}
+
+function getResearchHeldItemError(userId, itemName, pokemonId, now = Date.now()) {
+  assertUserId(userId);
+  const item = RESEARCH_HELD_ITEMS.find((entry) => entry.name === itemName);
+  if (!item) return null;
+  if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('now must be a non-negative timestamp.');
+  if (item.requiresRelicExchange && getUser(userId).research_relic_unlock_until <= now) {
+    return 'relic_exchange_required';
+  }
+  const pokemon = db.prepare(`
+    SELECT pokemon_forms.species_name
+    FROM catches
+    JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+    WHERE catches.id = ? AND catches.user_id = ?
+  `).get(pokemonId, userId);
+  if (!pokemon) return 'pokemon_not_owned';
+  return item.species.includes(pokemon.species_name) ? null : 'ineligible_pokemon';
 }
 
 function unholdEvolutionItem(userId, pokemonQuery) {
@@ -8009,14 +8041,25 @@ db.exec(`
     user_id TEXT PRIMARY KEY,
     faction_key TEXT NOT NULL,
     rank TEXT NOT NULL DEFAULT 'Recruit',
-    points INTEGER NOT NULL DEFAULT 0
+    points INTEGER NOT NULL DEFAULT 0,
+    last_changed_at INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS faction_shop_purchases (
+    user_id TEXT NOT NULL,
+    faction_key TEXT NOT NULL,
+    purchased_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, faction_key)
   );
 `);
+ensureColumns('user_factions', {
+  last_changed_at: 'INTEGER NOT NULL DEFAULT 0',
+});
 
 const FACTION_TEAMS = {
   rocket: {
     id: 'rocket', name: 'Team Rocket', badge: '🚀', emoji: '<:teamrocketlogo:1560297373190725712>',
     emojiId: '1560297373190725712', emojiName: 'teamrocketlogo',
+    goldenPokemon: 'Grimer', goldenSlug: 'grimer', goldenEmoji: '<:goldengrimer:1562202548276830229>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: <:rocketgruntmale:1561371468162408648> Rocket Grunt Male, ' +
       '<:rocketgruntfemale:1561371492577574912> Rocket Grunt Female\n' +
@@ -8031,6 +8074,7 @@ const FACTION_TEAMS = {
   magma: {
     id: 'magma', name: 'Team Magma', badge: '🌋', emoji: '<:teammagmalogo:1560297371479572480>',
     emojiId: '1560297371479572480', emojiName: 'teammagmalogo',
+    goldenPokemon: 'Numel', goldenSlug: 'numel', goldenEmoji: '<:goldennumel:1562202552022601748>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: <:magmagruntmale:1561376294648807466> Magma Grunt Male, ' +
       '<:magmagruntfemale:1561376313472847994> Magma Grunt Female\n' +
@@ -8043,6 +8087,7 @@ const FACTION_TEAMS = {
   aqua: {
     id: 'aqua', name: 'Team Aqua', badge: '🌊', emoji: '<:teamaqualogo:1560297370174890015>',
     emojiId: '1560297370174890015', emojiName: 'teamaqualogo',
+    goldenPokemon: 'Carvanha', goldenSlug: 'carvanha', goldenEmoji: '<:goldencarvanha:1562202550080507964>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: <:aquagruntmale:1561376172359815168> Aqua Grunt Male, ' +
       '<:aquagruntfemale:1561376198305521674> Aqua Grunt Female\n' +
@@ -8055,6 +8100,7 @@ const FACTION_TEAMS = {
   galactic: {
     id: 'galactic', name: 'Team Galactic', badge: '🌌', emoji: '<:teamgalacticlogo:1560297368715534397>',
     emojiId: '1560297368715534397', emojiName: 'teamgalacticlogo',
+    goldenPokemon: 'Croagunk', goldenSlug: 'croagunk', goldenEmoji: '<:goldencroagunk:1562202540521558026>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: Galactic Grunt Male, Galactic Grunt Female\n' +
       '<:admin:1560312876596461578> Admin: Mars, Charon, Jupiter, Saturn\n' +
@@ -8065,6 +8111,7 @@ const FACTION_TEAMS = {
   plasma: {
     id: 'plasma', name: 'Team Plasma', badge: '🛡️', emoji: '<:teamplasmalogo:1560297367578738791>',
     emojiId: '1560297367578738791', emojiName: 'teamplasmalogo',
+    goldenPokemon: 'Scraggy', goldenSlug: 'scraggy', goldenEmoji: '<:goldenscraggy:1562202553851191366>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: <:plasmagruntmale:1561371323546996816> Plasma Grunt Male, ' +
       '<:plasmagruntfemale:1561371357038641212> Plasma Grunt Female\n' +
@@ -8077,6 +8124,7 @@ const FACTION_TEAMS = {
   flare: {
     id: 'flare', name: 'Team Flare', badge: '🔥', emoji: '<:teamflarelogo:1560297365540307036>',
     emojiId: '1560297365540307036', emojiName: 'teamflarelogo',
+    goldenPokemon: 'Litleo', goldenSlug: 'litleo', goldenEmoji: '<:goldenlitleo:1562202542203740261>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: Flare Grunt Male, Flare Grunt Female\n' +
       '<:admin:1560312876596461578> Admin: Flare Admin Male, Flare Admin Female\n' +
@@ -8087,6 +8135,7 @@ const FACTION_TEAMS = {
   skull: {
     id: 'skull', name: 'Team Skull', badge: '💀', emoji: '<:teamskulllogo:1560297364793851934>',
     emojiId: '1560297364793851934', emojiName: 'teamskulllogo',
+    goldenPokemon: 'Yungoos', goldenSlug: 'yungoos', goldenEmoji: '<:goldenyungoos:1562202544007155752>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: Skull Grunt Male, Skull Grunt Female\n' +
       '<:admin:1560312876596461578> Admin: Plumeria\n' +
@@ -8097,6 +8146,7 @@ const FACTION_TEAMS = {
   yell: {
     id: 'yell', name: 'Team Yell', badge: '📣', emoji: '<:teamyelllogo:1560297363413794987>',
     emojiId: '1560297363413794987', emojiName: 'teamyelllogo',
+    goldenPokemon: 'Galarian Zigzagoon', goldenSlug: 'zigzagoon-galar', goldenEmoji: '<:goldengalarianzigzagoon:1562202546339315823>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: Yell Grunt Male, Yell Grunt Female\n' +
       '<:admin:1560312876596461578> Admin: Marnie\n' +
@@ -8107,6 +8157,7 @@ const FACTION_TEAMS = {
   star: {
     id: 'star', name: 'Team Star', badge: '⭐', emoji: '<:teamstarlogo:1560297361878552586>',
     emojiId: '1560297361878552586', emojiName: 'teamstarlogo',
+    goldenPokemon: 'Varoom', goldenSlug: 'varoom', goldenEmoji: '<:goldenvaroom:1562203391835381840>',
     npcs:
       '<:grunt:1560312842039726150> Grunt: <:gruntfemale:1561091678759030784> Star Grunt Female, ' +
       '<:gruntmale:1561091294795800596> Star Grunt Male\n' +
@@ -8188,6 +8239,87 @@ function joinFaction(userId, factionKey) {
   return result.changes > 0;
 }
 
+const FACTION_GOLDEN_POKEMON_COST = 1500000000;
+const FACTION_CHANGE_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+const TEAM_MEDALLION_ITEM = 'Team Medallion';
+
+function changeUserFaction(userId, factionKey, now = Date.now()) {
+  assertUserId(userId);
+  if (!FACTION_TEAMS[factionKey]) return { error: 'unknown_faction' };
+  if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('now must be a non-negative timestamp.');
+  return db.transaction(() => {
+    const faction = db.prepare('SELECT * FROM user_factions WHERE user_id = ?').get(userId);
+    if (!faction || !FACTION_TEAMS[faction.faction_key]) return { error: 'not_in_faction' };
+    if (faction.faction_key === factionKey) return { error: 'same_faction' };
+    const cooldownUntil = faction.last_changed_at + FACTION_CHANGE_COOLDOWN_MS;
+    if (faction.last_changed_at && now < cooldownUntil) {
+      return { error: 'cooldown', cooldownUntil };
+    }
+    if (!takeUserItem(userId, TEAM_MEDALLION_ITEM)) return { error: 'medallion_required' };
+    db.prepare(`
+      UPDATE user_factions
+      SET faction_key = ?, rank = 'Recruit', points = 0, last_changed_at = ?
+      WHERE user_id = ?
+    `).run(factionKey, now, userId);
+    return { faction: FACTION_TEAMS[factionKey] };
+  }).immediate();
+}
+
+function getFactionGoldenPurchase(userId, factionKey) {
+  assertUserId(userId);
+  if (db.prepare(
+    'SELECT 1 FROM faction_shop_purchases WHERE user_id = ? AND faction_key = ?'
+  ).get(userId, factionKey)) return true;
+  const team = FACTION_TEAMS[factionKey];
+  if (!team) return false;
+  const form = db.prepare('SELECT id FROM pokemon_forms WHERE slug = ?').get(team.goldenSlug);
+  return Boolean(form && db.prepare(`
+    SELECT 1 FROM catches WHERE user_id = ? AND pokemon_id = ? AND is_golden = 1 LIMIT 1
+  `).get(userId, form.id));
+}
+
+function buyFactionGoldenPokemon(userId, now = Date.now()) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('now must be a non-negative timestamp.');
+  return db.transaction(() => {
+    const faction = getUserFaction(userId);
+    if (!faction) return { error: 'not_in_faction' };
+    if (faction.rank !== 'Leader') return { error: 'leader_required' };
+    if (getFactionGoldenPurchase(userId, faction.faction_key)) return { error: 'already_purchased' };
+    if (faction.points < FACTION_GOLDEN_POKEMON_COST) {
+      return { error: 'insufficient_points', points: faction.points };
+    }
+
+    const form = db.prepare('SELECT * FROM pokemon_forms WHERE slug = ?').get(faction.team.goldenSlug);
+    if (!form) throw new Error(`Missing faction Golden Pokémon form "${faction.team.goldenSlug}".`);
+    if (db.prepare(`
+      SELECT 1 FROM catches WHERE user_id = ? AND pokemon_id = ? AND is_golden = 1 LIMIT 1
+    `).get(userId, form.id)) return { error: 'already_owned' };
+
+    db.prepare('UPDATE user_factions SET points = points - ? WHERE user_id = ?')
+      .run(FACTION_GOLDEN_POKEMON_COST, userId);
+    db.prepare(`
+      INSERT INTO faction_shop_purchases (user_id, faction_key, purchased_at)
+      VALUES (?, ?, ?)
+    `).run(userId, faction.faction_key, now);
+    const catchId = saveGoldenCatch(userId, {
+      id: form.id,
+      name: form.name,
+      rarity: form.rarity,
+      baseHp: form.base_hp,
+      baseAtk: form.base_atk,
+      baseDef: form.base_def,
+      baseSpd: form.base_spd,
+    });
+    return {
+      catchId,
+      pokemon: faction.team.goldenPokemon,
+      emoji: faction.team.goldenEmoji,
+      cost: FACTION_GOLDEN_POKEMON_COST,
+    };
+  }).immediate();
+}
+
 function addFactionPoints(userId, basePoints) {
   const faction = getUserFaction(userId);
   if (!faction) return 0;
@@ -8250,6 +8382,12 @@ module.exports = {
   getDailyBall,
   getUserFaction,
   joinFaction,
+  FACTION_GOLDEN_POKEMON_COST,
+  FACTION_CHANGE_COOLDOWN_MS,
+  TEAM_MEDALLION_ITEM,
+  changeUserFaction,
+  getFactionGoldenPurchase,
+  buyFactionGoldenPokemon,
   addFactionPoints,
   promoteFaction,
   getGiftSettings,
@@ -8466,6 +8604,7 @@ module.exports = {
   takeUserItem,
   changePokemonAbility,
   holdEvolutionItem,
+  getResearchHeldItemError,
   unholdEvolutionItem,
   evolvePokemonWithItem,
   evolvePokemonByLevel,

@@ -238,6 +238,7 @@ const {
   takeUserItem,
   changePokemonAbility,
   holdEvolutionItem,
+  getResearchHeldItemError,
   unholdEvolutionItem,
   evolvePokemonWithItem,
   evolvePokemonByLevel,
@@ -320,9 +321,15 @@ const {
   updateUser,
   FACTION_TEAMS,
   FACTION_RANKS,
+  FACTION_GOLDEN_POKEMON_COST,
+  FACTION_CHANGE_COOLDOWN_MS,
+  TEAM_MEDALLION_ITEM,
   getDailyBall,
   getUserFaction,
   joinFaction,
+  changeUserFaction,
+  getFactionGoldenPurchase,
+  buyFactionGoldenPokemon,
   addFactionPoints,
   promoteFaction,
   getFactionLeaders,
@@ -1611,6 +1618,16 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   eevee: { golden: '<:GEevee:1562183877479375018>' },
   umbreon: { golden: '<:GUmbreon:1562183879152898129>' },
   espeon: { golden: '<:GEspeon:1562183880696529027>' },
+  scraggy: { golden: '<:goldenscraggy:1562202553851191366>' },
+  numel: { golden: '<:goldennumel:1562202552022601748>' },
+  carvanha: { golden: '<:goldencarvanha:1562202550080507964>' },
+  grimer: { golden: '<:goldengrimer:1562202548276830229>' },
+  'galarian zigzagoon': { golden: '<:goldengalarianzigzagoon:1562202546339315823>' },
+  zigzagoon: { golden: '<:goldengalarianzigzagoon:1562202546339315823>' },
+  yungoos: { golden: '<:goldenyungoos:1562202544007155752>' },
+  litleo: { golden: '<:goldenlitleo:1562202542203740261>' },
+  croagunk: { golden: '<:goldencroagunk:1562202540521558026>' },
+  varoom: { golden: '<:goldenvaroom:1562203391835381840>' },
   mewtwo: {
     normal: '<:Mewtwo:1562183882885955674>',
     shiny: '<:SMewtwo:1562192202782871722>',
@@ -1712,7 +1729,7 @@ function formatPokemonReward(pokemon) {
   const spriteEmoji = getPokemonSpriteEmoji(pokemon);
   if (isGolden) return `${spriteEmoji ? `${spriteEmoji} ` : ''}${EMOJIS.golden} **Golden ${pokemon.name}**`;
   const emoji = getRarityEmojis(pokemon.rarity, pokemon.name, isShiny, isGolden);
-  return `${emoji ? `${emoji} ` : ''}${isShiny ? '✨ ' : ''}**${pokemon.name}**`;
+  return `${emoji ? `${emoji} ` : ''}**${pokemon.name}**`;
 }
 
 let marketDexNumbersByFormId = null;
@@ -3458,73 +3475,38 @@ function createWorldBossPlayerEmbed(state, detail = '') {
 }
 
 async function sendCatchbotClaimPages(message, title, pokemon, summary) {
-  const entries = pokemon.length
-    ? pokemon.map((entry) => formatPokemonReward(entry))
-    : ['No catches recorded.'];
-  const pages = [];
-  for (let offset = 0; offset < entries.length; offset += 20) {
-    pages.push(entries.slice(offset, offset + 20));
+  const groups = new Map();
+  for (const entry of pokemon) {
+    const isGolden = Boolean(entry.isGolden ?? entry.is_golden);
+    const isShiny = Boolean(entry.isShiny ?? entry.is_shiny);
+    const key = isGolden ? 'Golden' : getDisplayRarity(entry.rarity, entry.name, isShiny);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(entry);
   }
-  let currentPage = 0;
-  const pageEmbed = () => makeEmbed(
-    title,
-    `${currentPage === 0 && summary ? `${summary}\n\n` : ''}${pages[currentPage].join('\n')}`,
-    0x2ecc71
-  ).setFooter({ text: `Page ${currentPage + 1}/${pages.length} • ${pokemon.length} Pokémon` });
-  const pageButtons = () => new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('cbclaim:prev')
-      .setLabel('Previous')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(currentPage === 0),
-    new ButtonBuilder()
-      .setCustomId('cbclaim:next')
-      .setLabel('Next')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(currentPage === pages.length - 1)
-  );
-
-  const dm = await message.author.send({
-    embeds: [pageEmbed()],
-    components: pages.length > 1 ? [pageButtons()] : [],
+  const order = ['Common', 'Uncommon', 'Rare', 'Super Rare', 'Legendary', 'Mega', 'Gmax', 'Shiny', 'Shiny Mega', 'Shiny Gmax', 'Golden'];
+  const keys = [...groups.keys()].sort((a, b) => {
+    const ai = order.indexOf(a);
+    const bi = order.indexOf(b);
+    return (ai < 0 ? order.length : ai) - (bi < 0 ? order.length : bi);
   });
-  if (pages.length > 1) {
-    const collector = dm.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 15 * 60 * 1000,
-    });
-    collector.on('collect', async (interaction) => {
-      try {
-        if (interaction.user.id !== message.author.id) {
-          await interaction.reply({ content: 'These CatchBot pages belong to another trainer.', ephemeral: true });
-          return;
-        }
-        if (interaction.customId === 'cbclaim:prev') currentPage = Math.max(0, currentPage - 1);
-        else if (interaction.customId === 'cbclaim:next') {
-          currentPage = Math.min(pages.length - 1, currentPage + 1);
-        }
-        await interaction.update({ embeds: [pageEmbed()], components: [pageButtons()] });
-      } catch (error) {
-        console.error(`Failed to navigate CatchBot claim pages for user ${message.author.id}:`, error);
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: 'Could not change the CatchBot results page.', ephemeral: true });
-        }
-      }
-    });
-    collector.on('end', async () => {
-      try {
-        await dm.edit({
-          components: [new ActionRowBuilder().addComponents(
-            ButtonBuilder.from(pageButtons().components[0]).setDisabled(true),
-            ButtonBuilder.from(pageButtons().components[1]).setDisabled(true)
-          )],
-        });
-      } catch (error) {
-        console.error(`Failed to close CatchBot claim pages for user ${message.author.id}:`, error);
-      }
-    });
-  }
-  return dm;
+  const simple = new Set(['Common', 'Uncommon', 'Rare']);
+  const lines = keys.map((key) => {
+    const entries = groups.get(key);
+    const emoji = RARITY_EMOJIS[key.toLowerCase()] || '';
+    if (simple.has(key)) return `${emoji} \`x${String(entries.length).padStart(2, '0')}\``;
+    let list = entries
+      .map((entry) => getPokemonSpriteEmoji(entry) || `**${entry.name}**`)
+      .join(' ');
+    if (list.length > 700) list = `${list.slice(0, list.lastIndexOf(' ', 700))} …`;
+    return `${emoji} \`x${String(entries.length).padStart(2, '0')}\` | ${list}`;
+  });
+  const embed = makeEmbed(
+    `${message.author.username}'s Catchbot Returned!`,
+    `${summary ? `${summary}\n\n` : ''}${lines.join('\n') || 'No catches recorded.'}\n\n` +
+    `-# To release all duplicate Commons, Uncommons, Rares and SRares type ${PREFIX}release duplicates`,
+    0x2ecc71
+  ).setThumbnail(message.author.displayAvatarURL());
+  return message.reply({ embeds: [embed] });
 }
 
 function getWorldBossBattle(playerState, boss) {
@@ -4258,7 +4240,7 @@ async function announceEventChecklistCompletion(guild, user, rewardPokemon, prog
 
   try {
     const checklistNames = halloweenEvent.pokemon.map((pokemon) => pokemon.name).join(', ');
-    const rewardName = `${rewardPokemon.isShiny ? '✨ ' : ''}${rewardPokemon.name}`;
+    const rewardName = rewardPokemon.name;
     const endsAtTimestamp = Math.floor(Date.parse(halloweenEvent.endsAt) / 1000);
     const embed = new EmbedBuilder()
       .setColor(EVENT_EMBED_COLOR)
@@ -4845,7 +4827,7 @@ async function askForBall(
       `(${rarityData.rateText})**\n` +
       catchRateText +
       `${Array.isArray(target.types) && target.types.length ? `Type: ${formatTypes(target.types)}\n` : ''}` +
-      `${tracksRarityStreak ? `${catchDisplayRarity} catches: ${currentStreak}\n` : ''}` +
+      `${tracksRarityStreak ? `${catchDisplayRarity} streak: ${currentStreak}\n` : ''}` +
       `\n═══════ Balls left ═══════\n` +
       `Pokéballs: ${user.pokeballs} • Greatballs: ${user.greatballs}\n` +
       `Ultraballs: ${user.ultraballs} • Masterballs: ${user.masterballs}\n` +
@@ -5647,8 +5629,8 @@ async function runPlayerSpar(message, userId, opponentUser) {
       .setDescription(finished
         ? resultSummary || 'No battle rewards were earned.'
         : (
-        `**Your Pokémon:** ${player ? `${player.is_shiny ? '✨ ' : ''}${player.name} Lv.${player.level} — ${Math.max(0, player.hp)}/${player.max_hp} HP${battleStatusSuffix(player)}` : 'Your team was wiped out'}\n` +
-        `**Opponent:** ${enemy ? `${enemy.is_shiny ? '✨ ' : ''}${enemy.name} Lv.${enemy.level} — ${Math.max(0, enemy.hp)}/${enemy.max_hp} HP${battleStatusSuffix(enemy)}` : 'Their team was wiped out'}\n` +
+        `**Your Pokémon:** ${player ? `${player.name} Lv.${player.level} — ${Math.max(0, player.hp)}/${player.max_hp} HP${battleStatusSuffix(player)}` : 'Your team was wiped out'}\n` +
+        `**Opponent:** ${enemy ? `${enemy.name} Lv.${enemy.level} — ${Math.max(0, enemy.hp)}/${enemy.max_hp} HP${battleStatusSuffix(enemy)}` : 'Their team was wiped out'}\n` +
         `${describeBattleField(field)}` +
         `**Your team:** ${party.filter((mon) => mon.hp > 0).length}/${party.length} • ` +
         `**Their team:** ${opponents.filter((mon) => mon.hp > 0).length}/${opponents.length}\n\n` +
@@ -5879,7 +5861,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
       .setDescription(finished
         ? resultSummary || 'No battle rewards were earned.'
         : (
-        `**Your Pokémon:** ${player ? `${player.is_shiny ? '✨ ' : ''}${player.name} — ${Math.max(0, player.hp)}/${player.max_hp} HP${battleStatusSuffix(player)}` : 'Your party was wiped out'}\n` +
+        `**Your Pokémon:** ${player ? `${player.name} — ${Math.max(0, player.hp)}/${player.max_hp} HP${battleStatusSuffix(player)}` : 'Your party was wiped out'}\n` +
         `**Opponent:** ${enemy ? `${enemy.trainer}'s ${enemy.name} — ${Math.max(0, enemy.hp)}/${enemy.max_hp} HP${battleStatusSuffix(enemy)}` : 'All trainers defeated'}\n` +
         `${describeBattleField(field)}` +
         `**Party:** ${party.filter((pokemon) => pokemon.hp > 0).length}/${party.length} remaining\n\n` +
@@ -6188,7 +6170,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       .setDescription(finished
         ? resultSummary || 'No battle rewards were earned.'
         : (
-        `**Your Pokémon:** ${player ? `${player.is_shiny ? '✨ ' : ''}${player.name} (${formatTypes(player.types, ' ')}) — ${Math.max(0, player.hp)}/${player.max_hp} HP${battleStatusSuffix(player)}` : 'All Pokémon fainted'}\n` +
+        `**Your Pokémon:** ${player ? `${player.name} (${formatTypes(player.types, ' ')}) — ${Math.max(0, player.hp)}/${player.max_hp} HP${battleStatusSuffix(player)}` : 'All Pokémon fainted'}\n` +
         `**Opponent:** ${enemy ? `${enemy.name} (${formatTypes(enemy.types, ' ')}) — ${Math.max(0, enemy.hp)}/${enemy.max_hp} HP${battleStatusSuffix(enemy)}` : 'All opponents defeated'}\n` +
         `${describeBattleField(field)}` +
         `**Party:** ${partyData.filter((pokemon) => pokemon.hp > 0).length}/${partyData.length} remaining\n\n` +
@@ -6512,7 +6494,7 @@ function createBuddyMovesEmbed(buddy, learnsetData, equippedMoves, page = 0, mov
   };
   return new EmbedBuilder()
     .setColor(0x3498db)
-    .setTitle(`${buddy.is_shiny ? '✨ ' : ''}${buddy.display_name || buddy.name} — Moves`)
+    .setTitle(`${buddy.display_name || buddy.name} — Moves`)
     .setDescription(
       `**Equipped moves**\n${equippedMoves.length ? equippedMoves.map((moveName, index) =>
         moveName ? `${index + 1}. ${moveLine(moveName)}` : `${index + 1}. *(empty)*`
@@ -6714,7 +6696,7 @@ async function handleTrade(message, userId, args) {
   await message.channel.send({
     embeds: [makeEmbed(
       '🤝 Trade Request',
-      `<@${userId}> offers **${offeredCatch.is_shiny ? '✨ ' : ''}${offeredCatch.name}** ` +
+      `<@${userId}> offers **${offeredCatch.name}** ` +
       `to <@${targetUser.id}>.\n\n` +
       `Reply with your Pokémon's name or Pokédex number, or \`cancel\`, within 30 seconds.`
     )],
@@ -6754,8 +6736,8 @@ async function handleTrade(message, userId, args) {
     embeds: [makeEmbed(
       '🤝 Confirm Trade',
       `Both trainers must accept:\n\n` +
-      `• <@${userId}> gives **${offeredCatch.is_shiny ? '✨ ' : ''}${offeredCatch.name}**\n` +
-      `• <@${targetUser.id}> gives **${requestedCatch.is_shiny ? '✨ ' : ''}${requestedCatch.name}**`
+      `• <@${userId}> gives **${offeredCatch.name}**\n` +
+      `• <@${targetUser.id}> gives **${requestedCatch.name}**`
     )],
     components: [row],
   });
@@ -7230,7 +7212,7 @@ function formatGiveawayRewards(prizeData) {
     const { name, rarity, isShiny, isGolden } = prizeData.pokemon;
     const emoji = getRarityEmojis(rarity, name, isShiny);
     if (isGolden) lines.push(`${EMOJIS.golden} **Golden ${name}**`);
-    else lines.push(`${emoji ? `${emoji} ` : ''}**${isShiny ? '✨ Shiny ' : ''}${name}**`);
+    else lines.push(`${emoji ? `${emoji} ` : ''}**${isShiny ? 'Shiny ' : ''}${name}**`);
   }
   for (const [item, quantity] of Object.entries(prizeData.items || {})) {
     const emoji = EVOLUTION_ITEMS[item]?.emoji
@@ -8038,7 +8020,7 @@ async function triggerAutoSpawn(channel, guildConfig, state, { legendaryOrShiny 
           .setColor(0x57f287)
           .setTitle(title)
           .setDescription(
-            `🎉 **${interaction.user.username}** caught the ${target.isShiny ? '✨ ' : ''}**${target.name}**!\n\n` +
+            `🎉 **${interaction.user.username}** caught the **${target.name}**!\n\n` +
             `• **${target.name}** has been added to your \`${PREFIX}box\`\n` +
             `• You now own **${owned}x** ${rarityEmoji ? `${rarityEmoji} ` : ''}**${target.name}**!`
           );
@@ -8543,20 +8525,6 @@ client.on('messageCreate', async (message) => {
       const relicLines = RESEARCH_RELICS.map((item) =>
         `${item.emoji} ${itemsByName.get(item.name) || 0}x ${item.name}`
       );
-      const shardLines = RESEARCH_SHOP_ITEMS.filter((item) => item.unlocks).map((item) => {
-        const amount = itemsByName.get(item.name) || 0;
-        const marker = amount > 0 ? '✅' : '❌';
-        const unlockNames = item.unlocks.flatMap((species) =>
-          item.unlocksShiny ? [species, `Shiny ${species}`] : [species]
-        );
-        const unlockDisplays = unlockNames.map((name) => {
-          const isShiny = name.startsWith('Shiny ');
-          const species = isShiny ? name.slice('Shiny '.length) : name;
-          const spriteEmoji = getPokemonSpriteEmoji({ name: species, isShiny });
-          return `${spriteEmoji ? `${spriteEmoji} ` : ''}${name}`;
-        });
-        return `${marker} ${unlockDisplays.join(' / ')} — ${item.emoji} ${item.name} ${amount > 0 ? `(${amount} owned)` : `required; \`${PREFIX}res shop\``}`;
-      });
       const valuableLines = RESEARCH_VALUABLES.map((item) =>
         `${itemsByName.get(item.name) || 0}x ${item.emoji} **${item.name}** → ${EMOJIS.pokecoin} ${item.coins.toLocaleString()} + ${RESEARCH_POINT_EMOJI} ${item.points} RP`
       );
@@ -8584,7 +8552,6 @@ client.on('messageCreate', async (message) => {
             `${relicLines.join(' • ')}\n` +
             `Exchange all 4 relics for ${EMOJIS.pokecoin} **125,000** and ${RESEARCH_POINT_EMOJI} **40 RP** with ` +
             `\`${PREFIX}res exchange relics\`.\n\n` +
-            `**Research Exclusive**\n${shardLines.join('\n')}\n\n` +
             `ℹ️ Need help? Type \`${PREFIX}res help\`. Visit the shop with \`${PREFIX}res shop\`.`
           )
           .setThumbnail('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/old-amber.png')],
@@ -8979,23 +8946,23 @@ client.on('messageCreate', async (message) => {
           .setDescription(
             '**Shiny Box Pokémon** (10% drop chance per Shiny Box, only if you voted in the last 12 hours)\n' +
             `${BOX_ONLY_SHINY_SPECIES.map((entry) =>
-              `• ✨ ${entry.name}${entry.patreonOnly ? ' (Patreon)' : ''}`
+              `• ${entry.name}${entry.patreonOnly ? ' (Patreon)' : ''}`
             ).join('\n')}\n\n` +
             'No other Shiny Pokémon drop from Shiny Boxes.'
           );
       } else if (exclusiveType === 'patreon') {
         const shinyEggExclusives = EGG_RARE_HATCHES
           .filter((entry) => entry.patreonOnly && entry.isShiny)
-          .map((entry) => `• ✨ ${entry.name} (1/${entry.denominator} per Egg hatch)`);
+          .map((entry) => `• ${entry.name} (1/${entry.denominator} per Egg hatch)`);
         const shinySwapExclusives = SWAP_EXCLUSIVE_SHINIES
           .filter((entry) => entry.patreonOnly)
-          .map((entry) => `• ✨ ${entry.name} (1/2,000 base chance per PokeSwap)`);
+          .map((entry) => `• ${entry.name} (1/2,000 base chance per PokeSwap)`);
         const shinyFishExclusives = FISH_EXCLUSIVE_SHINIES
           .filter((name) => FISH_PATREON_ONLY_SHINY_KEYS.has(name.toLowerCase()))
-          .map((name) => `• ✨ ${name}`);
+          .map((name) => `• ${name}`);
         const shinyBoxExclusives = BOX_ONLY_SHINY_SPECIES
           .filter((entry) => entry.patreonOnly)
-          .map((entry) => `• ✨ ${entry.name} (10% drop chance from a Shiny Box if you voted in the last 12 hours)`);
+          .map((entry) => `• ${entry.name} (10% drop chance from a Shiny Box if you voted in the last 12 hours)`);
         embed = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle('💖 Patreon-exclusive Shiny Pokémon')
@@ -9040,7 +9007,7 @@ client.on('messageCreate', async (message) => {
         const formatPool = (names) => names.map((name) => `• ${name}`).join('\n');
         const formatSpecials = (entries) => entries
           .map((entry) =>
-            `• ${entry.isGolden ? `${EMOJIS.golden} Golden ` : entry.isShiny ? '✨ Shiny ' : ''}` +
+            `• ${entry.isGolden ? `${EMOJIS.golden} Golden ` : entry.isShiny ? 'Shiny ' : ''}` +
             `${entry.name}${entry.patreonOnly ? ' (Patreon)' : ''} (1/${entry.denominator})`
           )
           .join('\n');
@@ -9687,7 +9654,7 @@ client.on('messageCreate', async (message) => {
           return message.reply('Golden giveaways are limited to base Pokémon and supported regional forms (no Mega or Gmax forms).');
         }
         [winnerArg, minuteArg] = [args[flagIndex + 1], args[flagIndex + 2]];
-        prizeTitle = isGolden ? `${EMOJIS.golden} Golden ${form.name}` : `${isShiny ? '✨ Shiny ' : ''}${form.name}`;
+        prizeTitle = isGolden ? `${EMOJIS.golden} Golden ${form.name}` : `${isShiny ? 'Shiny ' : ''}${form.name}`;
         prizeData = { pokemon: { id: form.id, name: form.name, rarity: form.rarity, isShiny, isGolden } };
       } else {
         return message.reply(giveawayUsage);
@@ -10954,7 +10921,7 @@ client.on('messageCreate', async (message) => {
         }
         const announcement = await announceMarketListings(message, stocked.listings);
         return message.reply(
-          `🏪 Added **${quantity}x ${isShiny ? '✨ ' : ''}${pokemon.name}** to the market ` +
+          `🏪 Added **${quantity}x ${pokemon.name}** to the market ` +
           `at **${price.toLocaleString()} PokéCoins each**.` +
           (announcement.failures ? ' The listings were added, but their channel announcement failed.' : '')
         );
@@ -13768,12 +13735,10 @@ client.on('messageCreate', async (message) => {
               `CatchBot secured **${legacyRewards.length} Pokémon**.\n` +
               `Bonus earned: ${EMOJIS.pokecoin} **${bonus.toLocaleString()} PokéCoins**.`
             );
-            await message.reply('✅ CatchBot rewards claimed. I sent the paginated results to your DMs.');
           } catch (error) {
-            console.error(`Failed to send legacy CatchBot claim pages to user ${userId}:`, error);
+            console.error(`Failed to send legacy CatchBot return embed for user ${userId}:`, error);
             await message.reply(
-              '✅ CatchBot rewards were claimed and added to your box, but I could not DM the results. ' +
-              'Enable DMs from server members and check `.box`.'
+              '✅ CatchBot rewards were claimed and added to your box, but I could not post the results. Check `.box`.'
             );
           }
           for (const { pokemon, eventCatch } of eventCatchReports) {
@@ -13850,33 +13815,17 @@ client.on('messageCreate', async (message) => {
           typeCounts: countQuestTypes(result.caughtPokemon),
         });
         announceQuestCompletions(userId, message.channel, completedQuests);
-        const raritySummary = [
-          ['Common', result.counts.c - result.goldenCount],
-          ['Uncommon', result.counts.u],
-          ['Rare', result.counts.r],
-          ['Super Rare', result.counts.sr],
-          ['Legendary', result.counts.l],
-          ['Shiny', result.counts.s],
-          [`${EMOJIS.golden} Golden`, result.goldenCount],
-        ].filter(([, count]) => count > 0)
-          .map(([rarity, count]) =>
-            `${String(rarity).includes('Golden') ? rarity : getRarityEmojis(rarity)} **${count}**`
-          )
-          .join('\n');
         try {
           await sendCatchbotClaimPages(
             message,
             '🤖 CatchBot Return Log',
             result.caughtPokemon,
-            `CatchBot returned with **${result.totalPokemon} Pokémon** after **${result.hours} hours**.\n\n` +
-            `**Catch summary**\n${raritySummary || 'No catches recorded.'}`
+            `CatchBot returned with **${result.totalPokemon} Pokémon** after **${result.hours} hours**.`
           );
-          await message.reply('✅ CatchBot rewards claimed. I sent the paginated results to your DMs.');
         } catch (error) {
-          console.error(`Failed to send CatchBot claim pages to user ${userId}:`, error);
+          console.error(`Failed to send CatchBot return embed for user ${userId}:`, error);
           await message.reply(
-            '✅ CatchBot rewards were claimed and added to your box, but I could not DM the results. ' +
-            'Enable DMs from server members and check `.box`.'
+            '✅ CatchBot rewards were claimed and added to your box, but I could not post the results. Check `.box`.'
           );
         }
         for (const { pokemon, eventCatch } of eventCatchReports) {
@@ -13967,7 +13916,7 @@ client.on('messageCreate', async (message) => {
         const infoMessage = await message.reply({
           embeds: [new EmbedBuilder()
             .setColor(0x5865f2)
-            .setTitle(`${pokemon.is_shiny ? '✨ ' : ''}${pokemon.name} — Ability`)
+            .setTitle(`${pokemon.name} — Ability`)
             .setDescription(`**Current ability:** ${currentAbility}\n\nSelect the Ability button to use an Ability Capsule or Ability Patch.`)],
           components: [new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -14226,7 +14175,7 @@ client.on('messageCreate', async (message) => {
           const lines = buddies.slice(start, start + pageSize).map((mon, index) => {
             const displayName = mon.id === currentId ? currentBuddy?.display_name || mon.name : mon.name;
             const name = mon.id === currentId ? `**${displayName}**` : mon.name;
-            return `\`${String(start + index + 1).padStart(2, '0')}\` ${mon.is_shiny ? '✨ ' : ''}${name} • Lvl. ${mon.level} • ` +
+            return `\`${String(start + index + 1).padStart(2, '0')}\` ${name} • Lvl. ${mon.level} • ` +
               `${(mon.experience || 0).toLocaleString()} XP • ${mon.iv_percent.toFixed(1)}% IV`;
           });
           return new EmbedBuilder()
@@ -14276,7 +14225,7 @@ client.on('messageCreate', async (message) => {
         }
         return message.reply(
           `${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ` +
-          `${buddy.is_shiny ? '✨ ' : ''}**${buddy.display_name || buddy.name}** (#${buddy.dex_number}) is now your buddy! ` +
+          `**${buddy.display_name || buddy.name}** (#${buddy.dex_number}) is now your buddy! ` +
           'Catch Pokémon to earn buddy EXP.'
         );
       }
@@ -14324,7 +14273,7 @@ client.on('messageCreate', async (message) => {
         }
         const available = choices.map((pokemon) =>
           `• #${pokemon.dex_number} — ${pokemon.is_golden ? `${EMOJIS.golden} Golden ` : ''}` +
-          `${pokemon.is_shiny ? '✨ ' : ''}${pokemon.name} (Lv. ${pokemon.level})`
+          `${pokemon.name} (Lv. ${pokemon.level})`
         ).join('\n');
         return message.reply(
           `Choose a buddy with \`${PREFIX}buddy set [shiny|golden] <Pokémon form name|Pokédex number>\`:\n${available}`
@@ -14667,6 +14616,45 @@ client.on('messageCreate', async (message) => {
           [challenge]
         );
       }
+      if (args[0]?.toLowerCase() === 'change') {
+        if (args.length < 2) {
+          return message.reply(
+            `Usage: \`${PREFIX}faction change <faction name>\`. Changing factions consumes a ` +
+            `${TEAM_MEDALLION_ITEM} and is available once every ` +
+            `${FACTION_CHANGE_COOLDOWN_MS / (24 * 60 * 60 * 1000)} days.`
+          );
+        }
+        const requestedFaction = args.slice(1).join(' ').toLowerCase();
+        const newFaction = Object.values(FACTION_TEAMS).find((team) =>
+          team.id === requestedFaction
+          || team.name.toLowerCase() === requestedFaction
+          || team.name.replace(/^Team /i, '').toLowerCase() === requestedFaction
+        );
+        if (!newFaction) {
+          return message.reply(`No faction matches **${args.slice(1).join(' ')}**.`);
+        }
+        const changed = changeUserFaction(userId, newFaction.id);
+        if (changed.error === 'not_in_faction') {
+          return message.reply(`Join a faction with \`${PREFIX}faction\` before changing teams.`);
+        }
+        if (changed.error === 'same_faction') {
+          return message.reply(`You are already in ${newFaction.emoji} **${newFaction.name}**.`);
+        }
+        if (changed.error === 'medallion_required') {
+          return message.reply(
+            `❌ Changing factions requires a ${TEAM_MEDALLION_ITEM}. Buy one for 1,000 ` +
+            `${EMOJIS.patreonToken} Patreon Tokens in the Patreon tab of \`${PREFIX}shop\`.`
+          );
+        }
+        if (changed.error === 'cooldown') {
+          return message.reply(
+            `❌ You can change factions again <t:${Math.floor(changed.cooldownUntil / 1000)}:R>.`
+          );
+        }
+        return message.reply(
+          `✅ You joined ${newFaction.emoji} **${newFaction.name}**. Your rank and faction points reset to Recruit and 0.`
+        );
+      }
       if (existing) {
         const promotions = promoteFaction(userId);
         const faction = getUserFaction(userId);
@@ -14717,6 +14705,7 @@ client.on('messageCreate', async (message) => {
             `**${team.name} Information**\n` +
             `• **NPCs:** ${team.npcs || team.officers}\n` +
             `• **Favorite Pokémon:** ${team.favoritePokemon}\n` +
+            `• **Faction Shop:** ${team.goldenEmoji} Golden ${team.goldenPokemon} — ${FACTION_GOLDEN_POKEMON_COST.toLocaleString()} points (Leader rank)\n` +
             `• **Goals:** *${team.goals}*\n\n` +
             `🎯 **Today's Daily Ball:** ${ballEmoji} **${dailyBall.name}**\n` +
             `*Catch Pokémon using ${ballEmoji} ${dailyBall.name} to earn bonus Faction Points — higher rarities earn more!*\n\n` +
@@ -14725,7 +14714,94 @@ client.on('messageCreate', async (message) => {
           )
           .addFields(leaderFields)
           .setFooter({ text: `${team.name} has ${leaders.memberCount.toLocaleString()} members` });
-        return message.reply({ embeds: [embed] });
+        const buildFactionShopEmbed = () => {
+          const currentFaction = getUserFaction(userId);
+          const purchased = getFactionGoldenPurchase(userId, faction.faction_key);
+          return new EmbedBuilder()
+            .setColor(0xf1c40f)
+            .setAuthor({ name: `${team.name} Shop`, iconURL: `https://cdn.discordapp.com/emojis/${team.emojiId}.png` })
+            .setDescription(
+              `**Faction-exclusive Pokémon**\n${team.goldenEmoji} **Golden ${team.goldenPokemon}**\n\n` +
+              `Price: **${FACTION_GOLDEN_POKEMON_COST.toLocaleString()} faction points**\n` +
+              `Requirement: **Leader** rank. This faction Pokémon can be purchased once per trainer per faction.\n\n` +
+              (purchased
+                ? '✅ You have already purchased this faction Pokémon.'
+                : currentFaction?.rank !== 'Leader'
+                  ? '🔒 Reach Leader rank to unlock this purchase.'
+                  : `Your balance: **${currentFaction.points.toLocaleString()} faction points**.`)
+            );
+        };
+        const buildFactionShopButtons = () => new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('faction:shop:buy')
+            .setLabel(`Buy Golden ${team.goldenPokemon}`)
+            .setStyle(ButtonStyle.Success)
+            .setDisabled(faction.rank !== 'Leader' || getFactionGoldenPurchase(userId, faction.faction_key)),
+          new ButtonBuilder().setCustomId('faction:shop:back')
+            .setLabel('Back').setStyle(ButtonStyle.Secondary)
+        );
+        const headquartersMessage = await message.reply({
+          embeds: [embed],
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('faction:shop:open')
+              .setLabel('Shop').setStyle(ButtonStyle.Primary)
+          )],
+        });
+        const factionShopCollector = headquartersMessage.createMessageComponentCollector({
+          componentType: ComponentType.Button,
+          time: 120000,
+        });
+        factionShopCollector.on('collect', async (interaction) => {
+          if (interaction.user.id !== message.author.id) {
+            return interaction.reply({
+              content: `Use \`${PREFIX}faction\` to view your own faction shop.`,
+              ephemeral: true,
+            });
+          }
+          if (interaction.customId === 'faction:shop:open') {
+            return interaction.update({
+              embeds: [buildFactionShopEmbed()],
+              components: [buildFactionShopButtons()],
+              content: '',
+            });
+          }
+          if (interaction.customId === 'faction:shop:back') {
+            return interaction.update({
+              embeds: [embed],
+              components: [new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('faction:shop:open')
+                  .setLabel('Shop').setStyle(ButtonStyle.Primary)
+              )],
+              content: '',
+            });
+          }
+          const purchase = buyFactionGoldenPokemon(interaction.user.id);
+          if (purchase.error === 'not_in_faction') {
+            return interaction.reply({ content: `Join a faction with \`${PREFIX}faction\` first.`, ephemeral: true });
+          }
+          if (purchase.error === 'leader_required') {
+            return interaction.reply({ content: 'Reach Leader rank to buy your faction Pokémon.', ephemeral: true });
+          }
+          if (purchase.error === 'already_purchased' || purchase.error === 'already_owned') {
+            return interaction.reply({ content: 'You can only obtain this faction Pokémon once.', ephemeral: true });
+          }
+          if (purchase.error === 'insufficient_points') {
+            return interaction.reply({
+              content: `You need ${FACTION_GOLDEN_POKEMON_COST.toLocaleString()} faction points; you have ${purchase.points.toLocaleString()}.`,
+              ephemeral: true,
+            });
+          }
+          return interaction.update({
+            embeds: [buildFactionShopEmbed()],
+            components: [buildFactionShopButtons()],
+            content: `✅ Purchased ${purchase.emoji} **Golden ${purchase.pokemon}** for **${purchase.cost.toLocaleString()} faction points**!`,
+          });
+        });
+        factionShopCollector.on('end', () => {
+          headquartersMessage.edit({ components: [] }).catch((error) => {
+            console.error('Failed to disable expired faction shop button:', error);
+          });
+        });
+        return;
       }
 
       const teams = Object.values(FACTION_TEAMS);
@@ -14734,7 +14810,9 @@ client.on('messageCreate', async (message) => {
         .setAuthor({ name: team ? `Factions — ${team.name}` : 'Factions — Join a Team!', iconURL: client.user.displayAvatarURL() })
         .setDescription(
           (team
-            ? `${team.emoji} **${team.name}**\n• **NPCs:** ${team.npcs || team.officers}\n• **Favorite Pokémon:** ${team.favoritePokemon}\n• **Goals:** *${team.goals}*\n\nPress **Join** to pledge to this team, or pick another.`
+            ? `${team.emoji} **${team.name}**\n• **NPCs:** ${team.npcs || team.officers}\n• **Favorite Pokémon:** ${team.favoritePokemon}\n` +
+              `• **Faction Shop:** ${team.goldenEmoji} Golden ${team.goldenPokemon} — ${FACTION_GOLDEN_POKEMON_COST.toLocaleString()} points at Leader rank\n` +
+              `• **Goals:** *${team.goals}*\n\nPress **Join** to pledge to this team, or pick another.`
             : `❌ **You are not in a faction!**\n\n` +
               `Factions are differentiated by their:\n• Officers (Grunt, Captain, Admin, Commander and Leader)\n• Favorite Pokémon\n• Overall goals\n\n` +
               `View a team's information by clicking its button below.\n\n`) +
@@ -15213,7 +15291,7 @@ client.on('messageCreate', async (message) => {
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
-          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden))}${wild.isShiny ? '✨ ' : ''}**${wild.name}** appeared! ` +
+          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden))}**${wild.name}** appeared! ` +
             `(${getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden)} ${wildRarity}) — throw a ball with the buttons on the right.`;
         } else if (!catchHandler) {
           statusText = foundText;
@@ -15377,6 +15455,11 @@ client.on('messageCreate', async (message) => {
             `Usage: \`${PREFIX}team give <item> <slot|Pokémon name|Pokédex number>\`.`
           );
         }
+        if (giveLabel === TEAM_MEDALLION_ITEM) {
+          return message.reply(
+            `A Team Medallion is used with \`${PREFIX}faction change <faction name>\`, not held by Pokémon.`
+          );
+        }
         const team = getUserTeam(userId);
         if (!team.length) return message.reply('Your battle team is empty!');
         const targetQuery = args.slice(1 + itemTokenCount).join(' ').trim();
@@ -15403,6 +15486,8 @@ client.on('messageCreate', async (message) => {
           ).get(targetMon.id, userId);
           if (!currentMon) return 'not_found';
           if (currentMon.held_item) return 'item_held';
+          const researchHeldItemError = getResearchHeldItemError(userId, giveLabel, targetMon.id);
+          if (researchHeldItemError) return researchHeldItemError;
           const updated = db.prepare(`
             UPDATE catches SET held_item = ?
             WHERE id = ? AND user_id = ? AND in_team = 1 AND held_item IS NULL
@@ -15419,6 +15504,17 @@ client.on('messageCreate', async (message) => {
         if (result === 'no_item') return message.reply(`❌ You do not have any **${giveLabel}** to give.`);
         if (result === 'not_found') return message.reply('That Pokémon is no longer in your battle team.');
         if (result === 'item_held') return message.reply('That Pokémon is already holding an item.');
+        if (result === 'relic_exchange_required') {
+          return message.reply(
+            `❌ Exchange a full relic set with \`${PREFIX}res exchange relics\` before giving this item.`
+          );
+        }
+        if (result === 'ineligible_pokemon') {
+          const researchItem = RESEARCH_HELD_ITEMS.find((item) => item.name === giveLabel);
+          return message.reply(
+            `❌ **${giveLabel}** can only be held by ${researchItem.species.map((name) => `**${name}**`).join(', ')}.`
+          );
+        }
         return message.reply(`✅ Gave **1x ${giveLabel}** to **${targetMon.name}**.`);
       }
       if (action === 'add' || action === 'remove') {
@@ -15432,7 +15528,7 @@ client.on('messageCreate', async (message) => {
           `).all(userId);
           if (!available.length) return message.reply('You have no Pokémon outside your active team.');
           const choices = available.map((pokemon) =>
-            `• ${pokemon.is_shiny ? '✨ ' : ''}${pokemon.name} (Lv. ${pokemon.level})`
+            `• ${pokemon.name} (Lv. ${pokemon.level})`
           ).join('\n');
           return message.reply(
             `Choose a Pokémon and slot with \`${PREFIX}team add [shiny|golden] <name|Pokédex number> <slot 1-3>\`:\n${choices}`
@@ -15447,7 +15543,7 @@ client.on('messageCreate', async (message) => {
             return message.reply(`You do not have a Pokémon matching **${query}** in your box.`);
           }
           return message.reply(
-            `✅ Slot **${slot}** is now ${result.pokemon.is_shiny ? '✨ ' : ''}` +
+            `✅ Slot **${slot}** is now ` +
             `**${result.pokemon.name}**.` +
             `${result.displaced ? ` Replaced **${result.displaced.name}**.` : ''}`
           );
@@ -15502,7 +15598,7 @@ client.on('messageCreate', async (message) => {
             return message.reply(`Could not add a Pokémon matching **${query}** to your team.`);
           }
           return message.reply(
-            `✅ Added to your active team: ${result.pokemon.is_shiny ? '✨ ' : ''}` +
+            `✅ Added to your active team: ` +
             `**${result.pokemon.name}**.`
           );
         }
@@ -15520,11 +15616,11 @@ client.on('messageCreate', async (message) => {
           `\`${PREFIX}team add [shiny|golden] <name|Pokédex number> <slot 1-3>\`.`
         );
       }
-      const embed = makeEmbed(`⚔️ ${message.author.username}'s Battle Team (Top 3)`, '', 0x34495e);
+      const embed = makeEmbed(`⚔️ ${message.author.username}'s Battle Team`, '', 0x34495e);
       for (const pokemon of team) {
         const sprite = getPokemonSpriteEmoji(pokemon);
         embed.addFields({
-          name: `Slot ${pokemon.team_slot} ${sprite ? `${sprite} ` : ''}${pokemon.is_shiny ? '✨ ' : ''}${pokemon.name} (Lv. ${pokemon.level})`,
+          name: `Slot ${pokemon.team_slot} ${sprite ? `${sprite} ` : ''}${pokemon.name} (Lv. ${pokemon.level})`,
           value: `**HP:** ${pokemon.hp}/${pokemon.max_hp} | **ATK:** ${pokemon.atk} | ` +
             `**DEF:** ${pokemon.def} | **SPD:** ${pokemon.spd}\n` +
             `*IVs:* ${pokemon.hp_iv}H/${pokemon.atk_iv}A/${pokemon.def_iv}D/${pokemon.spd_iv}S\n` +
@@ -15642,7 +15738,7 @@ client.on('messageCreate', async (message) => {
       }
       if (result.error === 'pokemon_not_owned') {
         return message.reply(
-          `You do not own a ${result.isShiny ? '✨ **Shiny ' : '**'}${result.pokemonName}** that can Mega Evolve.`
+          `You do not own a ${result.isShiny ? '**Shiny ' : '**'}${result.pokemonName}** that can Mega Evolve.`
         );
       }
       if (result.error === 'stone_required') {
@@ -15650,11 +15746,11 @@ client.on('messageCreate', async (message) => {
           `You need ${result.stoneNames?.length
             ? `one of these Mega Stones: ${result.stoneNames.map(stoneLabel).join(', ')}`
             : stoneLabel(result.stoneName)} to Mega Evolve ` +
-          `${result.isShiny ? '✨ Shiny ' : ''}${result.pokemonName}.`
+          `${result.isShiny ? 'Shiny ' : ''}${result.pokemonName}.`
         );
       }
       return message.reply(
-        `✨ ${result.pokemon.is_shiny ? `${EMOJIS.shiny} Shiny ` : ''}**${result.pokemon.name}** ` +
+        `${result.pokemon.is_shiny ? `${EMOJIS.shiny} Shiny ` : ''}**${result.pokemon.name}** ` +
         `Mega Evolved using ${stoneLabel(result.stone)}! ` +
         `It is now Pokédex #${result.dexNumber}.`
       );
@@ -16236,7 +16332,7 @@ client.on('messageCreate', async (message) => {
         }
         const values = filters.slice(1).join(' ').split(',').map((value) => value.trim()).filter(Boolean);
         const favLimit = getUser(userId).has_patreon ? 40 : 20;
-        const favLabel = (row) => `${row.is_golden ? 'Golden ' : row.is_shiny ? '✨ ' : ''}${row.name}`;
+        const favLabel = (row) => `${row.is_golden ? 'Golden ' : row.is_shiny ? 'Shiny ' : ''}${row.name}`;
         if (values.length === 0) {
           if (mutation === 'unfav') {
             return message.reply(`Usage: \`${PREFIX}box unfav <Pokémon name|Pokédex number|all>\``);
@@ -16665,7 +16761,7 @@ client.on('messageCreate', async (message) => {
             || 'A research discovery collected at the Research Lab.';
           const canBeHeld = RESEARCH_HOLDABLE_ITEM_NAMES.includes(researchItem.name);
           const usage = researchHeldItem
-            ? `Give it to a team Pokémon with \`${PREFIX}team give ${researchHeldItem.name.toLowerCase().replace(/[^a-z0-9]/g, '')} {mon}\`.`
+            ? `Equip it with \`${PREFIX}hold ${researchHeldItem.name} <Pokémon>\`; it can only be held by ${researchHeldItem.species.join(', ')} after a relic exchange.`
             : researchShopItem
             ? researchShopItem.unlocks
               ? `Automatically consumed for a single encounter with **${researchShopItem.unlocks.flatMap((species) =>
@@ -16689,7 +16785,9 @@ client.on('messageCreate', async (message) => {
                   ? `Certain Pokémon can hold this for 7 days after you exchange a relic set; eligible species: ${researchHeldItem.species.join(', ')}.`
                   : 'Exchange with a Research Lab command or obtain it from its listed source.';
           const canHoldText = canBeHeld
-            ? `**Can be held by Pokémon?** ✅ Yes — \`${PREFIX}team give ${researchItem.name.toLowerCase().replace(/[^a-z0-9]/g, '')} {mon}\``
+            ? researchHeldItem
+              ? `**Can be held by Pokémon?** ✅ Only ${researchHeldItem.species.join(', ')} during the 7-day unlock after a relic exchange.`
+              : `**Can be held by Pokémon?** ✅ Yes — \`${PREFIX}team give ${researchItem.name.toLowerCase().replace(/[^a-z0-9]/g, '')} {mon}\``
             : '**Can be held by Pokémon?** ❌ No';
           return message.reply({
             embeds: [new EmbedBuilder()
@@ -17288,7 +17386,8 @@ client.on('messageCreate', async (message) => {
       return message.reply({ embeds: [embed] });
     }
 
-    if (command === 'shop' && args[0]?.toLowerCase() !== 'buy') {
+    const openPatreonShop = command === 'patreon' && args[0]?.toLowerCase() === 'shop';
+    if ((command === 'shop' && args[0]?.toLowerCase() !== 'buy') || openPatreonShop) {
       const shopCategories = {
         balls: {
           label: 'Main',
@@ -17374,11 +17473,12 @@ client.on('messageCreate', async (message) => {
             `\`31\` ${EMOJIS.superIncubator} **Super Incubator** — 50 ${EMOJIS.patreonToken}\n` +
             `\`47\` ${EMOJIS.incense} **Incense** — 100 ${EMOJIS.patreonToken}\n` +
             `\`100\` ${EMOJIS.cooldownMachine} **Cooldown Machine** — 1 ${EMOJIS.patreonToken}\n` +
-            `\`50\` ${EMOJIS.bosscoin} **Boss Coin** — 1,000 ${EMOJIS.patreonToken}\n\n` +
+            `\`50\` ${EMOJIS.bosscoin} **Boss Coin** — 1,000 ${EMOJIS.patreonToken}\n` +
+            `\`101\` <:teammedallion:1562201734435045579> **Team Medallion** — 1,000 ${EMOJIS.patreonToken}\n\n` +
             `\`${PREFIX}item info <item>\` for item usage & info`,
         },
       };
-      let selectedCategory = 'balls';
+      let selectedCategory = openPatreonShop ? 'patreon' : 'balls';
       const buildShopEmbed = () => {
         const balance = getUser(userId);
         const category = shopCategories[selectedCategory];
@@ -17541,6 +17641,7 @@ client.on('messageCreate', async (message) => {
         'cooldown machine',
         'ability capsule',
         'ability patch',
+        'team medallion',
         'poke lure',
         "misty's lure",
       ].includes(twoWordItem) || hasThreeWordItem;
@@ -17586,6 +17687,7 @@ client.on('messageCreate', async (message) => {
         74: 'abilitypatch',
         99: 'cooldownmachine',
         100: 'patcooldownmachine',
+        101: 'teammedallion',
       };
       const item = {
         pb: 'pb',
@@ -17657,6 +17759,8 @@ client.on('messageCreate', async (message) => {
         honey: 'honey',
         'boss coin': 'bosscoin',
         bosscoin: 'bosscoin',
+        'team medallion': 'teammedallion',
+        teammedallion: 'teammedallion',
         radar: 'pokeradar',
         pokeradar: 'pokeradar',
         'sitrus berry': 'sitrusberry',
@@ -17852,6 +17956,27 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           `✅ Purchased **${amount}x ${EMOJIS.bosscoin} Boss Coin** for ` +
           `**${tokenPrice.toLocaleString()} ${EMOJIS.patreonToken} Patreon Tokens**. Use it with \`${PREFIX}worldboss spawn\`.`
+        );
+      }
+      if (item === 'teammedallion') {
+        const tokenPrice = 1000 * amount;
+        if (!Number.isSafeInteger(tokenPrice)) return message.reply('That purchase amount is too large.');
+        const bought = db.transaction(() => {
+          if (getUser(userId).patreon_tokens < tokenPrice) return false;
+          incrementUser(userId, { patreon_tokens: -tokenPrice });
+          addUserItem(userId, TEAM_MEDALLION_ITEM, amount);
+          return true;
+        }).immediate();
+        if (!bought) {
+          return message.reply(
+            `❌ That costs **${tokenPrice.toLocaleString()} ${EMOJIS.patreonToken} Patreon Tokens**. ` +
+            `You have **${getUser(userId).patreon_tokens.toLocaleString()}**.`
+          );
+        }
+        return message.reply(
+          `✅ Purchased **${amount.toLocaleString()}x <:teammedallion:1562201734435045579> ` +
+          `Team Medallion** for **${tokenPrice.toLocaleString()} ${EMOJIS.patreonToken} Patreon Tokens**. ` +
+          `Use \`${PREFIX}faction change <faction name>\` to change teams.`
         );
       }
       if (item === 'patsuperincubator') {
@@ -19241,7 +19366,7 @@ client.on('messageCreate', async (message) => {
           ? ` • Buying for: **${EMOJIS.pokecoin} ${row.buy_price.toLocaleString()}**`
           : '';
         const privacyText = showPrivacy && row.is_private ? ' 🔒 *(Private)*' : '';
-        const variantName = row.is_shiny ? `✨ Shiny ${row.pokemon_name}` : row.pokemon_name;
+        const variantName = row.is_shiny ? `Shiny ${row.pokemon_name}` : row.pokemon_name;
         return `• <@${row.user_id}> — **#${row.pokemon_id} ${variantName}**` +
           ` • Count: \`${row.owned_count}\`${priceText}${privacyText}`;
       }).join('\n').slice(0, 4000);
@@ -20223,7 +20348,7 @@ client.on('messageCreate', async (message) => {
         }
         if (result.error === 'pokemon_not_owned') {
           return message.reply(
-            `❌ You do not own a ${result.isShiny ? '✨ **Shiny ' : '**'}${result.pokemonName}** that can Mega Evolve.`
+            `❌ You do not own a ${result.isShiny ? '**Shiny ' : '**'}${result.pokemonName}** that can Mega Evolve.`
           );
         }
         if (result.error === 'stone_required') {
@@ -20231,11 +20356,11 @@ client.on('messageCreate', async (message) => {
             `❌ You need ${result.stoneNames?.length
               ? `one of these Mega Stones: ${result.stoneNames.map(stoneLabel).join(', ')}`
               : stoneLabel(result.stoneName)} to Mega Evolve ` +
-            `${result.isShiny ? '✨ Shiny ' : ''}${result.pokemonName}.`
+            `${result.isShiny ? 'Shiny ' : ''}${result.pokemonName}.`
           );
         }
         return message.reply(
-          `✨ ${result.pokemon.is_shiny ? `${EMOJIS.shiny} Shiny ` : ''}**${result.pokemon.name}** ` +
+          `${result.pokemon.is_shiny ? `${EMOJIS.shiny} Shiny ` : ''}**${result.pokemon.name}** ` +
           `Mega Evolved using ${stoneLabel(result.stone)}! It is now Pokédex #${result.dexNumber}.`
         );
       }
@@ -20282,7 +20407,7 @@ client.on('messageCreate', async (message) => {
         .setTitle('What? Your Pokémon is evolving!')
         .setDescription(
           `**${result.from}** evolved into ` +
-          `${emoji ? `${emoji} ` : ''}${result.isShiny ? '✨ ' : ''}**${result.to}** ${evolutionMethod}!\n` +
+          `${emoji ? `${emoji} ` : ''}**${result.to}** ${evolutionMethod}!\n` +
           `Level ${result.level} and IVs were kept.`
         );
       const sprite = getPokemonShowdownSprite(result.slug, result.isShiny, result.sprite);
@@ -20301,6 +20426,8 @@ client.on('messageCreate', async (message) => {
         pokemon_not_owned: `You do not own a **${parsed.pokemon}**.`,
         item_held: `Your **${parsed.pokemon}** is already holding an item.`,
         no_item: `You do not have a **${parsed.itemName}**.`,
+        relic_exchange_required: `Exchange a full relic set with \`${PREFIX}res exchange relics\` first; this item can only be equipped during the 7-day relic unlock window.`,
+        ineligible_pokemon: `**${parsed.itemName}** can only be held by ${RESEARCH_HELD_ITEMS.find((item) => item.name === result.itemName)?.species.map((name) => `**${name}**`).join(', ')}.`,
       };
       if (result.error) return message.reply(`❌ ${failures[result.error]}`);
       if (BATTLE_HELD_ITEM_NAMES.has(result.itemName)) {
@@ -20467,7 +20594,7 @@ client.on('messageCreate', async (message) => {
       if (!opened) return message.reply(`❌ You don't own ${amount}x **${boxName}**. Check \`${PREFIX}open\`.`);
       const lines = opened.results.map((pokemon) => {
         const emoji = getRarityEmojis(pokemon.rarity, pokemon.name, pokemon.isShiny);
-        return `${emoji ? `${emoji} ` : ''}**${pokemon.isShiny ? '✨ ' : ''}${pokemon.name}**`;
+        return `${emoji ? `${emoji} ` : ''}**${pokemon.name}**`;
       });
       const displayLines = lines.slice(0, 30);
       if (lines.length > displayLines.length) {
@@ -20620,7 +20747,7 @@ client.on('messageCreate', async (message) => {
         const logo = row.is_golden
           ? EMOJIS.golden
           : getRarityEmojis(row.rarity, row.name, Boolean(row.is_shiny));
-        favoriteLabels.push(`${logo} ${row.is_shiny ? '✨ ' : ''}${row.name}`.trim());
+        favoriteLabels.push(`${logo} ${row.name}`.trim());
       }
       const favoriteLine = favoriteLabels.length
         ? `**Favorite Pokémon:** ${favoriteLabels.join(', ')}`
