@@ -1,3 +1,5 @@
+const { RESEARCH_HOLDABLE_ITEM_NAMES } = require('./research-data');
+
 const TYPE_BOOSTING_HELD_ITEMS = Object.freeze({
   'Black Belt': 'fighting',
   'Black Glasses': 'dark',
@@ -20,9 +22,16 @@ const TYPE_BOOSTING_HELD_ITEMS = Object.freeze({
 });
 
 const LEFTOVERS_ITEM = 'Leftovers';
+const ASSAULT_VEST_ITEM = 'Assault Vest';
+const FOCUS_BAND_ITEM = 'Focus Band';
+const KINGS_ROCK_ITEM = "King's Rock";
 const BATTLE_HELD_ITEM_NAMES = new Set([
   ...Object.keys(TYPE_BOOSTING_HELD_ITEMS),
   LEFTOVERS_ITEM,
+  ASSAULT_VEST_ITEM,
+  FOCUS_BAND_ITEM,
+  KINGS_ROCK_ITEM,
+  ...RESEARCH_HOLDABLE_ITEM_NAMES,
 ]);
 
 function findBattleHeldItem(query) {
@@ -40,6 +49,9 @@ function getHeldItemDamageMultiplier(itemName, moveType) {
 
 module.exports = {
   BATTLE_HELD_ITEM_NAMES,
+  ASSAULT_VEST_ITEM,
+  FOCUS_BAND_ITEM,
+  KINGS_ROCK_ITEM,
   LEFTOVERS_ITEM,
   TYPE_BOOSTING_HELD_ITEMS,
   findBattleHeldItem,

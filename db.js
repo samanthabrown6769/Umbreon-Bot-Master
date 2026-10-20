@@ -13,6 +13,7 @@ const { BOXES, VOTE_BOXES } = require('./boxes');
 const { getPromoItemNames } = require('./promo');
 const { setSpriteOverrides } = require('./pokemon-sprites');
 const { loadPokemonDatabase, updatePokemonDatabaseOverride } = require('./pokemon-database');
+const { RESEARCH_ITEM_NAMES, RESEARCH_RELICS } = require('./research-data');
 
 const db = new Database(path.join(__dirname, 'pokemon.sqlite'));
 db.pragma('foreign_keys = ON');
@@ -471,6 +472,9 @@ const CB_CONFIG = Object.freeze({
 
 const userDefinitions = {
   coins: 'INTEGER NOT NULL DEFAULT 1000',
+  research_points: 'INTEGER NOT NULL DEFAULT 0',
+  research_relic_unlock_until: 'INTEGER NOT NULL DEFAULT 0',
+  pc_locked: 'INTEGER NOT NULL DEFAULT 0',
   pokeballs: 'INTEGER NOT NULL DEFAULT 25',
   greatballs: 'INTEGER NOT NULL DEFAULT 10',
   ultraballs: 'INTEGER NOT NULL DEFAULT 5',
@@ -1059,6 +1063,7 @@ db.exec(`
     boss_id INTEGER NOT NULL,
     user_id TEXT NOT NULL,
     registered_at INTEGER NOT NULL,
+    team_pokemon_ids TEXT NOT NULL DEFAULT '[]',
     PRIMARY KEY (boss_id, user_id)
   );
 
@@ -1379,6 +1384,9 @@ if (db.prepare('PRAGMA table_info(users)').all().some((column) => column.name ==
 if (!db.prepare('PRAGMA table_info(event_catches)').all().some((column) => column.name === 'catch_count')) {
   db.exec('ALTER TABLE event_catches ADD COLUMN catch_count INTEGER NOT NULL DEFAULT 1');
 }
+ensureColumns('world_boss_registrations', {
+  team_pokemon_ids: "TEXT NOT NULL DEFAULT '[]'",
+});
 const worldBossRewardColumns = new Set(
   db.prepare('PRAGMA table_info(world_boss_rewards)').all().map((column) => column.name)
 );
@@ -1750,6 +1758,7 @@ const incrementableUserFields = new Set([
   'pokeradar_charges',
   'double_xp_charges',
   'coins',
+  'research_points',
   'patreon_tokens',
   'pokeballs',
   'greatballs',
@@ -4020,6 +4029,7 @@ const ROTOM_ITEMS = Object.freeze([
 const SPECIAL_USER_ITEM_NAMES = Object.freeze([
   'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
   'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
+  ...RESEARCH_ITEM_NAMES,
   ...BATTLE_HELD_ITEM_NAMES,
 ]);
 
@@ -4031,6 +4041,7 @@ function isSupportedUserItemName(itemName) {
     || getPromoItemNames().includes(itemName)
     || QUEST_ITEM_NAMES.has(itemName)
     || ROTOM_ITEMS.includes(itemName)
+    || RESEARCH_ITEM_NAMES.includes(itemName)
     || SPECIAL_USER_ITEM_NAMES.includes(itemName)
   );
 }
@@ -4045,6 +4056,7 @@ function findUserItemName(query) {
     ...getPromoItemNames(),
     ...QUEST_ITEM_NAMES,
     ...ROTOM_ITEMS,
+    ...RESEARCH_ITEM_NAMES,
     ...SPECIAL_USER_ITEM_NAMES,
   ].find((itemName) => itemName.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedQuery) || null;
 }
@@ -4064,10 +4076,18 @@ function addUserItem(userId, itemName, amount = 1) {
   if (!Number.isSafeInteger(amount) || amount <= 0) {
     throw new TypeError('amount must be a positive safe integer.');
   }
-  db.prepare(`
-    INSERT INTO user_items (user_id, item_name, amount) VALUES (?, ?, ?)
-    ON CONFLICT(user_id, item_name) DO UPDATE SET amount = user_items.amount + excluded.amount
-  `).run(userId, itemName, amount);
+  const isUniqueRelic = RESEARCH_RELICS.some((item) => item.name === itemName);
+  if (isUniqueRelic) {
+    db.prepare(`
+      INSERT INTO user_items (user_id, item_name, amount) VALUES (?, ?, 1)
+      ON CONFLICT(user_id, item_name) DO UPDATE SET amount = MIN(1, user_items.amount + 1)
+    `).run(userId, itemName);
+  } else {
+    db.prepare(`
+      INSERT INTO user_items (user_id, item_name, amount) VALUES (?, ?, ?)
+      ON CONFLICT(user_id, item_name) DO UPDATE SET amount = user_items.amount + excluded.amount
+    `).run(userId, itemName, amount);
+  }
   if (!suppressQuestItemTracking && QUEST_ITEM_NAMES.has(itemName)) {
     return advanceQuestProgress(userId, { itemCounts: { [itemName]: amount } });
   }
@@ -5576,18 +5596,32 @@ function spawnWorldBoss(template, spawnedBy = null, spawnedByName = null) {
   }).immediate();
 }
 
-function registerWorldBossPlayer(userId, bossId, timestamp = Date.now()) {
+function validateWorldBossTeamIds(teamPokemonIds) {
+  if (!Array.isArray(teamPokemonIds) || teamPokemonIds.length < 1 || teamPokemonIds.length > 3
+      || teamPokemonIds.some((id) => !Number.isSafeInteger(id) || id <= 0)
+      || new Set(teamPokemonIds).size !== teamPokemonIds.length) {
+    throw new TypeError('teamPokemonIds must contain one to three unique positive Pokémon IDs.');
+  }
+}
+
+function registerWorldBossPlayer(userId, bossId, teamPokemonIds, timestamp = Date.now()) {
   assertUserId(userId);
   if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
   if (!Number.isSafeInteger(timestamp) || timestamp < 0) throw new TypeError('timestamp must be non-negative.');
+  validateWorldBossTeamIds(teamPokemonIds);
 
   return db.transaction(() => {
     const boss = db.prepare('SELECT * FROM world_boss WHERE id = ? AND is_active = 1').get(bossId);
     if (!boss) return { error: 'inactive' };
+    const ownedPokemonIds = new Set(db.prepare(
+      `SELECT id FROM catches WHERE user_id = ? AND id IN (${teamPokemonIds.map(() => '?').join(', ')})`
+    ).all(userId, ...teamPokemonIds).map(({ id }) => id));
+    if (teamPokemonIds.some((id) => !ownedPokemonIds.has(id))) return { error: 'invalid_team' };
     const inserted = db.prepare(`
-      INSERT OR IGNORE INTO world_boss_registrations (boss_id, user_id, registered_at)
-      VALUES (?, ?, ?)
-    `).run(bossId, userId, timestamp);
+      INSERT OR IGNORE INTO world_boss_registrations
+        (boss_id, user_id, registered_at, team_pokemon_ids)
+      VALUES (?, ?, ?, ?)
+    `).run(bossId, userId, timestamp, JSON.stringify(teamPokemonIds));
     const registrationCount = db.prepare(
       'SELECT COUNT(*) AS count FROM world_boss_registrations WHERE boss_id = ?'
     ).get(bossId).count;
@@ -5598,6 +5632,51 @@ function registerWorldBossPlayer(userId, bossId, timestamp = Date.now()) {
       battleStarted: timestamp >= boss.registration_ends_at,
     };
   }).immediate();
+}
+
+function updateWorldBossPlayerTeam(userId, bossId, teamPokemonIds) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
+  validateWorldBossTeamIds(teamPokemonIds);
+
+  return db.transaction(() => {
+    if (!db.prepare('SELECT 1 FROM world_boss WHERE id = ? AND is_active = 1').get(bossId)) {
+      return { error: 'inactive' };
+    }
+    if (!db.prepare(
+      'SELECT 1 FROM world_boss_registrations WHERE boss_id = ? AND user_id = ?'
+    ).get(bossId, userId)) {
+      return { error: 'not_registered' };
+    }
+    const ownedPokemonIds = new Set(db.prepare(
+      `SELECT id FROM catches WHERE user_id = ? AND id IN (${teamPokemonIds.map(() => '?').join(', ')})`
+    ).all(userId, ...teamPokemonIds).map(({ id }) => id));
+    if (teamPokemonIds.some((id) => !ownedPokemonIds.has(id))) return { error: 'invalid_team' };
+    db.prepare(`
+      UPDATE world_boss_registrations
+      SET team_pokemon_ids = ?
+      WHERE boss_id = ? AND user_id = ?
+    `).run(JSON.stringify(teamPokemonIds), bossId, userId);
+    return { updated: true };
+  }).immediate();
+}
+
+function getWorldBossPlayerTeam(userId, bossId) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
+  const registration = db.prepare(`
+    SELECT team_pokemon_ids FROM world_boss_registrations
+    WHERE boss_id = ? AND user_id = ?
+  `).get(bossId, userId);
+  if (!registration) return null;
+  const teamPokemonIds = JSON.parse(registration.team_pokemon_ids || '[]');
+  if (!Array.isArray(teamPokemonIds) || teamPokemonIds.length < 1 || teamPokemonIds.length > 3) return null;
+  const team = teamPokemonIds.map((id) =>
+    db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?').get(id, userId)
+  );
+  return team.every(Boolean)
+    ? team.map((pokemon, index) => ({ ...pokemon, team_slot: index + 1 }))
+    : null;
 }
 
 function isWorldBossPlayerRegistered(userId, bossId) {
@@ -8271,6 +8350,8 @@ module.exports = {
   getActiveWorldBoss,
   spawnWorldBoss,
   registerWorldBossPlayer,
+  updateWorldBossPlayerTeam,
+  getWorldBossPlayerTeam,
   isWorldBossPlayerRegistered,
   getWorldBossRegistrationCount,
   getBossLeaderboard,

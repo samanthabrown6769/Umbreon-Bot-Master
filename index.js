@@ -128,8 +128,6 @@ const {
   clearDefendingTeam,
   equipSavedTeam,
   saveLastWorldBossTeam,
-  getLastWorldBossTeam,
-  equipLastWorldBossTeam,
   getUserBuddyHistory,
   setUserBuddyByQuery,
   syncDuplicateCatchState,
@@ -187,6 +185,8 @@ const {
   swapTeamSlots,
   getActiveWorldBoss,
   registerWorldBossPlayer,
+  updateWorldBossPlayerTeam,
+  getWorldBossPlayerTeam,
   isWorldBossPlayerRegistered,
   getWorldBossRegistrationCount,
   getWorldBossAnnouncementChannel,
@@ -328,6 +328,23 @@ const {
   getFactionLeaders,
   ROTOM_ITEMS,
 } = require('./db');
+const {
+  RESEARCH_ITEM_EMOJIS,
+  RESEARCH_ITEM_NAMES,
+  RESEARCH_DROP_VALUABLES,
+  RESEARCH_HELD_ITEMS,
+  RESEARCH_HOLDABLE_ITEM_NAMES,
+  RESEARCH_POINT_EMOJI,
+  RESEARCH_RELICS,
+  RESEARCH_SHOP_ITEMS,
+  RESEARCH_SHOP_ITEMS_BY_ID,
+  RESEARCH_SHOP_ITEMS_BY_NAME,
+  RESEARCH_VALUABLES,
+} = require('./research-data');
+const RESEARCH_SHARD_BY_SPECIES = new Map(
+  RESEARCH_SHOP_ITEMS.filter((item) => item.unlocks)
+    .flatMap((item) => item.unlocks.map((species) => [species.toLowerCase(), item]))
+);
 const halloweenEvent = require('./events/halloween-2026');
 const { parseAmount } = require('./amounts');
 const { parseTradeMonInput } = require('./trade-parser');
@@ -484,7 +501,7 @@ Message.prototype.createMessageComponentCollector = function createCooldownCompo
   });
 };
 
-const PREFIX = process.env.PREFIX || '.';
+const PREFIX = '.';
 const TOPGG_WEBHOOK_AUTH = process.env.TOPGG_WEBHOOK_AUTH?.trim();
 const pendingEggReadyNotifications = new Map();
 
@@ -1564,22 +1581,75 @@ function getRarityColor(rarity, pokemonName = '', isShiny = false) {
 // Species-specific Mega emojis, filled at startup from the emojis the bot can see.
 const MEGA_SPECIES_EMOJIS = {};
 
-function getRarityEmojis(rarity, pokemonName = '', isShiny = false) {
+const POKEMON_SPRITE_EMOJIS = Object.freeze({
+  'primal groudon': { shiny: '<:SPrimalGroudon:1562183791110393917>' },
+  'groudon primal': { shiny: '<:SPrimalGroudon:1562183791110393917>' },
+  'hisuian typhlosion': {
+    normal: '<:HisuianTyphlosion:1562183795011096647>',
+    shiny: '<:SHisuianTyphlosion:1562183793190637708>',
+  },
+  'hisuian zorua': { normal: '<:HisuianZorua:1562183797502513233>' },
+  'giratina origin': {
+    normal: '<:GiratinaOrigin:1562183799205396500>',
+    shiny: '<:SGiratinaOrigin:1562183810659917934>',
+  },
+  'flutter mane': { shiny: '<:SFlutterMane:1562183801189437650>' },
+  rotom: { shiny: '<:SRotom:1562183812148895818>' },
+  pumpkaboo: { shiny: '<:SPumpkaboo:1562183813851914310>' },
+  phantump: { shiny: '<:SPhantump:1562183815999262831>' },
+  litwick: { shiny: '<:SLitwick:1562183817890893905>' },
+  drifloon: { shiny: '<:SDrifloon:1562183820562931813>' },
+  duskull: { shiny: '<:SDuskull:1562183822160699402>' },
+  sableye: { shiny: '<:SSableye:1562183823511523500>' },
+  poochyena: { shiny: '<:SPoochyena:1562183825025405019>' },
+  misdreavus: { shiny: '<:SMisdreavus:1562183826883485866>' },
+  spinarak: { shiny: '<:SSpinarak:1562183828901072926>' },
+  eevee: { golden: '<:GEevee:1562183877479375018>' },
+  umbreon: { golden: '<:GUmbreon:1562183879152898129>' },
+  espeon: { golden: '<:GEspeon:1562183880696529027>' },
+  mewtwo: { normal: '<:Mewtwo:1562183882885955674>' },
+  grimer: { normal: '<:Grimer:1562183885817778288>' },
+  muk: { normal: '<:Muk:1562183887961194506>' },
+  'eternatus eternamax': {
+    normal: '<:EternatusEternamax:1562183889303240814>',
+    shiny: '<:SEterntusEternamax:1562183895804547284>',
+  },
+  banette: { normal: '<:Banette:1562183890972708964>' },
+  whimsicott: { normal: '<:Whimsicott:1562183892574670859>' },
+  bulbasaur: { normal: '<:Bulbasaur:1562183894181089400>' },
+});
+
+function getPokemonSpriteEmoji(pokemon) {
+  const rawName = String(pokemon?.name || '').trim();
+  const name = rawName.replace(/^(?:shiny|golden)\s+/i, '').toLowerCase();
+  const isShiny = Boolean(pokemon?.isShiny ?? pokemon?.is_shiny) || /^shiny\s+/i.test(rawName);
+  const isGolden = Boolean(pokemon?.isGolden ?? pokemon?.is_golden) || /^golden\s+/i.test(rawName);
+  const species = Object.keys(POKEMON_SPRITE_EMOJIS)
+    .find((candidate) => name === candidate || name.startsWith(`${candidate} `));
+  if (!species) return '';
+  const variants = POKEMON_SPRITE_EMOJIS[species];
+  return (isGolden && variants.golden) || (isShiny && variants.shiny) || variants.normal || '';
+}
+
+function getRarityEmojis(rarity, pokemonName = '', isShiny = false, isGolden = false) {
   const displayRarity = getDisplayRarity(rarity, pokemonName, isShiny);
   const base = RARITY_EMOJIS[displayRarity.toLowerCase()] || '';
+  const spriteEmoji = getPokemonSpriteEmoji({ name: pokemonName, isShiny, isGolden });
+  const spritePrefix = spriteEmoji ? `${spriteEmoji} ` : '';
   if (/^(shiny )?mega$/i.test(displayRarity)) {
     const species = String(pokemonName).toLowerCase().match(/sableye|gengar|mawile|banette/)?.[0];
     const speciesEmoji = species && MEGA_SPECIES_EMOJIS[species];
-    if (speciesEmoji) return /^shiny/i.test(displayRarity) ? `${speciesEmoji}${base}` : speciesEmoji;
+    if (speciesEmoji) return `${spritePrefix}${/^shiny/i.test(displayRarity) ? `${speciesEmoji}${base}` : speciesEmoji}`;
   }
-  return base;
+  return `${spritePrefix}${base}`;
 }
 
 function formatPokemonReward(pokemon) {
   const isShiny = Boolean(pokemon.isShiny ?? pokemon.is_shiny);
   const isGolden = Boolean(pokemon.isGolden ?? pokemon.is_golden);
-  if (isGolden) return `${EMOJIS.golden} **Golden ${pokemon.name}**`;
-  const emoji = getRarityEmojis(pokemon.rarity, pokemon.name, isShiny);
+  const spriteEmoji = getPokemonSpriteEmoji(pokemon);
+  if (isGolden) return `${spriteEmoji ? `${spriteEmoji} ` : ''}${EMOJIS.golden} **Golden ${pokemon.name}**`;
+  const emoji = getRarityEmojis(pokemon.rarity, pokemon.name, isShiny, isGolden);
   return `${emoji ? `${emoji} ` : ''}${isShiny ? '✨ ' : ''}**${pokemon.name}**`;
 }
 
@@ -1600,9 +1670,10 @@ function getMarketListingEmojis(pokemon) {
   const megaSpriteEmoji = /^(shiny )?mega$/i.test(displayRarity) && megaSpecies
     ? MEGA_SPECIES_EMOJIS[megaSpecies]
     : null;
+  const pokemonSpriteEmoji = getPokemonSpriteEmoji(pokemon);
   const formId = pokemon.pokemon_id ?? pokemon.id;
   const dexNumber = marketDexNumbersByFormId.get(formId)?.dexNumber;
-  const spriteEmoji = megaSpriteEmoji || (dexNumber === undefined
+  const spriteEmoji = pokemonSpriteEmoji || megaSpriteEmoji || (dexNumber === undefined
     ? ''
     : client.emojis.cache.find((emoji) => emoji.name === String(dexNumber))?.toString() || '');
   return `${rarityEmoji ? `${rarityEmoji} ` : ''}${spriteEmoji ? `${spriteEmoji} ` : ''}`;
@@ -1643,6 +1714,13 @@ function heldItemNameMarker(pokemon, rarityEmoji = '') {
 }
 
 const WILD_HELD_ITEM_SPAWN_CHANCE = 0.1;
+const RESEARCH_RELIC_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+const RESEARCH_TOOL_CONSUMPTION_CHANCE = 0.01;
+const RESEARCH_TOOL_EFFECTS = [
+  ['Fluffy Tail', 'fluffyTail'],
+  ['PokeDoll', 'pokeDoll'],
+  ['PokeToy', 'pokeToy'],
+];
 const WILD_HELD_ITEM_GROUPS = [
   { name: 'Black Belt', emoji: '<:blackbelt:1561413041525100717>', species: ['Makuhita', 'Hariyama', 'Throh', 'Sawk', 'Mankey', 'Primeape', 'Tyrogue', 'Hitmontop', 'Hitmonchan'] },
   { name: 'Black Glasses', emoji: '<:blackglasses:1561413040128397425>', species: ['Poochyena', 'Mightyena', 'Sandile', 'Krokorok'] },
@@ -1668,15 +1746,15 @@ const WILD_HELD_ITEM_GROUPS = [
   { name: 'Soft Sand', emoji: '<:softsand:1561413018628399104>', species: ['Diglett', 'Dugtrio', 'Nincada', 'Sandslash', 'Trapinch', 'Stunfisk'] },
   { name: 'Spell Tag', emoji: '<:spelltag:1561413016619196476>', species: ['Duskull', 'Dusclops', 'Haunter', 'Misdreavus', 'Sandygast', 'Banette', 'Yamask'] },
   { name: 'Twisted Spoon', emoji: '<:twistedspoon:1561413015402975382>', species: ['Abra', 'Kadabra', 'Alakazam'] },
+  ...RESEARCH_HELD_ITEMS,
 ];
 const WILD_HELD_ITEMS_BY_SPECIES = new Map();
 for (const item of WILD_HELD_ITEM_GROUPS) {
   for (const species of item.species) {
     const speciesKey = species.toLowerCase();
-    if (WILD_HELD_ITEMS_BY_SPECIES.has(speciesKey)) {
-      throw new Error(`Wild held-item species "${species}" is configured more than once.`);
-    }
-    WILD_HELD_ITEMS_BY_SPECIES.set(speciesKey, item);
+    const items = WILD_HELD_ITEMS_BY_SPECIES.get(speciesKey) || [];
+    items.push(item);
+    WILD_HELD_ITEMS_BY_SPECIES.set(speciesKey, items);
   }
 }
 const HELD_ITEM_CATCH_RATES = {
@@ -1689,12 +1767,61 @@ const HELD_ITEM_CATCH_RATES = {
   'Full Odds Shiny': { pb: 10, gb: 25, ub: 35, prb: 50, mb: 100 },
 };
 
-function rollWildHeldItem(target) {
+function applyResearchTools(userId) {
+  const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
+  const boosts = {};
+  const consumed = [];
+  for (const [itemName, effect] of RESEARCH_TOOL_EFFECTS) {
+    const owned = ownedItems.get(itemName) || 0;
+    if (!owned) continue;
+    boosts[effect] = true;
+    if (Math.random() < RESEARCH_TOOL_CONSUMPTION_CHANCE) {
+      if (!takeUserItem(userId, itemName)) {
+        throw new Error(`Could not consume ${itemName} from ${userId}'s inventory.`);
+      }
+      consumed.push(itemName);
+    }
+  }
+  return { boosts, consumed };
+}
+
+function rollWildHeldItem(target, userId = null, researchPokemonEncounter = false) {
   const speciesName = target.speciesName
     || target.species_name
     || db.prepare('SELECT species_name FROM pokemon_forms WHERE id = ?').get(target.id)?.species_name;
-  const item = WILD_HELD_ITEMS_BY_SPECIES.get(String(speciesName || '').toLowerCase());
-  return item && Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE ? item : null;
+  const speciesKey = String(speciesName || '').toLowerCase();
+  const researchUser = researchPokemonEncounter ? getUser(userId) : null;
+  const relicExchangeActive = Boolean(
+    researchUser && researchUser.research_relic_unlock_until > Date.now()
+  );
+  const speciesItems = (WILD_HELD_ITEMS_BY_SPECIES.get(speciesKey) || [])
+    .filter((item) => !item.requiresRelicExchange || relicExchangeActive);
+  const eligibleItem = speciesItems.length
+    ? speciesItems[Math.floor(Math.random() * speciesItems.length)]
+    : null;
+  const heldItemChance = WILD_HELD_ITEM_SPAWN_CHANCE
+    * (target.researchToolBoosts?.fluffyTail ? 1.3 : 1)
+    * (target.researchToolBoosts?.pokeDoll && eligibleItem?.requiresRelicExchange ? 1.3 : 1);
+  if (eligibleItem && Math.random() < heldItemChance) return eligibleItem;
+  if (!researchPokemonEncounter) return null;
+
+  if (Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
+      * (target.researchToolBoosts?.pokeDoll ? 1.3 : 1)) {
+    const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
+    const availableRelics = RESEARCH_RELICS.filter((item) => !ownedItems.get(item.name));
+    if (!relicExchangeActive && availableRelics.length) {
+      return availableRelics[Math.floor(Math.random() * availableRelics.length)];
+    }
+  }
+
+  if (Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
+      * (target.researchToolBoosts?.fluffyTail ? 1.3 : 1)) {
+    const valuableName = RESEARCH_DROP_VALUABLES[
+      Math.floor(Math.random() * RESEARCH_DROP_VALUABLES.length)
+    ];
+    return RESEARCH_VALUABLES.find((item) => item.name === valuableName);
+  }
+  return null;
 }
 
 const FACTION_CATCH_POINTS = 100;
@@ -1930,20 +2057,61 @@ function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, rol
   throw new Error(`Could not select encounter rarity for modifier "${modifier}".`);
 }
 
-function getRandomLegendaryFromGenerations(generations) {
+function getRandomLegendaryFromGenerations(generations, userId = null) {
   const placeholders = generations.map(() => '?').join(', ');
-  const excludedPlaceholders = SPECIAL_SPAWN_RESERVED_SPECIES.map(() => '?').join(', ');
+  const ownedItems = userId === null
+    ? new Map()
+    : new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
+  const shardNames = [...new Set([...RESEARCH_SHARD_BY_SPECIES.values()].map((item) => item.name))];
+  const heldShardNames = userId === null
+    ? new Set()
+    : new Set(db.prepare(`
+      SELECT DISTINCT held_item
+      FROM catches
+      WHERE user_id = ? AND held_item IN (${shardNames.map(() => '?').join(', ')})
+    `).all(userId, ...shardNames).map((row) => row.held_item));
+  const availableResearchSpecies = [...RESEARCH_SHARD_BY_SPECIES.entries()]
+    .filter(([, item]) => (ownedItems.get(item.name) || 0) > 0 || heldShardNames.has(item.name))
+    .map(([species]) => species);
+  const excludedSpecies = [...new Set([
+    ...SPECIAL_SPAWN_RESERVED_SPECIES.map((species) => species.toLowerCase()),
+    ...RESEARCH_SHARD_BY_SPECIES.keys(),
+  ])].filter((species) => !availableResearchSpecies.includes(species));
+  const excludedPlaceholders = excludedSpecies.map(() => '?').join(', ');
+  const researchPlaceholders = availableResearchSpecies.length
+    ? availableResearchSpecies.map(() => '?').join(', ')
+    : 'NULL';
   const pokemon = db.prepare(`
     SELECT * FROM pokemon_forms
-    WHERE is_default = 1 AND is_legendary = 1
-      AND lower(rarity) = 'legendary'
+    WHERE is_default = 1
+      AND (is_legendary = 1 OR lower(species_name) IN (${researchPlaceholders}))
+      AND (lower(rarity) = 'legendary' OR lower(species_name) IN (${researchPlaceholders}))
       AND generation IN (${placeholders})
       AND lower(species_name) NOT IN (${excludedPlaceholders})
     ORDER BY RANDOM()
     LIMIT 1
-  `).get(...generations, ...SPECIAL_SPAWN_RESERVED_SPECIES.map((name) => name.toLowerCase()));
+  `).get(
+    ...availableResearchSpecies,
+    ...availableResearchSpecies,
+    ...generations,
+    ...excludedSpecies.map((name) => name.toLowerCase())
+  );
   if (!pokemon) {
     throw new Error(`No ordinary Legendary Pokémon are configured for ${generations.join(', ')}.`);
+  }
+  const researchShard = RESEARCH_SHARD_BY_SPECIES.get(pokemon.species_name.toLowerCase());
+  if (researchShard && userId !== null) {
+    if (!takeUserItem(userId, researchShard.name)) {
+      const heldPokemon = db.prepare(`
+        SELECT id FROM catches WHERE user_id = ? AND held_item = ? ORDER BY id LIMIT 1
+      `).get(userId, researchShard.name);
+      if (!heldPokemon) {
+        throw new Error(`Could not consume the ${researchShard.name} for ${pokemon.species_name}.`);
+      }
+      db.prepare('UPDATE catches SET held_item = NULL WHERE id = ? AND user_id = ?')
+        .run(heldPokemon.id, userId);
+      syncDuplicateCatchState(userId, heldPokemon.id);
+    }
   }
   return {
     id: pokemon.id,
@@ -1963,20 +2131,21 @@ function getRandomLegendaryFromGenerations(generations) {
     isLegendary: Boolean(pokemon.is_legendary),
     isMythical: Boolean(pokemon.is_mythical),
     generation: pokemon.generation,
+    ...(researchShard ? { researchShard: researchShard.name } : {}),
   };
 }
 
-function rollEncounterLegendary() {
+function rollEncounterLegendary(userId = null) {
   for (const entry of LEGENDARY_GENERATION_ORDER) {
     if (Math.random() < entry.rollChance) {
-      return getRandomLegendaryFromGenerations([entry.generation]);
+      return getRandomLegendaryFromGenerations([entry.generation], userId);
     }
   }
   return getRandomLegendaryFromGenerations([
     'generation-i',
     'generation-ii',
     'generation-iii',
-  ]);
+  ], userId);
 }
 
 function getSpecialSpawnPokemon(speciesName) {
@@ -2173,13 +2342,20 @@ function rollSpawn(
         pokemon = getRandomPokemon(null, false, false, false, null, [], [huntTarget.id]);
         pokemon.encounterRateText = '🎯 Daily Hunt boosted encounter';
       } else if (rarity === 'Legendary') {
-        pokemon = rollEncounterLegendary();
+        pokemon = rollEncounterLegendary(userId);
         pokemon.encounterRateText = getLegendaryEncounterRateText(
           pokemon.generation,
           goldenRazzActive,
           channelRateBoost,
           roleChanceBoost
         );
+        if (pokemon.researchShard) {
+          const researchItem = RESEARCH_SHOP_ITEMS_BY_NAME.get(
+            pokemon.researchShard.toLowerCase().replace(/[^a-z0-9]/g, '')
+          );
+          pokemon.encounterRateText +=
+            ` • ${researchItem?.emoji || '🔹'} ${pokemon.researchShard} consumed`;
+        }
       } else {
         pokemon = getRandomPokemon(
           rarity,
@@ -2880,7 +3056,7 @@ function createWorldBossEmbed(boss, clientUser) {
       iconURL: 'https://cdn.discordapp.com/emojis/1559925077167054978.png',
     })
     .setDescription(
-      `**Boss: ${getRarityEmojis(template?.rarity || 'Legendary', boss.name)} ${boss.name}**\n\n` +
+      `**Boss: ${getRarityEmojis(template?.rarity || 'Legendary', boss.name, Boolean(boss.is_shiny))} ${boss.name}**\n\n` +
       `Health: ${boss.current_hp.toLocaleString()} / ${boss.max_hp.toLocaleString()} ${EMOJIS.fire || '🔥'}\n` +
       `${healthBar}\n` +
       bossTypeLine.replace('• ', '') +
@@ -2897,7 +3073,7 @@ function createWorldBossEmbed(boss, clientUser) {
         : '')
     )
     .setFooter({
-      text: `Register with ${PREFIX}wb register • Fight with ${PREFIX}wb fight • Boss id: ${boss.id} • Registered: ${registrationCount}`,
+      text: `Register with ${PREFIX}wb register • Update team with ${PREFIX}wb update • Fight with ${PREFIX}wb fight • Boss id: ${boss.id} • Registered: ${registrationCount}`,
     })
     .setTimestamp(Number.isFinite(spawnedMs) ? spawnedMs : Date.now());
   if (boss.image_url) embed.setImage(boss.image_url).setThumbnail(template?.icon || boss.image_url);
@@ -2920,7 +3096,7 @@ function createWorldBossPanelEmbed(boss, { state, team, faintedIds, log = [], us
         : savedState
           ? Math.max(0, savedState.hp)
           : pokemon.max_hp;
-    const label = `${pokemon.name} ${hp} / ${pokemon.max_hp}`;
+    const label = `${getPokemonSpriteEmoji(pokemon)} ${pokemon.name} ${hp} / ${pokemon.max_hp}`.trim();
     if (fainted) return `💫 ~~${label}~~ **FNT**`;
     return isActive ? `🟩 **${label}** ⚔️` : `🟩 ${label}`;
   }).join('\n');
@@ -3205,9 +3381,9 @@ function createWorldBossForfeitRow(bossId) {
 function createWorldBossPlayerEmbed(state, detail = '') {
   const health = Math.max(0, state.hp);
   return makeEmbed(
-    `⚔️ ${state.pokemon.name} vs. World Boss`,
+    `⚔️ ${getPokemonSpriteEmoji(state.pokemon)} ${state.pokemon.name} vs. World Boss`,
     `${detail ? `${detail}\n\n` : ''}` +
-    `**Your Pokémon:** ${health > 0 ? '🟩' : '💫'} **${state.pokemon.name}**\n` +
+    `**Your Pokémon:** ${health > 0 ? '🟩' : '💫'} ${getPokemonSpriteEmoji(state.pokemon)} **${state.pokemon.name}**\n` +
     `❤️ HP: **${health}/${state.pokemon.max_hp}**\n` +
     (health > 0 ? 'Choose one move. The boss counterattacks after each turn.' : 'Choose another Pokémon to continue.'),
     health > 0 ? 0x9b59b6 : 0xe74c3c
@@ -3500,7 +3676,14 @@ async function startWorldBossBattle(message, boss, userId, team) {
       const parts = interaction.customId.split(':');
       const action = parts[1];
       const playerId = interaction.user.id;
-      const playerTeam = getUserTeam(playerId);
+      const playerTeam = getWorldBossPlayerTeam(playerId, boss.id);
+      if (!playerTeam?.length) {
+        await interaction.reply({
+          content: `❌ Your registered team is unavailable. Set your active team and use \`${PREFIX}wb update\` before continuing.`,
+          ephemeral: true,
+        });
+        return;
+      }
       let playerState = players.get(playerId);
       let faintedTeam = faintedPlayers.get(playerId);
       if (!faintedTeam) {
@@ -3834,7 +4017,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
         const victoryEmbed = createWorldBossAttackResult(attack, attack.rewards);
         const mvpUserId = attack.rewards.mvp.user_id;
         const mvpUser = await client.users.fetch(mvpUserId);
-        const mvpTeam = getUserTeam(mvpUserId);
+        const mvpTeam = getWorldBossPlayerTeam(mvpUserId, boss.id) || [];
         const mvpTeamStates = activeWorldBossTeamStates.get(boss.id)?.get(mvpUserId);
         const mvpFaintedIds = activeWorldBossFainted.get(boss.id)?.get(mvpUserId);
         victoryEmbed.addFields({
@@ -4050,7 +4233,9 @@ async function announceRareSpawn(guild, user, pokemon) {
 
   try {
     const displayRarity = getDisplayRarity(pokemon.rarity, pokemon.name, Boolean(pokemon.isShiny));
-    const rarityEmoji = isGolden ? EMOJIS.golden : getRarityEmojis(displayRarity);
+    const rarityEmoji = isGolden
+      ? `${getPokemonSpriteEmoji(pokemon)} ${EMOJIS.golden}`.trim()
+      : getRarityEmojis(displayRarity, pokemon.name, Boolean(pokemon.isShiny));
     const shinyPrefix = isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
     const count = db.prepare(`
       SELECT COUNT(*) AS count FROM (
@@ -4261,6 +4446,7 @@ function rollChecklistRewards() {
 }
 
 const FUN_ITEM_EMOJIS = {
+  ...RESEARCH_ITEM_EMOJIS,
   Candy: '🍬',
   Lollipop: '🍭',
   'Chocolate Bar': '🍫',
@@ -4515,8 +4701,17 @@ async function askForBall(
     ...target,
     name: target.name.replace(/\btotem\b/gi, '').replace(/\s+/g, ' ').trim(),
   };
+  if (mode === 'catch' && counterSource === 'pokemon') {
+    const researchTools = applyResearchTools(userId);
+    target.researchToolBoosts = researchTools.boosts;
+    target.researchToolsConsumed = researchTools.consumed;
+  }
   if (!target.heldItem) {
-    const heldItem = rollWildHeldItem(target);
+    const heldItem = rollWildHeldItem(
+      target,
+      userId,
+      mode === 'catch' && counterSource === 'pokemon'
+    );
     if (heldItem) {
       target = {
         ...target,
@@ -4573,10 +4768,13 @@ async function askForBall(
         : `${ICONS.grass} A wild Pokémon appeared!`
     )
     .setDescription(
-      `${trainerLabel} found a wild ${heldItemNameMarker(target, getRarityEmojis(catchDisplayRarity))}**${target.name}**!\n` +
+      `${trainerLabel} found a wild ${heldItemNameMarker(target, getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden))}**${target.name}**!\n` +
       heldItemEncounterHint(target) +
+      (target.researchToolsConsumed?.length
+        ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
+        : '') +
       `${isFishing ? `🎣 Rod used: **${user.fish_rods}**\n` : ''}` +
-      `\n**${getRarityEmojis(catchDisplayRarity)} ${catchDisplayRarity} ` +
+      `\n**${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} ${catchDisplayRarity} ` +
       `(${rarityData.rateText})**\n` +
       catchRateText +
       `${Array.isArray(target.types) && target.types.length ? `Type: ${formatTypes(target.types)}\n` : ''}` +
@@ -4732,7 +4930,7 @@ async function askForBall(
           iconURL: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${ball.image}`,
         })
         .setDescription(
-          `${getRarityEmojis(catchDisplayRarity)} ` +
+          `${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} ` +
           `${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}**${target.name}** broke out of the ${ball.emoji} **${ball.name}**!\n\n` +
           heldItemEncounterHint(target) +
           `**Rarity:** ${catchDisplayRarity} (${rarityData.rateText})\n\n` +
@@ -4795,7 +4993,8 @@ async function askForBall(
       }
     }
     let ancientFossilDropText = '';
-    if (Math.random() < 1 / 10000) {
+    const ancientFossilChance = (target.researchToolBoosts?.pokeToy ? 1.3 : 1) / 10000;
+    if (Math.random() < ancientFossilChance) {
       addUserItem(userId, 'Ancient Fossil');
       ancientFossilDropText = '\n🦴 You found an **Ancient Fossil**!';
     }
@@ -4902,10 +5101,10 @@ async function askForBall(
       .setDescription(
         `✅ ${getTrainerIconEmoji(userId)} You caught ` +
         `${/^[aeiou]/i.test(target.name) ? 'an' : 'a'} ` +
-        `${getRarityEmojis(catchDisplayRarity)} **${target.name}** with a ` +
+        `${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} **${target.name}** with a ` +
         `${ball.emoji} **${ball.name}**!\n` +
         `${ballSaved ? `⚡ **${ball.name} not used!**\n` : ''}\n` +
-        `Rarity: ${getRarityEmojis(catchDisplayRarity)} ` +
+        `Rarity: ${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} ` +
         `${catchDisplayRarity} (${rarityData.rateText})\n` +
         `${target.heldItem
           ? `${HELD_ITEM_EMOJI} **It was holding ${target.heldItemEmoji} ${target.heldItem}; the item was added to your inventory.**\n`
@@ -8036,6 +8235,7 @@ client.on('messageCreate', async (message) => {
     args[0] = 'buy';
   }
   if (command === 't') command = 'team';
+  if (command === 'res') command = 'research';
   if (command === 'sacrifice' || command === 'r') command = 'release';
   if (command === 'npc') {
     command = 'battle';
@@ -8109,6 +8309,208 @@ client.on('messageCreate', async (message) => {
     // Keep the stored Patreon tier fresh (at most every 10 minutes per user).
     if (Date.now() - (patreonTierSyncedAt.get(userId) || 0) > 600000) {
       await getPatreonTier(userId);
+    }
+
+    if (command === 'research') {
+      const subcommand = args[0]?.toLowerCase();
+      const user = getUser(userId);
+      const itemsByName = new Map(
+        getUserItems(userId).map((item) => [item.item_name, item.amount])
+      );
+      if (subcommand === 'help') {
+        return message.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x00c9b7)
+            .setTitle('🔬 Research Lab Help')
+            .setDescription(
+              `Use \`${PREFIX}research\` or \`${PREFIX}res\` to visit Professor Oak's Research Lab.\n\n` +
+              `• \`${PREFIX}res ex <n|p|bn|bp|sp|cs> [amount]\` — Exchange valuables for PokéCoins and Research Points.\n` +
+              `• \`${PREFIX}res ex n bn\` / \`${PREFIX}res ex p bp\` — Exchange 10 Nuggets or Pearls for a Big item.\n` +
+              `• \`${PREFIX}res ex relics\` — Exchange one of each of the four relics for 125,000 PokéCoins and 40 RP.\n` +
+              `• \`${PREFIX}res shop\` — View Research Lab items.\n` +
+              `• \`${PREFIX}shop buy <item name|34-41> [amount]\` — Buy Research Lab shop items.\n` +
+              `• \`${PREFIX}item info <item>\` — View research-item details.\n\n` +
+              `Regular .pokemon encounters have a 10% chance to find a random valuable and a separate 10% chance to find a missing relic, while relics are available.`
+            )],
+        });
+      }
+      if (subcommand === 'shop') {
+        const shopLines = RESEARCH_SHOP_ITEMS.map((item) =>
+          `\`${item.id}\` ${item.emoji} **${item.name}** — ${item.price.toLocaleString()} ${RESEARCH_POINT_EMOJI} RP`
+        );
+        return message.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x00c9b7)
+            .setAuthor({ name: 'PokeMeow Research Shop' })
+            .setDescription(
+              `Welcome to the Research Shop!\n\n` +
+              `**${message.author.username}'s Research Points:** ${RESEARCH_POINT_EMOJI} ${user.research_points.toLocaleString()}\n\n` +
+              `══════════ **Research Tools** ══════════\n${shopLines.slice(0, 3).join('\n')}\n\n` +
+              `══════════ **Miscellaneous** ══════════\n${shopLines.slice(3).join('\n')}\n\n` +
+              `Buy with \`${PREFIX}shop buy <item name|number> [amount]\`. ` +
+              `Use \`${PREFIX}item info <item>\` for details.`
+            )],
+        });
+      }
+      if (subcommand === 'exchange' || subcommand === 'ex') {
+        const exchangeArgs = args.slice(1);
+        const parseQuantity = (tokens) => {
+          const last = tokens[tokens.length - 1];
+          const parsed = parseAmount(last);
+          return Number.isSafeInteger(parsed) ? { amount: parsed, itemTokens: tokens.slice(0, -1) } : {
+            amount: 1,
+            itemTokens: tokens,
+          };
+        };
+        const parsed = parseQuantity(exchangeArgs);
+        const itemTokens = parsed.itemTokens.map((token) => token.toLowerCase());
+        const requestedName = itemTokens.length === 2
+          && ((itemTokens[0] === 'n' && itemTokens[1] === 'bn')
+            || (itemTokens[0] === 'p' && itemTokens[1] === 'bp'))
+          ? `${itemTokens[0] === 'n' ? 'nugget' : 'pearl'} big`
+          : ({
+            n: 'nugget',
+            p: 'pearl',
+            bn: 'big nugget',
+            bp: 'big pearl',
+            sp: 'star piece',
+            cs: 'comet shard',
+          }[itemTokens.join(' ')] || itemTokens.join(' '));
+        const amount = parsed.amount;
+        if (!Number.isSafeInteger(amount) || amount <= 0) {
+          return message.reply('Specify a valid positive amount.');
+        }
+
+        if (['nugget big', 'pearl big'].includes(requestedName)) {
+          const baseItem = requestedName.startsWith('nugget') ? 'Nugget' : 'Pearl';
+          const bigItem = baseItem === 'Nugget' ? 'Big Nugget' : 'Big Pearl';
+          if (!Number.isSafeInteger(amount * 10)) {
+            return message.reply('That exchange amount is too large.');
+          }
+          const exchanged = db.transaction(() => {
+            if (!takeUserItem(userId, baseItem, amount * 10)) return false;
+            addUserItem(userId, bigItem, amount);
+            return true;
+          }).immediate();
+          if (!exchanged) {
+            return message.reply(
+              `❌ You need **${(amount * 10).toLocaleString()}x ${baseItem}** to make ` +
+              `**${amount.toLocaleString()}x ${bigItem}**.`
+            );
+          }
+          return message.reply(
+            `✅ Exchanged **${(amount * 10).toLocaleString()}x ${baseItem}** for ` +
+            `**${amount.toLocaleString()}x ${bigItem}**.`
+          );
+        }
+
+        if (['relic', 'relics'].includes(requestedName)) {
+          if (amount !== 1) {
+            return message.reply('You can exchange only one relic set at a time; you can hold at most one of each relic.');
+          }
+          const requiredItems = RESEARCH_RELICS.map((item) => item.name);
+          const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
+          const missing = requiredItems.filter((name) => (ownedItems.get(name) || 0) < 1);
+          if (missing.length) {
+            return message.reply(
+              `❌ A relic exchange needs **1x of each relic**: ` +
+              `${missing.join(', ')}.`
+            );
+          }
+          const coins = 125000;
+          const points = 40;
+          const relicUnlockUntil = Date.now() + RESEARCH_RELIC_COOLDOWN_MS;
+          db.transaction(() => {
+            for (const name of requiredItems) {
+              if (!takeUserItem(userId, name)) {
+                throw new Error(`Relic inventory changed while exchanging ${name}.`);
+              }
+            }
+            incrementUser(userId, {
+              coins,
+              research_points: points,
+            });
+            updateUser(userId, { research_relic_unlock_until: relicUnlockUntil });
+          }).immediate();
+          return message.reply(
+            `✅ Exchanged **one complete relic set** for ` +
+            `${EMOJIS.pokecoin} **${coins.toLocaleString()} PokéCoins** and ` +
+            `${RESEARCH_POINT_EMOJI} **${points.toLocaleString()} Research Points**.\n` +
+            `🔓 Relic-exclusive held items can now appear for 7 days. Relic drops resume <t:${Math.floor(relicUnlockUntil / 1000)}:R>.`
+          );
+        }
+
+        const valuable = RESEARCH_VALUABLES.find((item) =>
+          item.name.toLowerCase() === requestedName
+        );
+        if (!valuable) {
+          return message.reply(
+            `Usage: \`${PREFIX}res ex <n|p|bn|bp|sp|cs> [amount]\`, ` +
+            `\`${PREFIX}res ex n bn\`, \`${PREFIX}res ex p bp\`, or \`${PREFIX}res ex relics\`.`
+          );
+        }
+        const coins = valuable.coins * amount;
+        const points = valuable.points * amount;
+        if (!Number.isSafeInteger(coins) || !Number.isSafeInteger(points)) {
+          return message.reply('That exchange amount is too large.');
+        }
+        const exchanged = db.transaction(() => {
+          if (!takeUserItem(userId, valuable.name, amount)) return false;
+          incrementUser(userId, { coins, research_points: points });
+          return true;
+        }).immediate();
+        if (!exchanged) {
+          return message.reply(`❌ You do not have **${amount.toLocaleString()}x ${valuable.name}**.`);
+        }
+        return message.reply(
+          `✅ Exchanged **${amount.toLocaleString()}x ${valuable.emoji} ${valuable.name}** for ` +
+          `${EMOJIS.pokecoin} **${coins.toLocaleString()} PokéCoins** and ${RESEARCH_POINT_EMOJI} **${points.toLocaleString()} Research Points**.`
+        );
+      }
+      if (subcommand) {
+        return message.reply(`Use \`${PREFIX}res help\` to view Research Lab commands.`);
+      }
+
+      const relicLines = RESEARCH_RELICS.map((item) =>
+        `${item.emoji} ${itemsByName.get(item.name) || 0}x ${item.name}`
+      );
+      const shardLines = RESEARCH_SHOP_ITEMS.filter((item) => item.unlocks).map((item) => {
+        const amount = itemsByName.get(item.name) || 0;
+        const marker = amount > 0 ? '✅' : '❌';
+        const unlockNames = item.unlocks.flatMap((species) =>
+          item.unlocksShiny ? [species, `Shiny ${species}`] : [species]
+        );
+        return `${marker} ${unlockNames.join(' / ')} — ${item.emoji} ${item.name} ${amount > 0 ? `(${amount} owned)` : `required; \`${PREFIX}res shop\``}`;
+      });
+      const valuableLines = RESEARCH_VALUABLES.map((item) =>
+        `${itemsByName.get(item.name) || 0}x ${item.emoji} **${item.name}** → ${EMOJIS.pokecoin} ${item.coins.toLocaleString()} + ${RESEARCH_POINT_EMOJI} ${item.points} RP`
+      );
+      const relicUnlockUntil = user.research_relic_unlock_until;
+      const relicStatus = relicUnlockUntil > Date.now()
+        ? `Relics unavailable until <t:${Math.floor(relicUnlockUntil / 1000)}:R>; relic-exclusive held items are active until then.`
+        : 'Relics are available from regular .pokemon encounters; you can hold one of each type.';
+      return message.reply({
+        embeds: [new EmbedBuilder()
+          .setColor(0xf1c40f)
+          .setAuthor({ name: 'PokeMeow Research Lab', iconURL: client.user.displayAvatarURL() })
+          .setDescription(
+            `Professor Oak: Hello Trainer! Welcome to our **Research Lab**, where we analyze ` +
+            `valuables, relics, and fossils.\n\n` +
+            `${RESEARCH_POINT_EMOJI} **Your Research Points:** ${user.research_points.toLocaleString()}\n\n` +
+            `**Valuables exchange**\n` +
+            `${valuableLines.join('\n')}\n` +
+            `🪙 10x Nugget → 1x Big Nugget • ⚪ 10x Pearl → 1x Big Pearl\n\n` +
+            `**Research experiment discoveries**\n` +
+            `${relicStatus} Regular .pokemon encounters have a **10% chance** to uncover a missing relic.\n\n` +
+            `**Relic exchange**\n` +
+            `${relicLines.join(' • ')}\n` +
+            `Exchange 1x of each relic for ${EMOJIS.pokecoin} **125,000** and ${RESEARCH_POINT_EMOJI} **40 RP** with ` +
+            `\`${PREFIX}res exchange relics\`.\n\n` +
+            `**Research Exclusive**\n${shardLines.join('\n')}\n\n` +
+            `ℹ️ Need help? Type \`${PREFIX}res help\`. Visit the shop with \`${PREFIX}res shop\`.`
+          )
+          .setThumbnail('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/old-amber.png')],
+      });
     }
 
     if (command === 'toggle') {
@@ -8900,6 +9302,15 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy one Pokémon\n` +
             `• \`${PREFIX}market multibuy <id1> <id2> ...\` / \`${PREFIX}m mb <id1> <id2> ...\` — Buy one Pokémon from each listed ID`,
         },
+        research: {
+          title: '🔬 Research Commands',
+          description:
+            `• \`${PREFIX}research\` / \`${PREFIX}res\` — Visit Professor Oak's Research Lab\n` +
+            `• \`${PREFIX}res ex <n|p|bn|bp|sp|cs> [amount]\` — Exchange valuables for PokéCoins and Research Points\n` +
+            `• \`${PREFIX}res ex n bn\` / \`${PREFIX}res ex p bp\` — Make a Big Nugget or Big Pearl\n` +
+            `• \`${PREFIX}res ex relics\` — Exchange one of each of the four relics\n` +
+            `• \`${PREFIX}res shop\` / \`${PREFIX}res help\` — View research items and command help`,
+        },
         trade: {
           title: '🔁 Trade Commands',
           description:
@@ -8962,6 +9373,7 @@ client.on('messageCreate', async (message) => {
         bal: 'economy',
         shop: 'economy',
         donate: 'clan',
+        res: 'research',
       };
       const area = helpAreas[requestedArea] || helpAreas[areaAliases[requestedArea]];
       if (area) {
@@ -8987,6 +9399,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}counters\` / \`${PREFIX}co\` — View Legendary and Shiny encounter counters for .p and .f\n` +
             `• \`${PREFIX}hunt\` / \`${PREFIX}hunt reroll\` — View or reroll your daily Legendary target\n` +
             `• \`${PREFIX}box\` / \`${PREFIX}pc\` — Browse your Pokémon storage\n` +
+            `• \`${PREFIX}pc lock [on|off]\` — Toggle or set whether other trainers can view your PC\n` +
             `• \`${PREFIX}buddy [set <name|Pokédex number>|clear]\` — Choose and inspect your buddy; numeric IDs match PC Pokédex numbers\n` +
             `• \`${PREFIX}moves\` — View your buddy's moves; \`${PREFIX}move replace <move|slot> <new move>\` changes one ` +
             `(${EMOJIS.pokecoin} cost), \`${PREFIX}move delete <slot>\` removes one for free, and ` +
@@ -9064,7 +9477,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}league\` — Check progress across Kanto, Johto, Hoenn, Sinnoh, Unova, Kalos, Alola, Galar, and Paldea\n` +
             `• \`${PREFIX}mc\` — View Mega Chambers; sacrifice Pokémon with \`${PREFIX}mc sacrifice <Pokémon> [amount]\`, then use move buttons in \`${PREFIX}mc battle <chamber>\`\n` +
             `• \`${PREFIX}mega evo [shiny] <Pokémon name|Pokédex number>\` / \`${PREFIX}use <Mega Stone> <Pokémon>\` — Mega Evolve a normal or shiny Pokémon with its matching Mega Stone\n` +
-            `• \`${PREFIX}wb\` — View the active shared World Boss; register with \`${PREFIX}wb register\` during its 2-minute wait, then use \`${PREFIX}wb fight\` to battle\n` +
+            `• \`${PREFIX}wb\` — View the active shared World Boss; \`${PREFIX}wb register\` locks in your active team, \`${PREFIX}wb update\` replaces it, and \`${PREFIX}wb fight\` joins the battle after the 2-minute wait\n` +
             `• \`${PREFIX}quest\` / \`${PREFIX}q\` — View your daily quest and two type-encounter quests\n` +
             `• \`${PREFIX}cl\` / \`${PREFIX}checklist\` — Check daily goals and rewards\n` +
             `• \`${PREFIX}cb\` — View CatchBot upgrades and lifetime catches\n` +
@@ -11017,9 +11430,19 @@ client.on('messageCreate', async (message) => {
         );
       }
       if (subCommand === 'register') {
-        const registration = registerWorldBossPlayer(userId, boss.id);
+        const team = getUserTeam(userId);
+        if (!team.length) {
+          return message.reply(
+            `❌ Add at least one Pokémon to your active team before registering. ` +
+            `Use \`${PREFIX}team\` to set your team.`
+          );
+        }
+        const registration = registerWorldBossPlayer(userId, boss.id, team.map((mon) => mon.id));
         if (registration.error === 'inactive') {
           return message.reply('❌ There is no active World Boss to register for.');
+        }
+        if (registration.error === 'invalid_team') {
+          return message.reply('❌ Your active team changed while registering. Set your team and try again.');
         }
         scheduleWorldBossRegistrationClose(boss);
         await updateWorldBossAnnouncement(boss, createWorldBossEmbed(boss, message.client.user));
@@ -11033,80 +11456,37 @@ client.on('messageCreate', async (message) => {
               (registration.battleStarted
                 ? `Use \`${PREFIX}wb fight\` to join the battle.`
                 : `You can fight <t:${Math.floor(registration.registrationEndsAt / 1000)}:R>.`);
-        const previousTeam = getLastWorldBossTeam(userId);
-        if (!previousTeam || !previousTeam.length) {
-          return message.reply(registrationText);
-        }
-        const formatTeam = (mons) => mons
-          .map((mon, index) => `${index + 1}. ${formatMarketPokemon(mon)} (Lv. ${mon.level})`)
-          .join('\n');
-        const teamEmbed = (title, body, color = 0x9b59b6) => new EmbedBuilder()
-          .setColor(color)
-          .setTitle(title)
-          .setDescription(body);
-        const teamButtons = (disabled = false) => new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('wb-team:previous')
-            .setLabel('Use previous team')
-            .setStyle(ButtonStyle.Success)
-            .setDisabled(disabled),
-          new ButtonBuilder()
-            .setCustomId('wb-team:current')
-            .setLabel('Use current team')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(disabled)
+        const registeredTeam = registration.registered
+          ? team
+          : getWorldBossPlayerTeam(userId, boss.id);
+        return message.reply(
+          `${registrationText}\n` +
+          `**Registered team:** ${registeredTeam?.map((mon) => `**${mon.name}**`).join(', ') || 'Unavailable'}\n` +
+          `This lineup stays fixed; use \`${PREFIX}wb update\` to register your current team instead.`
         );
-        const currentTeam = getUserTeam(userId);
-        const prompt = await message.reply({
-          content: registrationText,
-          embeds: [teamEmbed(
-            '🔁 Which team do you want to use?',
-            `**Previous team** (from your last World Boss fight)\n${formatTeam(previousTeam)}\n\n` +
-            `**Current team**\n${currentTeam.length ? formatTeam(currentTeam) : '*Your team is empty.*'}`
-          )],
-          components: [teamButtons()],
-        });
-        const collector = prompt.createMessageComponentCollector({
-          componentType: ComponentType.Button,
-          time: 60000,
-        });
-        collector.on('collect', async (interaction) => {
-          try {
-            if (interaction.user.id !== userId) {
-              return interaction.reply({ content: 'This prompt is not for you.', ephemeral: true });
-            }
-            collector.stop('answered');
-            if (interaction.customId === 'wb-team:previous') {
-              const equipped = equipLastWorldBossTeam(userId);
-              await interaction.update({
-                content: registrationText,
-                embeds: [equipped
-                  ? teamEmbed('✅ Using your previous team', formatTeam(equipped), 0x2ecc71)
-                  : teamEmbed('❌ Previous team unavailable', 'Your previous team is no longer available.', 0xe74c3c)],
-                components: [],
-              });
-            } else {
-              await interaction.update({
-                content: registrationText,
-                embeds: [teamEmbed(
-                  '✅ Using your current team',
-                  currentTeam.length ? formatTeam(currentTeam) : '*Your team is empty.*',
-                  0x2ecc71
-                )],
-                components: [],
-              });
-            }
-          } catch (error) {
-            console.error(`Failed to handle World Boss team choice for user ${userId}:`, error);
-          }
-        });
-        collector.on('end', (_collected, reason) => {
-          if (reason === 'answered') return;
-          prompt.edit({ content: registrationText, components: [] }).catch(() => {});
-        });
-        return;
       }
-      let team = getUserTeam(userId);
+      if (subCommand === 'update') {
+        const team = getUserTeam(userId);
+        if (!team.length) {
+          return message.reply(
+            `❌ Add at least one Pokémon to your active team before updating your World Boss team.`
+          );
+        }
+        const result = updateWorldBossPlayerTeam(userId, boss.id, team.map((mon) => mon.id));
+        if (result.error === 'inactive') {
+          return message.reply('❌ There is no active World Boss to update your team for.');
+        }
+        if (result.error === 'not_registered') {
+          return message.reply(`❌ Register with \`${PREFIX}wb register\` before updating your World Boss team.`);
+        }
+        if (result.error === 'invalid_team') {
+          return message.reply('❌ Your active team changed while updating. Set your team and try again.');
+        }
+        return message.reply(
+          `✅ Your registered team for **${boss.name}** is now: ` +
+          `${team.map((mon) => `**${mon.name}**`).join(', ')}.`
+        );
+      }
       if (subCommand === 'fight' || subCommand === 'f') {
         if (Date.now() < boss.registration_ends_at) {
           return message.reply(
@@ -11125,15 +11505,11 @@ client.on('messageCreate', async (message) => {
             `🎁 Claim your pending World Boss reward with \`${PREFIX}wb claim\` before joining another raid.`
           );
         }
-        if (!team.length) {
-          const restored = equipLastWorldBossTeam(userId);
-          if (restored) {
-            team = restored;
-            await message.reply(`🔁 Your active team was empty, so your last World Boss team was equipped: ${restored.map((mon) => `**${mon.name}**`).join(', ')}.`);
-          }
-        }
-        if (!team.length) {
-          return message.reply(`❌ Add a Pokémon to your active team before fighting. Use \`${PREFIX}team\`.`);
+        const team = getWorldBossPlayerTeam(userId, boss.id);
+        if (!team?.length) {
+          return message.reply(
+            `❌ Your registered team is unavailable. Set your active team and use \`${PREFIX}wb update\` before fighting.`
+          );
         }
         saveLastWorldBossTeam(userId, team);
         const faintedTeam = activeWorldBossFainted.get(boss.id)?.get(userId) || new Set();
@@ -11153,7 +11529,7 @@ client.on('messageCreate', async (message) => {
       if (subCommand && !['status'].includes(subCommand)) {
         return message.reply(
           `Usage: \`${PREFIX}wb register\` to register, \`${PREFIX}wb\` to view the raid, ` +
-          `or \`${PREFIX}wb fight\` to battle after the 2-minute wait. You can register at any time while a boss is active.`
+          `\`${PREFIX}wb update\` to replace your registered team, or \`${PREFIX}wb fight\` to battle after the 2-minute wait.`
         );
       }
       return message.reply({
@@ -12701,7 +13077,7 @@ client.on('messageCreate', async (message) => {
             Boolean(pokemon.is_shiny)
           );
           const displayName = pokemon.is_golden ? `Golden ${pokemon.name}` : pokemon.is_shiny ? `Shiny ${pokemon.name}` : pokemon.name;
-          return `\`${String(pokemon.dex_number).padStart(4, '0')}\` ${marker} ${rarityEmoji} **${displayName}**`;
+          return `\`${String(pokemon.dex_number).padStart(4, '0')}\` ${marker} ${rarityEmoji} ${getPokemonSpriteEmoji(pokemon)} **${displayName}**`;
         }).join('\n') || 'No entries.';
         return new EmbedBuilder()
           .setColor(0x0099ff)
@@ -13746,7 +14122,7 @@ client.on('messageCreate', async (message) => {
           return message.reply(`You do not own a Pokémon matching **${query}**. Use its name or Pokédex number from \`${PREFIX}box\`.`);
         }
         return message.reply(
-          `${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny))} ` +
+          `${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ` +
           `${buddy.is_shiny ? '✨ ' : ''}**${buddy.display_name || buddy.name}** (#${buddy.dex_number}) is now your buddy! ` +
           'Catch Pokémon to earn buddy EXP.'
         );
@@ -13837,7 +14213,7 @@ client.on('messageCreate', async (message) => {
       const evoRoute = getEvolutionRoute(buddy.id);
       const embed = new EmbedBuilder()
         .setColor(0x3498db)
-        .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
+        .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
         .setDescription(
           `**Level:** ${level}\n` +
           `**Held Item:** ${buddy.held_item || 'None'}\n` +
@@ -14684,8 +15060,8 @@ client.on('messageCreate', async (message) => {
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
-          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity))}${wild.isShiny ? '✨ ' : ''}**${wild.name}** appeared! ` +
-            `(${getRarityEmojis(wildRarity)} ${wildRarity}) — throw a ball with the buttons on the right.`;
+          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden))}${wild.isShiny ? '✨ ' : ''}**${wild.name}** appeared! ` +
+            `(${getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden)} ${wildRarity}) — throw a ball with the buttons on the right.`;
         } else if (!catchHandler) {
           statusText = foundText;
         }
@@ -15353,7 +15729,7 @@ client.on('messageCreate', async (message) => {
           .setAuthor({ name: `${targetUser.username}'s Bag`, iconURL: targetUser.displayAvatarURL() });
         if (page === 1) {
           embed.setTitle(`🎒 Currencies & Gear (Page 1/${totalPages})`).addFields(
-            { name: 'Currency', value: `• ${EMOJIS.pokecoin} **PokéCoins:** ${bagUser.coins.toLocaleString()}\n• ${EMOJIS.votecoin} **Vote Coins:** ${bagUser.vote_coins.toLocaleString()}\n• ${EMOJIS.patreonToken} **Patreon Tokens:** ${bagUser.patreon_tokens.toLocaleString()}\n• ${EMOJIS.fishingtoken} **Fishing Tokens:** ${bagUser.fishing_tokens.toLocaleString()}\n• 🎟️ **Swap Tickets:** ${(ownedItems.get('Swap Ticket') || 0).toLocaleString()}`, inline: false },
+            { name: 'Currency', value: `• ${EMOJIS.pokecoin} **PokéCoins:** ${bagUser.coins.toLocaleString()}\n• ${EMOJIS.votecoin} **Vote Coins:** ${bagUser.vote_coins.toLocaleString()}\n• ${EMOJIS.patreonToken} **Patreon Tokens:** ${bagUser.patreon_tokens.toLocaleString()}\n• ${EMOJIS.fishingtoken} **Fishing Tokens:** ${bagUser.fishing_tokens.toLocaleString()}\n• ${RESEARCH_POINT_EMOJI} **Research Points:** ${bagUser.research_points.toLocaleString()}\n• 🎟️ **Swap Tickets:** ${(ownedItems.get('Swap Ticket') || 0).toLocaleString()}`, inline: false },
             {
               name: 'Pokéballs',
               value:
@@ -15467,6 +15843,7 @@ client.on('messageCreate', async (message) => {
               && !['Incubator', 'Super Incubator'].includes(name)
               && !['Cooldown Machine', 'Ability Capsule', 'Ability Patch'].includes(name)
               && !getActivePromos().some((promo) => promo.itemName === name)
+              && !RESEARCH_ITEM_NAMES.includes(name)
             );
           const encounterItemLines = (items) => items.map(([name, label, emoji]) =>
             `${emoji} **${(ownedItems.get(name) || 0).toLocaleString()}**x ${label}`
@@ -15505,7 +15882,17 @@ client.on('messageCreate', async (message) => {
                 return `• ${emoji} **${name}:** ${amount.toLocaleString()}x`;
               }).join('\n').slice(0, 1000),
               inline: false,
-            }] : [])
+            }] : []),
+            ...[
+              [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS, ...RESEARCH_HELD_ITEMS].slice(0, 12),
+              [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS, ...RESEARCH_HELD_ITEMS].slice(12),
+            ].map((researchItems, index) => ({
+              name: index === 0 ? 'Research Items' : '\u200b',
+              value: researchItems.map((item) =>
+                `• ${item.emoji} **${item.name}:** ${(ownedItems.get(item.name) || 0).toLocaleString()}x`
+              ).join('\n'),
+              inline: true,
+            }))
           );
         } else if (page === 7) {
           embed.setTitle(`🎒 Battle (Page 7/${totalPages})`).addFields({
@@ -15655,6 +16042,21 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'box' || command === 'pc') {
+      if (args[0]?.toLowerCase() === 'lock') {
+        if (args.length > 2 || (args[1] !== undefined && !['on', 'off'].includes(args[1].toLowerCase()))) {
+          return message.reply(`Usage: \`${PREFIX}pc lock [on|off]\`.`);
+        }
+        const currentLock = Boolean(getUser(userId).pc_locked);
+        const locked = args[1] === undefined
+          ? !currentLock
+          : args[1].toLowerCase() === 'on';
+        updateUser(userId, { pc_locked: locked ? 1 : 0 });
+        return message.reply(
+          locked
+            ? `${message.author.username}'s PC is locked. Other trainers cannot view it with \`${PREFIX}pc ${userId}\`.`
+            : `${message.author.username}'s PC is unlocked and can be viewed by other trainers.`
+        );
+      }
       const userIdArg = args.find((argument) => /^\d{17,20}$/.test(argument));
       let targetUser = message.mentions.users.first() || null;
       if (!targetUser && userIdArg) {
@@ -15662,6 +16064,10 @@ client.on('messageCreate', async (message) => {
         if (!targetUser) return message.reply('Could not find a Discord user with that ID.');
       }
       if (!targetUser) targetUser = message.author;
+      if (targetUser.id !== userId
+          && db.prepare('SELECT pc_locked FROM users WHERE id = ?').get(targetUser.id)?.pc_locked) {
+        return message.reply(`${targetUser.username}'s PC is locked, so other trainers cannot view it.`);
+      }
       const filters = args.filter((argument) =>
         !/^<@!?\d+>$/.test(argument) && argument !== userIdArg
       );
@@ -15953,12 +16359,16 @@ client.on('messageCreate', async (message) => {
         const megaSpecies = isShiny && !/mega/i.test(pokemon.name)
           ? null
           : pokemon.name.toLowerCase().match(/sableye|gengar|mawile|banette/)?.[0];
-        const spriteEmoji = (isShiny && megaSpecies === 'sableye')
-          || (megaSpecies === 'gengar' && /gmax/i.test(pokemon.name))
-          ? ''
-          : megaSpecies && MEGA_SPECIES_EMOJIS[megaSpecies]
-            ? ` ${MEGA_SPECIES_EMOJIS[megaSpecies]}`
-            : ' \u2003\u2003';
+        const customSpriteEmoji = getPokemonSpriteEmoji(pokemon);
+        let spriteEmoji = customSpriteEmoji ? ` ${customSpriteEmoji}` : '';
+        if (!customSpriteEmoji) {
+          spriteEmoji = (isShiny && megaSpecies === 'sableye')
+            || (megaSpecies === 'gengar' && /gmax/i.test(pokemon.name))
+            ? ''
+            : megaSpecies && MEGA_SPECIES_EMOJIS[megaSpecies]
+              ? ` ${MEGA_SPECIES_EMOJIS[megaSpecies]}`
+              : ' \u2003\u2003';
+        }
         const name = isGolden ? `Golden ${pokemon.name}` : pokemon.name;
         return `${String(pokemon.dex_number).padStart(4, '0')} ${rarityEmoji}${spriteEmoji} **${name}**` +
           `${pokemon.count > 1 ? ` ×${pokemon.count}` : ''}${pokemon.is_favorite ? ' ⭐' : ''}`;
@@ -16065,6 +16475,84 @@ client.on('messageCreate', async (message) => {
     if ((command === 'item' || command === 'i') && args[0]?.toLowerCase() === 'info') {
       const query = args.slice(1).join(' ').toLowerCase().trim();
       if (query) {
+        const normalizedResearchQuery = query.replace(/[^a-z0-9]/g, '');
+        const researchShopItem = RESEARCH_SHOP_ITEMS_BY_NAME.get(normalizedResearchQuery);
+        const researchValuable = RESEARCH_VALUABLES.find((item) =>
+          item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedResearchQuery
+        );
+        const researchRelic = RESEARCH_RELICS.find((item) =>
+          item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedResearchQuery
+        );
+        const researchHeldItem = RESEARCH_HELD_ITEMS.find((item) =>
+          item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedResearchQuery
+        );
+        const researchItem = researchShopItem || researchValuable || researchRelic || researchHeldItem;
+        if (researchItem) {
+          const owned = getUserItems(userId)
+            .find((item) => item.item_name === researchItem.name)?.amount || 0;
+          const exchange = RESEARCH_VALUABLES.find((item) => item.name === researchItem.name);
+          const relicText = researchRelic
+            ? 'Found from regular Pokémon encounters when relic drops are available. You can hold one of each relic.'
+            : null;
+          const valuableText = exchange
+            ? ({
+              Nugget: `A random valuable found from regular .pokemon encounters. Exchange one for ${EMOJIS.pokecoin} **2,000** and ${RESEARCH_POINT_EMOJI} **1 RP**, or exchange 10 for a Big Nugget with \`${PREFIX}res ex n bn\`.`,
+              'Big Nugget': `Obtained by exchanging 10 Nuggets. Exchange one for ${EMOJIS.pokecoin} **30,000** and ${RESEARCH_POINT_EMOJI} **15 RP**.`,
+              Pearl: `A random valuable found from regular .pokemon encounters. Exchange one for ${EMOJIS.pokecoin} **2,000** and ${RESEARCH_POINT_EMOJI} **1 RP**, or exchange 10 for a Big Pearl with \`${PREFIX}res ex p bp\`.`,
+              'Big Pearl': `Obtained by exchanging 10 Pearls. Exchange one for ${EMOJIS.pokecoin} **30,000** and ${RESEARCH_POINT_EMOJI} **15 RP**.`,
+              'Star Piece': `A random valuable found from regular .pokemon encounters. Exchange one for ${EMOJIS.pokecoin} **15,000** and ${RESEARCH_POINT_EMOJI} **10 RP**.`,
+              'Comet Shard': `A random valuable found from regular .pokemon encounters. Exchange one for ${EMOJIS.pokecoin} **60,000** and ${RESEARCH_POINT_EMOJI} **25 RP**.`,
+              'Fusion Core': `A high-value Powerstation research item. Exchange one for ${EMOJIS.pokecoin} **250,000** and ${RESEARCH_POINT_EMOJI} **150 RP**.`,
+              Turbine: `A Powerstation research item. Exchange one for ${EMOJIS.pokecoin} **100,000** and ${RESEARCH_POINT_EMOJI} **75 RP**.`,
+              'Smart Grid': `A Powerstation research item. Exchange one for ${EMOJIS.pokecoin} **125,000** and ${RESEARCH_POINT_EMOJI} **90 RP**.`,
+            })[researchItem.name]
+            : null;
+          const description = researchShopItem?.description || researchHeldItem?.description || valuableText || relicText
+            || 'A research discovery collected at the Research Lab.';
+          const canBeHeld = RESEARCH_HOLDABLE_ITEM_NAMES.includes(researchItem.name);
+          const usage = researchHeldItem
+            ? `Give it to a team Pokémon with \`${PREFIX}team give ${researchHeldItem.name.toLowerCase().replace(/[^a-z0-9]/g, '')} {mon}\`.`
+            : researchShopItem
+            ? researchShopItem.unlocks
+              ? `Automatically consumed for a single encounter with **${researchShopItem.unlocks.flatMap((species) =>
+                researchShopItem.unlocksShiny ? [species, `Shiny ${species}`] : [species]
+              ).join('** or **')}**. You can also give it to a team Pokémon.`
+              : researchShopItem.name === 'Research Badge'
+                ? 'A Research Lab badge.'
+                : `Its passive effect applies while it is in your inventory. Each \`${PREFIX}pokemon\` encounter has a **1% chance** to consume it.`
+            : researchRelic
+              ? `Collect one of each relic, then use \`${PREFIX}res exchange relics\` to exchange the set.`
+              : `Use \`${PREFIX}res exchange ${researchItem.name.toLowerCase()} [amount]\` to exchange it for PokéCoins and Research Points.`;
+          const shopMethod = researchShopItem
+            ? `Buy for **${researchShopItem.price.toLocaleString()} ${RESEARCH_POINT_EMOJI} Research Points** with \`${PREFIX}shop buy ${researchShopItem.id} [amount]\`.`
+            : exchange
+              ? RESEARCH_DROP_VALUABLES.includes(researchItem.name)
+                ? `Regular .pokemon encounters have a **10% chance** to find one random valuable. Exchange with \`${PREFIX}res ex ${researchItem.name.toLowerCase()} [amount]\`.`
+                : ['Big Nugget', 'Big Pearl'].includes(researchItem.name)
+                  ? `Make it by exchanging 10 ${researchItem.name === 'Big Nugget' ? 'Nuggets' : 'Pearls'} with \`${PREFIX}res ex ${researchItem.name === 'Big Nugget' ? 'n bn' : 'p bp'}\`.`
+                  : `Exchange with \`${PREFIX}res ex ${researchItem.name.toLowerCase()} [amount]\` after obtaining it.`
+              : researchRelic
+                ? `Regular .pokemon encounters have a **10% chance** to find one missing relic while relic drops are available; drops pause for 7 days after each relic exchange.`
+                : researchHeldItem
+                  ? `Certain Pokémon can hold this for 7 days after you exchange a relic set; eligible species: ${researchHeldItem.species.join(', ')}.`
+                  : 'Exchange with a Research Lab command or obtain it from its listed source.';
+          const canHoldText = canBeHeld
+            ? `**Can be held by Pokémon?** ✅ Yes — \`${PREFIX}team give ${researchItem.name.toLowerCase().replace(/[^a-z0-9]/g, '')} {mon}\``
+            : '**Can be held by Pokémon?** ❌ No';
+          return message.reply({
+            embeds: [new EmbedBuilder()
+              .setColor(0x0099ff)
+              .setAuthor({ name: `${researchItem.name} — Item information` })
+              .setDescription(
+                `${description}\n\n` +
+                `**You currently own:** ${researchItem.emoji} **${owned.toLocaleString()}x ${researchItem.name}**\n\n` +
+                `**Usage**\n${usage}\n\n` +
+                `**Method to obtain**\n• ${shopMethod}\n\n` +
+                canHoldText
+              )
+              .setFooter({ text: `Item info: ${PREFIX}item info <item>` })],
+          });
+        }
         let onlineItem;
         try {
           onlineItem = await fetchPokemonItemDetails(query);
@@ -16693,6 +17181,20 @@ client.on('messageCreate', async (message) => {
           description:
             `\`23\` ${FUN_ITEM_EMOJIS['Sitrus Berry']} **Sitrus Berry** — ${EMOJIS.pokecoin} 2,500 Coins each`,
         },
+        research: {
+          label: 'Research',
+          emoji: RESEARCH_POINT_EMOJI,
+          description:
+            `══════════ **Research Tools** ══════════\n` +
+            RESEARCH_SHOP_ITEMS.slice(0, 3).map((item) =>
+              `\`${item.id}\` ${item.emoji} **${item.name}** — ${item.price} ${RESEARCH_POINT_EMOJI} RP`
+            ).join('\n') +
+            `\n══════════ **Miscellaneous** ══════════\n` +
+            RESEARCH_SHOP_ITEMS.slice(3).map((item) =>
+              `\`${item.id}\` ${item.emoji} **${item.name}** — ${item.price.toLocaleString()} ${RESEARCH_POINT_EMOJI} RP`
+            ).join('\n') +
+            `\n\n\`${PREFIX}item info <item>\` for item details`,
+        },
         vote: {
           label: 'Vote',
           emoji: EMOJIS.votecoin,
@@ -16728,6 +17230,15 @@ client.on('messageCreate', async (message) => {
       const buildShopEmbed = () => {
         const balance = getUser(userId);
         const category = shopCategories[selectedCategory];
+        if (selectedCategory === 'research') {
+          return makeEmbed(
+            '🔬 PokeMeow Research Shop',
+            `**${message.author.username}'s Research Points:** ${RESEARCH_POINT_EMOJI} ${balance.research_points.toLocaleString()}\n\n` +
+            `${category.description}\n\n` +
+            `Buy with \`${PREFIX}shop buy <number|item> [amount]\`.`,
+            0xf1c40f
+          );
+        }
         if (selectedCategory === 'fishing' || selectedCategory === 'vote' || selectedCategory === 'patreon') {
           return makeEmbed(
             selectedCategory === 'vote' ? '🗳️ PokéMart Vote Shop'
@@ -16804,6 +17315,48 @@ client.on('messageCreate', async (message) => {
       const purchaseArgs = args.slice(1);
       if (!purchaseArgs.length) {
         return message.reply(`Usage: \`${PREFIX}shop buy <number|item> [amount]\`. Use \`${PREFIX}shop\` to view item numbers.`);
+      }
+      const requestedResearchId = Number(purchaseArgs[0]);
+      const researchShopItem = Number.isSafeInteger(requestedResearchId)
+        ? RESEARCH_SHOP_ITEMS_BY_ID.get(requestedResearchId)
+        : null;
+      const researchNameTokens = purchaseArgs.length > 1
+        && Number.isSafeInteger(parseAmount(purchaseArgs[purchaseArgs.length - 1]))
+        ? purchaseArgs.slice(0, -1)
+        : purchaseArgs;
+      const researchItemByName = RESEARCH_SHOP_ITEMS_BY_NAME.get(
+        researchNameTokens.join('').toLowerCase().replace(/[^a-z0-9]/g, '')
+      );
+      const researchPurchaseItem = researchShopItem || researchItemByName;
+      if (researchPurchaseItem) {
+        const hasAmount = researchNameTokens.length < purchaseArgs.length;
+        const amount = researchShopItem
+          ? purchaseArgs.length > 1 ? parseAmount(purchaseArgs[1]) : 1
+          : hasAmount ? parseAmount(purchaseArgs[purchaseArgs.length - 1]) : 1;
+        if (!Number.isSafeInteger(amount) || amount <= 0) {
+          return message.reply('Specify a valid positive amount.');
+        }
+        const pointCost = researchPurchaseItem.price * amount;
+        if (!Number.isSafeInteger(pointCost)) {
+          return message.reply('That purchase amount is too large.');
+        }
+        const purchased = db.transaction(() => {
+          const user = getUser(userId);
+          if (user.research_points < pointCost) return false;
+          incrementUser(userId, { research_points: -pointCost });
+          addUserItem(userId, researchPurchaseItem.name, amount);
+          return true;
+        }).immediate();
+        if (!purchased) {
+          return message.reply(
+            `❌ That costs **${pointCost.toLocaleString()} ${RESEARCH_POINT_EMOJI} Research Points**. ` +
+            `You have **${getUser(userId).research_points.toLocaleString()}**.`
+          );
+        }
+        return message.reply(
+          `✅ Purchased **${amount.toLocaleString()}x ${researchPurchaseItem.emoji} ` +
+          `${researchPurchaseItem.name}** for **${pointCost.toLocaleString()} ${RESEARCH_POINT_EMOJI} Research Points**.`
+        );
       }
       const threeWordItem = purchaseArgs.slice(0, 3).join(' ').toLowerCase();
       const twoWordItem = purchaseArgs.slice(0, 2).join(' ').toLowerCase();
@@ -17966,6 +18519,14 @@ client.on('messageCreate', async (message) => {
               : `You don't have any locked Pokémon! Use the commands above to lock Pokémon.\n\n🔒 **Your release locked Pokémon (0/${lockLimit})**\nYou have 0 locked Pokémon.`) +
             `\n\nLegendary, Shiny, Golden, Mega, and Gmax Pokémon cannot be released.`
           )
+          .addFields({
+            name: `${EMOJIS.pokecoin} PokéCoins per released Pokémon`,
+            value: Object.entries(RELEASE_PAYOUTS).map(([rarity, basePayout]) => {
+              const amount = Math.floor(basePayout * getAmuletCoinBoost(userId).multiplier);
+              const label = rarity.replace(/\b\w/g, (character) => character.toUpperCase());
+              return `${getRarityEmojis(label)} **${label}:** ${EMOJIS.pokecoin} **${amount.toLocaleString()}**`;
+            }).join('\n'),
+          })
           .setFooter({ text: 'Lock Pokémon to prevent them from being released.' });
         return message.reply({ embeds: [embed] });
       }

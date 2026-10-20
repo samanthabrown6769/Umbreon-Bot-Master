@@ -3,7 +3,13 @@
 // ({atk,def,spd}) or directly on the mon ({atk,def,spd}). Per-battle state lives on mon.fx.
 const moveInfo = require('./data/move-info.json');
 const movesData = require('./data/pokemon-moves.json');
-const { LEFTOVERS_ITEM, getHeldItemDamageMultiplier } = require('./held-item-effects');
+const {
+  ASSAULT_VEST_ITEM,
+  FOCUS_BAND_ITEM,
+  KINGS_ROCK_ITEM,
+  LEFTOVERS_ITEM,
+  getHeldItemDamageMultiplier,
+} = require('./held-item-effects');
 
 const slug = (name) => String(name || '').toLowerCase().replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const STAGE_KEYS = ['atk', 'def', 'spa', 'spdef', 'spe', 'acc', 'eva'];
@@ -133,7 +139,7 @@ function fx(m) {
   if (!m.fx) {
     m.fx = {
       stages: { atk: 0, def: 0, spa: 0, spdef: 0, spe: 0, acc: 0, eva: 0 },
-      status: null, sleep: 0, tox: 0, confuse: 0, lastMove: null, protectStreak: 0, stockpile: 0, sub: 0,
+      status: null, sleep: 0, tox: 0, confuse: 0, flinch: false, lastMove: null, protectStreak: 0, stockpile: 0, sub: 0,
     };
   }
   return m.fx;
@@ -172,7 +178,9 @@ function damageStats(attacker, defender, move, field) {
   if (field.wonder > 0) defKey = physical ? 'spdef' : 'def';
   let atk = baseStat(attacker, 'atk') * stageMult(af.stages[physical ? 'atk' : 'spa']);
   if (af.status === 'brn' && physical) atk *= 0.5;
-  const def = baseStat(defender, 'def') * stageMult(df.stages[defKey]);
+  const def = baseStat(defender, 'def')
+    * stageMult(df.stages[defKey])
+    * (defender.held_item === ASSAULT_VEST_ITEM && defKey === 'spdef' ? 1.5 : 1);
   return { atk: Math.max(1, atk), def: Math.max(1, def), physical };
 }
 
@@ -399,15 +407,30 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     if (tf.sub <= 0) tf.sub = 0;
     return;
   }
+  const targetHpBefore = t.hp;
   t.hp -= dmg;
   let survivedText = '';
   if (t.hp <= 0 && tf.protect === 'endure') { t.hp = 1; survivedText = ` ${t.name} endured the hit!`; }
+  else if (t.hp <= 0 && t.held_item === FOCUS_BAND_ITEM && Math.random() < 0.1) {
+    t.hp = 1;
+    survivedText = ` ${t.name} hung on with its Focus Band!`;
+  }
+  if (dmg > 0 && t.hp > 0 && m.held_item === KINGS_ROCK_ITEM
+      && !/flinch/i.test(moveInfo[slug(move.name)]?.description || '')
+      && Math.random() < 0.1) {
+    tf.flinch = true;
+    survivedText += ` ${t.name} flinched from the King's Rock!`;
+  }
   L(`${m.name} used **${move.name}** for **${dmg}** damage` +
     `${eff > 1 ? ' — super effective!' : eff === 0 ? ' — no effect.' : eff < 1 ? ' — not very effective.' : ''}` +
     `${heldItemMultiplier > 1 ? ` ${m.held_item} boosted the move!` : ''}` +
     `${crit && dmg > 0 ? ' A critical hit!' : ''}${survivedText}`);
   if (t.hp <= 0 && tf.destinyBond) { m.hp = 0; L(`${m.name} was taken down with ${t.name}!`); }
   applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L);
+  if (slug(move.name) === 'drain-punch' && dmg > 0 && m.hp > 0) {
+    const damageDealt = Math.max(0, targetHpBefore - Math.max(0, t.hp));
+    if (damageDealt > 0) healMon(m, Math.max(1, Math.floor(damageDealt / 2)), L);
+  }
 }
 
 // Stat drops that damaging moves inflict on the target: [chance %, stages].
@@ -724,6 +747,11 @@ function performMove(ctx, A, B, move, L, depth = 0) {
 function canAct(ctx, A, B, move, L) {
   const m = A.mon; const f = fx(m); const bf = fx(B.mon);
   const slugName = slug(move.name);
+  if (f.flinch) { f.flinch = false; L(`${m.name} flinched and couldn't move!`); return false; }
+  if (m.held_item === ASSAULT_VEST_ITEM && !move.power) {
+    L(`${m.name} can't use status moves while holding an Assault Vest!`);
+    return false;
+  }
   if (f.status === 'slp') {
     f.sleep -= 1;
     if (f.sleep <= 0) { f.status = null; f.nightmare = false; L(`${m.name} woke up!`); }
@@ -808,6 +836,7 @@ function endOfTurn(ctx) {
     }
     if (f.disableTurns > 0) { f.disableTurns -= 1; if (f.disableTurns === 0) f.disabled = null; }
     f.magicCoat = false; f.snatch = false; f.quashed = false; f.powdered = false; f.electrified = false;
+    f.flinch = false;
     const s = field.sides[side];
     for (const k of ['reflect', 'lightScreen', 'veil', 'safeguard', 'mist', 'tailwind', 'luckyChant']) {
       if (s[k] > 0) { s[k] -= 1; if (s[k] === 0) L(`${side === 'player' ? 'Your' : "The foe's"} ${k.replace(/([A-Z])/g, ' $1').toLowerCase()} wore off.`); }
