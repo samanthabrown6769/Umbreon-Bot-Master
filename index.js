@@ -11257,11 +11257,40 @@ client.on('messageCreate', async (message) => {
         if (!isBotAdmin(message)) {
           return message.reply('⛔ Only a configured bot admin can use this command.');
         }
+        const heldItemSpawn = args[1]?.toLowerCase() === 'helditem';
+        if (heldItemSpawn) {
+          const speciesKeys = [...WILD_HELD_ITEMS_BY_SPECIES.keys()];
+          const shuffled = speciesKeys.sort(() => Math.random() - 0.5);
+          for (const speciesKey of shuffled) {
+            const form = db.prepare(
+              'SELECT * FROM pokemon_forms WHERE lower(species_name) = ? ORDER BY id LIMIT 1'
+            ).get(speciesKey);
+            if (!form) continue;
+            const item = WILD_HELD_ITEMS_BY_SPECIES.get(speciesKey);
+            return await askForBall(message, userId, {
+              id: form.id,
+              slug: form.slug,
+              name: form.name,
+              rarity: form.rarity,
+              baseHp: form.base_hp,
+              baseAtk: form.base_atk,
+              baseDef: form.base_def,
+              baseSpd: form.base_spd,
+              types: JSON.parse(form.types),
+              img: form.sprite,
+              shinyImg: form.shiny_sprite,
+              isShiny: false,
+              heldItem: item.name,
+              heldItemEmoji: item.emoji,
+            }, 'catch', { guaranteedCatch: true });
+          }
+          return message.reply('No Pokémon with a wild held item were found in the catalog.');
+        }
         const shinySpawn = args[1]?.toLowerCase() === 'shiny';
         const requestedName = args.slice(shinySpawn ? 2 : 1).join(' ').trim();
         if (!requestedName) {
           return message.reply(
-            `Usage: \`${PREFIX}p admin [shiny] <Pokémon name>\``
+            `Usage: \`${PREFIX}p admin [shiny|helditem] <Pokémon name>\``
           );
         }
         const pokemon = resolvePokemonForm(requestedName);
