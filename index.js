@@ -1634,7 +1634,7 @@ const BALL_CONFIG = {
 
 const HELD_ITEM_EMOJI = '<:helditem:1561412843272937472>';
 function heldItemEncounterHint(pokemon) {
-  return pokemon.heldItem ? `${HELD_ITEM_EMOJI} This Pokemon is holiding something!\n` : '';
+  return '';
 }
 
 // Held-item emoji goes between the rarity icon and the Pokémon name.
@@ -14685,8 +14685,7 @@ client.on('messageCreate', async (message) => {
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
           statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity))}${wild.isShiny ? '✨ ' : ''}**${wild.name}** appeared! ` +
-            `(${getRarityEmojis(wildRarity)} ${wildRarity}) — throw a ball with the buttons on the right.` +
-            (wild.heldItem ? `\n${HELD_ITEM_EMOJI} This Pokemon is holiding something!` : '');
+            `(${getRarityEmojis(wildRarity)} ${wildRarity}) — throw a ball with the buttons on the right.`;
         } else if (!catchHandler) {
           statusText = foundText;
         }
