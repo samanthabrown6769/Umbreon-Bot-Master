@@ -211,6 +211,8 @@ const {
   getMarketListingCount,
   getUserMarketListings,
   getUserMarketSales,
+  getUnclaimedMarketSales,
+  markMarketSalesClaimed,
   getUserMarketSaleSummary,
   clearMarketListings,
   removeUserMarketListings,
@@ -1571,6 +1573,16 @@ function getMarketListingEmojis(pokemon) {
   return `${rarityEmoji ? `${rarityEmoji} ` : ''}${spriteEmoji ? `${spriteEmoji} ` : ''}`;
 }
 
+function getMarketPokemonSprite(listing) {
+  return getGiveawayPokemonSprite({
+    pokemon: {
+      id: listing.pokemon_id ?? listing.id,
+      isShiny: Boolean(listing.isShiny ?? listing.is_shiny),
+      isGolden: Boolean(listing.isGolden ?? listing.is_golden),
+    },
+  });
+}
+
 function formatMarketPokemon(pokemon) {
   const isGolden = Boolean(pokemon.isGolden ?? pokemon.is_golden);
   return `${getMarketListingEmojis(pokemon)}**${isGolden ? 'Golden ' : ''}${pokemon.name}**`;
@@ -1587,7 +1599,12 @@ const BALL_CONFIG = {
 
 const HELD_ITEM_EMOJI = '<:helditem:1561412843272937472>';
 function heldItemEncounterHint(pokemon) {
-  return pokemon.heldItem ? `${HELD_ITEM_EMOJI} This Pokémon is holding an item.\n` : '';
+  return pokemon.heldItem ? `${HELD_ITEM_EMOJI} This Pokemon is holiding something!\n` : '';
+}
+
+// Held-item emoji goes between the rarity icon and the Pokémon name.
+function heldItemNameMarker(pokemon, rarityEmoji = '') {
+  return pokemon.heldItem ? `${rarityEmoji ? `${rarityEmoji} ` : ''}${HELD_ITEM_EMOJI} ` : '';
 }
 
 const WILD_HELD_ITEM_SPAWN_CHANCE = 0.1;
@@ -1672,12 +1689,15 @@ const ICONS = {
   box: '📦',
 };
 
-// Non-event shinies are 1/200 (1/160 for patrons); active event shiny targets use 1/2500 before bonuses.
+// Without an event ticket, shinies are 1/200 (1/160 for patrons); see EVENT_TICKET_SHINY_RATES for ticket holders.
 const BASE_SHINY_RATE = 1 / 200;
 // Incense: +10% shiny encounter rate and +10% promo item drop rate while server charges last.
 const INCENSE_BOOST = 1.1;
 const PATREON_SHINY_RATE = 1 / 160;
-const EVENT_SHINY_RATE = 1 / 2500;
+const EVENT_TICKET_SHINY_RATES = Object.freeze({
+  patreon: { event: 1 / 100, nonEvent: 1 / 500 },
+  standard: { event: 1 / 200, nonEvent: 1 / 1000 },
+});
 const CATCHBOT_SHINY_MULTIPLIER = 0.5;
 const GRAZZ_ENCOUNTERS_PER_BERRY = 50;
 const SPECIAL_SPAWN_EST_OFFSET_MS = 5 * 60 * 60 * 1000;
@@ -2020,6 +2040,20 @@ function rollSpecialLegendarySpawn(
   return null;
 }
 
+// Chance that a land encounter is replaced by the user's active Daily Hunt target.
+const DAILY_HUNT_SPAWN_BOOST_CHANCE = 0.1;
+
+function getActiveHuntTarget(userId) {
+  const user = getUser(userId);
+  const config = DAILY_HUNT_CONFIG[user.hunt_target_rarity];
+  if (!config || user.hunt_completed || user.hunt_target_id <= 0 || user.hunt_expires_at <= Date.now()) {
+    return null;
+  }
+  const form = db.prepare('SELECT id, species_name FROM pokemon_forms WHERE id = ?').get(user.hunt_target_id);
+  if (!form || SPECIAL_SPAWN_RESERVED_SPECIES.includes(form.species_name)) return null;
+  return form;
+}
+
 function rollSpawn(
   poolName,
   userId = null,
@@ -2091,13 +2125,19 @@ function rollSpawn(
       forcedEvent = null;
       isForcedEventSpawn = true;
     } else if (!catchbot && poolName === 'land') {
+      const huntTarget = userId !== null && Math.random() < DAILY_HUNT_SPAWN_BOOST_CHANCE
+        ? getActiveHuntTarget(userId)
+        : null;
       rarity = chooseEncounterRarity(
         encounterModifier,
         goldenRazzActive,
         channelRateBoost,
         roleChanceBoost
       );
-      if (rarity === 'Legendary') {
+      if (huntTarget) {
+        pokemon = getRandomPokemon(null, false, false, false, null, [], [huntTarget.id]);
+        pokemon.encounterRateText = '🎯 Daily Hunt boosted encounter';
+      } else if (rarity === 'Legendary') {
         pokemon = rollEncounterLegendary();
         pokemon.encounterRateText = getLegendaryEncounterRateText(
           pokemon.generation,
@@ -2180,11 +2220,17 @@ function rollSpawn(
     const eventTicketShinyMultiplier = isEventShinyTargetActive && eventTicketActive
       ? 1 / 0.95
       : 1;
-    const baseShinyRate = isEventShinyTargetActive
-      ? EVENT_SHINY_RATE
-      : rod
-        ? (rod.enablesShiny ? rod.baseShinyRate : 0)
-        : (userId !== null && getUser(userId).has_patreon ? PATREON_SHINY_RATE : BASE_SHINY_RATE);
+    const isPatreonUser = userId !== null && Boolean(getUser(userId).has_patreon);
+    const ticketShinyRates = isPatreonUser ? EVENT_TICKET_SHINY_RATES.patreon : EVENT_TICKET_SHINY_RATES.standard;
+    const baseShinyRate = rod && !rod.enablesShiny
+      ? 0
+      : isEventShinyTargetActive
+        ? ticketShinyRates.event
+        : eventTicketActive
+          ? ticketShinyRates.nonEvent
+          : rod
+            ? rod.baseShinyRate
+            : (isPatreonUser ? PATREON_SHINY_RATE : BASE_SHINY_RATE);
     const patreonShinyMultiplier = userId === null
       ? 1
       : 1 + (isEventShinyTargetActive
@@ -4479,7 +4525,7 @@ async function askForBall(
         : `${ICONS.grass} A wild Pokémon appeared!`
     )
     .setDescription(
-      `${trainerLabel} found a wild **${target.name}**!\n` +
+      `${trainerLabel} found a wild ${heldItemNameMarker(target, getRarityEmojis(catchDisplayRarity))}**${target.name}**!\n` +
       heldItemEncounterHint(target) +
       `${isFishing ? `🎣 Rod used: **${user.fish_rods}**\n` : ''}` +
       `\n**${getRarityEmojis(catchDisplayRarity)} ${catchDisplayRarity} ` +
@@ -4639,7 +4685,7 @@ async function askForBall(
         })
         .setDescription(
           `${getRarityEmojis(catchDisplayRarity)} ` +
-          `**${target.name}** broke out of the ${ball.emoji} **${ball.name}**!\n\n` +
+          `${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}**${target.name}** broke out of the ${ball.emoji} **${ball.name}**!\n\n` +
           heldItemEncounterHint(target) +
           `**Rarity:** ${catchDisplayRarity} (${rarityData.rateText})\n\n` +
           `Pokémon roll: **${Math.round(playerRoll)}**\n` +
@@ -7854,6 +7900,8 @@ async function announceMarketListings(message, listings) {
         `Price each: ${EMOJIS.pokecoin} **${listing.price.toLocaleString()}**\n` +
         `Buy with \`${PREFIX}market buy ${listing.market_listing_id ?? listing.id}\``
       ).join('\n\n'));
+    const sprite = getMarketPokemonSprite(page[0]);
+    if (sprite) embed.setThumbnail(sprite);
     try {
       await channel.send({ embeds: [embed] });
     } catch (error) {
@@ -8773,6 +8821,7 @@ client.on('messageCreate', async (message) => {
             `  One listing can contain up to 50,000 copies of one variant\n` +
             `• \`${PREFIX}market remove <listing_id|all>\` — Remove your listing(s) and return unsold Pokémon\n` +
             `• \`${PREFIX}market view <Pokémon name|Pokédex number>\` / \`${PREFIX}m view <Pokémon name|Pokédex number>\` — Search listings\n` +
+            `• \`${PREFIX}market search [shiny] <Pokémon name|Pokédex number>\` / \`${PREFIX}m search [shiny] <Pokémon name|Pokédex number>\` — Find listings of one exact Pokémon and variant\n` +
             `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy one Pokémon`,
         },
         trade: {
@@ -8920,7 +8969,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}boxes\` — View the boxes you own and their quantities\n` +
             `• \`${PREFIX}open [box name] [amount|all]\` — Open boxes (no argument lists all box types)\n` +
             `• \`${PREFIX}shop buy <number|item> [amount]\` / \`${PREFIX}s b <number|item> [amount]\` — Buy shop items\n` +
-            `• \`${PREFIX}market\` / \`${PREFIX}m\` — Browse market listings; use \`${PREFIX}market view <Pokémon name>\` or \`${PREFIX}m view <Pokémon name>\` to search\n` +
+            `• \`${PREFIX}market\` / \`${PREFIX}m\` — Browse market listings; use \`${PREFIX}market view <Pokémon name>\` or \`${PREFIX}m view <Pokémon name>\` to search; \`${PREFIX}m search [shiny] <Pokémon name|number>\` finds one exact Pokémon and variant\n` +
             `• \`${PREFIX}market listing mine\` — View your active market listings and sold counts\n` +
             `• \`${PREFIX}market list [shiny] <Pokémon name|number> <amount 1-50000> <price>\` / \`${PREFIX}m offer [shiny]\` — List owned Pokémon at the price per Pokémon; prefix the name with \`shiny\` to select Shiny copies; one listing can contain up to 50,000 copies of one variant\n` +
             `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy a market listing`
@@ -14512,9 +14561,9 @@ client.on('messageCreate', async (message) => {
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
-          statusText = `\n❗ A wild ${wild.isShiny ? '✨ ' : ''}**${wild.name}** appeared! ` +
+          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity))}${wild.isShiny ? '✨ ' : ''}**${wild.name}** appeared! ` +
             `(${getRarityEmojis(wildRarity)} ${wildRarity}) — throw a ball with the buttons on the right.` +
-            (wild.heldItem ? `\n${HELD_ITEM_EMOJI} This Pokémon is holding an item.` : '');
+            (wild.heldItem ? `\n${HELD_ITEM_EMOJI} This Pokemon is holiding something!` : '');
         } else if (!catchHandler) {
           statusText = foundText;
         }
@@ -18804,21 +18853,27 @@ client.on('messageCreate', async (message) => {
       }
 
       if (args[0]?.toLowerCase() === 'claim') {
-        const summary = getUserMarketSaleSummary(userId);
-        if (!summary.sale_count) {
+        const allSales = getUnclaimedMarketSales(userId);
+        if (!allSales.length) {
           return message.reply(
-            'No tracked player market sales yet. Sale proceeds are credited automatically when a listing sells; ' +
-            'sales completed before sale history was added are not available.'
+            'No new market sales since your last claim. Sale proceeds are credited automatically when a listing sells.'
           );
         }
+        markMarketSalesClaimed(userId, allSales.map((sale) => sale.id));
+        const summary = {
+          sale_count: allSales.length,
+          gross_amount: allSales.reduce((sum, sale) => sum + sale.sale_price, 0),
+          tax_amount: allSales.reduce((sum, sale) => sum + sale.tax_amount, 0),
+          payout_amount: allSales.reduce((sum, sale) => sum + sale.payout_amount, 0),
+        };
         const pageSize = 10;
         const totalPages = Math.ceil(summary.sale_count / pageSize);
         let currentPage = 1;
         const pageEmbed = () => {
-          const sales = getUserMarketSales(userId, pageSize, (currentPage - 1) * pageSize);
+          const sales = allSales.slice((currentPage - 1) * pageSize, currentPage * pageSize);
           return new EmbedBuilder()
             .setColor(0x1abc9c)
-            .setTitle('🏪 Your Sold Market Listings')
+            .setTitle('🏪 Market Sales Since Last Claim')
             .setDescription(
               sales.map((sale) =>
                 `**#${sale.listing_id} —** ${formatPokemonReward(sale)}\n` +
@@ -18830,7 +18885,7 @@ client.on('messageCreate', async (message) => {
             )
             .addFields(
               {
-                name: 'Lifetime sales',
+                name: 'Sales',
                 value: `${summary.sale_count.toLocaleString()} listings • Gross: ${EMOJIS.pokecoin} ${summary.gross_amount.toLocaleString()}`,
                 inline: true,
               },
@@ -19043,7 +19098,24 @@ client.on('messageCreate', async (message) => {
       }
 
       let search = null;
-      if (args[0]?.toLowerCase() === 'view') {
+      let searchFilter = null;
+      const marketSubCommand = args[0]?.toLowerCase();
+      if (marketSubCommand === 'search') {
+        const variantQuery = args.slice(1).join(' ').trim();
+        const shinyMatch = variantQuery.match(/^shiny(?:[\s_-]+(.+)|\[(.+)\])$/i);
+        const searchShiny = Boolean(shinyMatch);
+        const pokemonQuery = (shinyMatch ? shinyMatch[1] || shinyMatch[2] : variantQuery).trim();
+        if (!pokemonQuery) {
+          return message.reply(`Usage: \`${PREFIX}m search [shiny] <Pokémon name|Pokédex number>\`.`);
+        }
+        const searchForm = resolvePokemonForm(pokemonQuery);
+        if (!searchForm) {
+          return message.reply(`No exact Pokémon or form named **${pokemonQuery}** was found in the catalog.`);
+        }
+        search = `${searchShiny ? 'Shiny ' : ''}${searchForm.name}`;
+        searchFilter = { pokemonId: searchForm.id, isShiny: searchShiny };
+      }
+      if (marketSubCommand === 'view') {
         search = args.slice(1).join(' ').trim();
         if (!search) {
           return message.reply(`Usage: \`${PREFIX}m view <Pokémon name|Pokédex number>\`.`);
@@ -19054,7 +19126,7 @@ client.on('messageCreate', async (message) => {
         }
       }
       const pageSize = 10;
-      const listingCount = getMarketListingCount(search);
+      const listingCount = getMarketListingCount(search, searchFilter);
       if (!listingCount) {
         return message.reply(search
           ? `No market listings found for **${search}**.`
@@ -19063,7 +19135,7 @@ client.on('messageCreate', async (message) => {
       const totalPages = Math.ceil(listingCount / pageSize);
       let currentPage = 1;
       const pageEmbed = () => {
-        const listings = getMarketListings(search, pageSize, (currentPage - 1) * pageSize);
+        const listings = getMarketListings(search, pageSize, (currentPage - 1) * pageSize, searchFilter);
         const embed = new EmbedBuilder()
           .setColor(0x1abc9c)
           .setTitle(search ? `🏪 Market Search: ${search}` : '🏪 Umbreon Global Market')
@@ -19117,7 +19189,7 @@ client.on('messageCreate', async (message) => {
         try {
           if (interaction.user.id !== userId) {
             await interaction.reply({
-              content: `Run \`${PREFIX}m${search ? ` view ${search}` : ''}\` to browse these listings yourself.`,
+              content: `Run \`${PREFIX}m${search ? `${searchFilter ? ' search' : ' view'} ${search}` : ''}\` to browse these listings yourself.`,
               ephemeral: true,
             });
             return;

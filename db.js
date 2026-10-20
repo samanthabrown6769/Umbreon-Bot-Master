@@ -1493,6 +1493,7 @@ ensureColumns('market', {
 ensureColumns('market_sales', {
   is_golden: 'INTEGER NOT NULL DEFAULT 0',
   tax_rate: 'INTEGER NOT NULL DEFAULT 15',
+  claimed: 'INTEGER NOT NULL DEFAULT 0',
 });
 
 const catalogPath = path.join(__dirname, 'data', 'pokemon-catalog.json');
@@ -5910,7 +5911,19 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceShiny = fa
   }).immediate();
 }
 
-function getMarketListings(search = null, limit = 10, offset = 0) {
+// filter ({ pokemonId, isShiny }) matches one exact form and variant instead of a name search.
+function marketFilterSql(filter) {
+  if (!filter) return { sql: '', params: [] };
+  if (!Number.isSafeInteger(filter.pokemonId) || filter.pokemonId <= 0) {
+    throw new TypeError('Market filter requires a valid pokemonId.');
+  }
+  return {
+    sql: ' AND pokemon_id = ? AND is_shiny = ? AND is_golden = 0',
+    params: [filter.pokemonId, filter.isShiny ? 1 : 0],
+  };
+}
+
+function getMarketListings(search = null, limit = 10, offset = 0, filter = null) {
   if (search !== null && (typeof search !== 'string' || !search.trim())) {
     throw new TypeError('Market search must be null or a non-empty string.');
   }
@@ -5918,22 +5931,26 @@ function getMarketListings(search = null, limit = 10, offset = 0) {
       || !Number.isSafeInteger(offset) || offset < 0) {
     throw new TypeError('Market limit and offset must be valid integers.');
   }
+  const exact = marketFilterSql(filter);
+  const nameSearch = filter ? null : search;
   return db.prepare(`
     SELECT * FROM market
-    WHERE (? IS NULL OR instr(lower(name), lower(?)) > 0)
+    WHERE (? IS NULL OR instr(lower(name), lower(?)) > 0)${exact.sql}
     ORDER BY id DESC
     LIMIT ? OFFSET ?
-  `).all(search, search, limit, offset);
+  `).all(nameSearch, nameSearch, ...exact.params, limit, offset);
 }
 
-function getMarketListingCount(search = null) {
+function getMarketListingCount(search = null, filter = null) {
   if (search !== null && (typeof search !== 'string' || !search.trim())) {
     throw new TypeError('Market search must be null or a non-empty string.');
   }
+  const exact = marketFilterSql(filter);
+  const nameSearch = filter ? null : search;
   return db.prepare(`
     SELECT COUNT(*) AS count FROM market
-    WHERE (? IS NULL OR instr(lower(name), lower(?)) > 0)
-  `).get(search, search).count;
+    WHERE (? IS NULL OR instr(lower(name), lower(?)) > 0)${exact.sql}
+  `).get(nameSearch, nameSearch, ...exact.params).count;
 }
 
 function getUserMarketListings(userId, limit = 10, offset = 0) {
@@ -5970,6 +5987,23 @@ function getUserMarketSales(userId, limit = 10, offset = 0) {
     ORDER BY id DESC
     LIMIT ? OFFSET ?
   `).all(userId, limit, offset);
+}
+
+function getUnclaimedMarketSales(userId) {
+  assertUserId(userId);
+  return db.prepare(`
+    SELECT * FROM market_sales
+    WHERE seller_id = ? AND claimed = 0
+    ORDER BY id DESC
+  `).all(userId);
+}
+
+function markMarketSalesClaimed(userId, saleIds) {
+  assertUserId(userId);
+  const mark = db.prepare('UPDATE market_sales SET claimed = 1 WHERE id = ? AND seller_id = ?');
+  db.transaction(() => {
+    for (const id of saleIds) mark.run(id, userId);
+  })();
 }
 
 function getUserMarketSaleSummary(userId) {
@@ -8246,6 +8280,8 @@ module.exports = {
   getMarketListingCount,
   getUserMarketListings,
   getUserMarketSales,
+  getUnclaimedMarketSales,
+  markMarketSalesClaimed,
   getUserMarketSaleSummary,
   clearMarketListings,
   removeUserMarketListings,
