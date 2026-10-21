@@ -321,6 +321,8 @@ const {
   updateUser,
   FACTION_TEAMS,
   FACTION_RANKS,
+  getPokemonFactionTeam,
+  getFactionFavorites,
   FACTION_GOLDEN_POKEMON_COST,
   FACTION_CHANGE_COOLDOWN_MS,
   TEAM_MEDALLION_ITEM,
@@ -455,8 +457,22 @@ const eventSpawnEntries = halloweenEvent.pokemon.map((eventPokemon) => {
       .filter((pokemon) => names.includes(pokemon.name.toLowerCase().replace(/[^a-z0-9]/g, '')))
       .map((pokemon) => pokemon.id)
   )));
-  return { ids, shiny: Boolean(eventPokemon.shiny) };
+  return { ids, shiny: Boolean(eventPokemon.shiny), fish: Boolean(eventPokemon.fish) };
 }).filter((entry) => entry.ids.length);
+
+// Event Pokémon only appear while fishing when the event entry sets `fish: true`.
+const eventSpeciesName = (id) => db.prepare('SELECT species_name FROM pokemon_forms WHERE id = ?').get(id)?.species_name;
+const EVENT_FISH_SPECIES = new Set(
+  eventSpawnEntries.filter((entry) => entry.fish).flatMap((entry) => entry.ids.map(eventSpeciesName))
+);
+const EVENT_NON_FISH_SPECIES = Object.freeze(Array.from(new Set(
+  eventSpawnEntries.filter((entry) => !entry.fish)
+    .flatMap((entry) => entry.ids.map(eventSpeciesName))
+    .filter((name) => name && !EVENT_FISH_SPECIES.has(name))
+)));
+const EVENT_FISH_SPAWN_FORM_IDS = Object.freeze(Array.from(new Set(
+  eventSpawnEntries.filter((entry) => entry.fish).flatMap((entry) => entry.ids)
+)));
 
 const client = new Client({
   intents: [
@@ -1612,6 +1628,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   duskull: { shiny: '<:SDuskull:1562183822160699402>' },
   sableye: { shiny: '<:SSableye:1562183823511523500>' },
   'mega sableye': { shiny: '<:Smegasableye:1562192196705452132>' },
+  'sableye mega': { shiny: '<:Smegasableye:1562192196705452132>' },
   poochyena: { shiny: '<:SPoochyena:1562183825025405019>' },
   misdreavus: { shiny: '<:SMisdreavus:1562183826883485866>' },
   spinarak: { shiny: '<:SSpinarak:1562183828901072926>' },
@@ -1619,6 +1636,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   umbreon: { golden: '<:GUmbreon:1562183879152898129>' },
   espeon: { golden: '<:GEspeon:1562183880696529027>' },
   scraggy: { golden: '<:goldenscraggy:1562202553851191366>' },
+  bulbasaur: { golden: '<:goldenbulbasaur:1562255800372699228>' },
   numel: { golden: '<:goldennumel:1562202552022601748>' },
   carvanha: { golden: '<:goldencarvanha:1562202550080507964>' },
   grimer: { golden: '<:goldengrimer:1562202548276830229>' },
@@ -1706,10 +1724,17 @@ function getPokemonSpriteEmoji(pokemon) {
   const isShiny = Boolean(pokemon?.isShiny ?? pokemon?.is_shiny) || /^shiny\s+/i.test(rawName);
   const isGolden = Boolean(pokemon?.isGolden ?? pokemon?.is_golden) || /^golden\s+/i.test(rawName);
   const species = Object.keys(POKEMON_SPRITE_EMOJIS)
-    .find((candidate) => name === candidate || name.startsWith(`${candidate} `));
+    .filter((candidate) => name === candidate || name.startsWith(`${candidate} `))
+    .sort((a, b) => b.length - a.length)[0];
   if (!species) return '';
   const variants = POKEMON_SPRITE_EMOJIS[species];
   return (isGolden && variants.golden) || (isShiny && variants.shiny) || variants.normal || '';
+}
+
+function formatFactionFavorites(factionKey) {
+  return `👾 ${getFactionFavorites(factionKey)
+    .map((entry) => getPokemonSpriteEmoji({ name: entry.species_name }) || entry.species_name)
+    .join(' ')}`;
 }
 
 function getRarityEmojis(rarity, pokemonName = '', isShiny = false, isGolden = false) {
@@ -2401,8 +2426,11 @@ function rollSpawn(
   }
 
   let forcedEvent = null;
-  if (eventTicketActive && eventSpawnEntries.length && Math.random() * EVENT_SPAWN_ODDS < 1) {
-    forcedEvent = eventSpawnEntries[Math.floor(Math.random() * eventSpawnEntries.length)];
+  const forcedEventPool = poolName === 'water'
+    ? eventSpawnEntries.filter((entry) => entry.fish)
+    : eventSpawnEntries;
+  if (eventTicketActive && forcedEventPool.length && Math.random() * EVENT_SPAWN_ODDS < 1) {
+    forcedEvent = forcedEventPool[Math.floor(Math.random() * forcedEventPool.length)];
   }
 
   while (true) {
@@ -2496,8 +2524,10 @@ function rollSpawn(
         poolName === 'water',
         true,
         true,
-        eventTicketActive ? eventSpawnFormIds : [],
-        SPECIAL_SPAWN_RESERVED_SPECIES
+        eventTicketActive ? (poolName === 'water' ? [...EVENT_FISH_SPAWN_FORM_IDS] : eventSpawnFormIds) : [],
+        poolName === 'water'
+          ? [...SPECIAL_SPAWN_RESERVED_SPECIES, ...EVENT_NON_FISH_SPECIES]
+          : SPECIAL_SPAWN_RESERVED_SPECIES
       );
     }
 
@@ -2769,6 +2799,8 @@ const RELEASE_PAYOUTS = Object.freeze({
   uncommon: 300,
   rare: 500,
   'super rare': 1000,
+  legendary: 10000,
+  shiny: 25000,
 });
 const BASE_RELEASE_LOCK_LIMIT = 25;
 
@@ -2782,10 +2814,15 @@ function getReleaseLockCount(userId) {
   ).get(userId).count;
 }
 
-function getReleaseProtectionReason(pokemon) {
+function getReleaseProtectionReason(pokemon, { manual = false } = {}) {
   if (pokemon.is_golden) return 'Golden Pokémon cannot be released.';
-  if (pokemon.is_shiny) return 'Shiny Pokémon cannot be released.';
-  const rarity = getDisplayRarity(pokemon.rarity, pokemon.name, false).toLowerCase();
+  const displayRarity = getDisplayRarity(pokemon.rarity, pokemon.name, Boolean(pokemon.is_shiny)).toLowerCase();
+  if (pokemon.is_shiny) {
+    if (manual && displayRarity === 'shiny') return null;
+    return manual ? `${displayRarity.replace(/\b\w/g, (c) => c.toUpperCase())} Pokémon cannot be released.` : 'Shiny Pokémon cannot be released.';
+  }
+  const rarity = displayRarity;
+  if (manual && rarity === 'legendary') return null;
   if (['legendary', 'mega', 'gmax'].includes(rarity)) {
     return `${rarity[0].toUpperCase()}${rarity.slice(1)} Pokémon cannot be released.`;
   }
@@ -2907,7 +2944,7 @@ function findReleaseLockPresetMatches(userId, preset) {
   return null;
 }
 
-function releaseCatchIds(userId, catchIds, { protectFavorites = false } = {}) {
+function releaseCatchIds(userId, catchIds, { protectFavorites = false, allowManual = false } = {}) {
   return db.transaction(() => {
     const released = [];
     const skipped = { locked: 0, inTeam: 0, golden: 0, unsupported: 0 };
@@ -2930,7 +2967,7 @@ function releaseCatchIds(userId, catchIds, { protectFavorites = false } = {}) {
         skipped.inTeam += 1;
         continue;
       }
-      if (getReleaseProtectionReason(pokemon)) {
+      if (getReleaseProtectionReason(pokemon, { manual: allowManual })) {
         if (pokemon.is_golden) skipped.golden += 1;
         else skipped.unsupported += 1;
         continue;
@@ -3623,6 +3660,9 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
     `${heldItemMultiplier > 1 ? ` ${pokemon.held_item} boosted the move!` : ''}` +
     `${isCritical ? ' 💥 *(CRITICAL HIT!)*' : ''}${dropText}${selfBoostText}`,
   ];
+  if (battleMon && battleFx.slug(move.name) === 'drain-punch' && result.damage > 0) {
+    battleFx.healMon(battleMon, Math.max(1, Math.floor(result.damage / 2)), (text) => battleLog.push(text));
+  }
   const rewards = result.defeated ? distributeWorldBossRewards(boss.id) : null;
   return {
     ...result,
@@ -3960,6 +4000,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
           bs.mon,
           bs.boss
         );
+        if (!attack.error) playerState.hp = bs.mon.hp;
         if (!attack.error && turnLog.length) attack.battleLog.unshift(...turnLog);
       }
       if (attack.error === 'invalid_move') {
@@ -4821,7 +4862,7 @@ async function askForBall(
         : `${ICONS.grass} A wild Pokémon appeared!`
     )
     .setDescription(
-      `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!\n` +
+      `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonFactionTeam(target.speciesId)?.emoji ? `${getPokemonFactionTeam(target.speciesId).emoji} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!\n` +
       heldItemEncounterHint(target) +
       (target.researchToolsConsumed?.length
         ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
@@ -5078,7 +5119,9 @@ async function askForBall(
     }
     const catchFaction = getUserFaction(userId);
     if (catchFaction) {
-      addFactionPoints(userId, getFactionCatchPoints(catchFaction.faction_key, selectedBall, catchDisplayRarity));
+      addFactionPoints(userId, getFactionCatchPoints(catchFaction.faction_key, selectedBall, catchDisplayRarity), {
+        speciesId: target.speciesId,
+      });
     }
     trackClanActivity(userId, isFishing ? 'fish' : 'catch');
     const experienceAmount = getCatchExperienceReward(catchDisplayRarity);
@@ -14699,14 +14742,11 @@ client.on('messageCreate', async (message) => {
           .setDescription(
             (promoted ? `${promoted}\n\n` : '') +
             `Member: ${getTrainerIconEmoji(userId)} ${message.author.username}\n` +
-            `Rank: ${rankIcons[faction.rank] || ''} ${faction.rank} (${rankInfo.mult}x points)\n` +
+            `Rank: ${rankIcons[faction.rank] || ''} ${faction.rank}\n` +
             `Points: ${team.emoji} ${faction.points.toLocaleString()}\n\n` +
             `${progress}\n\n` +
             `**${team.name} Information**\n` +
-            `• **NPCs:** ${team.npcs || team.officers}\n` +
-            `• **Favorite Pokémon:** ${team.favoritePokemon}\n` +
-            `• **Faction Shop:** ${team.goldenEmoji} Golden ${team.goldenPokemon} — ${FACTION_GOLDEN_POKEMON_COST.toLocaleString()} points (Leader rank)\n` +
-            `• **Goals:** *${team.goals}*\n\n` +
+            `• **Favorite Pokémon:** ${formatFactionFavorites(team.id)}\n\n` +
             `🎯 **Today's Daily Ball:** ${ballEmoji} **${dailyBall.name}**\n` +
             `*Catch Pokémon using ${ballEmoji} ${dailyBall.name} to earn bonus Faction Points — higher rarities earn more!*\n\n` +
             earnInfo(true, dailyBall) +
@@ -14810,11 +14850,10 @@ client.on('messageCreate', async (message) => {
         .setAuthor({ name: team ? `Factions — ${team.name}` : 'Factions — Join a Team!', iconURL: client.user.displayAvatarURL() })
         .setDescription(
           (team
-            ? `${team.emoji} **${team.name}**\n• **NPCs:** ${team.npcs || team.officers}\n• **Favorite Pokémon:** ${team.favoritePokemon}\n` +
-              `• **Faction Shop:** ${team.goldenEmoji} Golden ${team.goldenPokemon} — ${FACTION_GOLDEN_POKEMON_COST.toLocaleString()} points at Leader rank\n` +
-              `• **Goals:** *${team.goals}*\n\nPress **Join** to pledge to this team, or pick another.`
+            ? `${team.emoji} **${team.name}**\n• **Favorite Pokémon:** ${formatFactionFavorites(team.id)}\n\n` +
+              `Press **Join** to pledge to this team, or pick another.`
             : `❌ **You are not in a faction!**\n\n` +
-              `Factions are differentiated by their:\n• Officers (Grunt, Captain, Admin, Commander and Leader)\n• Favorite Pokémon\n• Overall goals\n\n` +
+              `Factions are differentiated by their favorite Pokémon.\n\n` +
               `View a team's information by clicking its button below.\n\n`) +
           `\n🎯 **Daily Ball:** ${team
             ? `${ballFor(team.id).emoji} **${ballFor(team.id).name}** *(${team.name}'s ball today)*`
@@ -16388,6 +16427,11 @@ client.on('messageCreate', async (message) => {
             for (const rawValue of values) {
               let value = rawValue;
               let wantsShiny = false;
+              let wantsGolden = false;
+              if (/^(golden|gold|🌟)\s*/i.test(value) && value.replace(/^(golden|gold|🌟)\s*/i, '')) {
+                wantsGolden = true;
+                value = value.replace(/^(golden|gold|🌟)\s*/i, '');
+              }
               if (/^(shiny|✨)\s*/i.test(value) && value.replace(/^(shiny|✨)\s*/i, '')) {
                 wantsShiny = true;
                 value = value.replace(/^(shiny|✨)\s*/i, '');
@@ -16397,22 +16441,21 @@ client.on('messageCreate', async (message) => {
                 const numbers = allDexNumbers.get(form.id);
                 wantsShiny = numbers?.dexNumber !== Number(value) && numbers?.shinyDexNumber === Number(value);
               }
-              const rows = form
-                ? findCatches.all(
-                  userId,
-                  form.id,
-                  mutation === 'fav' ? 0 : 1,
-                  0,
-                  wantsShiny ? 1 : 0
-                )
+              const findRows = (golden, shiny) => form
+                ? findCatches.all(userId, form.id, mutation === 'fav' ? 0 : 1, golden ? 1 : 0, shiny ? 1 : 0)
                 : [];
+              let rows = findRows(wantsGolden, wantsShiny);
+              if (!rows.length && !wantsGolden) {
+                rows = findRows(true, false);
+                if (rows.length) wantsGolden = true;
+              }
               if (!rows.length) {
                 missing.push(rawValue);
                 continue;
               }
               if (mutation === 'fav') {
                 const identityAlreadyFavorited = Boolean(hasFavorite.get(
-                  userId, form.id, 0, wantsShiny ? 1 : 0
+                  userId, form.id, wantsGolden ? 1 : 0, wantsShiny ? 1 : 0
                 ));
                 if (!identityAlreadyFavorited && remaining < 1) {
                   missing.push(`${rawValue} (favorite limit reached)`);
@@ -18794,7 +18837,7 @@ client.on('messageCreate', async (message) => {
             (lockCount
               ? `🔒 **Your release locked Pokémon (${lockCount}/${lockLimit}):** View the list with \`${PREFIX}release view-locks\`.`
               : `You don't have any locked Pokémon! Use the commands above to lock Pokémon.\n\n🔒 **Your release locked Pokémon (0/${lockLimit})**\nYou have 0 locked Pokémon.`) +
-            `\n\nLegendary, Shiny, Golden, Mega, and Gmax Pokémon cannot be released.`
+            `\n\nLegendary and Shiny Pokémon must be released manually (not in bulk). Golden, Mega, Gmax, Shiny Mega, and Shiny Gmax Pokémon cannot be released.`
           )
           .addFields({
             name: `${EMOJIS.pokecoin} PokéCoins per released Pokémon`,
@@ -18811,7 +18854,7 @@ client.on('messageCreate', async (message) => {
       const query = args.join(' ').trim();
       const matching = findUserPokemonMatches(userId, query);
       const eligible = matching.find((pokemon) =>
-        !pokemon.is_locked && !pokemon.in_team && !getReleaseProtectionReason(pokemon)
+        !pokemon.is_locked && !pokemon.in_team && !getReleaseProtectionReason(pokemon, { manual: true })
       );
       const catchId = eligible?.id ?? matching[0]?.id ?? null;
       if (!Number.isSafeInteger(catchId) || catchId <= 0) {
@@ -18825,9 +18868,9 @@ client.on('messageCreate', async (message) => {
       if (!pokemon) return message.reply('Pokémon not found in your storage.');
       if (pokemon.is_locked) return message.reply(`🔒 This Pokémon is locked. Unlock it with \`${PREFIX}release unlock ${pokemon.name}\` first.`);
       if (pokemon.in_team) return message.reply('Cannot release a Pokémon in your active team!');
-      const protectionReason = getReleaseProtectionReason(pokemon);
+      const protectionReason = getReleaseProtectionReason(pokemon, { manual: true });
       if (protectionReason) return message.reply(protectionReason);
-      const outcome = releaseCatchIds(userId, [catchId]);
+      const outcome = releaseCatchIds(userId, [catchId], { allowManual: true });
       if (!outcome.released.length) {
         return message.reply(
           'This Pokémon is protected from release or does not have a configured release payout.'

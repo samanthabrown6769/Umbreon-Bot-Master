@@ -2698,7 +2698,7 @@
     "id": 386,
     "dex_number": 386,
     "shiny_dex_number": 2386,
-    "name": "Deoxys Normal",
+    "name": "Deoxys",
     "rarity": "Legendary"
   },
   {
@@ -3405,7 +3405,7 @@
     "id": 487,
     "dex_number": 487,
     "shiny_dex_number": 2487,
-    "name": "Giratina Altered",
+    "name": "Giratina",
     "rarity": "Legendary"
   },
   {
@@ -4147,7 +4147,7 @@
     "id": 593,
     "dex_number": 593,
     "shiny_dex_number": 2593,
-    "name": "Jellicent Male",
+    "name": "Jellicent",
     "rarity": "Rare"
   },
   {
@@ -4965,7 +4965,7 @@
   {
     "id": 710,
     "dex_number": 710,
-    "shiny_dex_number": 7108,
+    "shiny_dex_number": 2710,
     "name": "Pumpkaboo",
     "rarity": "Uncommon"
   },
@@ -4973,7 +4973,7 @@
     "id": 711,
     "dex_number": 711,
     "shiny_dex_number": 2711,
-    "name": "Gourgeist Average",
+    "name": "Gourgeist",
     "rarity": "Rare"
   },
   {
@@ -5203,7 +5203,7 @@
   {
     "id": 744,
     "dex_number": 744,
-    "shiny_dex_number": 7123,
+    "shiny_dex_number": 2744,
     "name": "Rockruff",
     "rarity": "Rare"
   },
@@ -6128,7 +6128,7 @@
     "id": 876,
     "dex_number": 876,
     "shiny_dex_number": 2876,
-    "name": "Indeedee Male",
+    "name": "Indeedee",
     "rarity": "Super Rare"
   },
   {
@@ -6469,8 +6469,8 @@
   },
   {
     "id": 925,
-    "dex_number": 925,
-    "shiny_dex_number": 2925,
+    "dex_number": 6143,
+    "shiny_dex_number": 7143,
     "name": "Maushold Family Of Four",
     "rarity": "Rare"
   },
@@ -6842,7 +6842,7 @@
     "id": 978,
     "dex_number": 978,
     "shiny_dex_number": 2978,
-    "name": "Tatsugiri Curly",
+    "name": "Tatsugiri",
     "rarity": "Super Rare"
   },
   {
@@ -6870,7 +6870,7 @@
     "id": 982,
     "dex_number": 982,
     "shiny_dex_number": 2982,
-    "name": "Dudunsparce Two Segment",
+    "name": "Dudunsparce",
     "rarity": "Super Rare"
   },
   {
@@ -7002,2184 +7002,2156 @@
   {
     "id": 1001,
     "dex_number": 1001,
-    "shiny_dex_number": 10001,
+    "shiny_dex_number": 3001,
     "name": "Wo Chien",
     "rarity": "Legendary"
   },
   {
     "id": 1002,
     "dex_number": 1002,
-    "shiny_dex_number": 10002,
+    "shiny_dex_number": 3002,
     "name": "Chien Pao",
     "rarity": "Legendary"
   },
   {
     "id": 1003,
     "dex_number": 1003,
-    "shiny_dex_number": 10003,
+    "shiny_dex_number": 3003,
     "name": "Ting Lu",
     "rarity": "Legendary"
   },
   {
     "id": 1004,
     "dex_number": 1004,
-    "shiny_dex_number": 10004,
+    "shiny_dex_number": 3004,
     "name": "Chi Yu",
     "rarity": "Legendary"
   },
   {
     "id": 1005,
     "dex_number": 1005,
-    "shiny_dex_number": 10005,
+    "shiny_dex_number": 3005,
     "name": "Roaring Moon",
     "rarity": "Super Rare"
   },
   {
     "id": 1006,
     "dex_number": 1006,
-    "shiny_dex_number": 10006,
+    "shiny_dex_number": 3006,
     "name": "Iron Valiant",
     "rarity": "Super Rare"
   },
   {
     "id": 1007,
     "dex_number": 1007,
-    "shiny_dex_number": 10007,
+    "shiny_dex_number": 3007,
     "name": "Koraidon",
     "rarity": "Legendary"
   },
   {
     "id": 1008,
     "dex_number": 1008,
-    "shiny_dex_number": 10008,
+    "shiny_dex_number": 3008,
     "name": "Miraidon",
     "rarity": "Legendary"
   },
   {
     "id": 1009,
     "dex_number": 1009,
-    "shiny_dex_number": 10009,
+    "shiny_dex_number": 3009,
     "name": "Walking Wake",
     "rarity": "Super Rare"
   },
   {
     "id": 1010,
     "dex_number": 1010,
-    "shiny_dex_number": 10010,
+    "shiny_dex_number": 3010,
     "name": "Iron Leaves",
     "rarity": "Legendary"
   },
   {
     "id": 1011,
     "dex_number": 1011,
-    "shiny_dex_number": 10011,
+    "shiny_dex_number": 3011,
     "name": "Dipplin",
     "rarity": "Super Rare"
   },
   {
     "id": 1012,
     "dex_number": 1012,
-    "shiny_dex_number": 10012,
+    "shiny_dex_number": 3012,
     "name": "Poltchageist",
     "rarity": "Super Rare"
   },
   {
     "id": 1013,
     "dex_number": 1013,
-    "shiny_dex_number": 10013,
+    "shiny_dex_number": 3013,
     "name": "Sinistcha",
     "rarity": "Super Rare"
   },
   {
     "id": 1014,
     "dex_number": 1014,
-    "shiny_dex_number": 10014,
+    "shiny_dex_number": 3014,
     "name": "Okidogi",
     "rarity": "Legendary"
   },
   {
     "id": 1015,
     "dex_number": 1015,
-    "shiny_dex_number": 10015,
+    "shiny_dex_number": 3015,
     "name": "Munkidori",
     "rarity": "Legendary"
   },
   {
     "id": 1016,
     "dex_number": 1016,
-    "shiny_dex_number": 10016,
+    "shiny_dex_number": 3016,
     "name": "Fezandipiti",
     "rarity": "Legendary"
   },
   {
     "id": 1017,
     "dex_number": 1017,
-    "shiny_dex_number": 10017,
+    "shiny_dex_number": 3017,
     "name": "Ogerpon",
     "rarity": "Legendary"
   },
   {
     "id": 1018,
     "dex_number": 1018,
-    "shiny_dex_number": 10018,
+    "shiny_dex_number": 3018,
     "name": "Archaludon",
     "rarity": "Super Rare"
   },
   {
     "id": 1019,
     "dex_number": 1019,
-    "shiny_dex_number": 10019,
+    "shiny_dex_number": 3019,
     "name": "Hydrapple",
     "rarity": "Super Rare"
   },
   {
     "id": 1020,
     "dex_number": 1020,
-    "shiny_dex_number": 10020,
+    "shiny_dex_number": 3020,
     "name": "Gouging Fire",
     "rarity": "Legendary"
   },
   {
     "id": 1021,
     "dex_number": 1021,
-    "shiny_dex_number": 10021,
+    "shiny_dex_number": 3021,
     "name": "Raging Bolt",
     "rarity": "Legendary"
   },
   {
     "id": 1022,
     "dex_number": 1022,
-    "shiny_dex_number": 10022,
+    "shiny_dex_number": 3022,
     "name": "Iron Boulder",
     "rarity": "Legendary"
   },
   {
     "id": 1023,
     "dex_number": 1023,
-    "shiny_dex_number": 10023,
+    "shiny_dex_number": 3023,
     "name": "Iron Crown",
     "rarity": "Legendary"
   },
   {
     "id": 1024,
     "dex_number": 1024,
-    "shiny_dex_number": 10024,
+    "shiny_dex_number": 3024,
     "name": "Terapagos",
     "rarity": "Legendary"
   },
   {
     "id": 1025,
     "dex_number": 1025,
-    "shiny_dex_number": 10025,
+    "shiny_dex_number": 3025,
     "name": "Pecharunt",
     "rarity": "Legendary"
   },
   {
     "id": 10001,
-    "dex_number": 7061,
-    "shiny_dex_number": 8061,
+    "dex_number": 6061,
+    "shiny_dex_number": 7061,
     "name": "Deoxys Attack",
     "rarity": "Legendary"
   },
   {
     "id": 10002,
-    "dex_number": 7062,
-    "shiny_dex_number": 8062,
+    "dex_number": 6062,
+    "shiny_dex_number": 7062,
     "name": "Deoxys Defense",
     "rarity": "Legendary"
   },
   {
     "id": 10003,
-    "dex_number": 7063,
-    "shiny_dex_number": 8063,
+    "dex_number": 6063,
+    "shiny_dex_number": 7063,
     "name": "Deoxys Speed",
     "rarity": "Legendary"
   },
   {
     "id": 10004,
-    "dex_number": 7064,
-    "shiny_dex_number": 8064,
+    "dex_number": 6064,
+    "shiny_dex_number": 7064,
     "name": "Wormadam Sandy",
     "rarity": "Super Rare"
   },
   {
     "id": 10005,
-    "dex_number": 7065,
-    "shiny_dex_number": 8065,
+    "dex_number": 6065,
+    "shiny_dex_number": 7065,
     "name": "Wormadam Trash",
     "rarity": "Super Rare"
   },
   {
     "id": 10006,
-    "dex_number": 7074,
-    "shiny_dex_number": 8074,
+    "dex_number": 6074,
+    "shiny_dex_number": 7074,
     "name": "Shaymin Sky",
     "rarity": "Legendary"
   },
   {
     "id": 10007,
-    "dex_number": 7073,
-    "shiny_dex_number": 8073,
+    "dex_number": 6073,
+    "shiny_dex_number": 7073,
     "name": "Giratina Origin",
     "rarity": "Legendary"
   },
   {
     "id": 10008,
-    "dex_number": 7066,
-    "shiny_dex_number": 8066,
+    "dex_number": 6066,
+    "shiny_dex_number": 7066,
     "name": "Rotom Heat",
     "rarity": "Super Rare"
   },
   {
     "id": 10009,
-    "dex_number": 7067,
-    "shiny_dex_number": 8067,
+    "dex_number": 6067,
+    "shiny_dex_number": 7067,
     "name": "Rotom Wash",
     "rarity": "Super Rare"
   },
   {
     "id": 10010,
-    "dex_number": 7068,
-    "shiny_dex_number": 8068,
+    "dex_number": 6068,
+    "shiny_dex_number": 7068,
     "name": "Rotom Frost",
     "rarity": "Super Rare"
   },
   {
     "id": 10011,
-    "dex_number": 7069,
-    "shiny_dex_number": 8069,
+    "dex_number": 6069,
+    "shiny_dex_number": 7069,
     "name": "Rotom Fan",
     "rarity": "Super Rare"
   },
   {
     "id": 10012,
-    "dex_number": 7070,
-    "shiny_dex_number": 8070,
+    "dex_number": 6070,
+    "shiny_dex_number": 7070,
     "name": "Rotom Mow",
     "rarity": "Super Rare"
   },
   {
     "id": 10013,
-    "dex_number": 7056,
-    "shiny_dex_number": 8056,
+    "dex_number": 6056,
+    "shiny_dex_number": 7056,
     "name": "Castform Sunny",
     "rarity": "Super Rare"
   },
   {
     "id": 10014,
-    "dex_number": 7057,
-    "shiny_dex_number": 8057,
+    "dex_number": 6057,
+    "shiny_dex_number": 7057,
     "name": "Castform Rainy",
     "rarity": "Super Rare"
   },
   {
     "id": 10015,
-    "dex_number": 7058,
-    "shiny_dex_number": 8058,
+    "dex_number": 6058,
+    "shiny_dex_number": 7058,
     "name": "Castform Snowy",
     "rarity": "Super Rare"
   },
   {
     "id": 10016,
-    "dex_number": 7077,
-    "shiny_dex_number": 8077,
+    "dex_number": 6077,
+    "shiny_dex_number": 7077,
     "name": "Basculin Blue Striped",
     "rarity": "Uncommon"
   },
   {
     "id": 10017,
-    "dex_number": 7080,
-    "shiny_dex_number": 8080,
+    "dex_number": 6080,
+    "shiny_dex_number": 7080,
     "name": "Darmanitan Zen",
     "rarity": "Super Rare"
   },
   {
     "id": 10018,
-    "dex_number": 7093,
-    "shiny_dex_number": 8093,
+    "dex_number": 6093,
+    "shiny_dex_number": 7093,
     "name": "Meloetta Pirouette",
     "rarity": "Legendary"
   },
   {
     "id": 10019,
-    "dex_number": 7087,
-    "shiny_dex_number": 8087,
+    "dex_number": 6087,
+    "shiny_dex_number": 7087,
     "name": "Tornadus Therian",
     "rarity": "Legendary"
   },
   {
     "id": 10020,
-    "dex_number": 7088,
-    "shiny_dex_number": 8088,
+    "dex_number": 6088,
+    "shiny_dex_number": 7088,
     "name": "Thundurus Therian",
     "rarity": "Legendary"
   },
   {
     "id": 10021,
-    "dex_number": 7089,
-    "shiny_dex_number": 8089,
+    "dex_number": 6089,
+    "shiny_dex_number": 7089,
     "name": "Landorus Therian",
     "rarity": "Legendary"
   },
   {
     "id": 10022,
-    "dex_number": 7090,
-    "shiny_dex_number": 8090,
+    "dex_number": 6090,
+    "shiny_dex_number": 7090,
     "name": "Kyurem Black",
     "rarity": "Legendary"
   },
   {
     "id": 10023,
-    "dex_number": 7091,
-    "shiny_dex_number": 8091,
+    "dex_number": 6091,
+    "shiny_dex_number": 7091,
     "name": "Kyurem White",
     "rarity": "Legendary"
   },
   {
     "id": 10024,
-    "dex_number": 7092,
-    "shiny_dex_number": 8092,
+    "dex_number": 6092,
+    "shiny_dex_number": 7092,
     "name": "Keldeo Resolute",
     "rarity": "Legendary"
   },
   {
     "id": 10025,
-    "dex_number": 7096,
-    "shiny_dex_number": 8096,
+    "dex_number": 6096,
+    "shiny_dex_number": 7096,
     "name": "Meowstic Female",
     "rarity": "Super Rare"
   },
   {
     "id": 10026,
-    "dex_number": 7097,
-    "shiny_dex_number": 8097,
+    "dex_number": 6097,
+    "shiny_dex_number": 7097,
     "name": "Aegislash Blade",
     "rarity": "Super Rare"
   },
   {
-    "id": 10029,
-    "dex_number": 7100,
-    "shiny_dex_number": 8100,
-    "name": "Pumpkaboo Super",
-    "rarity": "Common"
-  },
-  {
-    "id": 10030,
-    "dex_number": 7101,
-    "shiny_dex_number": 8101,
-    "name": "Gourgeist Small",
-    "rarity": "Rare"
-  },
-  {
-    "id": 10031,
-    "dex_number": 7102,
-    "shiny_dex_number": 8102,
-    "name": "Gourgeist Large",
-    "rarity": "Rare"
-  },
-  {
-    "id": 10032,
-    "dex_number": 7103,
-    "shiny_dex_number": 8103,
-    "name": "Gourgeist Super",
-    "rarity": "Rare"
-  },
-  {
     "id": 10033,
-    "dex_number": 3001,
-    "shiny_dex_number": 4001,
+    "dex_number": 4001,
+    "shiny_dex_number": 4501,
     "name": "Venusaur Mega",
     "rarity": "Mega"
   },
   {
     "id": 10034,
-    "dex_number": 3002,
-    "shiny_dex_number": 4002,
+    "dex_number": 4002,
+    "shiny_dex_number": 4502,
     "name": "Charizard Mega X",
     "rarity": "Mega"
   },
   {
     "id": 10035,
-    "dex_number": 3003,
-    "shiny_dex_number": 4003,
+    "dex_number": 4003,
+    "shiny_dex_number": 4503,
     "name": "Charizard Mega Y",
     "rarity": "Mega"
   },
   {
     "id": 10036,
-    "dex_number": 3004,
-    "shiny_dex_number": 4004,
+    "dex_number": 4004,
+    "shiny_dex_number": 4504,
     "name": "Blastoise Mega",
     "rarity": "Mega"
   },
   {
     "id": 10037,
-    "dex_number": 3010,
-    "shiny_dex_number": 4010,
+    "dex_number": 4010,
+    "shiny_dex_number": 4510,
     "name": "Alakazam Mega",
     "rarity": "Mega"
   },
   {
     "id": 10038,
-    "dex_number": 3013,
-    "shiny_dex_number": 4013,
+    "dex_number": 4013,
+    "shiny_dex_number": 4513,
     "name": "Gengar Mega",
     "rarity": "Mega"
   },
   {
     "id": 10039,
-    "dex_number": 3014,
-    "shiny_dex_number": 4014,
+    "dex_number": 4014,
+    "shiny_dex_number": 4514,
     "name": "Kangaskhan Mega",
     "rarity": "Mega"
   },
   {
     "id": 10040,
-    "dex_number": 3016,
-    "shiny_dex_number": 4016,
+    "dex_number": 4016,
+    "shiny_dex_number": 4516,
     "name": "Pinsir Mega",
     "rarity": "Mega"
   },
   {
     "id": 10041,
-    "dex_number": 3017,
-    "shiny_dex_number": 4017,
+    "dex_number": 4017,
+    "shiny_dex_number": 4517,
     "name": "Gyarados Mega",
     "rarity": "Mega"
   },
   {
     "id": 10042,
-    "dex_number": 3018,
-    "shiny_dex_number": 4018,
+    "dex_number": 4018,
+    "shiny_dex_number": 4518,
     "name": "Aerodactyl Mega",
     "rarity": "Mega"
   },
   {
     "id": 10043,
-    "dex_number": 3020,
-    "shiny_dex_number": 4020,
+    "dex_number": 4020,
+    "shiny_dex_number": 4520,
     "name": "Mewtwo Mega X",
     "rarity": "Mega"
   },
   {
     "id": 10044,
-    "dex_number": 3021,
-    "shiny_dex_number": 4021,
+    "dex_number": 4021,
+    "shiny_dex_number": 4521,
     "name": "Mewtwo Mega Y",
     "rarity": "Mega"
   },
   {
     "id": 10045,
-    "dex_number": 3024,
-    "shiny_dex_number": 4024,
+    "dex_number": 4024,
+    "shiny_dex_number": 4524,
     "name": "Ampharos Mega",
     "rarity": "Mega"
   },
   {
     "id": 10046,
-    "dex_number": 3026,
-    "shiny_dex_number": 4026,
+    "dex_number": 4026,
+    "shiny_dex_number": 4526,
     "name": "Scizor Mega",
     "rarity": "Mega"
   },
   {
     "id": 10047,
-    "dex_number": 3027,
-    "shiny_dex_number": 4027,
+    "dex_number": 4027,
+    "shiny_dex_number": 4527,
     "name": "Heracross Mega",
     "rarity": "Mega"
   },
   {
     "id": 10048,
-    "dex_number": 3029,
-    "shiny_dex_number": 4029,
+    "dex_number": 4029,
+    "shiny_dex_number": 4529,
     "name": "Houndoom Mega",
     "rarity": "Mega"
   },
   {
     "id": 10049,
-    "dex_number": 3030,
-    "shiny_dex_number": 4030,
+    "dex_number": 4030,
+    "shiny_dex_number": 4530,
     "name": "Tyranitar Mega",
     "rarity": "Mega"
   },
   {
     "id": 10050,
-    "dex_number": 3032,
-    "shiny_dex_number": 4032,
+    "dex_number": 4032,
+    "shiny_dex_number": 4532,
     "name": "Blaziken Mega",
     "rarity": "Mega"
   },
   {
     "id": 10051,
-    "dex_number": 3034,
-    "shiny_dex_number": 4034,
+    "dex_number": 4034,
+    "shiny_dex_number": 4534,
     "name": "Gardevoir Mega",
     "rarity": "Mega"
   },
   {
     "id": 10052,
-    "dex_number": 3036,
-    "shiny_dex_number": 4036,
+    "dex_number": 4036,
+    "shiny_dex_number": 4536,
     "name": "Mawile Mega",
     "rarity": "Mega"
   },
   {
     "id": 10053,
-    "dex_number": 3037,
-    "shiny_dex_number": 4037,
+    "dex_number": 4037,
+    "shiny_dex_number": 4537,
     "name": "Aggron Mega",
     "rarity": "Mega"
   },
   {
     "id": 10054,
-    "dex_number": 3038,
-    "shiny_dex_number": 4038,
+    "dex_number": 4038,
+    "shiny_dex_number": 4538,
     "name": "Medicham Mega",
     "rarity": "Mega"
   },
   {
     "id": 10055,
-    "dex_number": 3039,
-    "shiny_dex_number": 4039,
+    "dex_number": 4039,
+    "shiny_dex_number": 4539,
     "name": "Manectric Mega",
     "rarity": "Mega"
   },
   {
     "id": 10056,
-    "dex_number": 3043,
-    "shiny_dex_number": 4043,
+    "dex_number": 4043,
+    "shiny_dex_number": 4543,
     "name": "Banette Mega",
     "rarity": "Mega"
   },
   {
     "id": 10057,
-    "dex_number": 3045,
-    "shiny_dex_number": 4045,
+    "dex_number": 4045,
+    "shiny_dex_number": 4545,
     "name": "Absol Mega",
     "rarity": "Mega"
   },
   {
     "id": 10058,
-    "dex_number": 3055,
-    "shiny_dex_number": 4055,
+    "dex_number": 4055,
+    "shiny_dex_number": 4555,
     "name": "Garchomp Mega",
     "rarity": "Mega"
   },
   {
     "id": 10059,
-    "dex_number": 3057,
-    "shiny_dex_number": 4057,
+    "dex_number": 4057,
+    "shiny_dex_number": 4557,
     "name": "Lucario Mega",
     "rarity": "Mega"
   },
   {
     "id": 10060,
-    "dex_number": 3059,
-    "shiny_dex_number": 4059,
+    "dex_number": 4059,
+    "shiny_dex_number": 4559,
     "name": "Abomasnow Mega",
     "rarity": "Mega"
   },
   {
     "id": 10061,
-    "dex_number": 7095,
-    "shiny_dex_number": 8095,
+    "dex_number": 6095,
+    "shiny_dex_number": 7095,
     "name": "Floette Eternal",
     "rarity": "Super Rare"
   },
   {
     "id": 10062,
-    "dex_number": 3050,
-    "shiny_dex_number": 4050,
+    "dex_number": 4050,
+    "shiny_dex_number": 4550,
     "name": "Latias Mega",
     "rarity": "Mega"
   },
   {
     "id": 10063,
-    "dex_number": 3051,
-    "shiny_dex_number": 4051,
+    "dex_number": 4051,
+    "shiny_dex_number": 4551,
     "name": "Latios Mega",
     "rarity": "Mega"
   },
   {
     "id": 10064,
-    "dex_number": 3033,
-    "shiny_dex_number": 4033,
+    "dex_number": 4033,
+    "shiny_dex_number": 4533,
     "name": "Swampert Mega",
     "rarity": "Mega"
   },
   {
     "id": 10065,
-    "dex_number": 3031,
-    "shiny_dex_number": 4031,
+    "dex_number": 4031,
+    "shiny_dex_number": 4531,
     "name": "Sceptile Mega",
     "rarity": "Mega"
   },
   {
     "id": 10066,
-    "dex_number": 3035,
-    "shiny_dex_number": 4035,
+    "dex_number": 4035,
+    "shiny_dex_number": 4535,
     "name": "Sableye Mega",
     "rarity": "Mega"
   },
   {
     "id": 10067,
-    "dex_number": 3042,
-    "shiny_dex_number": 4042,
+    "dex_number": 4042,
+    "shiny_dex_number": 4542,
     "name": "Altaria Mega",
     "rarity": "Mega"
   },
   {
     "id": 10068,
-    "dex_number": 3060,
-    "shiny_dex_number": 4060,
+    "dex_number": 4060,
+    "shiny_dex_number": 4560,
     "name": "Gallade Mega",
     "rarity": "Mega"
   },
   {
     "id": 10069,
-    "dex_number": 3066,
-    "shiny_dex_number": 4066,
+    "dex_number": 4066,
+    "shiny_dex_number": 4566,
     "name": "Audino Mega",
     "rarity": "Mega"
   },
   {
     "id": 10070,
-    "dex_number": 3040,
-    "shiny_dex_number": 4040,
+    "dex_number": 4040,
+    "shiny_dex_number": 4540,
     "name": "Sharpedo Mega",
     "rarity": "Mega"
   },
   {
     "id": 10071,
-    "dex_number": 3012,
-    "shiny_dex_number": 4012,
+    "dex_number": 4012,
+    "shiny_dex_number": 4512,
     "name": "Slowbro Mega",
     "rarity": "Mega"
   },
   {
     "id": 10072,
-    "dex_number": 3025,
-    "shiny_dex_number": 4025,
+    "dex_number": 4025,
+    "shiny_dex_number": 4525,
     "name": "Steelix Mega",
     "rarity": "Mega"
   },
   {
     "id": 10073,
-    "dex_number": 3006,
-    "shiny_dex_number": 4006,
+    "dex_number": 4006,
+    "shiny_dex_number": 4506,
     "name": "Pidgeot Mega",
     "rarity": "Mega"
   },
   {
     "id": 10074,
-    "dex_number": 3047,
-    "shiny_dex_number": 4047,
+    "dex_number": 4047,
+    "shiny_dex_number": 4547,
     "name": "Glalie Mega",
     "rarity": "Mega"
   },
   {
     "id": 10075,
-    "dex_number": 3084,
-    "shiny_dex_number": 4084,
+    "dex_number": 4084,
+    "shiny_dex_number": 4584,
     "name": "Diancie Mega",
     "rarity": "Mega"
   },
   {
     "id": 10076,
-    "dex_number": 3049,
-    "shiny_dex_number": 4049,
+    "dex_number": 4049,
+    "shiny_dex_number": 4549,
     "name": "Metagross Mega",
     "rarity": "Mega"
   },
   {
     "id": 10077,
-    "dex_number": 7059,
-    "shiny_dex_number": 8059,
+    "dex_number": 6059,
+    "shiny_dex_number": 7059,
     "name": "Kyogre Primal",
     "rarity": "Legendary"
   },
   {
     "id": 10078,
-    "dex_number": 7060,
-    "shiny_dex_number": 8060,
+    "dex_number": 6060,
+    "shiny_dex_number": 7060,
     "name": "Groudon Primal",
     "rarity": "Legendary"
   },
   {
     "id": 10079,
-    "dex_number": 3052,
-    "shiny_dex_number": 4052,
+    "dex_number": 4052,
+    "shiny_dex_number": 4552,
     "name": "Rayquaza Mega",
     "rarity": "Mega"
   },
   {
     "id": 10080,
-    "dex_number": 7003,
-    "shiny_dex_number": 8003,
+    "dex_number": 6003,
+    "shiny_dex_number": 7003,
     "name": "Pikachu Rock Star",
     "rarity": "Super Rare"
   },
   {
     "id": 10081,
-    "dex_number": 7004,
-    "shiny_dex_number": 8004,
+    "dex_number": 6004,
+    "shiny_dex_number": 7004,
     "name": "Pikachu Belle",
     "rarity": "Super Rare"
   },
   {
     "id": 10082,
-    "dex_number": 7005,
-    "shiny_dex_number": 8005,
+    "dex_number": 6005,
+    "shiny_dex_number": 7005,
     "name": "Pikachu Pop Star",
     "rarity": "Super Rare"
   },
   {
     "id": 10083,
-    "dex_number": 7006,
-    "shiny_dex_number": 8006,
+    "dex_number": 6006,
+    "shiny_dex_number": 7006,
     "name": "Pikachu Phd",
     "rarity": "Super Rare"
   },
   {
     "id": 10084,
-    "dex_number": 7007,
-    "shiny_dex_number": 8007,
+    "dex_number": 6007,
+    "shiny_dex_number": 7007,
     "name": "Pikachu Libre",
     "rarity": "Super Rare"
   },
   {
     "id": 10085,
-    "dex_number": 7008,
-    "shiny_dex_number": 8008,
+    "dex_number": 6008,
+    "shiny_dex_number": 7008,
     "name": "Pikachu Cosplay",
     "rarity": "Uncommon"
   },
   {
     "id": 10086,
-    "dex_number": 7107,
-    "shiny_dex_number": 8107,
+    "dex_number": 6107,
+    "shiny_dex_number": 7107,
     "name": "Hoopa Unbound",
     "rarity": "Legendary"
   },
   {
     "id": 10087,
-    "dex_number": 3041,
-    "shiny_dex_number": 4041,
+    "dex_number": 4041,
+    "shiny_dex_number": 4541,
     "name": "Camerupt Mega",
     "rarity": "Mega"
   },
   {
     "id": 10088,
-    "dex_number": 3054,
-    "shiny_dex_number": 4054,
+    "dex_number": 4054,
+    "shiny_dex_number": 4554,
     "name": "Lopunny Mega",
     "rarity": "Mega"
   },
   {
     "id": 10089,
-    "dex_number": 3048,
-    "shiny_dex_number": 4048,
+    "dex_number": 4048,
+    "shiny_dex_number": 4548,
     "name": "Salamence Mega",
     "rarity": "Mega"
   },
   {
     "id": 10090,
-    "dex_number": 3005,
-    "shiny_dex_number": 4005,
+    "dex_number": 4005,
+    "shiny_dex_number": 4505,
     "name": "Beedrill Mega",
     "rarity": "Mega"
   },
   {
     "id": 10091,
-    "dex_number": 7001,
-    "shiny_dex_number": 8001,
+    "dex_number": 6001,
+    "shiny_dex_number": 7001,
     "name": "Alolan Rattata",
     "rarity": "Super Rare"
   },
   {
     "id": 10092,
-    "dex_number": 7002,
-    "shiny_dex_number": 8002,
+    "dex_number": 6002,
+    "shiny_dex_number": 7002,
     "name": "Alolan Raticate",
     "rarity": "Super Rare"
   },
   {
     "id": 10094,
-    "dex_number": 7009,
-    "shiny_dex_number": 8009,
+    "dex_number": 6009,
+    "shiny_dex_number": 7009,
     "name": "Pikachu Original Cap",
     "rarity": "Uncommon"
   },
   {
     "id": 10095,
-    "dex_number": 7010,
-    "shiny_dex_number": 8010,
+    "dex_number": 6010,
+    "shiny_dex_number": 7010,
     "name": "Pikachu Hoenn Cap",
     "rarity": "Uncommon"
   },
   {
     "id": 10096,
-    "dex_number": 7011,
-    "shiny_dex_number": 8011,
+    "dex_number": 6011,
+    "shiny_dex_number": 7011,
     "name": "Pikachu Sinnoh Cap",
     "rarity": "Uncommon"
   },
   {
     "id": 10097,
-    "dex_number": 7012,
-    "shiny_dex_number": 8012,
+    "dex_number": 6012,
+    "shiny_dex_number": 7012,
     "name": "Pikachu Unova Cap",
     "rarity": "Uncommon"
   },
   {
     "id": 10098,
-    "dex_number": 7013,
-    "shiny_dex_number": 8013,
+    "dex_number": 6013,
+    "shiny_dex_number": 7013,
     "name": "Pikachu Kalos Cap",
     "rarity": "Uncommon"
   },
   {
     "id": 10099,
-    "dex_number": 7014,
-    "shiny_dex_number": 8014,
+    "dex_number": 6014,
+    "shiny_dex_number": 7014,
     "name": "Pikachu Alola Cap",
     "rarity": "Uncommon"
   },
   {
     "id": 10100,
-    "dex_number": 7017,
-    "shiny_dex_number": 8017,
+    "dex_number": 6017,
+    "shiny_dex_number": 7017,
     "name": "Alolan Raichu",
     "rarity": "Super Rare"
   },
   {
     "id": 10101,
-    "dex_number": 7018,
-    "shiny_dex_number": 8018,
+    "dex_number": 6018,
+    "shiny_dex_number": 7018,
     "name": "Alolan Sandshrew",
     "rarity": "Super Rare"
   },
   {
     "id": 10102,
-    "dex_number": 7019,
-    "shiny_dex_number": 8019,
+    "dex_number": 6019,
+    "shiny_dex_number": 7019,
     "name": "Alolan Sandslash",
     "rarity": "Super Rare"
   },
   {
     "id": 10103,
-    "dex_number": 7020,
-    "shiny_dex_number": 8020,
+    "dex_number": 6020,
+    "shiny_dex_number": 7020,
     "name": "Alolan Vulpix",
     "rarity": "Super Rare"
   },
   {
     "id": 10104,
-    "dex_number": 7021,
-    "shiny_dex_number": 8021,
+    "dex_number": 6021,
+    "shiny_dex_number": 7021,
     "name": "Alolan Ninetales",
     "rarity": "Super Rare"
   },
   {
     "id": 10105,
-    "dex_number": 7022,
-    "shiny_dex_number": 8022,
+    "dex_number": 6022,
+    "shiny_dex_number": 7022,
     "name": "Alolan Diglett",
     "rarity": "Super Rare"
   },
   {
     "id": 10106,
-    "dex_number": 7023,
-    "shiny_dex_number": 8023,
+    "dex_number": 6023,
+    "shiny_dex_number": 7023,
     "name": "Alolan Dugtrio",
     "rarity": "Super Rare"
   },
   {
     "id": 10107,
-    "dex_number": 7024,
-    "shiny_dex_number": 8024,
+    "dex_number": 6024,
+    "shiny_dex_number": 7024,
     "name": "Alolan Meowth",
     "rarity": "Super Rare"
   },
   {
     "id": 10108,
-    "dex_number": 7026,
-    "shiny_dex_number": 8026,
+    "dex_number": 6026,
+    "shiny_dex_number": 7026,
     "name": "Alolan Persian",
     "rarity": "Super Rare"
   },
   {
     "id": 10109,
-    "dex_number": 7029,
-    "shiny_dex_number": 8029,
+    "dex_number": 6029,
+    "shiny_dex_number": 7029,
     "name": "Alolan Geodude",
     "rarity": "Super Rare"
   },
   {
     "id": 10110,
-    "dex_number": 7030,
-    "shiny_dex_number": 8030,
+    "dex_number": 6030,
+    "shiny_dex_number": 7030,
     "name": "Alolan Graveler",
     "rarity": "Super Rare"
   },
   {
     "id": 10111,
-    "dex_number": 7031,
-    "shiny_dex_number": 8031,
+    "dex_number": 6031,
+    "shiny_dex_number": 7031,
     "name": "Alolan Golem",
     "rarity": "Super Rare"
   },
   {
     "id": 10112,
-    "dex_number": 7037,
-    "shiny_dex_number": 8037,
+    "dex_number": 6037,
+    "shiny_dex_number": 7037,
     "name": "Alolan Grimer",
     "rarity": "Super Rare"
   },
   {
     "id": 10113,
-    "dex_number": 7038,
-    "shiny_dex_number": 8038,
+    "dex_number": 6038,
+    "shiny_dex_number": 7038,
     "name": "Alolan Muk",
     "rarity": "Super Rare"
   },
   {
     "id": 10114,
-    "dex_number": 7041,
-    "shiny_dex_number": 8041,
+    "dex_number": 6041,
+    "shiny_dex_number": 7041,
     "name": "Alolan Exeggutor",
     "rarity": "Super Rare"
   },
   {
     "id": 10115,
-    "dex_number": 7042,
-    "shiny_dex_number": 8042,
+    "dex_number": 6042,
+    "shiny_dex_number": 7042,
     "name": "Alolan Marowak",
     "rarity": "Super Rare"
   },
   {
     "id": 10117,
-    "dex_number": 7094,
-    "shiny_dex_number": 8094,
+    "dex_number": 6094,
+    "shiny_dex_number": 7094,
     "name": "Greninja Ash",
     "rarity": "Super Rare"
   },
   {
     "id": 10120,
-    "dex_number": 7105,
-    "shiny_dex_number": 8105,
+    "dex_number": 6105,
+    "shiny_dex_number": 7105,
     "name": "Zygarde Complete",
     "rarity": "Legendary"
   },
   {
     "id": 10123,
-    "dex_number": 7109,
-    "shiny_dex_number": 8109,
+    "dex_number": 6109,
+    "shiny_dex_number": 7109,
     "name": "Oricorio Pom Pom",
     "rarity": "Super Rare"
   },
   {
     "id": 10124,
-    "dex_number": 7110,
-    "shiny_dex_number": 8110,
+    "dex_number": 6110,
+    "shiny_dex_number": 7110,
     "name": "Oricorio Pau",
     "rarity": "Super Rare"
   },
   {
     "id": 10125,
-    "dex_number": 7111,
-    "shiny_dex_number": 8111,
+    "dex_number": 6111,
+    "shiny_dex_number": 7111,
     "name": "Oricorio Sensu",
     "rarity": "Super Rare"
   },
   {
     "id": 10126,
-    "dex_number": 7112,
-    "shiny_dex_number": 8112,
+    "dex_number": 6112,
+    "shiny_dex_number": 7112,
     "name": "Lycanroc Midnight",
     "rarity": "Super Rare"
   },
   {
     "id": 10127,
-    "dex_number": 7114,
-    "shiny_dex_number": 8114,
+    "dex_number": 6114,
+    "shiny_dex_number": 7114,
     "name": "Wishiwashi School",
     "rarity": "Super Rare"
   },
   {
     "id": 10136,
-    "dex_number": 7115,
-    "shiny_dex_number": 8115,
+    "dex_number": 6115,
+    "shiny_dex_number": 7115,
     "name": "Minior Red",
     "rarity": "Super Rare"
   },
   {
     "id": 10137,
-    "dex_number": 7116,
-    "shiny_dex_number": 8116,
+    "dex_number": 6116,
+    "shiny_dex_number": 7116,
     "name": "Minior Orange",
     "rarity": "Super Rare"
   },
   {
     "id": 10138,
-    "dex_number": 7117,
-    "shiny_dex_number": 8117,
+    "dex_number": 6117,
+    "shiny_dex_number": 7117,
     "name": "Minior Yellow",
     "rarity": "Super Rare"
   },
   {
     "id": 10139,
-    "dex_number": 7118,
-    "shiny_dex_number": 8118,
+    "dex_number": 6118,
+    "shiny_dex_number": 7118,
     "name": "Minior Green",
     "rarity": "Super Rare"
   },
   {
     "id": 10140,
-    "dex_number": 7119,
-    "shiny_dex_number": 8119,
+    "dex_number": 6119,
+    "shiny_dex_number": 7119,
     "name": "Minior Blue",
     "rarity": "Super Rare"
   },
   {
     "id": 10141,
-    "dex_number": 7120,
-    "shiny_dex_number": 8120,
+    "dex_number": 6120,
+    "shiny_dex_number": 7120,
     "name": "Minior Indigo",
     "rarity": "Super Rare"
   },
   {
     "id": 10142,
-    "dex_number": 7121,
-    "shiny_dex_number": 8121,
+    "dex_number": 6121,
+    "shiny_dex_number": 7121,
     "name": "Minior Violet",
     "rarity": "Super Rare"
   },
   {
     "id": 10143,
-    "dex_number": 7122,
-    "shiny_dex_number": 8122,
+    "dex_number": 6122,
+    "shiny_dex_number": 7122,
     "name": "Mimikyu Busted",
     "rarity": "Super Rare"
   },
   {
     "id": 10147,
-    "dex_number": 7126,
-    "shiny_dex_number": 8126,
+    "dex_number": 6126,
+    "shiny_dex_number": 7126,
     "name": "Magearna Original",
     "rarity": "Legendary"
   },
   {
     "id": 10148,
-    "dex_number": 7015,
-    "shiny_dex_number": 8015,
+    "dex_number": 6015,
+    "shiny_dex_number": 7015,
     "name": "Pikachu Partner Cap",
     "rarity": "Uncommon"
   },
   {
     "id": 10152,
-    "dex_number": 7113,
-    "shiny_dex_number": 8113,
+    "dex_number": 6113,
+    "shiny_dex_number": 7113,
     "name": "Lycanroc Dusk",
     "rarity": "Super Rare"
   },
   {
     "id": 10155,
-    "dex_number": 7158,
-    "shiny_dex_number": 8123,
+    "dex_number": 6123,
+    "shiny_dex_number": 7123,
     "name": "Necrozma Dusk",
     "rarity": "Legendary"
   },
   {
     "id": 10156,
-    "dex_number": 7124,
-    "shiny_dex_number": 8124,
+    "dex_number": 6124,
+    "shiny_dex_number": 7124,
     "name": "Necrozma Dawn",
     "rarity": "Legendary"
   },
   {
     "id": 10157,
-    "dex_number": 7125,
-    "shiny_dex_number": 8125,
+    "dex_number": 6125,
+    "shiny_dex_number": 7125,
     "name": "Necrozma Ultra",
     "rarity": "Legendary"
   },
   {
     "id": 10160,
-    "dex_number": 7016,
-    "shiny_dex_number": 8016,
+    "dex_number": 6016,
+    "shiny_dex_number": 7016,
     "name": "Pikachu World Cap",
     "rarity": "Uncommon"
   },
   {
     "id": 10161,
-    "dex_number": 7025,
-    "shiny_dex_number": 8025,
+    "dex_number": 6025,
+    "shiny_dex_number": 7025,
     "name": "Galarian Meowth",
     "rarity": "Super Rare"
   },
   {
     "id": 10162,
-    "dex_number": 7032,
-    "shiny_dex_number": 8032,
+    "dex_number": 6032,
+    "shiny_dex_number": 7032,
     "name": "Galarian Ponyta",
     "rarity": "Super Rare"
   },
   {
     "id": 10163,
-    "dex_number": 7033,
-    "shiny_dex_number": 8033,
+    "dex_number": 6033,
+    "shiny_dex_number": 7033,
     "name": "Galarian Rapidash",
     "rarity": "Super Rare"
   },
   {
     "id": 10164,
-    "dex_number": 7034,
-    "shiny_dex_number": 8034,
+    "dex_number": 6034,
+    "shiny_dex_number": 7034,
     "name": "Galarian Slowpoke",
     "rarity": "Super Rare"
   },
   {
     "id": 10165,
-    "dex_number": 7035,
-    "shiny_dex_number": 8035,
+    "dex_number": 6035,
+    "shiny_dex_number": 7035,
     "name": "Galarian Slowbro",
     "rarity": "Super Rare"
   },
   {
     "id": 10166,
-    "dex_number": 7036,
-    "shiny_dex_number": 8036,
+    "dex_number": 6036,
+    "shiny_dex_number": 7036,
     "name": "Galarian Farfetch'd",
     "rarity": "Super Rare"
   },
   {
     "id": 10167,
-    "dex_number": 7043,
-    "shiny_dex_number": 8043,
+    "dex_number": 6043,
+    "shiny_dex_number": 7043,
     "name": "Galarian Weezing",
     "rarity": "Super Rare"
   },
   {
     "id": 10168,
-    "dex_number": 7044,
-    "shiny_dex_number": 8044,
+    "dex_number": 6044,
+    "shiny_dex_number": 7044,
     "name": "Galarian Mr. Mime",
     "rarity": "Super Rare"
   },
   {
     "id": 10169,
-    "dex_number": 7045,
-    "shiny_dex_number": 8045,
+    "dex_number": 6045,
+    "shiny_dex_number": 7045,
     "name": "Galarian Articuno",
     "rarity": "Legendary"
   },
   {
     "id": 10170,
-    "dex_number": 7046,
-    "shiny_dex_number": 8046,
+    "dex_number": 6046,
+    "shiny_dex_number": 7046,
     "name": "Galarian Zapdos",
     "rarity": "Legendary"
   },
   {
     "id": 10171,
-    "dex_number": 7047,
-    "shiny_dex_number": 8047,
+    "dex_number": 6047,
+    "shiny_dex_number": 7047,
     "name": "Galarian Moltres",
     "rarity": "Legendary"
   },
   {
     "id": 10172,
-    "dex_number": 7050,
-    "shiny_dex_number": 8050,
+    "dex_number": 6050,
+    "shiny_dex_number": 7050,
     "name": "Galarian Slowking",
     "rarity": "Super Rare"
   },
   {
     "id": 10173,
-    "dex_number": 7053,
-    "shiny_dex_number": 8053,
+    "dex_number": 6053,
+    "shiny_dex_number": 7053,
     "name": "Galarian Corsola",
     "rarity": "Super Rare"
   },
   {
     "id": 10174,
-    "dex_number": 7054,
-    "shiny_dex_number": 8054,
+    "dex_number": 6054,
+    "shiny_dex_number": 7054,
     "name": "Galarian Zigzagoon",
     "rarity": "Super Rare"
   },
   {
     "id": 10175,
-    "dex_number": 7055,
-    "shiny_dex_number": 8055,
+    "dex_number": 6055,
+    "shiny_dex_number": 7055,
     "name": "Galarian Linoone",
     "rarity": "Super Rare"
   },
   {
     "id": 10176,
-    "dex_number": 7079,
-    "shiny_dex_number": 8079,
+    "dex_number": 6079,
+    "shiny_dex_number": 7079,
     "name": "Galarian Darumaka",
     "rarity": "Super Rare"
   },
   {
     "id": 10178,
-    "dex_number": 7081,
-    "shiny_dex_number": 8081,
+    "dex_number": 6081,
+    "shiny_dex_number": 7081,
     "name": "Galarian Darmanitan Zen",
     "rarity": "Rare"
   },
   {
     "id": 10179,
-    "dex_number": 7082,
-    "shiny_dex_number": 8082,
+    "dex_number": 6082,
+    "shiny_dex_number": 7082,
     "name": "Galarian Yamask",
     "rarity": "Super Rare"
   },
   {
     "id": 10180,
-    "dex_number": 7085,
-    "shiny_dex_number": 8085,
+    "dex_number": 6085,
+    "shiny_dex_number": 7085,
     "name": "Galarian Stunfisk",
     "rarity": "Super Rare"
   },
   {
     "id": 10181,
-    "dex_number": 7106,
-    "shiny_dex_number": 8106,
+    "dex_number": 6106,
+    "shiny_dex_number": 7106,
     "name": "Zygarde 10",
     "rarity": "Legendary"
   },
   {
     "id": 10182,
-    "dex_number": 7127,
-    "shiny_dex_number": 8127,
+    "dex_number": 6127,
+    "shiny_dex_number": 7127,
     "name": "Cramorant Gulping",
     "rarity": "Super Rare"
   },
   {
     "id": 10183,
-    "dex_number": 7128,
-    "shiny_dex_number": 8128,
+    "dex_number": 6128,
+    "shiny_dex_number": 7128,
     "name": "Cramorant Gorging",
     "rarity": "Super Rare"
   },
   {
     "id": 10184,
-    "dex_number": 7129,
-    "shiny_dex_number": 8129,
+    "dex_number": 6129,
+    "shiny_dex_number": 7129,
     "name": "Toxtricity Low Key",
     "rarity": "Super Rare"
   },
   {
     "id": 10185,
-    "dex_number": 7130,
-    "shiny_dex_number": 8130,
+    "dex_number": 6130,
+    "shiny_dex_number": 7130,
     "name": "Eiscue Noice",
     "rarity": "Super Rare"
   },
   {
     "id": 10186,
-    "dex_number": 7131,
-    "shiny_dex_number": 8131,
-    "name": "Indeedee Female",
+    "dex_number": 6131,
+    "shiny_dex_number": 7131,
+    "name": "Indeedee",
     "rarity": "Uncommon"
   },
   {
     "id": 10187,
-    "dex_number": 7132,
-    "shiny_dex_number": 8132,
+    "dex_number": 6132,
+    "shiny_dex_number": 7132,
     "name": "Morpeko Hangry",
     "rarity": "Super Rare"
   },
   {
     "id": 10188,
-    "dex_number": 7133,
-    "shiny_dex_number": 8133,
+    "dex_number": 6133,
+    "shiny_dex_number": 7133,
     "name": "Zacian Crowned",
     "rarity": "Legendary"
   },
   {
     "id": 10189,
-    "dex_number": 7134,
-    "shiny_dex_number": 8134,
+    "dex_number": 6134,
+    "shiny_dex_number": 7134,
     "name": "Zamazenta Crowned",
     "rarity": "Legendary"
   },
   {
     "id": 10190,
     "dex_number": 5033,
-    "shiny_dex_number": 6033,
+    "shiny_dex_number": 5533,
     "name": "Eternatus Eternamax",
     "rarity": "Gmax"
   },
   {
     "id": 10191,
-    "dex_number": 7135,
-    "shiny_dex_number": 8135,
+    "dex_number": 6135,
+    "shiny_dex_number": 7135,
     "name": "Urshifu Rapid Strike",
     "rarity": "Legendary"
   },
   {
     "id": 10192,
-    "dex_number": 7136,
-    "shiny_dex_number": 8136,
+    "dex_number": 6136,
+    "shiny_dex_number": 7136,
     "name": "Zarude Dada",
     "rarity": "Legendary"
   },
   {
     "id": 10193,
-    "dex_number": 7137,
-    "shiny_dex_number": 8137,
+    "dex_number": 6137,
+    "shiny_dex_number": 7137,
     "name": "Calyrex Ice",
     "rarity": "Legendary"
   },
   {
     "id": 10194,
-    "dex_number": 7138,
-    "shiny_dex_number": 8138,
+    "dex_number": 6138,
+    "shiny_dex_number": 7138,
     "name": "Calyrex Shadow",
     "rarity": "Legendary"
   },
   {
     "id": 10195,
     "dex_number": 5001,
-    "shiny_dex_number": 6001,
+    "shiny_dex_number": 5501,
     "name": "Venusaur Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10196,
     "dex_number": 5002,
-    "shiny_dex_number": 6002,
+    "shiny_dex_number": 5502,
     "name": "Charizard Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10197,
     "dex_number": 5003,
-    "shiny_dex_number": 6003,
+    "shiny_dex_number": 5503,
     "name": "Blastoise Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10198,
     "dex_number": 5004,
-    "shiny_dex_number": 6004,
+    "shiny_dex_number": 5504,
     "name": "Butterfree Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10199,
     "dex_number": 5005,
-    "shiny_dex_number": 6005,
+    "shiny_dex_number": 5505,
     "name": "Pikachu Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10200,
     "dex_number": 5006,
-    "shiny_dex_number": 6006,
+    "shiny_dex_number": 5506,
     "name": "Meowth Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10201,
     "dex_number": 5007,
-    "shiny_dex_number": 6007,
+    "shiny_dex_number": 5507,
     "name": "Machamp Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10202,
     "dex_number": 5008,
-    "shiny_dex_number": 6008,
+    "shiny_dex_number": 5508,
     "name": "Gengar Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10203,
     "dex_number": 5009,
-    "shiny_dex_number": 6009,
+    "shiny_dex_number": 5509,
     "name": "Kingler Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10204,
     "dex_number": 5010,
-    "shiny_dex_number": 6010,
+    "shiny_dex_number": 5510,
     "name": "Lapras Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10205,
     "dex_number": 5011,
-    "shiny_dex_number": 6011,
+    "shiny_dex_number": 5511,
     "name": "Eevee Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10206,
     "dex_number": 5012,
-    "shiny_dex_number": 6012,
+    "shiny_dex_number": 5512,
     "name": "Snorlax Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10207,
     "dex_number": 5013,
-    "shiny_dex_number": 6013,
+    "shiny_dex_number": 5513,
     "name": "Garbodor Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10208,
     "dex_number": 5014,
-    "shiny_dex_number": 6014,
+    "shiny_dex_number": 5514,
     "name": "Melmetal Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10209,
     "dex_number": 5015,
-    "shiny_dex_number": 6015,
+    "shiny_dex_number": 5515,
     "name": "Rillaboom Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10210,
     "dex_number": 5016,
-    "shiny_dex_number": 6016,
+    "shiny_dex_number": 5516,
     "name": "Cinderace Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10211,
     "dex_number": 5017,
-    "shiny_dex_number": 6017,
+    "shiny_dex_number": 5517,
     "name": "Inteleon Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10212,
     "dex_number": 5018,
-    "shiny_dex_number": 6018,
+    "shiny_dex_number": 5518,
     "name": "Corviknight Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10213,
     "dex_number": 5019,
-    "shiny_dex_number": 6019,
+    "shiny_dex_number": 5519,
     "name": "Orbeetle Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10214,
     "dex_number": 5020,
-    "shiny_dex_number": 6020,
+    "shiny_dex_number": 5520,
     "name": "Drednaw Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10215,
     "dex_number": 5021,
-    "shiny_dex_number": 6021,
+    "shiny_dex_number": 5521,
     "name": "Coalossal Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10216,
     "dex_number": 5022,
-    "shiny_dex_number": 6022,
+    "shiny_dex_number": 5522,
     "name": "Flapple Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10217,
     "dex_number": 5023,
-    "shiny_dex_number": 6023,
+    "shiny_dex_number": 5523,
     "name": "Appletun Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10218,
     "dex_number": 5024,
-    "shiny_dex_number": 6024,
+    "shiny_dex_number": 5524,
     "name": "Sandaconda Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10219,
     "dex_number": 5025,
-    "shiny_dex_number": 6025,
+    "shiny_dex_number": 5525,
     "name": "Toxtricity Amped Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10220,
     "dex_number": 5027,
-    "shiny_dex_number": 6027,
+    "shiny_dex_number": 5527,
     "name": "Centiskorch Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10221,
     "dex_number": 5028,
-    "shiny_dex_number": 6028,
+    "shiny_dex_number": 5528,
     "name": "Hatterene Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10222,
     "dex_number": 5029,
-    "shiny_dex_number": 6029,
+    "shiny_dex_number": 5529,
     "name": "Grimmsnarl Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10223,
     "dex_number": 5030,
-    "shiny_dex_number": 6030,
+    "shiny_dex_number": 5530,
     "name": "Alcremie Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10224,
     "dex_number": 5031,
-    "shiny_dex_number": 6031,
+    "shiny_dex_number": 5531,
     "name": "Copperajah Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10225,
     "dex_number": 5032,
-    "shiny_dex_number": 6032,
+    "shiny_dex_number": 5532,
     "name": "Duraludon Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10226,
     "dex_number": 5034,
-    "shiny_dex_number": 6034,
+    "shiny_dex_number": 5534,
     "name": "Urshifu Single Strike Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10227,
     "dex_number": 5035,
-    "shiny_dex_number": 6035,
+    "shiny_dex_number": 5535,
     "name": "Urshifu Rapid Strike Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10228,
     "dex_number": 5026,
-    "shiny_dex_number": 6026,
+    "shiny_dex_number": 5526,
     "name": "Toxtricity Low Key Gmax",
     "rarity": "Gmax"
   },
   {
     "id": 10229,
-    "dex_number": 7027,
-    "shiny_dex_number": 8027,
+    "dex_number": 6027,
+    "shiny_dex_number": 7027,
     "name": "Hisuian Growlithe",
     "rarity": "Super Rare"
   },
   {
     "id": 10230,
-    "dex_number": 7028,
-    "shiny_dex_number": 8028,
+    "dex_number": 6028,
+    "shiny_dex_number": 7028,
     "name": "Hisuian Arcanine",
     "rarity": "Super Rare"
   },
   {
     "id": 10231,
-    "dex_number": 7039,
-    "shiny_dex_number": 8039,
+    "dex_number": 6039,
+    "shiny_dex_number": 7039,
     "name": "Hisuian Voltorb",
     "rarity": "Super Rare"
   },
   {
     "id": 10232,
-    "dex_number": 7040,
-    "shiny_dex_number": 8040,
+    "dex_number": 6040,
+    "shiny_dex_number": 7040,
     "name": "Hisuian Electrode",
     "rarity": "Super Rare"
   },
   {
     "id": 10233,
-    "dex_number": 7048,
-    "shiny_dex_number": 8048,
+    "dex_number": 6048,
+    "shiny_dex_number": 7048,
     "name": "Hisuian Typhlosion",
     "rarity": "Super Rare"
   },
   {
     "id": 10234,
-    "dex_number": 7051,
-    "shiny_dex_number": 8051,
+    "dex_number": 6051,
+    "shiny_dex_number": 7051,
     "name": "Hisuian Qwilfish",
     "rarity": "Super Rare"
   },
   {
     "id": 10235,
-    "dex_number": 7052,
-    "shiny_dex_number": 8052,
+    "dex_number": 6052,
+    "shiny_dex_number": 7052,
     "name": "Hisuian Sneasel",
     "rarity": "Super Rare"
   },
   {
     "id": 10236,
-    "dex_number": 7075,
-    "shiny_dex_number": 8075,
+    "dex_number": 6075,
+    "shiny_dex_number": 7075,
     "name": "Hisuian Samurott",
     "rarity": "Super Rare"
   },
   {
     "id": 10237,
-    "dex_number": 7076,
-    "shiny_dex_number": 8076,
+    "dex_number": 6076,
+    "shiny_dex_number": 7076,
     "name": "Hisuian Lilligant",
     "rarity": "Super Rare"
   },
   {
     "id": 10238,
-    "dex_number": 7083,
-    "shiny_dex_number": 8083,
+    "dex_number": 6083,
+    "shiny_dex_number": 7083,
     "name": "Hisuian Zorua",
     "rarity": "Super Rare"
   },
   {
     "id": 10239,
-    "dex_number": 7084,
-    "shiny_dex_number": 8084,
+    "dex_number": 6084,
+    "shiny_dex_number": 7084,
     "name": "Hisuian Zoroark",
     "rarity": "Super Rare"
   },
   {
     "id": 10240,
-    "dex_number": 7086,
-    "shiny_dex_number": 8086,
+    "dex_number": 6086,
+    "shiny_dex_number": 7086,
     "name": "Hisuian Braviary",
     "rarity": "Super Rare"
   },
   {
     "id": 10241,
-    "dex_number": 7098,
-    "shiny_dex_number": 8098,
+    "dex_number": 6098,
+    "shiny_dex_number": 7098,
     "name": "Hisuian Sliggoo",
     "rarity": "Super Rare"
   },
   {
     "id": 10242,
-    "dex_number": 7099,
-    "shiny_dex_number": 8099,
+    "dex_number": 6099,
+    "shiny_dex_number": 7099,
     "name": "Hisuian Goodra",
     "rarity": "Super Rare"
   },
   {
     "id": 10243,
-    "dex_number": 7104,
-    "shiny_dex_number": 8104,
+    "dex_number": 6104,
+    "shiny_dex_number": 7104,
     "name": "Hisuian Avalugg",
     "rarity": "Super Rare"
   },
   {
     "id": 10244,
-    "dex_number": 7157,
-    "shiny_dex_number": 8108,
+    "dex_number": 6108,
+    "shiny_dex_number": 7108,
     "name": "Hisuian Decidueye",
     "rarity": "Super Rare"
   },
   {
     "id": 10245,
-    "dex_number": 7071,
-    "shiny_dex_number": 8071,
+    "dex_number": 6071,
+    "shiny_dex_number": 7071,
     "name": "Dialga Origin",
     "rarity": "Legendary"
   },
   {
     "id": 10246,
-    "dex_number": 7072,
-    "shiny_dex_number": 8072,
+    "dex_number": 6072,
+    "shiny_dex_number": 7072,
     "name": "Palkia Origin",
     "rarity": "Legendary"
   },
   {
     "id": 10247,
-    "dex_number": 7078,
-    "shiny_dex_number": 8078,
+    "dex_number": 6078,
+    "shiny_dex_number": 7078,
     "name": "Basculin White Striped",
     "rarity": "Uncommon"
   },
   {
     "id": 10248,
-    "dex_number": 7140,
-    "shiny_dex_number": 8140,
+    "dex_number": 6140,
+    "shiny_dex_number": 7140,
     "name": "Basculegion Female",
     "rarity": "Rare"
   },
   {
     "id": 10249,
-    "dex_number": 7141,
-    "shiny_dex_number": 8141,
+    "dex_number": 6141,
+    "shiny_dex_number": 7141,
     "name": "Enamorus Therian",
     "rarity": "Legendary"
   },
   {
     "id": 10253,
-    "dex_number": 7049,
-    "shiny_dex_number": 8049,
+    "dex_number": 6049,
+    "shiny_dex_number": 7049,
     "name": "Paldean Wooper",
     "rarity": "Super Rare"
   },
   {
     "id": 10255,
-    "dex_number": 7150,
-    "shiny_dex_number": 8150,
+    "dex_number": 6150,
+    "shiny_dex_number": 7150,
     "name": "Dudunsparce Three Segment",
     "rarity": "Rare"
   },
   {
     "id": 10256,
-    "dex_number": 7147,
-    "shiny_dex_number": 8147,
+    "dex_number": 6147,
+    "shiny_dex_number": 7147,
     "name": "Palafin Hero",
     "rarity": "Super Rare"
   },
   {
     "id": 10257,
-    "dex_number": 7143,
-    "shiny_dex_number": 8143,
-    "name": "Maushold Family Of Three",
+    "dex_number": 925,
+    "shiny_dex_number": 2925,
+    "name": "Maushold",
     "rarity": "Rare"
   },
   {
     "id": 10258,
-    "dex_number": 7148,
-    "shiny_dex_number": 8148,
+    "dex_number": 6148,
+    "shiny_dex_number": 7148,
     "name": "Tatsugiri Droopy",
     "rarity": "Uncommon"
   },
   {
     "id": 10259,
-    "dex_number": 7149,
-    "shiny_dex_number": 8149,
+    "dex_number": 6149,
+    "shiny_dex_number": 7149,
     "name": "Tatsugiri Stretchy",
     "rarity": "Uncommon"
   },
   {
     "id": 10260,
-    "dex_number": 7144,
-    "shiny_dex_number": 8144,
+    "dex_number": 6144,
+    "shiny_dex_number": 7144,
     "name": "Squawkabilly Blue Plumage",
     "rarity": "Uncommon"
   },
   {
     "id": 10261,
-    "dex_number": 7145,
-    "shiny_dex_number": 8145,
+    "dex_number": 6145,
+    "shiny_dex_number": 7145,
     "name": "Squawkabilly Yellow Plumage",
     "rarity": "Uncommon"
   },
   {
     "id": 10262,
-    "dex_number": 7146,
-    "shiny_dex_number": 8146,
+    "dex_number": 6146,
+    "shiny_dex_number": 7146,
     "name": "Squawkabilly White Plumage",
     "rarity": "Uncommon"
   },
   {
     "id": 10263,
-    "dex_number": 7151,
-    "shiny_dex_number": 8151,
+    "dex_number": 6151,
+    "shiny_dex_number": 7151,
     "name": "Gimmighoul Roaming",
     "rarity": "Super Rare"
   },
   {
     "id": 10272,
-    "dex_number": 7139,
-    "shiny_dex_number": 8139,
+    "dex_number": 6139,
+    "shiny_dex_number": 7139,
     "name": "Ursaluna Bloodmoon",
     "rarity": "Super Rare"
   },
   {
     "id": 10273,
-    "dex_number": 7152,
-    "shiny_dex_number": 8152,
+    "dex_number": 6152,
+    "shiny_dex_number": 7152,
     "name": "Ogerpon Wellspring Mask",
     "rarity": "Legendary"
   },
   {
     "id": 10274,
-    "dex_number": 7153,
-    "shiny_dex_number": 8153,
+    "dex_number": 6153,
+    "shiny_dex_number": 7153,
     "name": "Ogerpon Hearthflame Mask",
     "rarity": "Legendary"
   },
   {
     "id": 10275,
-    "dex_number": 7154,
-    "shiny_dex_number": 8154,
+    "dex_number": 6154,
+    "shiny_dex_number": 7154,
     "name": "Ogerpon Cornerstone Mask",
     "rarity": "Legendary"
   },
   {
     "id": 10276,
-    "dex_number": 7155,
-    "shiny_dex_number": 8155,
+    "dex_number": 6155,
+    "shiny_dex_number": 7155,
     "name": "Terapagos Terastal",
     "rarity": "Legendary"
   },
   {
     "id": 10277,
-    "dex_number": 7156,
-    "shiny_dex_number": 8156,
+    "dex_number": 6156,
+    "shiny_dex_number": 7156,
     "name": "Terapagos Stellar",
     "rarity": "Legendary"
   },
   {
     "id": 10278,
-    "dex_number": 3009,
-    "shiny_dex_number": 4009,
+    "dex_number": 4009,
+    "shiny_dex_number": 4509,
     "name": "Clefable Mega",
     "rarity": "Mega"
   },
   {
     "id": 10279,
-    "dex_number": 3011,
-    "shiny_dex_number": 4011,
+    "dex_number": 4011,
+    "shiny_dex_number": 4511,
     "name": "Victreebel Mega",
     "rarity": "Mega"
   },
   {
     "id": 10280,
-    "dex_number": 3015,
-    "shiny_dex_number": 4015,
+    "dex_number": 4015,
+    "shiny_dex_number": 4515,
     "name": "Starmie Mega",
     "rarity": "Mega"
   },
   {
     "id": 10281,
-    "dex_number": 3019,
-    "shiny_dex_number": 4019,
+    "dex_number": 4019,
+    "shiny_dex_number": 4519,
     "name": "Dragonite Mega",
     "rarity": "Mega"
   },
   {
     "id": 10282,
-    "dex_number": 3022,
-    "shiny_dex_number": 4022,
+    "dex_number": 4022,
+    "shiny_dex_number": 4522,
     "name": "Meganium Mega",
     "rarity": "Mega"
   },
   {
     "id": 10283,
-    "dex_number": 3023,
-    "shiny_dex_number": 4023,
+    "dex_number": 4023,
+    "shiny_dex_number": 4523,
     "name": "Feraligatr Mega",
     "rarity": "Mega"
   },
   {
     "id": 10284,
-    "dex_number": 3028,
-    "shiny_dex_number": 4028,
+    "dex_number": 4028,
+    "shiny_dex_number": 4528,
     "name": "Skarmory Mega",
     "rarity": "Mega"
   },
   {
     "id": 10285,
-    "dex_number": 3061,
-    "shiny_dex_number": 4061,
+    "dex_number": 4061,
+    "shiny_dex_number": 4561,
     "name": "Froslass Mega",
     "rarity": "Mega"
   },
   {
     "id": 10286,
-    "dex_number": 3064,
-    "shiny_dex_number": 4064,
+    "dex_number": 4064,
+    "shiny_dex_number": 4564,
     "name": "Emboar Mega",
     "rarity": "Mega"
   },
   {
     "id": 10287,
-    "dex_number": 3065,
-    "shiny_dex_number": 4065,
+    "dex_number": 4065,
+    "shiny_dex_number": 4565,
     "name": "Excadrill Mega",
     "rarity": "Mega"
   },
   {
     "id": 10288,
-    "dex_number": 3067,
-    "shiny_dex_number": 4067,
+    "dex_number": 4067,
+    "shiny_dex_number": 4567,
     "name": "Scolipede Mega",
     "rarity": "Mega"
   },
   {
     "id": 10289,
-    "dex_number": 3068,
-    "shiny_dex_number": 4068,
+    "dex_number": 4068,
+    "shiny_dex_number": 4568,
     "name": "Scrafty Mega",
     "rarity": "Mega"
   },
   {
     "id": 10290,
-    "dex_number": 3069,
-    "shiny_dex_number": 4069,
+    "dex_number": 4069,
+    "shiny_dex_number": 4569,
     "name": "Eelektross Mega",
     "rarity": "Mega"
   },
   {
     "id": 10291,
-    "dex_number": 3070,
-    "shiny_dex_number": 4070,
+    "dex_number": 4070,
+    "shiny_dex_number": 4570,
     "name": "Chandelure Mega",
     "rarity": "Mega"
   },
   {
     "id": 10292,
-    "dex_number": 3072,
-    "shiny_dex_number": 4072,
+    "dex_number": 4072,
+    "shiny_dex_number": 4572,
     "name": "Chesnaught Mega",
     "rarity": "Mega"
   },
   {
     "id": 10293,
-    "dex_number": 3073,
-    "shiny_dex_number": 4073,
+    "dex_number": 4073,
+    "shiny_dex_number": 4573,
     "name": "Delphox Mega",
     "rarity": "Mega"
   },
   {
     "id": 10294,
-    "dex_number": 3074,
-    "shiny_dex_number": 4074,
+    "dex_number": 4074,
+    "shiny_dex_number": 4574,
     "name": "Greninja Mega",
     "rarity": "Mega"
   },
   {
     "id": 10295,
-    "dex_number": 3075,
-    "shiny_dex_number": 4075,
+    "dex_number": 4075,
+    "shiny_dex_number": 4575,
     "name": "Pyroar Mega",
     "rarity": "Mega"
   },
   {
     "id": 10296,
-    "dex_number": 3076,
-    "shiny_dex_number": 4076,
+    "dex_number": 4076,
+    "shiny_dex_number": 4576,
     "name": "Floette Mega",
     "rarity": "Mega"
   },
   {
     "id": 10297,
-    "dex_number": 3079,
-    "shiny_dex_number": 4079,
+    "dex_number": 4079,
+    "shiny_dex_number": 4579,
     "name": "Malamar Mega",
     "rarity": "Mega"
   },
   {
     "id": 10298,
-    "dex_number": 3080,
-    "shiny_dex_number": 4080,
+    "dex_number": 4080,
+    "shiny_dex_number": 4580,
     "name": "Barbaracle Mega",
     "rarity": "Mega"
   },
   {
     "id": 10299,
-    "dex_number": 3081,
-    "shiny_dex_number": 4081,
+    "dex_number": 4081,
+    "shiny_dex_number": 4581,
     "name": "Dragalge Mega",
     "rarity": "Mega"
   },
   {
     "id": 10300,
-    "dex_number": 3082,
-    "shiny_dex_number": 4082,
+    "dex_number": 4082,
+    "shiny_dex_number": 4582,
     "name": "Hawlucha Mega",
     "rarity": "Mega"
   },
   {
     "id": 10301,
-    "dex_number": 3083,
-    "shiny_dex_number": 4083,
+    "dex_number": 4083,
+    "shiny_dex_number": 4583,
     "name": "Zygarde Mega",
     "rarity": "Mega"
   },
   {
     "id": 10302,
-    "dex_number": 3087,
-    "shiny_dex_number": 4087,
+    "dex_number": 4087,
+    "shiny_dex_number": 4587,
     "name": "Drampa Mega",
     "rarity": "Mega"
   },
   {
     "id": 10303,
-    "dex_number": 3091,
-    "shiny_dex_number": 4091,
+    "dex_number": 4091,
+    "shiny_dex_number": 4591,
     "name": "Falinks Mega",
     "rarity": "Mega"
   },
   {
     "id": 10304,
-    "dex_number": 3007,
-    "shiny_dex_number": 4007,
+    "dex_number": 4007,
+    "shiny_dex_number": 4507,
     "name": "Raichu Mega X",
     "rarity": "Mega"
   },
   {
     "id": 10305,
-    "dex_number": 3008,
-    "shiny_dex_number": 4008,
+    "dex_number": 4008,
+    "shiny_dex_number": 4508,
     "name": "Raichu Mega Y",
     "rarity": "Mega"
   },
   {
     "id": 10306,
-    "dex_number": 3044,
-    "shiny_dex_number": 4044,
+    "dex_number": 4044,
+    "shiny_dex_number": 4544,
     "name": "Chimecho Mega",
     "rarity": "Mega"
   },
   {
     "id": 10307,
-    "dex_number": 3046,
-    "shiny_dex_number": 4046,
+    "dex_number": 4046,
+    "shiny_dex_number": 4546,
     "name": "Absol Mega Z",
     "rarity": "Mega"
   },
   {
     "id": 10308,
-    "dex_number": 3053,
-    "shiny_dex_number": 4053,
+    "dex_number": 4053,
+    "shiny_dex_number": 4553,
     "name": "Staraptor Mega",
     "rarity": "Mega"
   },
   {
     "id": 10309,
-    "dex_number": 3056,
-    "shiny_dex_number": 4056,
+    "dex_number": 4056,
+    "shiny_dex_number": 4556,
     "name": "Garchomp Mega Z",
     "rarity": "Mega"
   },
   {
     "id": 10310,
-    "dex_number": 3058,
-    "shiny_dex_number": 4058,
+    "dex_number": 4058,
+    "shiny_dex_number": 4558,
     "name": "Lucario Mega Z",
     "rarity": "Mega"
   },
   {
     "id": 10311,
-    "dex_number": 3062,
-    "shiny_dex_number": 4062,
+    "dex_number": 4062,
+    "shiny_dex_number": 4562,
     "name": "Heatran Mega",
     "rarity": "Mega"
   },
   {
     "id": 10312,
-    "dex_number": 3063,
-    "shiny_dex_number": 4063,
+    "dex_number": 4063,
+    "shiny_dex_number": 4563,
     "name": "Darkrai Mega",
     "rarity": "Mega"
   },
   {
     "id": 10313,
-    "dex_number": 3071,
-    "shiny_dex_number": 4071,
+    "dex_number": 4071,
+    "shiny_dex_number": 4571,
     "name": "Golurk Mega",
     "rarity": "Mega"
   },
   {
     "id": 10314,
-    "dex_number": 3077,
-    "shiny_dex_number": 4077,
+    "dex_number": 4077,
+    "shiny_dex_number": 4577,
     "name": "Meowstic Male Mega",
     "rarity": "Mega"
   },
   {
     "id": 10315,
-    "dex_number": 3085,
-    "shiny_dex_number": 4085,
+    "dex_number": 4085,
+    "shiny_dex_number": 4585,
     "name": "Crabominable Mega",
     "rarity": "Mega"
   },
   {
     "id": 10316,
-    "dex_number": 3086,
-    "shiny_dex_number": 4086,
+    "dex_number": 4086,
+    "shiny_dex_number": 4586,
     "name": "Golisopod Mega",
     "rarity": "Mega"
   },
   {
     "id": 10317,
-    "dex_number": 3088,
-    "shiny_dex_number": 4088,
+    "dex_number": 4088,
+    "shiny_dex_number": 4588,
     "name": "Magearna Mega",
     "rarity": "Mega"
   },
   {
     "id": 10318,
-    "dex_number": 3089,
-    "shiny_dex_number": 4089,
+    "dex_number": 4089,
+    "shiny_dex_number": 4589,
     "name": "Magearna Original Mega",
     "rarity": "Mega"
   },
   {
     "id": 10319,
-    "dex_number": 3090,
-    "shiny_dex_number": 4090,
+    "dex_number": 4090,
+    "shiny_dex_number": 4590,
     "name": "Zeraora Mega",
     "rarity": "Mega"
   },
   {
     "id": 10320,
-    "dex_number": 3092,
-    "shiny_dex_number": 4092,
+    "dex_number": 4092,
+    "shiny_dex_number": 4592,
     "name": "Scovillain Mega",
     "rarity": "Mega"
   },
   {
     "id": 10321,
-    "dex_number": 3093,
-    "shiny_dex_number": 4093,
+    "dex_number": 4093,
+    "shiny_dex_number": 4593,
     "name": "Glimmora Mega",
     "rarity": "Mega"
   },
   {
     "id": 10322,
-    "dex_number": 3094,
-    "shiny_dex_number": 4094,
+    "dex_number": 4094,
+    "shiny_dex_number": 4594,
     "name": "Tatsugiri Curly Mega",
     "rarity": "Mega"
   },
   {
     "id": 10323,
-    "dex_number": 3095,
-    "shiny_dex_number": 4095,
+    "dex_number": 4095,
+    "shiny_dex_number": 4595,
     "name": "Tatsugiri Droopy Mega",
     "rarity": "Mega"
   },
   {
     "id": 10324,
-    "dex_number": 3096,
-    "shiny_dex_number": 4096,
+    "dex_number": 4096,
+    "shiny_dex_number": 4596,
     "name": "Tatsugiri Stretchy Mega",
     "rarity": "Mega"
   },
   {
     "id": 10325,
-    "dex_number": 3097,
-    "shiny_dex_number": 4097,
+    "dex_number": 4097,
+    "shiny_dex_number": 4597,
     "name": "Baxcalibur Mega",
     "rarity": "Mega"
   },
   {
     "id": 10326,
-    "dex_number": 3078,
-    "shiny_dex_number": 4078,
+    "dex_number": 4078,
+    "shiny_dex_number": 4578,
     "name": "Meowstic Female Mega",
     "rarity": "Mega"
   }

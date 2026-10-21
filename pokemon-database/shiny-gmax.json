@@ -44,6 +44,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10196.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10196.png",
     "generation": "generation-i",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/charizard-gmax.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/charizard-gmax.gif",
     "dex_number": 5502,
     "variant": "shiny"
   },
@@ -164,6 +166,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10201.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10201.png",
     "generation": "generation-i",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/machamp-gmax.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/machamp-gmax.gif",
     "dex_number": 5507,
     "variant": "shiny"
   },
@@ -188,6 +192,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10202.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10202.png",
     "generation": "generation-i",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/gengar-gmax.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/gengar-gmax.gif",
     "dex_number": 5508,
     "variant": "shiny"
   },

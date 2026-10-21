@@ -1,5 +1,15 @@
 [
   {
+    "slug": "maushold-family-of-three",
+    "dex_number": 925,
+    "shiny_dex_number": 2925
+  },
+  {
+    "slug": "maushold-family-of-four",
+    "dex_number": 6143,
+    "shiny_dex_number": 7143
+  },
+  {
     "slug": "palafin-zero",
     "name": "Palafin",
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/palafin.gif",
@@ -108,6 +118,16 @@
     "slug": "charizard-gmax",
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/charizard-gmax.gif",
     "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/charizard-gmax.gif"
+  },
+  {
+    "slug": "gengar-gmax",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/gengar-gmax.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/gengar-gmax.gif"
+  },
+  {
+    "slug": "machamp-gmax",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/machamp-gmax.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/machamp-gmax.gif"
   },
   {
     "slug": "dragapult",

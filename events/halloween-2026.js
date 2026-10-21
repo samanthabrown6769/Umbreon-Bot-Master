@@ -74,6 +74,7 @@ const event = {
   // - Set `shiny` to true only when checklist progress requires a shiny catch.
   // - Optionally add `tag` to show a note after the name.
   // Only names matching a form in the Pokémon catalog can spawn.
+  // - Set `fish: true` to let the entry spawn through `.fish`; otherwise it never spawns there.
   pokemon: [
     {
       key: 's_spinarak',

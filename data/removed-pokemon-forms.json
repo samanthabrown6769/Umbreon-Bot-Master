@@ -1,6 +1,10 @@
 [
   { "id": 10027, "slug": "pumpkaboo-small" },
   { "id": 10028, "slug": "pumpkaboo-large" },
+  { "id": 10029, "slug": "pumpkaboo-super" },
+  { "id": 10030, "slug": "gourgeist-small" },
+  { "id": 10031, "slug": "gourgeist-large" },
+  { "id": 10032, "slug": "gourgeist-super" },
   { "id": 10093, "slug": "raticate-totem-alola" },
   { "id": 10158, "slug": "pikachu-starter" },
   { "id": 10149, "slug": "marowak-totem" },

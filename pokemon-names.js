@@ -39,6 +39,7 @@ function displayName(slug) {
 
 function regionalPokemonName(slug) {
   if (slug === 'pumpkaboo-average') return 'Pumpkaboo';
+  if (slug === 'gourgeist-average') return 'Gourgeist';
   const match = slug.match(/^(.*?)-(alola|galar|hisui|paldea)(?:-(.+))?$/);
   if (!match || (match[2] === 'alola' && ['cap', 'totem'].includes(match[3]))) {
     return displayName(slug);

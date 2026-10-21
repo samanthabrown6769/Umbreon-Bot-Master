@@ -648,7 +648,7 @@
     "species_id": 29,
     "species_name": "Nidoran♀",
     "slug": "nidoran-f",
-    "name": "Nidoran♀",
+    "name": "Nidoranâ™€",
     "is_default": 1,
     "is_legendary": 0,
     "is_mythical": 0,
@@ -717,7 +717,7 @@
     "species_id": 32,
     "species_name": "Nidoran♂",
     "slug": "nidoran-m",
-    "name": "Nidoran♂",
+    "name": "Nidoranâ™‚",
     "is_default": 1,
     "is_legendary": 0,
     "is_mythical": 0,
@@ -15372,7 +15372,7 @@
     "species_id": 669,
     "species_name": "Flabébé",
     "slug": "flabebe",
-    "name": "Flabébé",
+    "name": "FlabÃ©bÃ©",
     "is_default": 1,
     "is_legendary": 0,
     "is_mythical": 0,
@@ -16338,7 +16338,7 @@
     "species_id": 711,
     "species_name": "Gourgeist",
     "slug": "gourgeist-average",
-    "name": "Gourgeist Average",
+    "name": "Gourgeist",
     "is_default": 1,
     "is_legendary": 0,
     "is_mythical": 0,
@@ -18055,9 +18055,10 @@
     "base_stat_total": 570,
     "types": "[\"electric\",\"fairy\"]",
     "is_water": 0,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/785.png",
+    "sprite": "https://play.pokemonshowdown.com/sprites/ani/tapukoko.gif",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/785.png",
     "generation": "generation-vii",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/tapukoko.gif",
     "dex_number": 785
   },
   {
@@ -20171,10 +20172,11 @@
     "base_stat_total": 436,
     "types": "[\"electric\",\"dark\"]",
     "is_water": 0,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/877.png",
+    "sprite": "https://play.pokemonshowdown.com/sprites/ani/morpeko.gif",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/877.png",
     "generation": "generation-viii",
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/morpeko.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/morpeko.gif",
     "dex_number": 877
   },
   {
@@ -20402,9 +20404,10 @@
     "base_stat_total": 600,
     "types": "[\"dragon\",\"ghost\"]",
     "is_water": 0,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/887.png",
+    "sprite": "https://play.pokemonshowdown.com/sprites/ani/dragapult.gif",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/887.png",
     "generation": "generation-viii",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/dragapult.gif",
     "dex_number": 887
   },
   {
@@ -22179,6 +22182,7 @@
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/964.png",
     "generation": "generation-ix",
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/palafin.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/palafin.gif",
     "dex_number": 964
   },
   {
@@ -23415,6 +23419,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1017.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1017.png",
     "generation": "generation-ix",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509192/ogerponshiny-ezgif.com-resize.webp",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509192/ogerpon-ezgif.com-resize.webp",
     "dex_number": 1017
   },
   {
@@ -23576,6 +23582,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1024.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1024.png",
     "generation": "generation-ix",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792508785/terapagos-ezgif.com-resize.webp",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792508785/terapagosshiny-ezgif.com-resize.webp",
     "dex_number": 1024
   },
   {

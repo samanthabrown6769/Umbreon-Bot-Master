@@ -1640,6 +1640,22 @@ db.transaction(() => {
     upsertPokemonForm.run({ ...pokemon, evolution_chain_id: evolutionChainId, rarity });
     markCatalogId.run(pokemon.id);
   }
+  // Removed forms whose existing catches become another form instead of being orphaned.
+  const REMOVED_FORM_CONVERSIONS = [
+    { from: [10029], to: 710 },
+    { from: [10030, 10031, 10032], to: 711 },
+  ];
+  for (const { from, to } of REMOVED_FORM_CONVERSIONS) {
+    const target = db.prepare('SELECT name, rarity FROM pokemon_forms WHERE id = ?').get(to);
+    if (!target) continue;
+    for (const fromId of from) {
+      db.prepare('UPDATE catches SET pokemon_id = ?, name = ?, rarity = ? WHERE pokemon_id = ?')
+        .run(to, target.name, target.rarity, fromId);
+      db.prepare('UPDATE market SET pokemon_id = ?, name = ?, rarity = ? WHERE pokemon_id = ?')
+        .run(to, target.name, target.rarity, fromId);
+      db.prepare('DELETE FROM pokemon_rarity_overrides WHERE pokemon_id = ?').run(fromId);
+    }
+  }
   db.exec(`
     DELETE FROM pokemon_forms
     WHERE is_custom = 0
@@ -8170,6 +8186,70 @@ const FACTION_TEAMS = {
   },
 };
 
+const FACTION_REGION_GENERATIONS = {
+  rocket: ['generation-i', 'generation-ii'], magma: ['generation-iii'], aqua: ['generation-iii'],
+  galactic: ['generation-iv'], plasma: ['generation-v'], flare: ['generation-vi'],
+  skull: ['generation-vii'], yell: ['generation-viii'], star: ['generation-ix'],
+};
+const FACTION_FAVORITE_COUNT = 10;
+const FACTION_POKEMON_POINT_BONUS = 1.1;
+const factionFavoritesCache = new Map();
+
+function seededRandom(seedText) {
+  let hash = 1779033703 ^ seedText.length;
+  for (let i = 0; i < seedText.length; i++) {
+    hash = Math.imul(hash ^ seedText.charCodeAt(i), 3432918353);
+    hash = (hash << 13) | (hash >>> 19);
+  }
+  let state = hash >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Random favourites from the faction's home region; they rotate daily (UTC).
+function getFactionFavorites(factionKey) {
+  const generations = FACTION_REGION_GENERATIONS[factionKey];
+  if (!generations) return [];
+  const day = new Date().toISOString().slice(0, 10);
+  const cached = factionFavoritesCache.get(factionKey);
+  if (cached?.day === day) return cached.favorites;
+  const candidates = db.prepare(`
+    SELECT species_id, species_name FROM pokemon_forms
+    WHERE is_default = 1 AND generation IN (${generations.map(() => '?').join(', ')})
+    ORDER BY species_id
+  `).all(...generations);
+  const random = seededRandom(`${day}:${factionKey}`);
+  const favorites = [];
+  while (favorites.length < FACTION_FAVORITE_COUNT && candidates.length) {
+    favorites.push(candidates.splice(Math.floor(random() * candidates.length), 1)[0]);
+  }
+  factionFavoritesCache.set(factionKey, { day, favorites });
+  return favorites;
+}
+
+for (const team of Object.values(FACTION_TEAMS)) {
+  Object.defineProperty(team, 'favoritePokemon', {
+    enumerable: true,
+    get() {
+      return `👾 ${getFactionFavorites(team.id).map((entry) => entry.species_name).join(', ')}`;
+    },
+  });
+}
+
+// Faction whose favourites include this species, or null.
+function getPokemonFactionTeam(speciesId) {
+  if (!speciesId) return null;
+  for (const team of Object.values(FACTION_TEAMS)) {
+    if (getFactionFavorites(team.id).some((entry) => entry.species_id === speciesId)) return team;
+  }
+  return null;
+}
+
 // cost = points consumed to reach `next`; mult scales points earned at that rank.
 const FACTION_RANKS = {
   Recruit: { next: 'Grunt', cost: 500000, mult: 1 },
@@ -8320,10 +8400,13 @@ function buyFactionGoldenPokemon(userId, now = Date.now()) {
   }).immediate();
 }
 
-function addFactionPoints(userId, basePoints) {
+function addFactionPoints(userId, basePoints, { speciesId = null } = {}) {
   const faction = getUserFaction(userId);
   if (!faction) return 0;
-  const earned = Math.floor(basePoints * FACTION_RANKS[faction.rank].mult);
+  const factionBonus = getPokemonFactionTeam(speciesId)?.id === faction.faction_key
+    ? FACTION_POKEMON_POINT_BONUS
+    : 1;
+  const earned = Math.floor(basePoints * FACTION_RANKS[faction.rank].mult * factionBonus);
   db.prepare('UPDATE user_factions SET points = points + ? WHERE user_id = ?').run(earned, userId);
   return earned;
 }
@@ -8379,6 +8462,8 @@ module.exports = {
   getFactionLeaders,
   FACTION_TEAMS,
   FACTION_RANKS,
+  getPokemonFactionTeam,
+  getFactionFavorites,
   getDailyBall,
   getUserFaction,
   joinFaction,
