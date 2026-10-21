@@ -5354,11 +5354,23 @@ async function askForBall(
       target.isShiny ? (target.shinyImg || target.img) : target.img
     );
     if (successImage) successEmbed.setImage(successImage);
-    const experienceMessage = experienceResult?.awarded
-      ? experienceResult.pokemon.map((pokemon) =>
-        `${getTrainerIconEmoji(userId)} ${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}** gained **${experienceAmount.toLocaleString()} EXP!**`
-      ).join('\n')
-      : '';
+    const experienceLines = [];
+    if (experienceResult?.awarded) {
+      const buddyGain = experienceResult.pokemon.find((pokemon) => pokemon.is_buddy);
+      const teamGains = experienceResult.pokemon.filter((pokemon) => !pokemon.is_buddy);
+      if (buddyGain) {
+        experienceLines.push(
+          `${getTrainerIconEmoji(userId)} ${getPokemonSpriteEmoji(buddyGain)} **${buddyGain.name}** gained **${buddyGain.experience.toLocaleString()} EXP!**`
+        );
+      }
+      if (teamGains.length) {
+        experienceLines.push(
+          `<:expshare:1372999502084178060> • Your ${teamGains.map((pokemon) => getPokemonSpriteEmoji(pokemon)).join(' ')} ` +
+          `gained **${teamGains[0].experience.toLocaleString()}** EXP!`
+        );
+      }
+    }
+    const experienceMessage = experienceLines.join('\n');
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
       `<:lvlup:1561369467467071679> • Congratulations, **${message.author.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
     ).join('\n') || '';

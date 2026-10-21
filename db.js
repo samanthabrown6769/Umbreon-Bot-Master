@@ -5114,7 +5114,12 @@ function awardCatchExperience(userId, amount = 200) {
         WHERE id = ? AND user_id = ?
       `).run(experience, level, hp, maxHp, atk, def, spd, catchId, userId);
       awardedCatchIds.add(catchId);
-      awardedPokemon.push({ name: pokemon.name, is_shiny: Boolean(pokemon.is_shiny) });
+      awardedPokemon.push({
+        name: pokemon.name,
+        is_shiny: Boolean(pokemon.is_shiny),
+        is_buddy: catchId === user.buddy_catch_id,
+        experience: experienceAmount,
+      });
       if (level > pokemon.level) {
         levelUps.push({ name: pokemon.name, from: pokemon.level, to: level });
       }
