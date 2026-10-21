@@ -1718,11 +1718,14 @@ function getPokemonSpriteEmoji(pokemon) {
   const rawName = String(
     pokemon?.form_name || pokemon?.form_slug?.replace(/-/g, ' ') || pokemon?.name || ''
   ).trim();
-  const name = rawName.replace(/^(?:shiny|golden)\s+/i, '').toLowerCase();
+  const name = rawName.replace(/^(?:shiny|golden)\s+/i, '').toLowerCase().replace(/-/g, ' ');
   const isShiny = Boolean(pokemon?.isShiny ?? pokemon?.is_shiny) || /^shiny\s+/i.test(rawName);
   const isGolden = Boolean(pokemon?.isGolden ?? pokemon?.is_golden) || /^golden\s+/i.test(rawName);
   const species = Object.keys(POKEMON_SPRITE_EMOJIS)
-    .filter((candidate) => name === candidate || name.startsWith(`${candidate} `))
+    .filter((candidate) => {
+      const key = candidate.replace(/-/g, ' ');
+      return name === key || name.startsWith(`${key} `);
+    })
     .sort((a, b) => b.length - a.length)[0];
   if (!species) return '';
   const variants = POKEMON_SPRITE_EMOJIS[species];
@@ -2806,6 +2809,7 @@ const RELEASE_PAYOUTS = Object.freeze({
   shiny: 25000,
 });
 const BASE_RELEASE_LOCK_LIMIT = 25;
+const LURE_CHARGES = 50;
 
 function getReleaseLockLimit(userId) {
   return BASE_RELEASE_LOCK_LIMIT + getPatreonPerks(userId).releaseLocks;
@@ -3605,8 +3609,11 @@ function getWorldBossBattle(playerState, boss) {
     const form = db.prepare('SELECT types FROM pokemon_forms WHERE id = ?').get(template?.formId ?? template?.id);
     if (!template || !form) throw new Error(`Missing World Boss battle data for "${boss.name}".`);
     const pokemon = playerState.pokemon;
+    // The boss's stat changes and the field persist across this raider's team switches.
+    const teamStates = playerState.teamStates;
+    const shared = teamStates ? (teamStates.sharedBoss ||= { field: createBattleField(), fx: null }) : null;
     playerState.battle = {
-      field: createBattleField(),
+      field: shared?.field || createBattleField(),
       turn: 0,
       mon: {
         name: pokemon.name, hp: playerState.hp, max_hp: pokemon.max_hp, types: playerState.types,
@@ -3620,6 +3627,10 @@ function getWorldBossBattle(playerState, boss) {
         }, Math.max(1, pokemon.level)),
       },
     };
+    if (shared) {
+      if (shared.fx) playerState.battle.boss.fx = shared.fx;
+      else shared.fx = battleFx.fx(playerState.battle.boss);
+    }
   }
   return playerState.battle;
 }
@@ -3712,6 +3723,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   if (battleMon && battleFx.slug(move.name) === 'drain-punch' && result.damage > 0) {
     battleFx.healMon(battleMon, Math.max(1, Math.floor(result.damage / 2)), (text) => battleLog.push(text));
   }
+  if (battleMon && battleFx.RECHARGE_MOVES.has(battleFx.slug(move.name))) battleFx.fx(battleMon).recharge = true;
   const rewards = result.defeated ? distributeWorldBossRewards(boss.id) : null;
   return {
     ...result,
@@ -3887,6 +3899,10 @@ async function startWorldBossBattle(message, boss, userId, team) {
           if (playerState.pokemon.id === pokemon.id) {
             refreshWorldBossMoves(playerState, playerTeam);
           } else {
+            const batonStages = playerState.batonPass && playerState.battle
+              ? { ...battleFx.fx(playerState.battle.mon).stages }
+              : null;
+            playerState.batonPass = false;
             let teamStates = teamStatesByPlayer.get(playerId);
             if (!teamStates) {
               teamStates = new Map();
@@ -3910,6 +3926,13 @@ async function startWorldBossBattle(message, boss, userId, team) {
               refreshWorldBossMoves(playerState, playerTeam);
             }
             players.set(playerId, playerState);
+            if (batonStages) {
+              playerState.incomingBaton = batonStages;
+              if (playerState.battle) {
+                Object.assign(battleFx.fx(playerState.battle.mon).stages, batonStages);
+                playerState.incomingBaton = null;
+              }
+            }
           }
           const switchPayload = {
             embeds: [createWorldBossPanelEmbed(currentBoss, {
@@ -3994,7 +4017,15 @@ async function startWorldBossBattle(message, boss, userId, team) {
         });
         return;
       }
+      if (playerState.batonPass) {
+        await interaction.followUp({ content: 'Choose a Pokémon to pass the stat changes to first.', ephemeral: true });
+        return;
+      }
       const bs = getWorldBossBattle(playerState, currentBoss);
+      if (playerState.incomingBaton) {
+        Object.assign(battleFx.fx(bs.mon).stages, playerState.incomingBaton);
+        playerState.incomingBaton = null;
+      }
       const chosenMove = playerState.moves[moveIndex];
       let attack;
       let acted = true;
@@ -4011,7 +4042,18 @@ async function startWorldBossBattle(message, boss, userId, team) {
       }
       if (chosenMove && (!acted || !chosenMove.power)) {
         // Status moves, or a move the player's Pokémon is prevented from using (sleep, paralysis...).
-        if (acted) {
+        if (acted && battleFx.slug(chosenMove.name) === 'baton-pass') {
+          const teamStates = teamStatesByPlayer.get(playerId);
+          const hasReplacement = playerTeam.some((entry) => entry.id !== playerState.pokemon.id
+            && !faintedTeam.has(entry.id) && !(teamStates?.get(entry.id)?.hp <= 0));
+          turnSay(`**${bs.mon.name}** used **${chosenMove.name}**.`);
+          if (hasReplacement) {
+            playerState.batonPass = true;
+            turnSay(`${bs.mon.name} is ready to pass its stat changes — choose a Pokémon to switch in!`);
+          } else {
+            turnSay('But it failed!');
+          }
+        } else if (acted) {
           battleFx.performMove(
             worldBossCtx(bs, turnLog, bs.turn), { mon: bs.mon, side: 'player', move: chosenMove },
             { mon: bs.boss, side: 'enemy', move: chosenMove }, chosenMove, turnSay
@@ -4077,7 +4119,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
         return;
       }
 
-      if (!attack.defeated && playerState.hp > 0) {
+      if (!attack.defeated && playerState.hp > 0 && !playerState.batonPass) {
         const template = WORLD_BOSS_POOL.find((entry) => entry.name === currentBoss.name);
         const bossForm = db.prepare('SELECT species_id FROM pokemon_forms WHERE id = ?')
           .get(template?.formId ?? template?.id);
@@ -4125,6 +4167,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
               attack.battleLog.push(
                 `**${currentBoss.name}** counterattacked with **${bossMove.name}** for **${counterDamage}** damage.`
               );
+              if (battleFx.RECHARGE_MOVES.has(battleFx.slug(bossMove.name))) battleFx.fx(bs.boss).recharge = true;
             }
           } else {
             attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but missed.`);
@@ -4210,7 +4253,12 @@ async function startWorldBossBattle(message, boss, userId, team) {
       });
       await interaction.editReply({
         embeds: [attackEmbed],
-        components: playerState.hp > 0
+        components: playerState.batonPass
+          ? [
+            ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
+            createWorldBossForfeitRow(boss.id),
+          ]
+          : playerState.hp > 0
           ? [
             ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
             ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
@@ -5682,6 +5730,19 @@ function makeBattleSwitchButtons(party, activeIndex, prefix) {
   return switches.length ? new ActionRowBuilder().addComponents(switches) : null;
 }
 
+// Baton Pass leaves the user waiting for a free switch that carries its stat changes over.
+function isBatonPending(party, activeIndex) {
+  return Boolean(party[activeIndex]?.fx?.batonPass);
+}
+
+function completeBatonSwitch(from, to) {
+  const fromFx = battleFx.fx(from);
+  const stages = { ...fromFx.stages };
+  fromFx.batonPass = false;
+  for (const key of Object.keys(fromFx.stages)) fromFx.stages[key] = 0;
+  Object.assign(battleFx.fx(to).stages, stages);
+}
+
 function buildSparParty(userId) {
   return getUserTeam(userId).map((pokemon) => {
     const form = db.prepare('SELECT * FROM pokemon_forms WHERE id = ?').get(pokemon.pokemon_id);
@@ -5744,7 +5805,7 @@ async function runPlayerSpar(message, userId, opponentUser) {
   log.push(`${opponentUser.username} sent out **${opponents[0].name}**!`);
   onSwitchIn(makeBattleCtx(field, log, party[0], opponents[0], 0, party, opponents), opponents[0], 'enemy', (text) => log.push(`↳ ${text}`));
   const battleComponents = () => [
-    makeSparButtons(currentMoves()),
+    isBatonPending(party, partyIndex) ? null : makeSparButtons(currentMoves()),
     makeBattleSwitchButtons(party, partyIndex, 'spar'),
     makeBattleForfeitRow('spar:forfeit'),
   ].filter(Boolean);
@@ -5789,11 +5850,14 @@ async function runPlayerSpar(message, userId, opponentUser) {
           await interaction.reply({ content: 'That Pokémon cannot be switched in.', ephemeral: true });
           return;
         }
+        const previousPlayer = party[partyIndex];
+        const batonSwitch = isBatonPending(party, partyIndex);
         partyIndex = nextIndex;
         log.push(`🔄 You switched to **${nextPlayer.name}**!`);
         const ctx = makeBattleCtx(field, log, nextPlayer, enemy, turn, party, opponents);
         onSwitchIn(ctx, nextPlayer, 'player', (text) => log.push(`↳ ${text}`));
-        runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
+        if (batonSwitch) completeBatonSwitch(previousPlayer, nextPlayer);
+        else runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
       } else {
         const moveIndex = Number(parts[2]);
         const player = party[partyIndex];
@@ -5801,6 +5865,11 @@ async function runPlayerSpar(message, userId, opponentUser) {
         if (!selectedMove || !player) {
           turn -= 1;
           await interaction.reply({ content: 'That move is no longer available.', ephemeral: true });
+          return;
+        }
+        if (isBatonPending(party, partyIndex)) {
+          turn -= 1;
+          await interaction.reply({ content: 'Choose a Pokémon to pass the stat changes to.', ephemeral: true });
           return;
         }
         const ctx = makeBattleCtx(field, log, player, enemy, turn, party, opponents);
@@ -5944,7 +6013,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
   const log = [`🏟️ **Challenging the ${config.icon} ${config.name} Chamber!**`];
   const currentMoves = () => party[partyIndex]?.moves || [];
   const battleComponents = () => [
-    makeMegaChamberButtons(currentMoves()),
+    isBatonPending(party, partyIndex) ? null : makeMegaChamberButtons(currentMoves()),
     makeBattleSwitchButtons(party, partyIndex, 'chamber'),
     makeBattleForfeitRow('chamber:forfeit'),
   ].filter(Boolean);
@@ -6020,11 +6089,14 @@ async function runMegaChamberGauntlet(message, userId, config) {
           await interaction.reply({ content: 'That Pokémon cannot be switched in.', ephemeral: true });
           return;
         }
+        const previousPlayer = party[partyIndex];
+        const batonSwitch = isBatonPending(party, partyIndex);
         partyIndex = nextIndex;
         log.push(`🔄 You switched to **${nextPlayer.name}**!`);
         const ctx = makeBattleCtx(field, log, nextPlayer, enemy, turn, party, opponents);
         onSwitchIn(ctx, nextPlayer, 'player', (text) => log.push(`↳ ${text}`));
-        runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
+        if (batonSwitch) completeBatonSwitch(previousPlayer, nextPlayer);
+        else runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
       } else {
         const moveIndex = Number(parts[2]);
         const player = party[partyIndex];
@@ -6032,6 +6104,11 @@ async function runMegaChamberGauntlet(message, userId, config) {
         if (!selectedMove || !player) {
           turn -= 1;
           await interaction.reply({ content: 'That move is no longer available.', ephemeral: true });
+          return;
+        }
+        if (isBatonPending(party, partyIndex)) {
+          turn -= 1;
+          await interaction.reply({ content: 'Choose a Pokémon to pass the stat changes to.', ephemeral: true });
           return;
         }
         const ctx = makeBattleCtx(field, log, player, enemy, turn, party, opponents);
@@ -6253,7 +6330,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
   const field = createBattleField();
   const currentMoves = () => partyData[partyIndex]?.moves || [];
   const battleComponents = () => [
-    makeLeagueButtons(currentMoves()),
+    isBatonPending(partyData, partyIndex) ? null : makeLeagueButtons(currentMoves()),
     makeBattleSwitchButtons(partyData, partyIndex, 'league'),
     makeBattleForfeitRow('league:forfeit'),
   ].filter(Boolean);
@@ -6338,6 +6415,10 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           await interaction.reply({ content: 'That move is no longer available.', ephemeral: true });
           return;
         }
+        if (isBatonPending(partyData, partyIndex)) {
+          await interaction.reply({ content: 'Choose a Pokémon to pass the stat changes to.', ephemeral: true });
+          return;
+        }
       } else {
         await interaction.reply({ content: 'That battle action is no longer available.', ephemeral: true });
         return;
@@ -6355,11 +6436,14 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       log.length = 0;
       turn += 1;
       if (parts[1] === 'switch') {
+        const previousPlayer = partyData[partyIndex];
+        const batonSwitch = isBatonPending(partyData, partyIndex);
         partyIndex = partyData.indexOf(nextPlayer);
         log.push(`🔄 You switched to **${nextPlayer.name}**!`);
         const ctx = makeBattleCtx(field, log, nextPlayer, enemy, turn, partyData, opponents);
         onSwitchIn(ctx, nextPlayer, 'player', (text) => log.push(`↳ ${text}`));
-        runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
+        if (batonSwitch) completeBatonSwitch(previousPlayer, nextPlayer);
+        else runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
       } else {
         const player = partyData[partyIndex];
         const ctx = makeBattleCtx(field, log, player, enemy, turn, partyData, opponents);
@@ -7009,7 +7093,7 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
         await announceEventChecklistCompletion(
           message.guild,
           message.author,
-          { ...species, name: reward.announcementName, isShiny: reward.shiny },
+          { ...species, slug: reward.pokemonSlug, name: reward.announcementName, isShiny: reward.shiny },
           eventProgress.size,
           message.channel
         );
@@ -8980,7 +9064,7 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
-    if (command === 'unlock') {
+    if (command === 'unlock' || command === 'u') {
       if (args.length) return message.reply(`Usage: \`${PREFIX}unlock\`.`);
 
       const { ownedSpecies, hasLegendaryTrio, ancientFossilCount } =
@@ -8996,7 +9080,7 @@ client.on('messageCreate', async (message) => {
         return `${normalSprite}${shinySprite ? ` ${shinySprite}` : ''} ${name}`;
       };
       const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
-      const emptyEmoji = '<:empty:669078464351043584>';
+      const emptyEmoji = '<:empty:1560342156630167764>';
       const catchableRows = [
         `${hasLegendaryTrio ? '✅' : '❌'} ${pokemonVariantsDisplay('Keldeo')}\n` +
           `${emptyEmoji} You need ${requiredTrio.map(pokemonDisplay).join(' ')} in your box.`,
@@ -9020,8 +9104,8 @@ client.on('messageCreate', async (message) => {
         .setTitle('🔓 Catch & Hatch Unlockables')
         .setDescription('View catchable, hatch-exclusive, and research-exclusive unlocks.')
         .addFields(
-          { name: '<:dexcaught:667082939632189451> Catchable', value: catchableRows.join('\n') },
-          { name: '<:poke_egg:1372992365664403558> Hatch Exclusive', value: hatchRows.join('\n') },
+          { name: '<:caught:1560340176713031711> Catchable', value: catchableRows.join('\n') },
+          { name: '<:poke_egg:1560319652402561124> Hatch Exclusive', value: hatchRows.join('\n') },
           { name: `${RESEARCH_POINT_EMOJI} Research Exclusive`, value: researchRows.join('\n') },
         )
         .setFooter({ text: '✅ Checked means UNLOCKED • ❌ X means LOCKED' })
@@ -16331,10 +16415,10 @@ client.on('messageCreate', async (message) => {
         const owned = getUserItems(userId).find((item) => item.item_name === itemName)?.amount || 0;
         return message.reply(`You need ${amount} ${itemEmoji} ${itemName}${amount === 1 ? '' : 's'} (you own ${owned}).`);
       }
-      incrementUser(userId, { [activeField]: amount });
+      incrementUser(userId, { [activeField]: amount * LURE_CHARGES });
       return message.reply(
         `${itemEmoji} Activated **${amount} ${itemName}${amount === 1 ? '' : 's'}**. ` +
-        `They will apply to your next ${amount} successful fishing catch${amount === 1 ? '' : 'es'}.`
+        `Each lasts ${LURE_CHARGES} successful fishing catches (**${(amount * LURE_CHARGES).toLocaleString()}** charges added).`
       );
     }
 
@@ -16356,10 +16440,10 @@ client.on('messageCreate', async (message) => {
         const owned = getUserItems(userId).find((item) => item.item_name === itemName)?.amount || 0;
         return message.reply(`You need ${amount} ${itemEmoji} ${itemName}${amount === 1 ? '' : 's'} (you own ${owned}).`);
       }
-      incrementUser(userId, { [activeField]: amount });
+      incrementUser(userId, { [activeField]: amount * LURE_CHARGES });
       return message.reply(
         `${itemEmoji} Activated **${amount} ${itemName}${amount === 1 ? '' : 's'}**. ` +
-        `They will apply to your next ${amount} successful fishing catch${amount === 1 ? '' : 'es'}.`
+        `Each lasts ${LURE_CHARGES} successful fishing catches (**${(amount * LURE_CHARGES).toLocaleString()}** charges added).`
       );
     }
 
@@ -18882,8 +18966,7 @@ client.on('messageCreate', async (message) => {
           )
           .addFields({
             name: `${EMOJIS.pokecoin} PokéCoins per released Pokémon`,
-            value: Object.entries(RELEASE_PAYOUTS).map(([rarity, basePayout]) => {
-              const amount = Math.floor(basePayout * getAmuletCoinBoost(userId).multiplier);
+            value: Object.entries(RELEASE_PAYOUTS).map(([rarity, amount]) => {
               const label = rarity.replace(/\b\w/g, (character) => character.toUpperCase());
               return `${getRarityEmojis(label)} **${label}:** ${EMOJIS.pokecoin} **${amount.toLocaleString()}**`;
             }).join('\n'),

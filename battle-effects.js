@@ -111,7 +111,7 @@ const EFFECTS = {
   metronome: { call: 'random' }, copycat: { call: 'copycat' }, 'mirror-move': { call: 'mirror' }, 'me-first': { call: 'mirror' },
   'sleep-talk': { call: 'sleeptalk' }, 'nature-power': { call: 'tri-attack' }, assist: { call: 'random' },
   // Moves that do nothing meaningful in a one-on-one battle without items/abilities/allies/switching
-  splash: { nothing: 'But nothing happened!' }, teleport: { nothing: 'But it failed!' }, 'baton-pass': { nothing: 'But it failed!' },
+  splash: { nothing: 'But nothing happened!' }, teleport: { nothing: 'But it failed!' }, 'baton-pass': { baton: true },
   whirlwind: { nothing: 'But it failed!' }, roar: { nothing: 'But it failed!' }, 'helping-hand': { nothing: 'But it failed!' },
   'ally-switch': { nothing: 'But it failed!' }, 'after-you': { nothing: 'But it failed!' }, instruct: { nothing: 'But it failed!' },
   'follow-me': { nothing: 'But it failed!' }, 'rage-powder': { nothing: 'But it failed!' }, spotlight: { nothing: 'But it failed!' },
@@ -131,6 +131,11 @@ for (const [key, eff] of Object.entries(EFFECTS)) {
 }
 
 const SOUND_MOVES = new Set(Object.entries(EFFECTS).filter(([, e]) => e.sound).map(([k]) => k));
+// Moves that force the user to skip its next turn after hitting.
+const RECHARGE_MOVES = new Set([
+  'hyper-beam', 'giga-impact', 'blast-burn', 'hydro-cannon', 'frenzy-plant', 'rock-wrecker',
+  'roar-of-time', 'prismatic-laser', 'meteor-assault', 'eternabeam',
+]);
 
 const stageMult = (s) => (s >= 0 ? (2 + s) / 2 : 2 / (2 - s));
 const accMult = (s) => (s >= 0 ? (3 + s) / 3 : 3 / (3 - s));
@@ -249,7 +254,7 @@ function cureStatus(mon) {
 // Build an enemy move list: up to 3 damaging moves plus one random supported status move when available.
 function buildEnemyMoves(learnset, limit = 4) {
   const damaging = learnset.filter((m) => m.power > 0);
-  const status = learnset.filter((m) => !m.power && EFFECTS[slug(m.name)] && !EFFECTS[slug(m.name)].nothing);
+  const status = learnset.filter((m) => !m.power && EFFECTS[slug(m.name)] && !EFFECTS[slug(m.name)].nothing && !EFFECTS[slug(m.name)].baton);
   const pool = damaging.length ? damaging : learnset;
   if (!status.length || pool.length === 0) return pool.slice(0, limit);
   const picks = pool.slice(0, limit - 1);
@@ -261,7 +266,7 @@ function isUseful(move, user, target, field, side) {
   if (move.power > 0) return true;
   const eff = EFFECTS[slug(move.name)];
   if (!eff) return false;
-  if (eff.nothing || eff.call === 'sleeptalk') return false;
+  if (eff.nothing || eff.baton || eff.call === 'sleeptalk') return false;
   const uf = fx(user); const tf = fx(target);
   if (eff.heal || eff.rest || eff.swallow) return user.hp < user.max_hp * 0.7;
   if (eff.boost) return Object.entries(eff.boost).some(([k, v]) => v > 0 && uf.stages[k] < 4);
@@ -399,6 +404,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     dmg = Math.max(1, Math.floor(dmg * mult));
   }
   f.charge = false; f.laser = false;
+  if (RECHARGE_MOVES.has(slug(move.name))) f.recharge = true;
   if (tf.frz !== undefined) tf.frz = undefined;
   if (dmg > 0 && tf.status === 'frz' && type === 'fire') { tf.status = null; L(`${t.name} thawed out!`); }
   if (dmg > 0 && tf.sub > 0) {
@@ -524,6 +530,13 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     if (ctx.field.terrain === 'psychic' && isGrounded(t, ctx.field) && getPriority(move) > 0) { L(`${t.name} is protected by the Psychic Terrain!`); return; }
   }
   if (eff.nothing) { L(eff.nothing); return; }
+  if (eff.baton) {
+    const allies = (ctx.party?.[A.side] || []).filter((ally) => ally !== m && ally.hp > 0);
+    if (!allies.length) { L('But it failed!'); return; }
+    f.batonPass = true;
+    L(`${m.name} is ready to pass its stat changes!`);
+    return;
+  }
   if (eff.needs === 'hail' && ctx.field.weather !== 'hail') { L('But it failed!'); return; }
   if (eff.firstTurn && f.protectStreak > 0) { L('But it failed!'); return; }
   if (eff.cost) {
@@ -748,6 +761,7 @@ function canAct(ctx, A, B, move, L) {
   const m = A.mon; const f = fx(m); const bf = fx(B.mon);
   const slugName = slug(move.name);
   if (f.flinch) { f.flinch = false; L(`${m.name} flinched and couldn't move!`); return false; }
+  if (f.recharge) { f.recharge = false; L(`${m.name} must recharge!`); return false; }
   if (m.held_item === ASSAULT_VEST_ITEM && !move.power) {
     L(`${m.name} can't use status moves while holding an Assault Vest!`);
     return false;
@@ -887,7 +901,7 @@ function runSwitchTurn(ctx, enemyMove) {
 module.exports = {
   EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
   applyStatusMove, canAct, performMove, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
-  DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS,
+  DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, RECHARGE_MOVES,
   summarize(mon) {
     const f = fx(mon);
     const parts = [];

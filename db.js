@@ -2808,6 +2808,68 @@ function advanceQuestProgress(userId, event = {}) {
 
 const SHINY_STAT_MULTIPLIER = 1.05;
 
+// Remembers a trainer's per-species stats after their last copy is traded away, so the next copy keeps them.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_pokemon_state_snapshots (
+    user_id TEXT NOT NULL,
+    pokemon_id INTEGER NOT NULL,
+    is_shiny INTEGER NOT NULL DEFAULT 0,
+    is_golden INTEGER NOT NULL DEFAULT 0,
+    experience INTEGER NOT NULL DEFAULT 0,
+    level INTEGER NOT NULL DEFAULT 1,
+    hp_iv INTEGER NOT NULL DEFAULT 0,
+    atk_iv INTEGER NOT NULL DEFAULT 0,
+    def_iv INTEGER NOT NULL DEFAULT 0,
+    spd_iv INTEGER NOT NULL DEFAULT 0,
+    friendship INTEGER NOT NULL DEFAULT 0,
+    moves TEXT,
+    sketched_moves TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (user_id, pokemon_id, is_shiny, is_golden)
+  );
+  CREATE TRIGGER IF NOT EXISTS catches_snapshot_before_transfer
+  BEFORE UPDATE OF user_id ON catches
+  WHEN OLD.user_id != NEW.user_id
+  BEGIN
+    INSERT OR REPLACE INTO user_pokemon_state_snapshots (
+      user_id, pokemon_id, is_shiny, is_golden, experience, level,
+      hp_iv, atk_iv, def_iv, spd_iv, friendship, moves, sketched_moves
+    ) VALUES (
+      OLD.user_id, OLD.pokemon_id, OLD.is_shiny, OLD.is_golden, OLD.experience, OLD.level,
+      OLD.hp_iv, OLD.atk_iv, OLD.def_iv, OLD.spd_iv, OLD.friendship, OLD.moves, OLD.sketched_moves
+    );
+  END;
+  CREATE TRIGGER IF NOT EXISTS catches_snapshot_before_delete
+  BEFORE DELETE ON catches
+  BEGIN
+    INSERT OR REPLACE INTO user_pokemon_state_snapshots (
+      user_id, pokemon_id, is_shiny, is_golden, experience, level,
+      hp_iv, atk_iv, def_iv, spd_iv, friendship, moves, sketched_moves
+    ) VALUES (
+      OLD.user_id, OLD.pokemon_id, OLD.is_shiny, OLD.is_golden, OLD.experience, OLD.level,
+      OLD.hp_iv, OLD.atk_iv, OLD.def_iv, OLD.spd_iv, OLD.friendship, OLD.moves, OLD.sketched_moves
+    );
+  END;
+`);
+
+function saveCatchStateSnapshot(userId, catchId) {
+  db.prepare(`
+    INSERT OR REPLACE INTO user_pokemon_state_snapshots (
+      user_id, pokemon_id, is_shiny, is_golden, experience, level,
+      hp_iv, atk_iv, def_iv, spd_iv, friendship, moves, sketched_moves
+    )
+    SELECT user_id, pokemon_id, is_shiny, is_golden, experience, level,
+      hp_iv, atk_iv, def_iv, spd_iv, friendship, moves, sketched_moves
+    FROM catches WHERE id = ? AND user_id = ?
+  `).run(catchId, userId);
+}
+
+function getCatchStateSnapshot(userId, pokemon) {
+  return db.prepare(`
+    SELECT * FROM user_pokemon_state_snapshots
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+  `).get(userId, pokemon.pokemon_id, pokemon.is_shiny, pokemon.is_golden);
+}
+
 function calculateStat(base, iv, level, isHp = false, isShiny = false) {
   const stat = isHp
     ? Math.floor(((2 * base + iv) * level) / 100) + level + 10
@@ -2897,6 +2959,9 @@ function syncNewCatchState(userId, catchId) {
     ORDER BY id
     LIMIT 1
   `).get(userId, identity.pokemon_id, identity.is_shiny, identity.is_golden, catchId);
+  if (!firstCopy && !matchesIdentity(buddy) && getCatchStateSnapshot(userId, identity)) {
+    return rebaseTransferredPokemon(userId, catchId);
+  }
   const sourceId = matchesIdentity(buddy)
     ? buddy.id
     : firstCopy?.id || catchId;
@@ -2932,13 +2997,14 @@ function rebaseTransferredPokemon(userId, catchId) {
     ORDER BY id
     LIMIT 1
   `).get(userId, catchId, pokemon.pokemon_id, pokemon.is_shiny, pokemon.is_golden);
-  const level = recipientCopy?.level ?? recipientPokemon?.level ?? 1;
-  const experience = recipientCopy?.experience ?? recipientPokemon?.experience ?? 0;
-  const friendship = recipientCopy?.friendship ?? 0;
-  const hpIv = recipientCopy?.hp_iv ?? Math.floor(Math.random() * 32);
-  const atkIv = recipientCopy?.atk_iv ?? Math.floor(Math.random() * 32);
-  const defIv = recipientCopy?.def_iv ?? Math.floor(Math.random() * 32);
-  const spdIv = recipientCopy?.spd_iv ?? Math.floor(Math.random() * 32);
+  const snapshot = recipientCopy ? null : getCatchStateSnapshot(userId, pokemon);
+  const level = recipientCopy?.level ?? snapshot?.level ?? recipientPokemon?.level ?? 1;
+  const experience = recipientCopy?.experience ?? snapshot?.experience ?? recipientPokemon?.experience ?? 0;
+  const friendship = recipientCopy?.friendship ?? snapshot?.friendship ?? 0;
+  const hpIv = recipientCopy?.hp_iv ?? snapshot?.hp_iv ?? Math.floor(Math.random() * 32);
+  const atkIv = recipientCopy?.atk_iv ?? snapshot?.atk_iv ?? Math.floor(Math.random() * 32);
+  const defIv = recipientCopy?.def_iv ?? snapshot?.def_iv ?? Math.floor(Math.random() * 32);
+  const spdIv = recipientCopy?.spd_iv ?? snapshot?.spd_iv ?? Math.floor(Math.random() * 32);
   const maxHp = calculateStat(
     pokemon.base_hp ?? 50, hpIv, level, true, Boolean(pokemon.is_shiny)
   );
@@ -2960,6 +3026,10 @@ function rebaseTransferredPokemon(userId, catchId) {
     level, experience, hpIv, atkIv, defIv, spdIv, friendship, maxHp, maxHp, atk, def, spd,
     catchId, userId
   );
+  if (snapshot) {
+    db.prepare('UPDATE catches SET moves = COALESCE(?, moves), sketched_moves = ? WHERE id = ? AND user_id = ?')
+      .run(snapshot.moves, snapshot.sketched_moves, catchId, userId);
+  }
   return true;
 }
 
@@ -5980,6 +6050,7 @@ function listOnMarket(sellerId, catchId, price) {
       mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spd_iv, mon.experience, mon.hp, mon.max_hp, mon.atk, mon.def, mon.spd
     );
     db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(catchId);
+    saveCatchStateSnapshot(sellerId, catchId);
     db.prepare('DELETE FROM catches WHERE id = ? AND user_id = ?').run(catchId, sellerId);
     return { ...mon, amount: 1, market_listing_id: Number(inserted.lastInsertRowid) };
   }).immediate();
@@ -6048,6 +6119,7 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceVariant = 
     const clearBuddy = db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?');
     for (const catchRow of catches) {
       clearBuddy.run(catchRow.id);
+      saveCatchStateSnapshot(sellerId, catchRow.id);
       deleteCatches.run(catchRow.id, sellerId);
     }
     return [{ ...mon, amount, market_listing_id: Number(result.lastInsertRowid) }];

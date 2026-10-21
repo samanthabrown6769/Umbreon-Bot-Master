@@ -106,6 +106,8 @@ const CUSTOM_SPRITES = {
   'mime-jr': 'https://res.cloudinary.com/apffqia5/image/upload/v1792006177/mimejr.gif',
   'iron-hands': 'https://res.cloudinary.com/apffqia5/image/upload/v1792075108/ironhands.gif',
   'iron-valiant': 'https://res.cloudinary.com/apffqia5/image/upload/v1792084059/iron-variant.gif',
+  'iron-moth': 'https://res.cloudinary.com/apffqia5/image/upload/v1791995167/pokemon-sprites/ani/iron-moth.gif',
+  miraidon: 'https://res.cloudinary.com/apffqia5/image/upload/v1792590811/miraidon.webp',
   'tapu-fini': 'https://play.pokemonshowdown.com/sprites/ani/tapufini.gif',
   'slither-wing': 'https://play.pokemonshowdown.com/sprites/ani/slitherwing.gif',
   'mr-mime': 'https://play.pokemonshowdown.com/sprites/ani/mrmime.gif',
@@ -119,6 +121,8 @@ const CUSTOM_SPRITES = {
 };
 const CUSTOM_SHINY_SPRITES = {
   'iron-valiant': 'https://res.cloudinary.com/apffqia5/image/upload/v1792084062/shiny_iron_valiant.gif',
+  'iron-moth': 'https://res.cloudinary.com/apffqia5/image/upload/v1792590814/shiny_iron_moth.webp',
+  miraidon: 'https://res.cloudinary.com/apffqia5/image/upload/v1792590811/shiny_miraidon.webp',
   'pyroar-male': 'https://play.pokemonshowdown.com/sprites/ani-shiny/pyroar.gif',
   'urshifu-single-strike-gmax': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifusinglestrikeshiny-ezgif.com-resize.webp',
   'urshifu-rapid-strike-gmax': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifurapidstrikeshiny-ezgif.com-resize.webp',
