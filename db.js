@@ -5121,6 +5121,7 @@ function awardCatchExperience(userId, amount = 200) {
         name: pokemon.name,
         is_shiny: Boolean(pokemon.is_shiny),
         is_buddy: catchId === user.buddy_catch_id,
+        on_team: team.some((member) => member.id === catchId),
         experience: experienceAmount,
       });
       if (level > pokemon.level) {

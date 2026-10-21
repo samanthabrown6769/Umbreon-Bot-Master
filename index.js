@@ -5559,16 +5559,20 @@ async function askForBall(
     const experienceLines = [];
     if (experienceResult?.awarded) {
       const buddyGain = experienceResult.pokemon.find((pokemon) => pokemon.is_buddy);
-      const teamGains = experienceResult.pokemon.filter((pokemon) => !pokemon.is_buddy);
+      const sharedGains = experienceResult.pokemon.filter((pokemon) => !pokemon.is_buddy);
+      const teamGains = sharedGains.length
+        ? experienceResult.pokemon.filter((pokemon) => !pokemon.is_buddy || pokemon.on_team)
+        : [];
       if (buddyGain) {
         experienceLines.push(
           `${getTrainerIconEmoji(userId)} ${getPokemonSpriteEmoji(buddyGain)} **${buddyGain.name}** gained **${buddyGain.experience.toLocaleString()} EXP!**`
         );
       }
       if (teamGains.length) {
+        const teamAmount = (teamGains.find((pokemon) => !pokemon.is_buddy) || teamGains[0]).experience;
         experienceLines.push(
-          `<:expshare:1372999502084178060> • Your ${teamGains.map((pokemon) => getPokemonSpriteEmoji(pokemon)).join(' ')} ` +
-          `gained **${teamGains[0].experience.toLocaleString()}** EXP!`
+          `${EMOJIS.expshare} • Your ${teamGains.map((pokemon) => getPokemonSpriteEmoji(pokemon)).join(' ')} ` +
+          `gained **${teamAmount.toLocaleString()}** EXP!`
         );
       }
     }
