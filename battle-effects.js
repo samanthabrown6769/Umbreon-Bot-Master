@@ -176,14 +176,17 @@ function effectiveSpeed(m, field, side) {
 }
 
 // Stat multiplier for outgoing damage calculations: stage-adjusted attack and defense for a move.
+// Sp. Atk / Sp. Def EVs add what they would to a dedicated special stat (this game stores only Atk and Def).
+const evBonus = (m, key) => Math.floor(Math.floor((m[key] || 0) / 4) * (m.level || 0) / 100);
+
 function damageStats(attacker, defender, move, field) {
   const af = fx(attacker); const df = fx(defender);
   const physical = move.category !== 'special';
   let defKey = physical ? 'def' : 'spdef';
   if (field.wonder > 0) defKey = physical ? 'spdef' : 'def';
-  let atk = baseStat(attacker, 'atk') * stageMult(af.stages[physical ? 'atk' : 'spa']);
+  let atk = (baseStat(attacker, 'atk') + (physical ? 0 : evBonus(attacker, 'ev_spa'))) * stageMult(af.stages[physical ? 'atk' : 'spa']);
   if (af.status === 'brn' && physical) atk *= 0.5;
-  const def = baseStat(defender, 'def')
+  const def = (baseStat(defender, 'def') + (defKey === 'spdef' ? evBonus(defender, 'ev_spdef') : 0))
     * stageMult(df.stages[defKey])
     * (defender.held_item === ASSAULT_VEST_ITEM && defKey === 'spdef' ? 1.5 : 1);
   return { atk: Math.max(1, atk), def: Math.max(1, def), physical };

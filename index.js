@@ -178,6 +178,11 @@ const {
   findMoveInfo,
   advanceQuestProgress,
   useRareCandy,
+  awardPokemonEvs,
+  EV_STATS,
+  EV_TOTAL_LIMIT,
+  EV_STAT_LIMIT,
+  EV_PER_BATTLE,
   setCatchTeamStatus,
   setTeamCatchByQuery,
   getDexIndexOffset,
@@ -655,6 +660,22 @@ const NPC_SPECIAL_BATTLES = [
     reward: 0,
   },
 ];
+const EV_STAT_LABELS = { hp: 'HP', atk: 'Attack', def: 'Defense', spa: 'Sp. Atk', spdef: 'Sp. Def', spe: 'Speed' };
+const EV_STAT_ALIASES = {
+  hp: 'hp', atk: 'atk', attack: 'atk', def: 'def', defense: 'def', defence: 'def',
+  spa: 'spa', spatk: 'spa', 'sp.atk': 'spa', spattack: 'spa',
+  spd: 'spdef', spdef: 'spdef', 'sp.def': 'spdef', spdefense: 'spdef',
+  spe: 'spe', speed: 'spe', spc: 'spe',
+};
+const evTrainingTeam = (...speciesIds) => speciesIds.map((pokemon_id) => ({ pokemon_id, level: 100 }));
+const EV_TRAINING_NPCS = [
+  { evStat: 'hp', name: 'EV Trainer Joy', team: evTrainingTeam(113, 242, 143) },
+  { evStat: 'atk', name: 'EV Trainer Brawly', team: evTrainingTeam(68, 214, 34) },
+  { evStat: 'def', name: 'EV Trainer Roxanne', team: evTrainingTeam(76, 95, 91) },
+  { evStat: 'spa', name: 'EV Trainer Sabrina', team: evTrainingTeam(65, 94, 282) },
+  { evStat: 'spdef', name: 'EV Trainer Wallace', team: evTrainingTeam(73, 226, 178) },
+  { evStat: 'spe', name: 'EV Trainer Lt. Surge', team: evTrainingTeam(78, 135, 51) },
+].map((npc) => ({ ...npc, special: true, reward: 0 }));
 const NPC_TRAINER_ICON_EMOJIS = {
   volo: '<:volo:1561053228131688488>',
   brock: '<:brock:1561053190198132816>',
@@ -3618,9 +3639,8 @@ function getWorldBossBattle(playerState, boss) {
       mon: {
         name: pokemon.name, hp: playerState.hp, max_hp: pokemon.max_hp, types: playerState.types,
         atk: pokemon.atk, def: pokemon.def, spd: pokemon.spd, moves: playerState.moves,
-        held_item: pokemon.held_item,
-      },
-      boss: {
+        held_item: pokemon.held_item, level: pokemon.level,
+        ev_spa: pokemon.ev_spa || 0, ev_spdef: pokemon.ev_spdef || 0,
         name: boss.name, hp: WORLD_BOSS_DUMMY_HP, max_hp: WORLD_BOSS_DUMMY_HP, types: JSON.parse(form.types), moves: null,
         stats: combatStats({
           hp: template.baseHp, attack: template.baseAtk, defense: template.baseDef, speed: template.baseSpd,
@@ -6337,6 +6357,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
   let turn = 0;
   let finished = false;
   let resultSummary = '';
+  const participants = new Set([partyData[0].id]);
   const log = [`⚔️ **${challenge.name}** challenged you!`];
   const field = createBattleField();
   const currentMoves = () => partyData[partyIndex]?.moves || [];
@@ -6479,6 +6500,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
         }
       }
 
+      if (partyData[partyIndex]) participants.add(partyData[partyIndex].id);
       const won = opponentIndex >= opponents.length;
       const lost = partyIndex < 0;
       if (won) {
@@ -6527,6 +6549,21 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           const factionPointsAwarded = challenge.factionNpc
             ? addFactionPoints(userId, 1000 + Math.floor(Math.random() * 9001))
             : 0;
+          let evResults = [];
+          if (challenge.evStat) {
+            const buddyCatchId = getUser(userId).buddy_catch_id;
+            evResults = awardPokemonEvs(
+              userId,
+              [...participants, ...(buddyCatchId ? [buddyCatchId] : [])],
+              challenge.evStat
+            );
+          }
+          const evLabel = EV_STAT_LABELS[challenge.evStat];
+          const evText = evResults
+            .map((entry) => (entry.gained
+              ? `**${entry.name}** +${entry.gained} ${evLabel} EVs (${entry.total}/${EV_TOTAL_LIMIT})`
+              : `**${entry.name}** can't gain more ${evLabel} EVs (${entry.value}/${EV_STAT_LIMIT} ${evLabel}, ${entry.total}/${EV_TOTAL_LIMIT} total)`))
+            .join('\n');
           const npcExperience = 200 + Math.floor(Math.random() * 1801);
           const npcExperienceResult = awardCatchExperience(userId, npcExperience);
           const normalizedChallengeName = challenge.name.toLowerCase();
@@ -6545,7 +6582,9 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
             battleCategories,
           });
           announceQuestCompletions(userId, message.channel, completedQuests);
-          log.push(challenge.volo
+          log.push(challenge.evStat
+            ? `🏆 **${challenge.name} defeated!**\n💪 ${evText}`
+            : challenge.volo
             ? `🏆 **${challenge.name} defeated!** You earned ${EMOJIS.pokecoin} **${voloCoins.toLocaleString()} PokéCoins**` +
               `${voloItem ? ` and **${voloItem[1]}x ${voloItem[2]}**` : ''}.`
             : challenge.factionNpc
@@ -6554,7 +6593,9 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
               ? `🏆 **Rematch won!** You earned ${EMOJIS.pokecoin} **${rematchCoins.toLocaleString()} PokéCoins**` +
                 `${rematchItem ? ` and **${rematchItem[1]}x ${rematchItem[2]}**` : ''}.`
               : `🏆 **Challenge cleared!** You earned ${EMOJIS.pokecoin} **${reward.toLocaleString()} PokéCoins**.`);
-          if (challenge.factionNpc) {
+          if (challenge.evStat) {
+            resultSummary = `🏆 **Victory!**\nYou defeated **${challenge.name}**.\n💪 ${evText}`;
+          } else if (challenge.factionNpc) {
             resultSummary =
               `🏆 **Victory!**\nYou defeated **${challenge.name}**.\n` +
               `${getUserFaction(userId).team.emoji} Earned **${factionPointsAwarded.toLocaleString()} faction points**.`;
@@ -6573,7 +6614,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           const challengeIconIndex = challenge.special
             ? NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.indexOf(challenge)
             : challengeIndex;
-          const canDropIcon = (challenges === NPC_CAMPAIGN || challenge.special)
+          const canDropIcon = !challenge.evStat && (challenges === NPC_CAMPAIGN || challenge.special)
             && challengeIconIndex >= 0;
           let unlockedIconIndex = null;
           if (canDropIcon) {
@@ -14513,6 +14554,9 @@ client.on('messageCreate', async (message) => {
           `**Pokémon IVs**\n` +
           `\`ATK\` ${ivValue(buddy.atk_iv)}  \`DEF\` ${ivValue(buddy.def_iv)}\n` +
           `\`HP\` ${ivValue(buddy.hp_iv)}  \`SPE\` ${ivValue(buddy.spd_iv)}\n\n` +
+          `**Pokémon EVs [${EV_STATS.reduce((sum, stat) => sum + (buddy[`ev_${stat}`] || 0), 0)}/${EV_TOTAL_LIMIT}]**\n` +
+          `\`ATK\` ${buddy.ev_atk || 0}  \`DEF\` ${buddy.ev_def || 0}  \`HP\` ${buddy.ev_hp || 0}  ` +
+          `\`SPA\` ${buddy.ev_spa || 0}  \`SPD\` ${buddy.ev_spdef || 0}  \`SPE\` ${buddy.ev_spe || 0}\n\n` +
           `**Pokémon Stats**\n` +
           `⚔️ \`Atk\` **${buddy.atk}**  🛡️ \`Def\` **${buddy.def}**\n` +
           `❤️ \`HP\` **${buddy.max_hp}**  ⚡ \`Spe\` **${buddy.spd}**`
@@ -15995,6 +16039,18 @@ client.on('messageCreate', async (message) => {
             .setDescription(`✅ Trainer icon set to **${getNpcTrainerName(match)}**!`)
             .setThumbnail(getNpcIconUrl(match))],
         });
+      }
+      if (battleSub === 'ev' || battleSub === 'evs') {
+        const requestedStat = EV_STAT_ALIASES[(args[1] || '').toLowerCase()];
+        if (!requestedStat) {
+          return message.reply(
+            `**EV Training** — each win against an EV trainer grants **${EV_PER_BATTLE}** EVs in one stat ` +
+            `(max ${EV_STAT_LIMIT} per stat, ${EV_TOTAL_LIMIT} total).\n` +
+            `Usage: \`${PREFIX}b ev <atk|def|spa|spd|hp|spe>\``
+          );
+        }
+        const evIndex = EV_TRAINING_NPCS.findIndex((npc) => npc.evStat === requestedStat);
+        return startLeagueChallengeWithCooldown(message, userId, evIndex, EV_TRAINING_NPCS);
       }
       const sparTargetArg = battleSub === 'user' || battleSub === 'player' ? args[1] : args[0];
       const sparTargetId = message.mentions.users.first()?.id
