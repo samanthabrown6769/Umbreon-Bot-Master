@@ -272,6 +272,14 @@ function rerollBuddyIv(userId, stat, confirmMaxed = false, expectedBuddyId = nul
   };
   const ivField = ivFields[stat];
   if (!ivField) return { error: 'invalid_stat' };
+  const sharedIvStats = {
+    atk: ['atk', 'spa'],
+    spa: ['atk', 'spa'],
+    def: ['def', 'spd'],
+    spd: ['def', 'spd'],
+  };
+  const rerolledStats = sharedIvStats[stat] || [stat];
+  const rerolledIvFields = rerolledStats.map((rerolledStat) => ivFields[rerolledStat]);
   return db.transaction(() => {
     const user = getUser(userId);
     const buddyId = user.buddy_catch_id;
@@ -288,42 +296,47 @@ function rerollBuddyIv(userId, stat, confirmMaxed = false, expectedBuddyId = nul
       WHERE catches.id = ? AND catches.user_id = ?
     `).get(buddyId, userId);
     if (!buddy) return { error: 'no_buddy' };
-    if (buddy[ivField] === 31 && !confirmMaxed) {
+    const ivIsMaxed = rerolledIvFields.some((field) => buddy[field] === 31);
+    if (ivIsMaxed && !confirmMaxed) {
       return {
         error: 'max_iv_confirmation_required',
         pokemon: buddy.name,
         stat,
+        rerolledStats,
         buddyId,
       };
     }
-    if (confirmMaxed && buddy[ivField] !== 31) {
+    if (confirmMaxed && !ivIsMaxed) {
       return { error: 'iv_changed' };
     }
     if (user.vote_coins < 1) return { error: 'not_enough_vote_coins' };
 
     const newIv = Math.floor(Math.random() * 32);
     const nextValues = {
-      [ivField]: newIv,
       hp: buddy.hp,
       max_hp: buddy.max_hp,
       atk: buddy.atk,
       def: buddy.def,
       spd: buddy.spd,
     };
+    for (const field of rerolledIvFields) nextValues[field] = newIv;
     if (stat === 'hp') {
       nextValues.max_hp = calculateStat(buddy.base_hp ?? 50, newIv, buddy.level, true, buddy.is_shiny, buddy.ev_hp);
       nextValues.hp = Math.min(
         nextValues.max_hp,
         buddy.hp + (nextValues.max_hp - buddy.max_hp)
       );
-    } else if (['atk', 'def', 'spd'].includes(stat)) {
-      const baseStat = {
-        atk: buddy.base_atk,
-        def: buddy.base_def,
-        spd: buddy.base_spd,
-      }[stat] ?? 50;
-      const evForStat = { atk: buddy.ev_atk, def: buddy.ev_def, spd: buddy.ev_spe }[stat] ?? 0;
-      nextValues[stat] = calculateStat(baseStat, newIv, buddy.level, false, buddy.is_shiny, evForStat);
+    } else if (rerolledStats.includes('atk')) {
+      nextValues.atk = calculateStat(
+        buddy.base_atk ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_atk
+      );
+    } else if (rerolledStats.includes('def')) {
+      nextValues.def = calculateStat(
+        buddy.base_def ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_def
+      );
+      nextValues.spd = calculateStat(
+        buddy.base_spd ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_spe
+      );
     }
     const assignments = Object.keys(nextValues).map((field) => `${field} = ?`).join(', ');
     db.prepare(`UPDATE catches SET ${assignments} WHERE id = ? AND user_id = ?`)
@@ -333,6 +346,7 @@ function rerollBuddyIv(userId, stat, confirmMaxed = false, expectedBuddyId = nul
     return {
       pokemon: buddy.name,
       stat,
+      rerolledStats,
       oldIv: buddy[ivField],
       newIv,
       voteCoins: getUser(userId).vote_coins,
@@ -3112,9 +3126,9 @@ function rebaseTransferredPokemon(userId, catchId) {
   const hpIv = recipientCopy?.hp_iv ?? snapshot?.hp_iv ?? Math.floor(Math.random() * 32);
   const atkIv = recipientCopy?.atk_iv ?? snapshot?.atk_iv ?? Math.floor(Math.random() * 32);
   const defIv = recipientCopy?.def_iv ?? snapshot?.def_iv ?? Math.floor(Math.random() * 32);
-  const spaIv = recipientCopy?.spa_iv ?? snapshot?.spa_iv ?? Math.floor(Math.random() * 32);
+  const spaIv = atkIv;
   const spdefIv = recipientCopy?.spdef_iv ?? snapshot?.spdef_iv ?? Math.floor(Math.random() * 32);
-  const spdIv = recipientCopy?.spd_iv ?? snapshot?.spd_iv ?? Math.floor(Math.random() * 32);
+  const spdIv = defIv;
   const maxHp = calculateStat(
     pokemon.base_hp ?? 50, hpIv, level, true, Boolean(pokemon.is_shiny), evs.hp
   );
@@ -3203,6 +3217,70 @@ function applyShinyStatBonus() {
 
 applyShinyStatBonus();
 reconcileDuplicateCatchStates();
+
+function migrateSharedPokemonIvs() {
+  const migrationName = 'shared_attack_special_attack_and_defense_speed_ivs';
+  if (db.prepare('SELECT 1 FROM migration_flags WHERE name = ?').get(migrationName)) return;
+
+  db.transaction(() => {
+    const catches = db.prepare(`
+      SELECT c.id, c.atk_iv, c.level, c.is_shiny, c.def_iv, c.spa_iv, c.spd_iv, c.ev_spe,
+        f.base_spd
+      FROM catches c
+      LEFT JOIN pokemon_forms f ON f.id = c.pokemon_id
+      WHERE c.spa_iv != c.atk_iv OR c.spd_iv != c.def_iv
+    `).all();
+    const updateCatch = db.prepare(`
+      UPDATE catches
+      SET spa_iv = ?, spd_iv = ?, spd = ?
+      WHERE id = ?
+    `);
+    for (const pokemon of catches) {
+      const spdIv = pokemon.def_iv;
+      const spd = calculateStat(
+        pokemon.base_spd ?? 50,
+        spdIv,
+        pokemon.level ?? 1,
+        false,
+        Boolean(pokemon.is_shiny),
+        pokemon.ev_spe
+      );
+      updateCatch.run(pokemon.atk_iv, spdIv, spd, pokemon.id);
+    }
+
+    const marketListings = db.prepare(`
+      SELECT m.id, m.atk_iv, m.level, m.is_shiny, m.def_iv, m.spa_iv, m.spd_iv, f.base_spd
+      FROM market m
+      LEFT JOIN pokemon_forms f ON f.id = m.pokemon_id
+      WHERE m.spa_iv != m.atk_iv OR m.spd_iv != m.def_iv
+    `).all();
+    const updateMarket = db.prepare(`
+      UPDATE market
+      SET spa_iv = ?, spd_iv = ?, spd = ?
+      WHERE id = ?
+    `);
+    for (const listing of marketListings) {
+      const spdIv = listing.def_iv;
+      const spd = calculateStat(
+        listing.base_spd ?? 50,
+        spdIv,
+        listing.level ?? 1,
+        false,
+        Boolean(listing.is_shiny)
+      );
+      updateMarket.run(listing.atk_iv, spdIv, spd, listing.id);
+    }
+
+    db.exec(`
+      UPDATE user_pokemon_state_snapshots
+      SET spa_iv = atk_iv, spd_iv = def_iv
+    `);
+    db.prepare('INSERT INTO migration_flags (name) VALUES (?)').run(migrationName);
+  }).immediate();
+}
+
+migrateSharedPokemonIvs();
+
 function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false, caughtBall = null) {
   assertUserId(userId);
   if (!pokemon || !Number.isSafeInteger(pokemon.id) || typeof pokemon.name !== 'string') {
@@ -3215,9 +3293,9 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
   const hpIv = Math.floor(Math.random() * 32);
   const atkIv = Math.floor(Math.random() * 32);
   const defIv = Math.floor(Math.random() * 32);
-  const spaIv = Math.floor(Math.random() * 32);
+  const spaIv = atkIv;
   const spdefIv = Math.floor(Math.random() * 32);
-  const spdIv = Math.floor(Math.random() * 32);
+  const spdIv = defIv;
   const level = 1;
   const baseHp = pokemon.baseHp ?? 50;
   const baseAtk = pokemon.baseAtk ?? 50;
@@ -6541,9 +6619,9 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
       const hpIv = Math.floor(Math.random() * 32);
       const atkIv = Math.floor(Math.random() * 32);
       const defIv = Math.floor(Math.random() * 32);
-      const spaIv = Math.floor(Math.random() * 32);
+      const spaIv = atkIv;
       const spdefIv = Math.floor(Math.random() * 32);
-      const spdIv = Math.floor(Math.random() * 32);
+      const spdIv = defIv;
       const maxHp = calculateStat(pokemon.base_hp, hpIv, 1, true, isShiny);
       const inserted = insert.run(
         sellerId,

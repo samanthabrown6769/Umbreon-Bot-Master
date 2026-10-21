@@ -14710,10 +14710,11 @@ client.on('messageCreate', async (message) => {
           return message.reply(`You need 1 ${EMOJIS.votecoin} Vote Coin to reroll a buddy IV.`);
         }
         if (result.error === 'max_iv_confirmation_required') {
+          const pairedStatLabels = result.rerolledStats.map((rerolledStat) => statLabels[rerolledStat]);
           const confirmation = await message.reply({
             content:
-              `⚠️ **${result.pokemon}** has a perfect **31 ${stat.toUpperCase()} IV**. ` +
-              `Rerolling will replace it and costs 1 ${EMOJIS.votecoin} Vote Coin. Continue?`,
+              `⚠️ **${result.pokemon}** has a perfect **31 ${pairedStatLabels.join(' / ')} IV**. ` +
+              `Rerolling ${pairedStatLabels.join(' and ')} costs 1 ${EMOJIS.votecoin} Vote Coin. Continue?`,
             components: [new ActionRowBuilder().addComponents(
               new ButtonBuilder()
                 .setCustomId(`buddy-iv-reroll-confirm:${userId}:${result.buddyId}`)
@@ -14762,9 +14763,12 @@ client.on('messageCreate', async (message) => {
               return interaction.update({ content: `You need 1 ${EMOJIS.votecoin} Vote Coin to reroll a buddy IV.`, components: [] });
             }
             const statName = statLabels[confirmedResult.stat];
+            const rerolledStatNames = confirmedResult.rerolledStats
+              .map((rerolledStat) => statLabels[rerolledStat]);
             return interaction.update({
               content:
-                `🎲 **${confirmedResult.pokemon} ${statName} IV rerolled:** **${confirmedResult.oldIv}** → ` +
+                `🎲 **${confirmedResult.pokemon} ${rerolledStatNames.join(' / ')} IVs rerolled** ` +
+                `(${statName} selected): **${confirmedResult.oldIv}** → ` +
                 `**${confirmedResult.newIv}** (${EMOJIS.votecoin} ` +
                 `${confirmedResult.voteCoins.toLocaleString()} Vote Coins remaining).`,
               components: [],
@@ -14784,8 +14788,10 @@ client.on('messageCreate', async (message) => {
           return message.reply(`Usage: \`${PREFIX}buddy rr <atk|def|hp|spa|spdef|spd|spe>\`.`);
         }
         const statName = statLabels[result.stat];
+        const rerolledStatNames = result.rerolledStats.map((rerolledStat) => statLabels[rerolledStat]);
         return message.reply(
-          `🎲 **${result.pokemon} ${statName} IV rerolled:** **${result.oldIv}** → **${result.newIv}** ` +
+          `🎲 **${result.pokemon} ${rerolledStatNames.join(' / ')} IVs rerolled** ` +
+          `(${statName} selected): **${result.oldIv}** → **${result.newIv}** ` +
           `(${EMOJIS.votecoin} ${result.voteCoins.toLocaleString()} Vote Coins remaining).`
         );
       }
