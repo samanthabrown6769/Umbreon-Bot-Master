@@ -338,6 +338,8 @@ const {
   getFactionGoldenPurchase,
   buyFactionGoldenPokemon,
   buyFactionShopItem,
+  getCatchingCharmCritChance,
+  FACTION_NON_HOLDABLE_ITEMS,
   eatBuddyBerry,
   FACTION_SHOP_ITEMS,
   addFactionPoints,
@@ -1391,6 +1393,18 @@ const EMOJIS = {
   grepaberry: '<:gb:1278558659584200777>',
   tamatoberry: '<:tb:1278558799191605291>',
   fullrestore: '<:full_restore:1281343084059299882>',
+  auxguard: '<:auxguard:1278556122097127456>',
+  auxpower: '<:auxpower:1278556124311719936>',
+  auxpowerguard: '<:auxpowerguard:1278556123368132628>',
+  teamboost: '<:teamboost:1278562180463198333>',
+  catchingcharm: '<:catchingcharm:1278557507152904203>',
+  powerweight: '<:powerweight:1278560217344249866>',
+  powerbracer: '<:powerbracer:1278560222709026838>',
+  powerbelt: '<:powerbelt:1278560221635281037>',
+  powerlens: '<:powerlens:1278560220724989952>',
+  powerband: '<:powerband:1278560219848249387>',
+  poweranklet: '<:poweranklet:1278560218644615260>',
+  maxrevive: '<:maxrevive:1252909053244604478>',
   rarecandy: '<:rarecandy:1560319612845817927>',
   fishingtoken: '<:fishingtoken:1558856235451941046>',
   goodRod: '<:goodrod:1558856916174766080>',
@@ -3583,6 +3597,12 @@ function createWorldBossPlayerMoveRows(bossId, pokemon, moves) {
   return rows;
 }
 
+const WORLD_BOSS_AUX_ITEMS = {
+  guard: { name: 'Aux Guard', shopId: 52, stages: ['def', 'spdef'], guard: true },
+  power: { name: 'Aux Power', shopId: 53, stages: ['atk', 'spa'], guard: false },
+  powerguard: { name: 'Aux Powerguard', shopId: 54, stages: ['atk', 'spa', 'def', 'spdef'], guard: true },
+};
+
 function createWorldBossForfeitRow(bossId) {
   const row = makeBattleForfeitRow(`worldboss:forfeit:${bossId}`);
   row.addComponents(
@@ -3590,9 +3610,21 @@ function createWorldBossForfeitRow(bossId) {
       .setCustomId(`worldboss:restore:${bossId}`)
       .setLabel('Full Restore')
       .setEmoji(EMOJIS.fullrestore)
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`worldboss:revive:${bossId}`)
+      .setLabel('Max Revive')
+      .setEmoji(EMOJIS.maxrevive)
       .setStyle(ButtonStyle.Success)
   );
-  return row;
+  const auxRow = new ActionRowBuilder().addComponents(
+    Object.entries(WORLD_BOSS_AUX_ITEMS).map(([kind, item]) => new ButtonBuilder()
+      .setCustomId(`worldboss:aux:${bossId}:${kind}`)
+      .setLabel(item.name)
+      .setEmoji(EMOJIS[item.name.replace(/\s+/g, '').toLowerCase()])
+      .setStyle(ButtonStyle.Primary))
+  );
+  return [row, auxRow];
 }
 
 function createWorldBossPlayerEmbed(state, detail = '') {
@@ -3946,7 +3978,112 @@ async function startWorldBossBattle(message, boss, userId, team) {
           components: [
             ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
             ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
-            createWorldBossForfeitRow(boss.id),
+            ...createWorldBossForfeitRow(boss.id),
+          ],
+        });
+        return;
+      }
+      if (action === 'revive') {
+        let states = teamStatesByPlayer.get(playerId);
+        if (!states) {
+          states = new Map();
+          teamStatesByPlayer.set(playerId, states);
+        }
+        const revivedId = [...faintedTeam].pop();
+        const revivedPokemon = playerTeam.find((entry) => entry.id === revivedId);
+        if (!revivedPokemon) {
+          await interaction.reply({ content: 'None of your Pokémon have fainted.', ephemeral: true });
+          return;
+        }
+        if (!takeUserItem(playerId, 'Max Revive')) {
+          await interaction.reply({
+            content: `${EMOJIS.maxrevive} You have no **Max Revive**. Buy one with \`${PREFIX}s buy 71\` (Commander rank).`,
+            ephemeral: true,
+          });
+          return;
+        }
+        faintedTeam.delete(revivedId);
+        let revivedState = states.get(revivedId);
+        if (!revivedState) {
+          const [member] = getWorldBossTeamMoves([revivedPokemon]);
+          revivedState = {
+            pokemon: revivedPokemon,
+            hp: revivedPokemon.max_hp,
+            types: member.types,
+            moves: member.moves,
+            teamStates: states,
+          };
+        }
+        revivedState.hp = revivedPokemon.max_hp;
+        if (revivedState.battle) {
+          revivedState.battle.mon.hp = revivedState.hp;
+          battleFx.cureStatus(revivedState.battle.mon);
+        }
+        states.set(revivedId, revivedState);
+        if (!playerState || playerState.hp <= 0) {
+          players.set(playerId, revivedState);
+          playerState = revivedState;
+        }
+        await interaction.update({
+          embeds: [createWorldBossPanelEmbed(currentBoss, {
+            state: playerState,
+            team: playerTeam,
+            faintedIds: faintedTeam,
+            user: interaction.user,
+            log: [`${EMOJIS.maxrevive} **${revivedPokemon.name}** was fully revived!`],
+          })],
+          components: playerState.hp > 0
+            ? [
+              ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
+              ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
+              ...createWorldBossForfeitRow(boss.id),
+            ]
+            : [],
+        });
+        return;
+      }
+      if (action === 'aux') {
+        const auxKind = parts[3];
+        const auxItem = WORLD_BOSS_AUX_ITEMS[auxKind];
+        if (!auxItem || !playerState || playerState.hp <= 0) {
+          await interaction.reply({
+            content: 'Aux items can only be used on your active, conscious Pokémon.',
+            ephemeral: true,
+          });
+          return;
+        }
+        if (!takeUserItem(playerId, auxItem.name)) {
+          await interaction.reply({
+            content: `${EMOJIS[auxItem.name.replace(/\s+/g, '').toLowerCase()]} You have no **${auxItem.name}**. ` +
+              `Buy one with \`${PREFIX}s buy ${auxItem.shopId}\`.`,
+            ephemeral: true,
+          });
+          return;
+        }
+        const auxBattle = getWorldBossBattle(playerState, currentBoss);
+        const auxFx = battleFx.fx(auxBattle.mon);
+        const raised = [];
+        for (const stat of auxItem.stages) {
+          auxFx.stages[stat] = Math.min(6, auxFx.stages[stat] + 2);
+          raised.push(stat);
+        }
+        if (auxItem.guard) auxFx.critGuard = (auxFx.critGuard || 0) + 1;
+        await interaction.update({
+          embeds: [createWorldBossPanelEmbed(currentBoss, {
+            state: playerState,
+            team: playerTeam,
+            faintedIds: faintedTeam,
+            user: interaction.user,
+            log: [
+              `${EMOJIS[auxItem.name.replace(/\s+/g, '').toLowerCase()]} **${playerState.pokemon.name}** sharply raised its ` +
+              `${raised.map((stat) => stat.toUpperCase()).join(', ')}` +
+              `${auxItem.guard ? ` and gained a protective aura (${auxFx.critGuard} stack${auxFx.critGuard === 1 ? '' : 's'})` : ''}!`,
+            ],
+          })],
+          components: [
+            ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
+            ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
+            ...createWorldBossForfeitRow(boss.id),
           ],
         });
         return;
@@ -4029,7 +4166,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
             components: [
               ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
               ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
-              createWorldBossForfeitRow(boss.id),
+              ...createWorldBossForfeitRow(boss.id),
             ],
           };
           // Switching from an existing battle panel edits it instead of posting another.
@@ -4064,7 +4201,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
           components: [
             ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
             ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
-            createWorldBossForfeitRow(boss.id),
+            ...createWorldBossForfeitRow(boss.id),
           ],
         };
         if (interaction.message.id === bossMessage.id) await interaction.reply(choosePayload);
@@ -4096,7 +4233,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
           components: [
             ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
             ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
-            createWorldBossForfeitRow(boss.id),
+            ...createWorldBossForfeitRow(boss.id),
           ],
         });
         return;
@@ -4351,13 +4488,13 @@ async function startWorldBossBattle(message, boss, userId, team) {
         components: playerState.batonPass
           ? [
             ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
-            createWorldBossForfeitRow(boss.id),
+            ...createWorldBossForfeitRow(boss.id),
           ]
           : playerState.hp > 0
           ? [
             ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
             ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
-            createWorldBossForfeitRow(boss.id),
+            ...createWorldBossForfeitRow(boss.id),
           ]
           : createWorldBossPlayerSelectRows(
             boss.id,
@@ -5192,7 +5329,9 @@ async function askForBall(
     const targetRate = guaranteedCatch
       ? 100
       : getBallCatchRate(selectedBall, ball, target, catchDisplayRarity,       rarityData.catchChance, clanPerks.crBonus + ninjaBonus, channelCatchRateBoost);
-    const isSuccess = guaranteedCatch || selectedBall === 'mb' || playerRoll < targetRate;
+    const criticalCatch = !guaranteedCatch && selectedBall !== 'mb' && playerRoll >= targetRate
+      && Math.random() < getCatchingCharmCritChance(userId);
+    const isSuccess = guaranteedCatch || criticalCatch || selectedBall === 'mb' || playerRoll < targetRate;
     const baseCoinsEarned = getCatchCoinReward(target.rarity, Boolean(target.isShiny));
     const getRemainingBalls = () => {
       const remainingUser = getUser(userId);
@@ -5391,6 +5530,7 @@ async function askForBall(
         `${/^[aeiou]/i.test(target.name) ? 'an' : 'a'} ` +
         `${factionLogoPrefix(target)}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}** with a ` +
         `${ball.emoji} **${ball.name}**!` +
+        `${criticalCatch ? '\n🌟 **Critical catch!** Your Catching Charm guaranteed the catch.' : ''}` +
         `${ballSaved ? `\n⚡ **${ball.name} not used!**` : ''}\n\n` +
         `Rarity: ` +
         `${catchDisplayRarity} (${rarityData.rateText})\n` +
@@ -6634,9 +6774,14 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           }
           const evLabel = EV_STAT_LABELS[challenge.evStat];
           const evText = evResults
-            .map((entry) => (entry.gained
-              ? `**${entry.name}** +${entry.gained} ${evLabel} EVs (${entry.total}/${EV_TOTAL_LIMIT})`
-              : `**${entry.name}** can't gain more ${evLabel} EVs (${entry.value}/${EV_STAT_LIMIT} ${evLabel}, ${entry.total}/${EV_TOTAL_LIMIT} total)`))
+            .map((entry) => {
+              const bonusText = entry.bonus?.gained
+                ? ` (+${entry.bonus.gained} ${EV_STAT_LABELS[entry.bonus.stat]} from ${entry.bonus.item})`
+                : '';
+              return entry.gained
+                ? `**${entry.name}** +${entry.gained} ${evLabel} EVs${bonusText} (${entry.total}/${EV_TOTAL_LIMIT})`
+                : `**${entry.name}** can't gain more ${evLabel} EVs${bonusText} (${entry.value}/${EV_STAT_LIMIT} ${evLabel}, ${entry.total}/${EV_TOTAL_LIMIT} total)`;
+            })
             .join('\n');
           const npcExperience = 200 + Math.floor(Math.random() * 1801);
           const npcExperienceResult = awardCatchExperience(userId, npcExperience);
@@ -15066,11 +15211,15 @@ client.on('messageCreate', async (message) => {
                 : currentFaction?.rank !== 'Leader'
                   ? '🔒 Reach Leader rank to unlock this purchase.'
                   : `Your balance: **${currentFaction.points.toLocaleString()} faction points**.`) +
-              `\n\n${FACTION_RANK_ICONS.Admin || ''} **Admin buyables** (Admin rank or higher)\n` +
-              Object.entries(FACTION_SHOP_ITEMS).map(([id, item]) =>
-                `\`ID: ${id}\` ${EMOJIS[item.name.replace(/\s+/g, '').toLowerCase()] || ''} ${item.name}: ` +
-                `${item.cost.toLocaleString()} points`).join('\n') +
-              `\nBuy with \`${PREFIX}s buy <ID> [amount]\`.`
+              `\n\n${Object.keys(FACTION_RANKS).map((rank) => {
+                const entries = Object.entries(FACTION_SHOP_ITEMS).filter(([, item]) => item.rank === rank);
+                if (!entries.length) return '';
+                return `${FACTION_RANK_ICONS[rank] || ''} **${rank} buyables**${rank === 'Admin' ? ' (Admin rank or higher)' : ''}\n` +
+                  entries.map(([id, item]) =>
+                    `\`ID: ${id}\` ${EMOJIS[item.name.replace(/\s+/g, '').toLowerCase()] || ''} ${item.name}: ` +
+                    `${item.cost.toLocaleString()} points${item.max ? ` (max ${item.max})` : ''}`).join('\n');
+              }).filter(Boolean).join('\n\n')}` +
+              `\n\nBuy with \`${PREFIX}s buy <ID> [amount]\`.`
             );
         };
         const buildFactionShopButtons = () => new ActionRowBuilder().addComponents(
@@ -15800,6 +15949,9 @@ client.on('messageCreate', async (message) => {
           return message.reply(
             `A Team Medallion is used with \`${PREFIX}faction change <faction name>\`, not held by Pokémon.`
           );
+        }
+        if (FACTION_NON_HOLDABLE_ITEMS.has(giveLabel)) {
+          return message.reply(`**${giveLabel}** can't be held by a Pokémon.`);
         }
         const team = getUserTeam(userId);
         if (!team.length) return message.reply('Your battle team is empty!');

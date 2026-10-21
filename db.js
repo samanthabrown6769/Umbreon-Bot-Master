@@ -8,7 +8,7 @@ const {
   isGoldenDexNumber,
 } = require('./pokemon-dex-numbers');
 const { EVOLUTION_ITEMS, findEvolutionItem } = require('./evolution-items');
-const { BATTLE_HELD_ITEM_NAMES, findBattleHeldItem } = require('./held-item-effects');
+const { BATTLE_HELD_ITEM_NAMES, POWER_ITEM_EVS, findBattleHeldItem } = require('./held-item-effects');
 const { BOXES, VOTE_BOXES } = require('./boxes');
 const { getPromoItemNames } = require('./promo');
 const { setSpriteOverrides } = require('./pokemon-sprites');
@@ -2929,6 +2929,7 @@ const EV_STATS = ['hp', 'atk', 'def', 'spa', 'spdef', 'spe'];
 const EV_TOTAL_LIMIT = 510;
 const EV_STAT_LIMIT = 252;
 const EV_PER_BATTLE = 9;
+const POWER_ITEM_EV_BONUS = 8;
 
 function calculateStat(base, iv, level, isHp = false, isShiny = false, ev = 0) {
   const points = 2 * base + iv + Math.floor((ev || 0) / 4);
@@ -4210,6 +4211,7 @@ const SPECIAL_USER_ITEM_NAMES = Object.freeze([
   'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
   'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
   'Team Medallion',
+  'Aux Guard', 'Aux Power', 'Aux Powerguard', 'Team Boost', 'Catching Charm', 'Max Revive',
   'Pomeg Berry', 'Kelpsy Berry', 'Qualot Berry', 'Hondew Berry', 'Grepa Berry', 'Tamato Berry', 'Full Restore',
   ...RESEARCH_ITEM_NAMES,
   ...BATTLE_HELD_ITEM_NAMES,
@@ -5200,7 +5202,6 @@ function awardPokemonEvs(userId, catchIds, stat, amount = EV_PER_BATTLE) {
   assertUserId(userId);
   if (!EV_STATS.includes(stat)) throw new TypeError(`Unknown EV stat "${stat}".`);
   if (!Number.isSafeInteger(amount) || amount <= 0) throw new TypeError('amount must be a positive safe integer.');
-  const field = `ev_${stat}`;
   return db.transaction(() => {
     const results = [];
     const handledGroups = new Set();
@@ -5217,16 +5218,26 @@ function awardPokemonEvs(userId, catchIds, stat, amount = EV_PER_BATTLE) {
       const groupKey = `${pokemon.pokemon_id}:${pokemon.is_shiny}:${pokemon.is_golden}`;
       if (handledGroups.has(groupKey)) continue;
       handledGroups.add(groupKey);
-      const total = EV_STATS.reduce((sum, key) => sum + (pokemon[`ev_${key}`] || 0), 0);
-      const gained = Math.max(0, Math.min(
-        amount,
-        EV_STAT_LIMIT - (pokemon[field] || 0),
-        EV_TOTAL_LIMIT - total
-      ));
-      results.push({ id: catchId, name: pokemon.name, gained, total: total + gained, value: (pokemon[field] || 0) + gained });
-      if (!gained) continue;
       const evs = Object.fromEntries(EV_STATS.map((key) => [key, pokemon[`ev_${key}`] || 0]));
-      evs[stat] += gained;
+      let total = EV_STATS.reduce((sum, key) => sum + evs[key], 0);
+      const grant = (key, wanted) => {
+        const granted = Math.max(0, Math.min(wanted, EV_STAT_LIMIT - evs[key], EV_TOTAL_LIMIT - total));
+        evs[key] += granted;
+        total += granted;
+        return granted;
+      };
+      const gained = grant(stat, amount);
+      const powerStat = POWER_ITEM_EVS[pokemon.held_item];
+      const bonusGained = powerStat ? grant(powerStat, POWER_ITEM_EV_BONUS) : 0;
+      results.push({
+        id: catchId,
+        name: pokemon.name,
+        gained,
+        total,
+        value: evs[stat],
+        bonus: powerStat ? { stat: powerStat, gained: bonusGained, item: pokemon.held_item } : null,
+      });
+      if (!gained && !bonusGained) continue;
       const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, evs.hp);
       const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, evs.atk);
       const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny, evs.def);
@@ -5234,9 +5245,10 @@ function awardPokemonEvs(userId, catchIds, stat, amount = EV_PER_BATTLE) {
       const hp = Math.min(maxHp, Math.max(1, pokemon.hp + (maxHp - pokemon.max_hp)));
       db.prepare(`
         UPDATE catches
-        SET ${field} = ?, hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
+        SET ev_hp = ?, ev_atk = ?, ev_def = ?, ev_spa = ?, ev_spdef = ?, ev_spe = ?,
+          hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
         WHERE id = ? AND user_id = ?
-      `).run(evs[stat], hp, maxHp, atk, def, spd, catchId, userId);
+      `).run(evs.hp, evs.atk, evs.def, evs.spa, evs.spdef, evs.spe, hp, maxHp, atk, def, spd, catchId, userId);
       syncDuplicateCatchState(userId, catchId);
     }
     return results;
@@ -8642,16 +8654,44 @@ function buyFactionGoldenPokemon(userId, now = Date.now()) {
 }
 
 const FACTION_BERRY_COST = 500000;
+const FACTION_POWER_ITEM_COST = 100000000;
 const FACTION_SHOP_ITEMS = Object.freeze({
+  52: { name: 'Aux Guard', cost: 50000, rank: 'Recruit' },
+  53: { name: 'Aux Power', cost: 50000, rank: 'Recruit' },
+  54: { name: 'Aux Powerguard', cost: 250000, rank: 'Recruit' },
+  55: { name: 'Team Boost', cost: 1000000, rank: 'Grunt', max: 10 },
+  56: { name: 'Catching Charm', cost: 10000000, rank: 'Captain', max: 10 },
   57: { name: 'Pomeg Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'hp' },
   58: { name: 'Kelpsy Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'atk' },
   59: { name: 'Qualot Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'def' },
   60: { name: 'Hondew Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'spa' },
   61: { name: 'Grepa Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'spdef' },
   62: { name: 'Tamato Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'spe' },
+  63: { name: 'Power Weight', cost: FACTION_POWER_ITEM_COST, rank: 'Commander' },
+  64: { name: 'Power Bracer', cost: FACTION_POWER_ITEM_COST, rank: 'Commander' },
+  65: { name: 'Power Belt', cost: FACTION_POWER_ITEM_COST, rank: 'Commander' },
+  66: { name: 'Power Lens', cost: FACTION_POWER_ITEM_COST, rank: 'Commander' },
+  67: { name: 'Power Band', cost: FACTION_POWER_ITEM_COST, rank: 'Commander' },
+  68: { name: 'Power Anklet', cost: FACTION_POWER_ITEM_COST, rank: 'Commander' },
   70: { name: 'Full Restore', cost: 250000, rank: 'Admin' },
+  71: { name: 'Max Revive', cost: 500000, rank: 'Commander' },
 });
 const FACTION_RANK_ORDER = Object.keys(FACTION_RANKS);
+const FACTION_TEAM_BOOST_PER_ITEM = 0.05;
+const CATCHING_CHARM_CRIT_PER_ITEM = 0.001;
+// Items consumed or used in battle can't be held by a Pokémon.
+const FACTION_NON_HOLDABLE_ITEMS = new Set(Object.values(FACTION_SHOP_ITEMS)
+  .map((item) => item.name)
+  .filter((name) => !POWER_ITEM_EVS[name]));
+
+function getUserItemAmount(userId, itemName) {
+  return db.prepare('SELECT amount FROM user_items WHERE user_id = ? AND item_name = ?')
+    .get(userId, itemName)?.amount || 0;
+}
+
+function getCatchingCharmCritChance(userId) {
+  return Math.min(10, getUserItemAmount(userId, 'Catching Charm')) * CATCHING_CHARM_CRIT_PER_ITEM;
+}
 
 function buyFactionShopItem(userId, itemId, amount = 1) {
   assertUserId(userId);
@@ -8665,6 +8705,10 @@ function buyFactionShopItem(userId, itemId, amount = 1) {
     if (!faction) return { error: 'not_in_faction' };
     if (FACTION_RANK_ORDER.indexOf(faction.rank) < FACTION_RANK_ORDER.indexOf(item.rank)) {
       return { error: 'rank_required', rank: item.rank };
+    }
+    if (item.max) {
+      const owned = getUserItemAmount(userId, item.name);
+      if (owned + amount > item.max) return { error: 'max_reached', max: item.max, owned };
     }
     if (faction.points < totalCost) return { error: 'insufficient_points', points: faction.points, cost: totalCost };
     db.prepare('UPDATE user_factions SET points = points - ? WHERE user_id = ?').run(totalCost, userId);
@@ -8722,7 +8766,8 @@ function addFactionPoints(userId, basePoints, { speciesId = null } = {}) {
   const factionBonus = getPokemonFactionTeam(speciesId)?.id === faction.faction_key
     ? FACTION_POKEMON_POINT_BONUS
     : 1;
-  const earned = Math.floor(basePoints * FACTION_RANKS[faction.rank].mult * factionBonus);
+  const teamBoost = 1 + Math.min(10, getUserItemAmount(userId, 'Team Boost')) * FACTION_TEAM_BOOST_PER_ITEM;
+  const earned = Math.floor(basePoints * FACTION_RANKS[faction.rank].mult * factionBonus * teamBoost);
   db.prepare('UPDATE user_factions SET points = points + ? WHERE user_id = ?').run(earned, userId);
   return earned;
 }
@@ -8790,6 +8835,8 @@ module.exports = {
   getFactionGoldenPurchase,
   buyFactionGoldenPokemon,
   buyFactionShopItem,
+  getCatchingCharmCritChance,
+  FACTION_NON_HOLDABLE_ITEMS,
   eatBuddyBerry,
   FACTION_SHOP_ITEMS,
   takeUserItem,

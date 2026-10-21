@@ -25,8 +25,18 @@ const LEFTOVERS_ITEM = 'Leftovers';
 const ASSAULT_VEST_ITEM = 'Assault Vest';
 const FOCUS_BAND_ITEM = 'Focus Band';
 const KINGS_ROCK_ITEM = "King's Rock";
+// Power items add 8 EVs in their stat to every EV training reward.
+const POWER_ITEM_EVS = Object.freeze({
+  'Power Weight': 'hp',
+  'Power Bracer': 'atk',
+  'Power Belt': 'def',
+  'Power Lens': 'spa',
+  'Power Band': 'spdef',
+  'Power Anklet': 'spe',
+});
 const BATTLE_HELD_ITEM_NAMES = new Set([
   ...Object.keys(TYPE_BOOSTING_HELD_ITEMS),
+  ...Object.keys(POWER_ITEM_EVS),
   LEFTOVERS_ITEM,
   ASSAULT_VEST_ITEM,
   FOCUS_BAND_ITEM,
@@ -54,6 +64,6 @@ module.exports = {
   KINGS_ROCK_ITEM,
   LEFTOVERS_ITEM,
   TYPE_BOOSTING_HELD_ITEMS,
-  findBattleHeldItem,
+  POWER_ITEM_EVS,
   getHeldItemDamageMultiplier,
 };

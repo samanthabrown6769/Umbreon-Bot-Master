@@ -410,7 +410,11 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     if (ctx.field.waterSport > 0 && type === 'fire') mult *= 0.33;
     if (ctx.field.mudSport > 0 && type === 'electric') mult *= 0.33;
     crit = f.laser || Math.random() < (f.focus ? 0.5 : 0.0625);
-    if (crit) mult *= 1.5;
+    if (crit) {
+      mult *= 1.5;
+      // Each Aux Guard / Aux Powerguard stack cuts one critical hit's damage by 75%.
+      if (tf.critGuard > 0) { tf.critGuard -= 1; mult *= 0.25; }
+    }
     const ts = ctx.field.sides[B.side];
     if (!crit && (ts.veil > 0 || (physical ? ts.reflect : ts.lightScreen) > 0)) mult *= 0.5;
     dmg = Math.max(1, Math.floor(dmg * mult));
