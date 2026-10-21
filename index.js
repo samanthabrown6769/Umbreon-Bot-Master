@@ -90,6 +90,8 @@ const {
   setCooldownNotificationMode,
   getRareSpawnNameHidden,
   setRareSpawnNameHidden,
+  logRareSpawn,
+  getRareSpawnLog,
   getMarketCompletionNotificationsEnabled,
   setMarketCompletionNotificationsEnabled,
   setBuddyNickname,
@@ -4651,6 +4653,20 @@ async function announceRareSpawn(guild, user, pokemon) {
   const isGmax = rarity === 'gmax';
   const isGolden = Boolean(pokemon.isGolden || pokemon.is_golden) || rarity === 'golden';
   if (!eventPokemonKey && rarity !== 'legendary' && !isGmax && !pokemon.isShiny && !isGolden) return;
+  try {
+    logRareSpawn({
+      userId: user.id,
+      username: user.username,
+      guildId: guild.id,
+      pokemonId: pokemon.id,
+      pokemonName: pokemon.name,
+      rarity: isGolden ? 'Golden' : pokemon.rarity,
+      isShiny: Boolean(pokemon.isShiny),
+      isGolden,
+    });
+  } catch (error) {
+    console.error('Failed to log rare spawn:', error);
+  }
   const rareChannels = await resolveAnnouncementChannels(getAllRareSpawnAnnouncementChannels());
   if (!rareChannels.length) return;
 
@@ -5388,7 +5404,7 @@ async function askForBall(
       WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
       LIMIT 1
     `).get(userId, target.id, target.isShiny ? 1 : 0, target.isGolden ? 1 : 0);
-    saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden));
+    saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden), selectedBall);
     if (target.heldItem) addUserItem(userId, target.heldItem);
     if (!guaranteedCatch) recordDailyCatch(userId, message.author.username);
     const resetCounterCategories = counterSource
@@ -10715,7 +10731,29 @@ client.on('messageCreate', async (message) => {
         return message.reply(`Rare-spawn announcements will be posted in <#${channel.id}>.`);
       }
 
-      return message.reply(`Use \`${PREFIX}admin rarespawns setup\` to create and configure the channel.`);
+      if (action === 'log') {
+        const mentionedId = message.mentions.users.first()?.id
+          || (/^\d{17,20}$/.test(args[2] || '') ? args[2] : null);
+        const rows = getRareSpawnLog({ userId: mentionedId, limit: 15 });
+        if (!rows.length) return message.reply('No rare spawns have been logged yet.');
+        const lines = rows.map((row) => {
+          const label = `${row.is_golden ? 'Golden ' : row.is_shiny ? 'Shiny ' : ''}${row.pokemon_name}`;
+          return `<t:${Math.floor(row.caught_at / 1000)}:f> • <@${row.user_id}> (${row.username || 'unknown'}) caught **${label}**`;
+        });
+        return message.reply({
+          embeds: [makeEmbed(
+            mentionedId ? 'Rare spawn log (user)' : 'Rare spawn log',
+            lines.join('\n'),
+            0x9b59b6
+          )],
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      return message.reply(
+        `Use \`${PREFIX}admin rarespawns setup\` to configure the channel, or ` +
+        `\`${PREFIX}admin rarespawns log [@user]\` to see who caught what.`
+      );
     }
 
     if (
@@ -16142,7 +16180,7 @@ client.on('messageCreate', async (message) => {
         }
         const nextLevelAt = experienceForNextLevel(pokemon.level);
         return (
-          `[${pokemon.team_slot ?? index + 1}] <:pokeball:1367833067817009223> **${sprite ? `${sprite} ` : ''}${pokemon.name}**\n` +
+          `[${pokemon.team_slot ?? index + 1}] ${BALL_CONFIG[pokemon.caught_ball]?.emoji || EMOJIS.pokeball} **${sprite ? `${sprite} ` : ''}${pokemon.name}**\n` +
           `\`Lvl\` **${pokemon.level}**\n` +
           `\`EXP\` ${pokemon.level >= 100 ? 'MAX' : `${(pokemon.experience || 0).toLocaleString()} / ${nextLevelAt.toLocaleString()}`}\n` +
           `\`Type\` ${types.map((type) => getTypeEmoji(type)).join(' ') || 'Unknown'}\n` +
@@ -16155,11 +16193,7 @@ client.on('messageCreate', async (message) => {
             : 'None'}\n` +
           `⚔️ \`${pokemon.atk}\` 💥 \`${pokemon.spa}\`\n` +
           `🛡️ \`${pokemon.def}\` 🔰 \`${pokemon.spdef}\`\n` +
-          `💖 \`${pokemon.max_hp}\` ⚡ \`${pokemon.spd}\`\n` +
-          `*IVs:* ${pokemon.hp_iv}HP/${pokemon.atk_iv}Atk/${pokemon.def_iv}Def/` +
-          `${pokemon.spa_iv ?? 0}SpA/${pokemon.spdef_iv ?? 0}SpD/${pokemon.spd_iv}Spe\n` +
-          `*EVs:* ${pokemon.ev_hp || 0}HP/${pokemon.ev_atk || 0}Atk/${pokemon.ev_def || 0}Def/` +
-          `${pokemon.ev_spa || 0}SpA/${pokemon.ev_spdef || 0}SpD/${pokemon.ev_spe || 0}Spe`
+          `💖 \`${pokemon.max_hp}\` ⚡ \`${pokemon.spd}\``
         );
       });
       embed.setDescription(teamBlocks.join('\n\n'));

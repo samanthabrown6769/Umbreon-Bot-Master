@@ -1,0 +1,5 @@
+{
+  "watch": ["*.js", "data", "events", "pokemon-database"],
+  "ext": "js,json",
+  "ignore": ["*.zip", "*.sqlite*", "node_modules", ".git", "umbreon-vsc"]
+}

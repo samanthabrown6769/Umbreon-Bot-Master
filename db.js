@@ -648,6 +648,7 @@ const catchDefinitions = {
   moves: "TEXT NOT NULL DEFAULT '[]'",
   sketched_moves: "TEXT NOT NULL DEFAULT '[]'",
   caught_at: 'DATETIME DEFAULT CURRENT_TIMESTAMP',
+  caught_ball: 'TEXT',
 };
 
 function ensureColumns(table, definitions) {
@@ -3168,7 +3169,7 @@ function applyShinyStatBonus() {
 
 applyShinyStatBonus();
 reconcileDuplicateCatchStates();
-function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false) {
+function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false, caughtBall = null) {
   assertUserId(userId);
   if (!pokemon || !Number.isSafeInteger(pokemon.id) || typeof pokemon.name !== 'string') {
     throw new TypeError('pokemon must include a valid id and name.');
@@ -3205,9 +3206,9 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
       INSERT INTO catches (
         user_id, pokemon_id, name, rarity, is_shiny, is_golden, level,
         hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv,
-        hp, max_hp, atk, def, spd, in_team, team_slot, moves
+        hp, max_hp, atk, def, spd, in_team, team_slot, moves, caught_ball
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
       pokemon.id,
@@ -3229,7 +3230,8 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
       spd,
       0,
       null,
-      JSON.stringify(startingMoves)
+      JSON.stringify(startingMoves),
+      caughtBall
     );
     syncNewCatchState(userId, Number(result.lastInsertRowid));
 
@@ -8531,6 +8533,42 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS rare_spawn_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    username TEXT,
+    guild_id TEXT,
+    pokemon_id INTEGER,
+    pokemon_name TEXT NOT NULL,
+    rarity TEXT,
+    is_shiny INTEGER NOT NULL DEFAULT 0,
+    is_golden INTEGER NOT NULL DEFAULT 0,
+    caught_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_rare_spawn_log_user ON rare_spawn_log (user_id, caught_at);
+  CREATE INDEX IF NOT EXISTS idx_rare_spawn_log_time ON rare_spawn_log (caught_at);
+`);
+
+function logRareSpawn({ userId, username, guildId, pokemonId, pokemonName, rarity, isShiny, isGolden }) {
+  db.prepare(`
+    INSERT INTO rare_spawn_log
+      (user_id, username, guild_id, pokemon_id, pokemon_name, rarity, is_shiny, is_golden, caught_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(userId), username ?? null, guildId ? String(guildId) : null,
+    pokemonId ?? null, pokemonName, rarity ?? null,
+    isShiny ? 1 : 0, isGolden ? 1 : 0, Date.now()
+  );
+}
+
+function getRareSpawnLog({ userId = null, limit = 10 } = {}) {
+  const safeLimit = Math.min(Math.max(Math.trunc(Number(limit)) || 10, 1), 25);
+  return userId
+    ? db.prepare('SELECT * FROM rare_spawn_log WHERE user_id = ? ORDER BY id DESC LIMIT ?').all(String(userId), safeLimit)
+    : db.prepare('SELECT * FROM rare_spawn_log ORDER BY id DESC LIMIT ?').all(safeLimit);
+}
+
 function getDailyBall(factionKey = '', date = new Date()) {
   const day = getDailyResetDay(date.getTime());
   const storedBall = db.prepare(
@@ -8814,6 +8852,8 @@ module.exports = {
   setCooldownNotificationMode,
   getRareSpawnNameHidden,
   setRareSpawnNameHidden,
+  logRareSpawn,
+  getRareSpawnLog,
   getMarketCompletionNotificationsEnabled,
   setMarketCompletionNotificationsEnabled,
   setBuddyNickname,
