@@ -1636,10 +1636,8 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   umbreon: { golden: '<:GUmbreon:1562183879152898129>' },
   espeon: { golden: '<:GEspeon:1562183880696529027>' },
   scraggy: { golden: '<:goldenscraggy:1562202553851191366>' },
-  bulbasaur: { golden: '<:goldenbulbasaur:1562255800372699228>' },
   numel: { golden: '<:goldennumel:1562202552022601748>' },
   carvanha: { golden: '<:goldencarvanha:1562202550080507964>' },
-  grimer: { golden: '<:goldengrimer:1562202548276830229>' },
   'galarian zigzagoon': { golden: '<:goldengalarianzigzagoon:1562202546339315823>' },
   zigzagoon: { golden: '<:goldengalarianzigzagoon:1562202546339315823>' },
   yungoos: { golden: '<:goldenyungoos:1562202544007155752>' },
@@ -1654,7 +1652,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   },
   'gengar gmax': { normal: '<:gengargmax:1562192194914361455>' },
   'gmax gengar': { normal: '<:gengargmax:1562192194914361455>' },
-  grimer: { normal: '<:Grimer:1562183885817778288>' },
+  grimer: { normal: '<:Grimer:1562183885817778288>', golden: '<:goldengrimer:1562202548276830229>' },
   muk: { normal: '<:Muk:1562183887961194506>' },
   'eternatus eternamax': {
     normal: '<:EternatusEternamax:1562183889303240814>',
@@ -1662,7 +1660,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   },
   banette: { normal: '<:Banette:1562183890972708964>' },
   whimsicott: { normal: '<:Whimsicott:1562183892574670859>' },
-  bulbasaur: { normal: '<:Bulbasaur:1562183894181089400>' },
+  bulbasaur: { normal: '<:Bulbasaur:1562183894181089400>', golden: '<:goldenbulbasaur:1562255800372699228>' },
   moltres: {
     normal: '<:moltres:1562188397802684496>',
     shiny: '<:Smoltres:1562188396011458700>',
