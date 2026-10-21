@@ -1,5 +1,5 @@
 {
-  "_help": "Edit this file to change item giveaways (daily giveaway and ;gstart items). Changes apply to the next giveaway, no restart needed. Each giveaway picks 'picks' distinct items by weight; each item's amount is random between min and max. Valid names: Lootbox, Masterball, Rare Candy, any evolution item from ;evoitems, or the current promo item (itemName in promo.json).",
+  "_help": "Edit this file to change item giveaways (daily giveaway and ;gstart items). Changes apply to the next giveaway, no restart needed. Each giveaway picks 'picks' distinct items by weight; each item's amount is random between min and max. Valid names: Lootbox, Masterball, Rare Candy, any evolution item from ;evoitems, any EV berry (e.g. Pomeg Berry), or the current promo item (itemName in promo.json).",
   "picks": 3,
   "coins": { "enabled": true, "min": 10000, "max": 50000 },
   "pool": [
@@ -39,6 +39,12 @@
     { "item": "Auspicious Armor", "min": 1, "max": 1, "weight": 2 },
     { "item": "Galarica Cuff", "min": 1, "max": 1, "weight": 2 },
     { "item": "Galarica Wreath", "min": 1, "max": 1, "weight": 2 },
+    { "item": "Pomeg Berry", "min": 1, "max": 3, "weight": 3 },
+    { "item": "Kelpsy Berry", "min": 1, "max": 3, "weight": 3 },
+    { "item": "Qualot Berry", "min": 1, "max": 3, "weight": 3 },
+    { "item": "Hondew Berry", "min": 1, "max": 3, "weight": 3 },
+    { "item": "Grepa Berry", "min": 1, "max": 3, "weight": 3 },
+    { "item": "Tamato Berry", "min": 1, "max": 3, "weight": 3 },
     { "item": "Rare Box", "min": 1, "max": 3, "weight": 6 },
     { "item": "Super Rare Box", "min": 1, "max": 2, "weight": 4 },
     { "item": "Legendary Box", "min": 1, "max": 1, "weight": 2 },

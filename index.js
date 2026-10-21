@@ -7682,6 +7682,7 @@ function formatGiveawayRewards(prizeData) {
         'Swap Ticket': '🎟️',
       }[item]
       || findPromoByItemName(item)?.itemEmoji
+      || EMOJIS[item.replace(/\s+/g, '').toLowerCase()]
       || '📦';
     lines.push(`${emoji} **${quantity}x ${item}**`);
   }
@@ -7724,6 +7725,8 @@ const GIVEAWAY_ITEM_COLUMNS = {
   Masterball: 'masterballs',
   'Rare Candy': 'rare_candies',
 };
+
+const isGiveawayBerry = (name) => Object.values(FACTION_SHOP_ITEMS).some((item) => item.evStat && item.name === name);
 
 const ENCOUNTER_BOOST_ROLE_ID = '1560407313251180585';
 const ENCOUNTER_BOOST_GUILD_ID = '1560102297198006274';
@@ -8030,7 +8033,7 @@ function rollGiveawayItems() {
     return fallback;
   }
   const isValidName = (name) => Boolean(
-    GIVEAWAY_ITEM_COLUMNS[name] || EVOLUTION_ITEMS[name] || BOXES[name] || isPromoItemName(name)
+    GIVEAWAY_ITEM_COLUMNS[name] || EVOLUTION_ITEMS[name] || BOXES[name] || isGiveawayBerry(name) || isPromoItemName(name)
   );
   const pool = (Array.isArray(config.pool) ? config.pool : []).filter((entry) => {
     const valid = isValidName(entry?.item) && entry.weight > 0
@@ -8193,7 +8196,7 @@ async function concludeGiveaway(giveawayId) {
       for (const [item, quantity] of Object.entries(prizeData.items || {})) {
         const column = GIVEAWAY_ITEM_COLUMNS[item];
         if (column) increments[column] = (increments[column] || 0) + quantity;
-        else if (EVOLUTION_ITEMS[item] || BOXES[item] || isPromoItemName(item)) addUserItem(winnerId, item, quantity);
+        else if (EVOLUTION_ITEMS[item] || BOXES[item] || isGiveawayBerry(item) || isPromoItemName(item)) addUserItem(winnerId, item, quantity);
       }
       if (Object.keys(increments).length) incrementUser(winnerId, increments);
       if (form) {
