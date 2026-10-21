@@ -134,15 +134,18 @@ function getGigantamaxMoves(speciesId, formId = null) {
   }
   const gmaxMove = GMAX_MOVES_BY_FORM[form.slug.toLowerCase()];
   const maxMoves = types.map((type) => MAX_MOVES_BY_TYPE[type.toLowerCase()])
-    .filter(Boolean);
+    .filter(Boolean)
+    .flatMap((move) => [move, `${move}-special`]);
   return [...new Set([gmaxMove, ...maxMoves].filter(Boolean))];
 }
 
 function getGigantamaxMoveLearners(moveName) {
   if (typeof moveName !== 'string' || !moveName.trim()) return [];
-  const moveSlug = moveName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const moveSlug = moveName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    .replace(/-(physical|special)$/, (match) => (match === '-special' ? '-special' : ''));
+  const baseSlug = moveSlug.replace(/-special$/, '');
   const maxType = Object.entries(MAX_MOVES_BY_TYPE)
-    .find(([, move]) => move === moveSlug)?.[0];
+    .find(([, move]) => move === baseSlug)?.[0];
   const gmaxForms = db.prepare(`
     SELECT name, slug, types FROM pokemon_forms
     WHERE rarity = 'Gmax'
