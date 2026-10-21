@@ -18848,6 +18848,8 @@ client.on('messageCreate', async (message) => {
       if (!args.length) {
         const lockCount = getReleaseLockCount(userId);
         const lockLimit = getReleaseLockLimit(userId);
+        const lockedCategoryLabels = getLockedReleaseCategories(userId)
+          .map((category) => `${releaseCategoryEmoji(category)}\`${category}\``);
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setAuthor({
@@ -18858,17 +18860,21 @@ client.on('messageCreate', async (message) => {
             `\`${PREFIX}release lock|unlock <name|Dex #>\` — lock/unlock a Pokémon from being released.\n` +
             `\`${PREFIX}release lock|unlock <rarity>\` — lock/unlock a rarity category.\n` +
             `\`${PREFIX}release lock|unlock mega-line\` — lock/unlock pre-evolutions of Mega Pokémon.\n` +
+            `Category locks (rarity, \`egg\`, \`event\`, \`starters\`, \`mega-line\`) show as one label and do not use lock slots.\n` +
             `⭐ Favorites are automatically protected from release.\n` +
             `🔒 You can lock up to **${lockLimit} Pokémon** (${BASE_RELEASE_LOCK_LIMIT} standard` +
             `${getPatreonPerks(userId).releaseLocks ? ` + ${getPatreonPerks(userId).releaseLocks} Patreon` : ''}).\n` +
             `\`${PREFIX}excl egg|swap|fish|patreon\` — view exclusive Pokémon lists.\n` +
             `\`${PREFIX}release clear-locks\` — clear all of your release locks.\n` +
             `\`${PREFIX}release view-locks\` — view all of your release locks.\n\n` +
-            `**Rarity types:** \`common\`, \`uncommon\`, \`rare\`, \`super rare\`\n` +
-            `:poke_egg: Lock Egg exclusives with \`${PREFIX}release lock egg\`\n` +
-            `:eventvoucher: Lock event Pokémon with \`${PREFIX}release lock event\`\n` +
-            `:megabracelet: Lock pre-evolutions of Mega Pokémon with \`${PREFIX}release lock mega-line\`\n` +
+            `**Rarity types:** \`common\`, \`uncommon\`, \`rare\`, \`super rare\`, \`legendary\`, \`shiny\`\n` +
+            `${EMOJIS.pokeEgg} Lock Egg exclusives with \`${PREFIX}release lock egg\`\n` +
+            `${EMOJIS.eventticket} Lock event Pokémon with \`${PREFIX}release lock event\`\n` +
+            `${EMOJIS.megabracelet} Lock pre-evolutions of Mega Pokémon with \`${PREFIX}release lock mega-line\`\n` +
             `🌱 Lock starter evolutionary lines with \`${PREFIX}release lock starters\`\n\n` +
+            (lockedCategoryLabels.length
+              ? `🏷️ **Locked categories:** ${lockedCategoryLabels.join(' • ')}\n\n`
+              : '') +
             (lockCount
               ? `🔒 **Your release locked Pokémon (${lockCount}/${lockLimit}):** View the list with \`${PREFIX}release view-locks\`.`
               : `You don't have any locked Pokémon! Use the commands above to lock Pokémon.\n\n🔒 **Your release locked Pokémon (0/${lockLimit})**\nYou have 0 locked Pokémon.`) +
