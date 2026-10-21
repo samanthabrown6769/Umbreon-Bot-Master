@@ -4421,11 +4421,11 @@ async function startWorldBossBattle(message, boss, userId, team) {
             if (!applied.error) attack.battleLog.push(`${currentBoss.name} took **${applied.damage.toLocaleString()}** damage from status effects.`);
           }
         }
-        if (playerState.hp <= 0) {
-          attack.battleLog.push(`💫 **${playerState.pokemon.name}** fainted! Choose another Pokémon.`);
-          faintedTeam.add(playerState.pokemon.id);
-          players.delete(playerId);
-        }
+      }
+      if (playerState.hp <= 0) {
+        attack.battleLog.push(`💫 **${playerState.pokemon.name}** fainted! Choose another Pokémon.`);
+        faintedTeam.add(playerState.pokemon.id);
+        players.delete(playerId);
       }
 
       const refreshedBoss = getActiveWorldBoss();
@@ -5134,9 +5134,11 @@ async function askForBall(
     onHandler = null,
     inline = null,
     counterSource = null,
+    allowAnyUserCatch = false,
   } = {}
 ) {
-  guaranteedCatch = guaranteedCatch && !GUARANTEED_CATCH_EXCLUDED_USER_IDS.has(userId);
+  guaranteedCatch = guaranteedCatch
+    && (allowAnyUserCatch || !GUARANTEED_CATCH_EXCLUDED_USER_IDS.has(userId));
   target = {
     ...target,
     name: target.name.replace(/\btotem\b/gi, '').replace(/\s+/g, ' ').trim(),
@@ -5209,6 +5211,7 @@ async function askForBall(
     )
     .setDescription(
       `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonFactionTeam(target.speciesId)?.emoji ? `${getPokemonFactionTeam(target.speciesId).emoji} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!\n` +
+      (allowAnyUserCatch ? 'Anyone can catch it with the buttons or by typing a ball name.\n' : '') +
       heldItemEncounterHint(target) +
       (target.researchToolsConsumed?.length
         ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
@@ -5219,11 +5222,13 @@ async function askForBall(
       catchRateText +
       `${Array.isArray(target.types) && target.types.length ? `Type: ${formatTypes(target.types)}\n` : ''}` +
       `${tracksRarityStreak ? `${catchDisplayRarity} streak: ${currentStreak}\n` : ''}` +
-      `\n═══════ Balls left ═══════\n` +
-      `Pokéballs: ${user.pokeballs} • Greatballs: ${user.greatballs}\n` +
-      `Ultraballs: ${user.ultraballs} • Masterballs: ${user.masterballs}\n` +
-      `Premierballs: ${user.premierballs}` +
-      `${isFishing ? `\nDiveballs: ${user.diveballs}` : ''}`
+      (allowAnyUserCatch
+        ? '\nThe catcher will use their own Poké Balls.'
+        : `\n═══════ Balls left ═══════\n` +
+          `Pokéballs: ${user.pokeballs} • Greatballs: ${user.greatballs}\n` +
+          `Ultraballs: ${user.ultraballs} • Masterballs: ${user.masterballs}\n` +
+          `Premierballs: ${user.premierballs}` +
+          `${isFishing ? `\nDiveballs: ${user.diveballs}` : ''}`)
     );
   const image = getPokemonShowdownSprite(
     target.slug,
@@ -5257,11 +5262,11 @@ async function askForBall(
   const textCollector = inline
     ? makeInlineCollector(0)
     : message.channel.createMessageCollector({
-      filter: (response) => response.author.id === userId
+      filter: (response) => (allowAnyUserCatch || response.author.id === userId)
         && Object.hasOwn(BALL_CONFIG, response.content.toLowerCase())
         && (isFishing || !BALL_CONFIG[response.content.toLowerCase()].fishingOnly),
       time: timeoutMs,
-      max: 1,
+      max: allowAnyUserCatch ? 0 : 1,
     });
   announceQuestCompletions(userId, message.channel, completedQuests);
   let actionTaken = false;
@@ -5269,11 +5274,11 @@ async function askForBall(
     const selectedBall = interaction.customId.split(':')[1];
     const validBall = Object.hasOwn(BALL_CONFIG, selectedBall)
       && (isFishing || !BALL_CONFIG[selectedBall].fishingOnly);
-    const reserved = interaction.user.id === userId && validBall && !actionTaken;
+    const reserved = (allowAnyUserCatch || interaction.user.id === userId) && validBall && !actionTaken;
     if (reserved) actionTaken = true;
     try {
       if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
-      if (interaction.user.id !== userId) {
+      if (!allowAnyUserCatch && interaction.user.id !== userId) {
         await interaction.followUp({ content: 'This is not your Pokémon encounter.', ephemeral: true });
         return;
       }
@@ -5285,7 +5290,7 @@ async function askForBall(
         await interaction.followUp({ content: 'This encounter has already ended.', ephemeral: true });
         return;
       }
-      await handleCatch(selectedBall, interaction, true);
+      await handleCatch(selectedBall, interaction, true, interaction.user);
     } catch (error) {
       if (isInteractionAlreadyAcknowledgedOrExpired(error)) return;
       console.error('Failed to process catch-button interaction:', error);
@@ -5311,7 +5316,8 @@ async function askForBall(
 
   if (onHandler) onHandler(activeCatchEncounters.get(spawnMessage.id));
 
-  async function handleCatch(selectedBall, interaction = null, reserved = false) {
+  async function handleCatch(selectedBall, interaction = null, reserved = false, catcher = message.author) {
+    const userId = catcher.id;
     if (actionTaken && !reserved) {
       if (interaction) {
         await interaction.followUp({ content: 'This encounter has already ended.', ephemeral: true });
@@ -5368,7 +5374,7 @@ async function askForBall(
           ? EVENT_EMBED_COLOR
           : getRarityColor(target.rarity, target.name, target.isShiny))
         .setAuthor({
-          name: `${message.author.username} used a ${ball.name}!`,
+          name: `${catcher.username} used a ${ball.name}!`,
           iconURL: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${ball.image}`,
         })
         .setDescription(
@@ -5407,7 +5413,7 @@ async function askForBall(
     `).get(userId, target.id, target.isShiny ? 1 : 0, target.isGolden ? 1 : 0);
     saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden), selectedBall);
     if (target.heldItem) addUserItem(userId, target.heldItem);
-    if (!guaranteedCatch) recordDailyCatch(userId, message.author.username);
+    if (!guaranteedCatch) recordDailyCatch(userId, catcher.username);
     const resetCounterCategories = counterSource
       ? resetEncounterCounters(
         userId,
@@ -5513,9 +5519,9 @@ async function askForBall(
       if (isEventChecklistSpawn(target)) {
         incrementUser(userId, { cl_event_catches: 1 });
       }
-      await announceEventCatch(message.guild, message.author, target, eventCatch);
+      await announceEventCatch(message.guild, catcher, target, eventCatch);
     }
-    await announceRareSpawn(message.guild, message.author, target);
+    await announceRareSpawn(message.guild, catcher, target);
     if (target.rarity === 'Legendary') {
       incrementUser(userId, { legendaries_caught: 1 });
     }
@@ -5539,7 +5545,7 @@ async function askForBall(
         ? EVENT_EMBED_COLOR
         : getRarityColor(target.rarity, target.name, target.isShiny))
       .setAuthor({
-        name: `Congratulations, ${message.author.username}!`,
+        name: `Congratulations, ${catcher.username}!`,
         iconURL: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${ball.image}`,
       })
       .setDescription(
@@ -5595,7 +5601,7 @@ async function askForBall(
     }
     const experienceMessage = experienceLines.join('\n');
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
-      `<:lvlup:1561369467467071679> • Congratulations, **${message.author.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
+      `<:lvlup:1561369467467071679> • Congratulations, **${catcher.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
     ).join('\n') || '';
     await spawnMessage.edit({
       content: [experienceMessage, levelUpMessage].filter(Boolean).join('\n'),
@@ -5614,7 +5620,7 @@ async function askForBall(
       ).catch(() => {});
       await announcePromoItemFound(
         message.guild,
-        message.author,
+        catcher,
         promo,
         isFishing ? 'fish' : 'catch',
         newTotal
@@ -5624,7 +5630,7 @@ async function askForBall(
 
   textCollector.on('collect', async (response) => {
     try {
-      await handleCatch(response.content.toLowerCase());
+      await handleCatch(response.content.toLowerCase(), null, false, response.author);
     } catch (error) {
       console.error('Failed to process catch-ball message:', error);
       await message.channel.send('❌ The encounter could not be processed.');
@@ -10908,12 +10914,14 @@ client.on('messageCreate', async (message) => {
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Give & Spawn').setDescription(
             `• \`${PREFIX}admin coins @User <amount>\` — Add or remove PokéCoins\n` +
             `• \`${PREFIX}admin token @User <amount>\` — Add or remove Patreon tokens\n` +
+            `• \`${PREFIX}admin vote coin @User|user ID <amount>\` — Add or remove Vote Coins\n` +
             `• \`${PREFIX}admin research points @User [amount]\` — Check or adjust a user's Research Points\n` +
             `• \`${PREFIX}admin item @User <item or currency> <amount>\` — Give or remove items (including Research items) and balances\n` +
             `• \`${PREFIX}admin globalreward confirm\` — One-time reward for all existing users\n` +
             `• \`${PREFIX}admin incense [amount]\` — Add 1,000 shared Incense charges per amount to this server\n` +
-            `• \`${PREFIX}admin pokemon @User <Pokémon|form|number> [amount] [shiny|golden]\` — Give Pokémon\n` +
-            `• \`${PREFIX}p admin [shiny] <Pokémon name>\` — Spawn a catalog Pokémon for a guaranteed catch\n` +
+            `• \`${PREFIX}admin pokemon @User|user ID <Pokémon|form|number> [amount] [shiny|golden]\` — Give Pokémon\n` +
+            `• \`${PREFIX}admin pokemon multi @User|user ID <Pokémon, Pokémon...>\` — Give up to 100 Pokémon; prefix entries with \`shiny\` or \`golden\`\n` +
+            `• \`${PREFIX}p admin [shiny] <Pokémon name|Pokédex number>\` — Bot-admin spawn; anyone can catch the spawned Pokémon\n` +
             `• \`${PREFIX}adminboss <Pokémon>|shiny <Pokémon>|random\` — Start a World Boss\n` +
             `• \`${PREFIX}gstart items|coins|pokemon ...\` — Start giveaways\n` +
             `• \`${PREFIX}admin giveaway remove @User\` — Remove a user from the latest giveaway in this channel`
@@ -11626,15 +11634,21 @@ client.on('messageCreate', async (message) => {
         );
       }
 
-      const target = message.mentions.users.first();
+      const mentionedTarget = message.mentions.users.first();
+      const rawTargetId = subtype === 'pokemon' || (subtype === 'vote' && action === 'coin')
+        ? args.find((argument) => /^\d{17,20}$/.test(argument))
+        : null;
+      const target = mentionedTarget || (rawTargetId ? { id: rawTargetId } : null);
       if (!target) {
         return message.reply(
           '**Usage:**\n' +
           `• \`${PREFIX}admin coins @User <amount>\`\n` +
           `• \`${PREFIX}admin token @User <amount>\`\n` +
+          `• \`${PREFIX}admin vote coin @User|user ID <amount>\`\n` +
           `• \`${PREFIX}admin research points @User [amount]\`\n` +
           `• \`${PREFIX}admin item @User <item or currency> <amount>\` — includes Research items\n` +
-          `• \`${PREFIX}admin pokemon @User <Pokémon name, form, or Pokédex number> [amount] [shiny|golden]\`\n` +
+          `• \`${PREFIX}admin pokemon @User|user ID <Pokémon name, form, or Pokédex number> [amount] [shiny|golden]\`\n` +
+          `• \`${PREFIX}admin pokemon multi @User|user ID <Pokémon, Pokémon...>\` — up to 100; prefix each entry with \`shiny\` or \`golden\`\n` +
           `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
           `• \`${PREFIX}admin pokemon sprite <Pokémon|form|number> <https URL> [shiny https URL]\`\n` +
           `• \`${PREFIX}admin giveaway remove @User\` — remove a user from the most recent active giveaway in this channel\n` +
@@ -11645,7 +11659,7 @@ client.on('messageCreate', async (message) => {
           `• \`${PREFIX}admin market listings\` — create 10 random market listings at reasonable prices\n` +
           `• \`${PREFIX}admin market clear confirm\` — clear market listings and return player Pokémon\n` +
           `• \`${PREFIX}admin market stock <Pokémon|Pokédex number> <quantity> <price> [shiny]\`\n` +
-          `• \`${PREFIX}p admin [shiny] <Pokémon name>\` — spawn a catalog Pokémon for a guaranteed catch\n` +
+          `• \`${PREFIX}p admin [shiny] <Pokémon name|Pokédex number>\` — bot-admin spawn; anyone can catch the spawned Pokémon\n` +
           `• \`${PREFIX}admin event channel #channel|off\`\n` +
           `• \`${PREFIX}admin rarespawns setup\` — Create and configure the rare-spawn channel\n` +
           `• Clan: \`${PREFIX}clan create|join|leave|disband|info\``
@@ -11678,6 +11692,27 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           `${EMOJIS.patreonToken} ${amount > 0 ? 'Granted' : 'Removed'} **${Math.abs(amount).toLocaleString()} Patreon token(s)** ` +
           `${amount > 0 ? 'to' : 'from'} <@${target.id}> (${updatedTokens.toLocaleString()} owned).`
+        );
+      }
+
+      if (subtype === 'vote' && action === 'coin') {
+        const amountTokens = args.slice(2).filter((argument) =>
+          !/^<@!?\d+>$/.test(argument) && argument !== rawTargetId
+        );
+        const amount = amountTokens.length === 1 ? parseAmount(amountTokens[0]) : NaN;
+        const currentVoteCoins = getUser(target.id).vote_coins;
+        const updatedVoteCoins = currentVoteCoins + amount;
+        if (!Number.isSafeInteger(amount) || amount === 0
+            || !Number.isSafeInteger(updatedVoteCoins) || updatedVoteCoins < 0) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin vote coin @User|user ID <non-zero amount>\`. ` +
+            `A removal cannot exceed the user's current balance (${currentVoteCoins.toLocaleString()}).`
+          );
+        }
+        incrementUser(target.id, { vote_coins: amount });
+        return message.reply(
+          `${EMOJIS.votecoin} ${amount > 0 ? 'Granted' : 'Removed'} **${Math.abs(amount).toLocaleString()} Vote Coins** ` +
+          `${amount > 0 ? 'to' : 'from'} <@${target.id}> (${updatedVoteCoins.toLocaleString()} owned).`
         );
       }
 
@@ -11888,7 +11923,118 @@ client.on('messageCreate', async (message) => {
       }
 
       if (['pokemon', 'mon', 'p'].includes(subtype)) {
-        const pokemonArgs = args.slice(2).filter((argument) => !/^<@!?\d+>$/.test(argument));
+        const pokemonArgs = args.slice(2).filter((argument) =>
+          !/^<@!?\d+>$/.test(argument) && argument !== rawTargetId
+        );
+        const catalogForms = db.prepare(`
+          SELECT id, species_id, name, slug, is_default, rarity,
+            base_hp, base_atk, base_def, base_spd
+          FROM pokemon_forms
+          ORDER BY species_id, id
+        `).all();
+        const catalogDexNumbers = getPokemonDexNumbers(catalogForms);
+        const resolvePokemonGrant = (pokemonName, variantArgument) => {
+          let isShiny = variantArgument === 'true' || variantArgument === 'shiny';
+          let isGolden = variantArgument === 'golden';
+          if (variantArgument === 'false') isShiny = false;
+          let exactMatch;
+          if (/^\d+$/.test(pokemonName)) {
+            const dexNumber = Number(pokemonName);
+            exactMatch = catalogForms.find((pokemon) => {
+              if (isGoldenDexNumber(dexNumber)
+                  && isGoldenFormSupported(pokemon.species_id, pokemon.slug, Boolean(pokemon.is_default))
+                  && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === dexNumber) {
+                isGolden = true;
+                return true;
+              }
+              if (isGolden) {
+                return isGoldenFormSupported(pokemon.species_id, pokemon.slug, Boolean(pokemon.is_default))
+                  && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === dexNumber;
+              }
+              const numbers = catalogDexNumbers.get(pokemon.id);
+              if (numbers?.dexNumber === dexNumber) return true;
+              if (numbers?.shinyDexNumber === dexNumber) {
+                isShiny = true;
+                return true;
+              }
+              return false;
+            });
+          } else {
+            exactMatch = findPokemonForms(pokemonName, 20).find((pokemon) =>
+              pokemon.name.toLowerCase() === pokemonName.toLowerCase()
+              || pokemon.slug.toLowerCase() === pokemonName.toLowerCase().replace(/\s+/g, '-')
+            );
+          }
+          return { exactMatch, isShiny, isGolden };
+        };
+
+        if (action === 'multi') {
+          const entries = pokemonArgs.join(' ').split(',').map((entry) => entry.trim()).filter(Boolean);
+          if (!entries.length || entries.length > 100) {
+            return message.reply(
+              `Usage: \`${PREFIX}admin pokemon multi @User <Pokémon[, Pokémon...]>\` (1-100 Pokémon; prefix entries with \`shiny\` or \`golden\`).`
+            );
+          }
+          const grants = [];
+          const invalidEntries = [];
+          for (const entry of entries) {
+            let pokemonName = entry;
+            let variantArgument = null;
+            const variantMatch = entry.match(/^(shiny|✨|golden|gold|🌟)\s+(.+)$/i)
+              || entry.match(/^(.+?)\s+(shiny|✨|golden|gold|🌟)$/i);
+            if (variantMatch) {
+              const leadingVariant = /^(shiny|✨|golden|gold|🌟)$/i.test(variantMatch[1]);
+              variantArgument = (leadingVariant ? variantMatch[1] : variantMatch[2]).toLowerCase();
+              pokemonName = leadingVariant ? variantMatch[2] : variantMatch[1];
+              variantArgument = ['golden', 'gold', '🌟'].includes(variantArgument) ? 'golden' : 'shiny';
+            }
+            const grant = resolvePokemonGrant(pokemonName, variantArgument);
+            if (!grant.exactMatch) {
+              invalidEntries.push(entry);
+              continue;
+            }
+            if (grant.isGolden && !isGoldenFormSupported(
+              grant.exactMatch.species_id,
+              grant.exactMatch.slug,
+              Boolean(grant.exactMatch.is_default)
+            )) {
+              invalidEntries.push(`${entry} (Golden form unsupported)`);
+              continue;
+            }
+            grants.push({ ...grant, name: entry });
+          }
+          if (invalidEntries.length) {
+            return message.reply(
+              `No Pokémon were granted. Check these entries and try again:\n${invalidEntries
+                .slice(0, 20).map((entry) => `• ${entry}`).join('\n')}` +
+              (invalidEntries.length > 20 ? `\n…and ${invalidEntries.length - 20} more.` : '')
+            );
+          }
+          for (const grant of grants) {
+            const exactMatch = grant.exactMatch;
+            const catalogPokemon = {
+              id: exactMatch.id,
+              name: exactMatch.name,
+              rarity: exactMatch.rarity,
+              baseHp: exactMatch.base_hp,
+              baseAtk: exactMatch.base_atk,
+              baseDef: exactMatch.base_def,
+              baseSpd: exactMatch.base_spd,
+            };
+            if (grant.isGolden) saveGoldenCatch(target.id, catalogPokemon);
+            else saveCatch(target.id, catalogPokemon, grant.isShiny);
+          }
+          const variants = grants.reduce((counts, grant) => {
+            const variant = grant.isGolden ? 'Golden' : grant.isShiny ? 'Shiny' : 'Regular';
+            counts[variant] = (counts[variant] || 0) + 1;
+            return counts;
+          }, {});
+          return message.reply(
+            `🎉 Added **${grants.length} Pokémon** to <@${target.id}>'s storage ` +
+            `(${Object.entries(variants).map(([variant, count]) => `${count} ${variant}`).join(', ')}).`
+          );
+        }
+
         const leadingVariant = ['true', 'false', 'shiny', 'golden'].includes(pokemonArgs[0]?.toLowerCase())
           ? pokemonArgs.shift().toLowerCase()
           : null;
@@ -11899,9 +12045,6 @@ client.on('messageCreate', async (message) => {
           return message.reply('Choose only one Pokémon variant: `shiny` or `golden`.');
         }
         const variantArgument = trailingVariant || leadingVariant;
-        let isShiny = variantArgument === 'true' || variantArgument === 'shiny';
-        const isGolden = variantArgument === 'golden';
-        if (variantArgument === 'false') isShiny = false;
         const amountArgument = pokemonArgs.at(-1);
         const hasAmount = pokemonArgs.length > 1 && /^-?\d+(?:\.\d+)?$/.test(amountArgument || '');
         const amount = hasAmount ? Number(amountArgument) : 1;
@@ -11912,39 +12055,10 @@ client.on('messageCreate', async (message) => {
         const pokemonName = pokemonArgs.join(' ').trim();
         if (!pokemonName) {
           return message.reply(
-            `Usage: \`${PREFIX}admin pokemon @User <Pokémon name, form, or Pokédex number> [amount] [shiny|golden]\``
+            `Usage: \`${PREFIX}admin pokemon @User|user ID <Pokémon name, form, or Pokédex number> [amount] [shiny|golden]\``
           );
         }
-        let exactMatch;
-        if (/^\d+$/.test(pokemonName)) {
-          const dexNumber = Number(pokemonName);
-          const forms = db.prepare(`
-            SELECT id, species_id, name, slug, is_default, rarity,
-              base_hp, base_atk, base_def, base_spd
-            FROM pokemon_forms
-            ORDER BY species_id, id
-          `).all();
-          const dexNumbers = getPokemonDexNumbers(forms);
-          const dexMatch = forms.find((pokemon) => {
-            if (isGolden) {
-              return isGoldenFormSupported(pokemon.species_id, pokemon.slug, Boolean(pokemon.is_default))
-                && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === dexNumber;
-            }
-            const numbers = dexNumbers.get(pokemon.id);
-            if (numbers?.dexNumber === dexNumber) return true;
-            if (numbers?.shinyDexNumber === dexNumber) {
-              isShiny = true;
-              return true;
-            }
-            return false;
-          });
-          exactMatch = dexMatch;
-        } else {
-          exactMatch = findPokemonForms(pokemonName, 20).find((pokemon) =>
-            pokemon.name.toLowerCase() === pokemonName.toLowerCase()
-            || pokemon.slug.toLowerCase() === pokemonName.toLowerCase().replace(/\s+/g, '-')
-          );
-        }
+        const { exactMatch, isShiny, isGolden } = resolvePokemonGrant(pokemonName, variantArgument);
         if (!exactMatch) {
           return message.reply(
             `No exact Pokémon, form, or ${isGolden ? 'Golden ' : ''}Pokédex number **${pokemonName}** was found in the catalog.`
@@ -12303,7 +12417,7 @@ client.on('messageCreate', async (message) => {
             isShiny: false,
             heldItem: item.name,
             heldItemEmoji: item.emoji,
-          }, 'catch', { guaranteedCatch: true });
+          }, 'catch', { guaranteedCatch: true, allowAnyUserCatch: true });
         }
         const shinySpawn = args[1]?.toLowerCase() === 'shiny';
         const requestedName = args.slice(shinySpawn ? 2 : 1).join(' ').trim();
@@ -12337,7 +12451,10 @@ client.on('messageCreate', async (message) => {
           shinyImg: pokemon.shiny_sprite,
           isShiny: shinySpawn || shinyNumberRequested,
         };
-        return await askForBall(message, userId, target, 'catch', { guaranteedCatch: true });
+        return await askForBall(message, userId, target, 'catch', {
+          guaranteedCatch: true,
+          allowAnyUserCatch: true,
+        });
       }
       const isAdmin = isConfiguredBotAdmin(message);
       const cooldownExempt = isAdmin || hasCooldownExemption(userId);
@@ -17009,10 +17126,18 @@ client.on('messageCreate', async (message) => {
                 wantsShiny = true;
                 value = value.replace(/^(shiny|✨)\s*/i, '');
               }
-              const form = resolvePokemonForm(value);
-              if (form && /^\d+$/.test(value)) {
+              const dexNumber = /^\d+$/.test(value) ? Number(value) : null;
+              const goldenForm = dexNumber !== null && isGoldenDexNumber(dexNumber)
+                ? allForms.find((pokemon) =>
+                  isGoldenFormSupported(pokemon.species_id, pokemon.slug, Boolean(pokemon.is_default))
+                  && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === dexNumber
+                )
+                : null;
+              const form = goldenForm || resolvePokemonForm(value);
+              if (goldenForm) wantsGolden = true;
+              if (form && dexNumber !== null && !wantsGolden) {
                 const numbers = allDexNumbers.get(form.id);
-                wantsShiny = numbers?.dexNumber !== Number(value) && numbers?.shinyDexNumber === Number(value);
+                wantsShiny = numbers?.dexNumber !== dexNumber && numbers?.shinyDexNumber === dexNumber;
               }
               const findRows = (golden, shiny) => form
                 ? findCatches.all(userId, form.id, mutation === 'fav' ? 0 : 1, golden ? 1 : 0, shiny ? 1 : 0)
