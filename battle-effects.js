@@ -194,6 +194,13 @@ function damageStats(attacker, defender, move, field) {
 
 const getPriority = (move) => moveInfo[slug(move.name)]?.priority ?? 0;
 
+// Stored Power / Power Trip: 20 base power plus 20 for every positive stat stage the user has.
+function effectivePower(move, stages) {
+  if (!['stored-power', 'power-trip'].includes(slug(move.name))) return move.power;
+  const boosts = Object.values(stages || {}).reduce((sum, stage) => sum + Math.max(0, stage), 0);
+  return 20 + 20 * boosts;
+}
+
 function stageText(delta, label, name) {
   const size = Math.abs(delta);
   if (delta > 0) return `${name}'s ${label} ${size >= 3 ? 'rose drastically' : size === 2 ? 'rose sharply' : 'rose'}!`;
@@ -382,7 +389,9 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   const levitating = (tf.magnetRise > 0 || tf.telekinesis > 0) && ctx.field.gravity <= 0;
   const eff = (type === 'ground' && levitating) ? 0 : typeEffOf(ctx, type, defTypes);
   const { atk, def, physical } = damageStats(m, t, move, ctx.field);
-  let dmg = eff === 0 ? 0 : ctx.calc({ ...move, type }, atk, def, defTypes);
+  let calcMove = { ...move, type };
+  calcMove.power = effectivePower(move, f.stages);
+  let dmg = eff === 0 ? 0 : ctx.calc(calcMove, atk, def, defTypes);
   const heldItemMultiplier = getHeldItemDamageMultiplier(m.held_item, type);
   let crit = false;
   if (dmg > 0) {
@@ -924,7 +933,7 @@ function runSwitchTurn(ctx, enemyMove) {
 
 module.exports = {
   EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
-  applyStatusMove, canAct, performMove, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
+  applyStatusMove, canAct, performMove, effectivePower, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
   DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, RECHARGE_MOVES, takeBatonState, giveBatonState,
   summarize(mon) {
     const f = fx(mon);

@@ -4880,12 +4880,17 @@ function getUserBuddyHistory(userId, sortBy = 'ivs') {
 function getUserTeam(userId) {
   assertUserId(userId);
   return db.prepare(
-    `SELECT catches.*, pokemon_forms.name AS form_name, pokemon_forms.slug AS form_slug
+    `SELECT catches.*, pokemon_forms.name AS form_name, pokemon_forms.slug AS form_slug,
+      pokemon_forms.base_spa, pokemon_forms.base_spdef
     FROM catches
     LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
     WHERE catches.user_id = ? AND catches.in_team = 1
     ORDER BY catches.team_slot, catches.id LIMIT 3`
-  ).all(userId);
+  ).all(userId).map((pokemon) => ({
+    ...pokemon,
+    spa: calculateStat(pokemon.base_spa ?? 50, pokemon.spa_iv, pokemon.level, false, Boolean(pokemon.is_shiny), pokemon.ev_spa),
+    spdef: calculateStat(pokemon.base_spdef ?? 50, pokemon.spdef_iv, pokemon.level, false, Boolean(pokemon.is_shiny), pokemon.ev_spdef),
+  }));
 }
 
 function getUserBuddy(userId) {

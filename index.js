@@ -3688,7 +3688,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
     1,
     Math.floor(
       (pokemon.atk * 3.5 + pokemon.level * 4 + (pokemon.atk_iv || 15))
-      * (move.power / 100)
+      * (battleFx.effectivePower(move, stages) / 100)
       * effectiveness
       * stab
       * heldItemMultiplier
@@ -6554,7 +6554,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
             const buddyCatchId = getUser(userId).buddy_catch_id;
             evResults = awardPokemonEvs(
               userId,
-              [...participants, ...(buddyCatchId ? [buddyCatchId] : [])],
+              [...partyData.map((member) => member.id), ...(buddyCatchId ? [buddyCatchId] : [])],
               challenge.evStat
             );
           }
@@ -15860,8 +15860,11 @@ client.on('messageCreate', async (message) => {
         embed.addFields({
           name: `Slot ${pokemon.team_slot} ${sprite ? `${sprite} ` : ''}${pokemon.name} (Lv. ${pokemon.level})`,
           value: `**HP:** ${pokemon.hp}/${pokemon.max_hp} | **ATK:** ${pokemon.atk} | ` +
-            `**DEF:** ${pokemon.def} | **SPD:** ${pokemon.spd}\n` +
-            `*IVs:* ${pokemon.hp_iv}H/${pokemon.atk_iv}A/${pokemon.def_iv}D/${pokemon.spd_iv}S\n` +
+            `**DEF:** ${pokemon.def} | **SPA:** ${pokemon.spa} | **SPD:** ${pokemon.spdef} | **SPE:** ${pokemon.spd}\n` +
+            `*IVs:* ${pokemon.hp_iv}HP/${pokemon.atk_iv}Atk/${pokemon.def_iv}Def/` +
+            `${pokemon.spa_iv ?? 0}SpA/${pokemon.spdef_iv ?? 0}SpD/${pokemon.spd_iv}Spe\n` +
+            `*EVs:* ${pokemon.ev_hp || 0}HP/${pokemon.ev_atk || 0}Atk/${pokemon.ev_def || 0}Def/` +
+            `${pokemon.ev_spa || 0}SpA/${pokemon.ev_spdef || 0}SpD/${pokemon.ev_spe || 0}Spe\n` +
             `**Held item:** ${pokemon.held_item || 'None'} | **Friendship:** 💖 ${pokemon.friendship ?? 0}`,
         });
       }
