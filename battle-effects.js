@@ -11,7 +11,7 @@ const {
   getHeldItemDamageMultiplier,
 } = require('./held-item-effects');
 
-const slug = (name) => String(name || '').toLowerCase().replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const slug = (name) => String(name || '').toLowerCase().replace(/\s*\((physical|special)\)\s*$/, '').replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const STAGE_KEYS = ['atk', 'def', 'spa', 'spdef', 'spe', 'acc', 'eva'];
 const STAGE_NAMES = { atk: 'Attack', def: 'Defense', spa: 'Sp. Atk', spdef: 'Sp. Def', spe: 'Speed', acc: 'accuracy', eva: 'evasiveness' };
 const STATUS_NAMES = { slp: 'fell asleep', par: 'was paralyzed', brn: 'was burned', psn: 'was poisoned', tox: 'was badly poisoned', frz: 'was frozen solid' };

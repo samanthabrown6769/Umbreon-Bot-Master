@@ -4133,7 +4133,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
             getSpeciesLearnset(bossForm.species_id, bossForm.id)
               .map((name) => getPokemonMove(name))
               .filter(Boolean)
-              .map((move) => (move.name === 'Max Ooze' && hyperBeam ? hyperBeam : move))
+              .map((move) => (battleFx.slug(move.name) === 'max-ooze' && hyperBeam ? hyperBeam : move))
               .map((move) => [move.name, move])
           ).values()]);
         }
@@ -4168,6 +4168,17 @@ async function startWorldBossBattle(message, boss, userId, team) {
                 `**${currentBoss.name}** counterattacked with **${bossMove.name}** for **${counterDamage}** damage.`
               );
               if (battleFx.RECHARGE_MOVES.has(battleFx.slug(bossMove.name))) battleFx.fx(bs.boss).recharge = true;
+              const bossBoost = battleFx.DAMAGE_SELF_BOOSTS[battleFx.slug(bossMove.name)];
+              if (bossBoost && Math.random() * 100 < bossBoost[0]) {
+                for (const [key, delta] of Object.entries(bossBoost[1])) {
+                  const bossStages = battleFx.fx(bs.boss).stages;
+                  const before = bossStages[key];
+                  bossStages[key] = Math.max(-6, Math.min(6, before + delta));
+                  if (bossStages[key] !== before) {
+                    attack.battleLog.push(`${currentBoss.name}'s ${battleFx.STAGE_NAMES[key]} ${delta > 0 ? 'rose' : 'fell'}!`);
+                  }
+                }
+              }
             }
           } else {
             attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but missed.`);
@@ -15181,7 +15192,7 @@ client.on('messageCreate', async (message) => {
           moveName = args.slice(2).join(' ').trim();
         } else {
           const normalizeMoveName = (name) =>
-            name.toLowerCase().trim().replace(/[\s_]+/g, '-');
+            name.toLowerCase().trim().replace(/\s*\(physical\)\s*$/, '').replace(/[\s_]+/g, '-');
           for (let end = args.length - 1; end > 1; end -= 1) {
             const target = normalizeMoveName(args.slice(1, end).join(' '));
             const equippedIndex = equippedMoves.findIndex((move) =>

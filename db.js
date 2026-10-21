@@ -3475,7 +3475,10 @@ function setBuddyMoveSlot(userId, slot, moveName) {
     if (slot > Math.min(4, learnset.moves.length)) {
       return { error: 'invalid_slot', slotCount: Math.min(4, learnset.moves.length) };
     }
-    const moveKey = moveName.trim().toLowerCase().replace(/\s+/g, '-');
+    const moveKey = moveName.trim().toLowerCase()
+      .replace(/\s*\(physical\)\s*$/, '')
+      .replace(/\s*\(special\)\s*$/, '-special')
+      .replace(/\s+/g, '-');
     const knownMove = learnset.moves.find((move) => move.toLowerCase() === moveKey);
     if (!knownMove) return { error: 'not_learned', learnset: learnset.moves };
     const currentMoves = JSON.parse(learnset.pokemon.moves || '[]');
