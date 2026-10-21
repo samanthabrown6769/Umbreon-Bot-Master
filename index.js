@@ -16147,7 +16147,12 @@ client.on('messageCreate', async (message) => {
           `\`EXP\` ${pokemon.level >= 100 ? 'MAX' : `${(pokemon.experience || 0).toLocaleString()} / ${nextLevelAt.toLocaleString()}`}\n` +
           `\`Type\` ${types.map((type) => getTypeEmoji(type)).join(' ') || 'Unknown'}\n` +
           (teamAbilities[index] ? `\`Ability\` ${teamAbilities[index]}\n` : '') +
-          `\`Item\` ${pokemon.held_item || 'None'}\n` +
+          `\`Item\` ${pokemon.held_item
+            ? `${FUN_ITEM_EMOJIS[pokemon.held_item]
+              || EVOLUTION_ITEMS[pokemon.held_item]?.emoji
+              || EMOJIS[pokemon.held_item.replace(/\s+/g, '').toLowerCase()]
+              || ''} ${pokemon.held_item}`.trim()
+            : 'None'}\n` +
           `⚔️ \`${pokemon.atk}\` 💥 \`${pokemon.spa}\`\n` +
           `🛡️ \`${pokemon.def}\` 🔰 \`${pokemon.spdef}\`\n` +
           `💖 \`${pokemon.max_hp}\` ⚡ \`${pokemon.spd}\`\n` +
