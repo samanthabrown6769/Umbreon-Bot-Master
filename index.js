@@ -4133,7 +4133,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
             getSpeciesLearnset(bossForm.species_id, bossForm.id)
               .map((name) => getPokemonMove(name))
               .filter(Boolean)
-              .map((move) => (battleFx.slug(move.name) === 'max-ooze' && hyperBeam ? hyperBeam : move))
+              .map((move) => (move.name === 'Max Ooze' && hyperBeam ? hyperBeam : move))
               .map((move) => [move.name, move])
           ).values()]);
         }
