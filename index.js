@@ -337,6 +337,9 @@ const {
   changeUserFaction,
   getFactionGoldenPurchase,
   buyFactionGoldenPokemon,
+  buyFactionShopItem,
+  eatBuddyBerry,
+  FACTION_SHOP_ITEMS,
   addFactionPoints,
   promoteFaction,
   getFactionLeaders,
@@ -1381,6 +1384,13 @@ const EMOJIS = {
   eventticket: '<:eventticket:1558834590855077938>',
   ancientFossil: '<:ancientfossil:1561779701553430608>',
   expshare: '<:expshare:1558855049382207529>',
+  pomegberry: '<:pb:1278558184847572993>',
+  kelpsyberry: '<:kb:1278558296734695485>',
+  qualotberry: '<:qb:1278558419447713802>',
+  hondewberry: '<:hb:1278558547713593475>',
+  grepaberry: '<:gb:1278558659584200777>',
+  tamatoberry: '<:tb:1278558799191605291>',
+  fullrestore: '<:full_restore:1281343084059299882>',
   rarecandy: '<:rarecandy:1560319612845817927>',
   fishingtoken: '<:fishingtoken:1558856235451941046>',
   goodRod: '<:goodrod:1558856916174766080>',
@@ -3574,7 +3584,15 @@ function createWorldBossPlayerMoveRows(bossId, pokemon, moves) {
 }
 
 function createWorldBossForfeitRow(bossId) {
-  return makeBattleForfeitRow(`worldboss:forfeit:${bossId}`);
+  const row = makeBattleForfeitRow(`worldboss:forfeit:${bossId}`);
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`worldboss:restore:${bossId}`)
+      .setLabel('Full Restore')
+      .setEmoji(EMOJIS.fullrestore)
+      .setStyle(ButtonStyle.Success)
+  );
+  return row;
 }
 
 function createWorldBossPlayerEmbed(state, detail = '') {
@@ -3886,6 +3904,50 @@ async function startWorldBossBattle(message, boss, userId, team) {
         await interaction.reply({
           content: `🎁 Claim your pending World Boss reward with \`${PREFIX}wb claim\` before joining another raid.`,
           ephemeral: true,
+        });
+        return;
+      }
+      if (action === 'restore') {
+        if (!playerState || playerState.hp <= 0) {
+          await interaction.reply({
+            content: 'Full Restore can only be used on your active, conscious Pokémon.',
+            ephemeral: true,
+          });
+          return;
+        }
+        const activeFx = playerState.battle ? battleFx.fx(playerState.battle.mon) : null;
+        if (playerState.hp >= playerState.pokemon.max_hp && !activeFx?.status) {
+          await interaction.reply({
+            content: `**${playerState.pokemon.name}** is already at full health with no status condition.`,
+            ephemeral: true,
+          });
+          return;
+        }
+        if (!takeUserItem(playerId, 'Full Restore')) {
+          await interaction.reply({
+            content: `${EMOJIS.fullrestore} You have no **Full Restore**. Buy one with \`${PREFIX}s buy 70\` (Admin rank).`,
+            ephemeral: true,
+          });
+          return;
+        }
+        playerState.hp = playerState.pokemon.max_hp;
+        if (playerState.battle) {
+          playerState.battle.mon.hp = playerState.hp;
+          battleFx.cureStatus(playerState.battle.mon);
+        }
+        await interaction.update({
+          embeds: [createWorldBossPanelEmbed(currentBoss, {
+            state: playerState,
+            team: playerTeam,
+            faintedIds: faintedTeam,
+            user: interaction.user,
+            log: [`${EMOJIS.fullrestore} **${playerState.pokemon.name}** was fully restored!`],
+          })],
+          components: [
+            ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
+            ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
+            createWorldBossForfeitRow(boss.id),
+          ],
         });
         return;
       }
@@ -14136,6 +14198,30 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'buddy' || command === 'bud') {
       const action = args[0]?.toLowerCase();
+      if (action === 'eat') {
+        const eatTokens = args.slice(1);
+        const lastToken = eatTokens[eatTokens.length - 1];
+        const hasEatAmount = eatTokens.length > 1 && Number.isSafeInteger(parseAmount(lastToken));
+        const eatAmount = hasEatAmount ? parseAmount(lastToken) : 1;
+        const berryQuery = (hasEatAmount ? eatTokens.slice(0, -1) : eatTokens)
+          .join('').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const berry = Object.values(FACTION_SHOP_ITEMS).find((entry) =>
+          entry.evStat && entry.name.toLowerCase().replace(/[^a-z0-9]/g, '') === berryQuery);
+        if (!berry || eatAmount <= 0) {
+          return message.reply(`Usage: \`${PREFIX}buddy eat <pomeg_berry|kelpsy_berry|qualot_berry|hondew_berry|grepa_berry|tamato_berry> [amount]\`.`);
+        }
+        const eaten = eatBuddyBerry(userId, berry.name, eatAmount);
+        if (eaten.error === 'no_buddy') return message.reply(`Set a buddy first with \`${PREFIX}buddy set\`.`);
+        if (eaten.error === 'not_enough_items') return message.reply(`You do not have enough **${berry.name}** berries.`);
+        if (eaten.error === 'no_evs') {
+          return message.reply(`**${eaten.pokemon}** has no ${EV_STAT_LABELS[eaten.stat]} EVs to reduce.`);
+        }
+        if (eaten.error) return message.reply('Specify a valid positive amount.');
+        return message.reply(
+          `${EMOJIS[berry.name.replace(/\s+/g, '').toLowerCase()] || ''} **${eaten.pokemon}** ate ` +
+          `**${eaten.eaten}x ${berry.name}**: ${EV_STAT_LABELS[eaten.stat]} EVs **${eaten.before}** → **${eaten.after}**.`
+        );
+      }
       if (action === 'info') {
         const query = args.slice(1).join(' ').trim();
         if (!query) return message.reply(`Usage: \`${PREFIX}bud info <Pokémon>\`.`);
@@ -14979,7 +15065,12 @@ client.on('messageCreate', async (message) => {
                 ? '✅ You have already purchased this faction Pokémon.'
                 : currentFaction?.rank !== 'Leader'
                   ? '🔒 Reach Leader rank to unlock this purchase.'
-                  : `Your balance: **${currentFaction.points.toLocaleString()} faction points**.`)
+                  : `Your balance: **${currentFaction.points.toLocaleString()} faction points**.`) +
+              `\n\n${FACTION_RANK_ICONS.Admin || ''} **Admin buyables** (Admin rank or higher)\n` +
+              Object.entries(FACTION_SHOP_ITEMS).map(([id, item]) =>
+                `\`ID: ${id}\` ${EMOJIS[item.name.replace(/\s+/g, '').toLowerCase()] || ''} ${item.name}: ` +
+                `${item.cost.toLocaleString()} points`).join('\n') +
+              `\nBuy with \`${PREFIX}s buy <ID> [amount]\`.`
             );
         };
         const buildFactionShopButtons = () => new ActionRowBuilder().addComponents(
@@ -17839,6 +17930,31 @@ client.on('messageCreate', async (message) => {
       const purchaseArgs = args.slice(1);
       if (!purchaseArgs.length) {
         return message.reply(`Usage: \`${PREFIX}shop buy <number|item> [amount]\`. Use \`${PREFIX}shop\` to view item numbers.`);
+      }
+      const factionShopId = Number(purchaseArgs[0]);
+      if (Number.isSafeInteger(factionShopId) && FACTION_SHOP_ITEMS[factionShopId]) {
+        const factionAmount = purchaseArgs.length > 1 ? parseAmount(purchaseArgs[1]) : 1;
+        if (!Number.isSafeInteger(factionAmount) || factionAmount <= 0) {
+          return message.reply('Specify a valid positive amount.');
+        }
+        const result = buyFactionShopItem(userId, factionShopId, factionAmount);
+        if (result.error === 'not_in_faction') {
+          return message.reply(`Join a faction with \`${PREFIX}faction\` first.`);
+        }
+        if (result.error === 'rank_required') {
+          return message.reply(`🔒 You need **${result.rank}** rank (or higher) to buy that.`);
+        }
+        if (result.error === 'insufficient_points') {
+          return message.reply(
+            `❌ That costs **${result.cost.toLocaleString()} faction points**. You have **${result.points.toLocaleString()}**.`
+          );
+        }
+        if (result.error) return message.reply('Specify a valid positive amount.');
+        const emojiKey = result.item.replace(/\s+/g, '').toLowerCase();
+        return message.reply(
+          `✅ Purchased **${result.amount.toLocaleString()}x ${EMOJIS[emojiKey] || ''} ${result.item}** for ` +
+          `**${result.cost.toLocaleString()} faction points**.`
+        );
       }
       const requestedResearchId = Number(purchaseArgs[0]);
       const researchShopItem = Number.isSafeInteger(requestedResearchId)

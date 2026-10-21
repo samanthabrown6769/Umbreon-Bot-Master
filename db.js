@@ -4210,6 +4210,7 @@ const SPECIAL_USER_ITEM_NAMES = Object.freeze([
   'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
   'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
   'Team Medallion',
+  'Pomeg Berry', 'Kelpsy Berry', 'Qualot Berry', 'Hondew Berry', 'Grepa Berry', 'Tamato Berry', 'Full Restore',
   ...RESEARCH_ITEM_NAMES,
   ...BATTLE_HELD_ITEM_NAMES,
 ]);
@@ -8640,6 +8641,81 @@ function buyFactionGoldenPokemon(userId, now = Date.now()) {
   }).immediate();
 }
 
+const FACTION_BERRY_COST = 500000;
+const FACTION_SHOP_ITEMS = Object.freeze({
+  57: { name: 'Pomeg Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'hp' },
+  58: { name: 'Kelpsy Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'atk' },
+  59: { name: 'Qualot Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'def' },
+  60: { name: 'Hondew Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'spa' },
+  61: { name: 'Grepa Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'spdef' },
+  62: { name: 'Tamato Berry', cost: FACTION_BERRY_COST, rank: 'Admin', evStat: 'spe' },
+  70: { name: 'Full Restore', cost: 250000, rank: 'Admin' },
+});
+const FACTION_RANK_ORDER = Object.keys(FACTION_RANKS);
+
+function buyFactionShopItem(userId, itemId, amount = 1) {
+  assertUserId(userId);
+  const item = FACTION_SHOP_ITEMS[itemId];
+  if (!item) return { error: 'unknown_item' };
+  if (!Number.isSafeInteger(amount) || amount <= 0) return { error: 'invalid_amount' };
+  const totalCost = item.cost * amount;
+  if (!Number.isSafeInteger(totalCost)) return { error: 'invalid_amount' };
+  return db.transaction(() => {
+    const faction = getUserFaction(userId);
+    if (!faction) return { error: 'not_in_faction' };
+    if (FACTION_RANK_ORDER.indexOf(faction.rank) < FACTION_RANK_ORDER.indexOf(item.rank)) {
+      return { error: 'rank_required', rank: item.rank };
+    }
+    if (faction.points < totalCost) return { error: 'insufficient_points', points: faction.points, cost: totalCost };
+    db.prepare('UPDATE user_factions SET points = points - ? WHERE user_id = ?').run(totalCost, userId);
+    addUserItem(userId, item.name, amount);
+    return { item: item.name, amount, cost: totalCost, points: faction.points - totalCost };
+  }).immediate();
+}
+
+// Each berry lowers one EV of the buddy by 10; an EV above 100 is first set to 100.
+function eatBuddyBerry(userId, itemName, amount = 1) {
+  assertUserId(userId);
+  const entry = Object.values(FACTION_SHOP_ITEMS).find((item) => item.name === itemName && item.evStat);
+  if (!entry) return { error: 'not_a_berry' };
+  if (!Number.isSafeInteger(amount) || amount <= 0) return { error: 'invalid_amount' };
+  const field = `ev_${entry.evStat}`;
+  return db.transaction(() => {
+    const buddyId = getUser(userId).buddy_catch_id;
+    const pokemon = buddyId && db.prepare(`
+      SELECT catches.*, pokemon_forms.base_hp, pokemon_forms.base_atk,
+        pokemon_forms.base_def, pokemon_forms.base_spd
+      FROM catches
+      LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+      WHERE catches.id = ? AND catches.user_id = ?
+    `).get(buddyId, userId);
+    if (!pokemon) return { error: 'no_buddy' };
+    const before = pokemon[field] || 0;
+    let after = before;
+    let eaten = 0;
+    while (eaten < amount && after > 0) {
+      after = after > 100 ? 100 : Math.max(0, after - 10);
+      eaten += 1;
+    }
+    if (!eaten) return { error: 'no_evs', pokemon: pokemon.name, stat: entry.evStat };
+    if (!takeUserItem(userId, itemName, eaten)) return { error: 'not_enough_items' };
+    const evs = Object.fromEntries(EV_STATS.map((key) => [key, pokemon[`ev_${key}`] || 0]));
+    evs[entry.evStat] = after;
+    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, evs.hp);
+    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, evs.atk);
+    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny, evs.def);
+    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, pokemon.level, false, pokemon.is_shiny, evs.spe);
+    const hp = Math.min(maxHp, Math.max(1, pokemon.hp));
+    db.prepare(`
+      UPDATE catches
+      SET ${field} = ?, hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
+      WHERE id = ? AND user_id = ?
+    `).run(after, hp, maxHp, atk, def, spd, buddyId, userId);
+    syncDuplicateCatchState(userId, buddyId);
+    return { pokemon: pokemon.name, stat: entry.evStat, before, after, eaten };
+  }).immediate();
+}
+
 function addFactionPoints(userId, basePoints, { speciesId = null } = {}) {
   const faction = getUserFaction(userId);
   if (!faction) return 0;
@@ -8713,6 +8789,10 @@ module.exports = {
   changeUserFaction,
   getFactionGoldenPurchase,
   buyFactionGoldenPokemon,
+  buyFactionShopItem,
+  eatBuddyBerry,
+  FACTION_SHOP_ITEMS,
+  takeUserItem,
   addFactionPoints,
   promoteFaction,
   getGiftSettings,
