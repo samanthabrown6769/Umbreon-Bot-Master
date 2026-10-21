@@ -8211,10 +8211,8 @@ async function concludeGiveaway(giveawayId) {
       getUser(winnerId);
       const increments = {};
       if (prizeData.coins) {
-        winnerCoinRewards.set(
-          winnerId,
-          awardCoinsWithBoost(winnerId, prizeData.coins).finalAmount
-        );
+        winnerCoinRewards.set(winnerId, prizeData.coins);
+        incrementUser(winnerId, { coins: prizeData.coins, pkc_earned: prizeData.coins });
       }
       for (const [item, quantity] of Object.entries(prizeData.items || {})) {
         const column = GIVEAWAY_ITEM_COLUMNS[item];
@@ -14762,13 +14760,12 @@ client.on('messageCreate', async (message) => {
             if (confirmedResult.error === 'not_enough_vote_coins') {
               return interaction.update({ content: `You need 1 ${EMOJIS.votecoin} Vote Coin to reroll a buddy IV.`, components: [] });
             }
-            const statName = statLabels[confirmedResult.stat];
-            const rerolledStatNames = confirmedResult.rerolledStats
-              .map((rerolledStat) => statLabels[rerolledStat]);
+            const statName = confirmedResult.rerolledStats
+              .map((rerolledStat) => statLabels[rerolledStat])
+              .join(' / ');
             return interaction.update({
               content:
-                `🎲 **${confirmedResult.pokemon} ${rerolledStatNames.join(' / ')} IVs rerolled** ` +
-                `(${statName} selected): **${confirmedResult.oldIv}** → ` +
+                `🎲 **${confirmedResult.pokemon} ${statName} IV rerolled:** **${confirmedResult.oldIv}** → ` +
                 `**${confirmedResult.newIv}** (${EMOJIS.votecoin} ` +
                 `${confirmedResult.voteCoins.toLocaleString()} Vote Coins remaining).`,
               components: [],
@@ -14787,11 +14784,11 @@ client.on('messageCreate', async (message) => {
         if (result.error === 'invalid_stat') {
           return message.reply(`Usage: \`${PREFIX}buddy rr <atk|def|hp|spa|spdef|spd|spe>\`.`);
         }
-        const statName = statLabels[result.stat];
-        const rerolledStatNames = result.rerolledStats.map((rerolledStat) => statLabels[rerolledStat]);
+        const statName = result.rerolledStats
+          .map((rerolledStat) => statLabels[rerolledStat])
+          .join(' / ');
         return message.reply(
-          `🎲 **${result.pokemon} ${rerolledStatNames.join(' / ')} IVs rerolled** ` +
-          `(${statName} selected): **${result.oldIv}** → **${result.newIv}** ` +
+          `🎲 **${result.pokemon} ${statName} IV rerolled:** **${result.oldIv}** → **${result.newIv}** ` +
           `(${EMOJIS.votecoin} ${result.voteCoins.toLocaleString()} Vote Coins remaining).`
         );
       }
