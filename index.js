@@ -1808,6 +1808,11 @@ const BALL_CONFIG = {
 };
 
 const HELD_ITEM_EMOJI = '<:helditem:1561412843272937472>';
+function factionLogoPrefix(pokemon) {
+  const emoji = getPokemonFactionTeam(pokemon?.speciesId ?? pokemon?.species_id)?.emoji;
+  return emoji ? `${emoji} ` : '';
+}
+
 function heldItemEncounterHint(pokemon) {
   return '';
 }
@@ -5023,7 +5028,7 @@ async function askForBall(
         })
         .setDescription(
           `${getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden)} ` +
-          `${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}**${target.name}** broke out of the ${ball.emoji} **${ball.name}**!\n\n` +
+          `${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${factionLogoPrefix(target)}**${target.name}** broke out of the ${ball.emoji} **${ball.name}**!\n\n` +
           heldItemEncounterHint(target) +
           `**Rarity:** ${catchDisplayRarity} (${rarityData.rateText})\n\n` +
           `Pokémon roll: **${Math.round(playerRoll)}**\n` +
@@ -5195,7 +5200,7 @@ async function askForBall(
       .setDescription(
         `✅ ${getTrainerIconEmoji(userId)} You caught ` +
         `${/^[aeiou]/i.test(target.name) ? 'an' : 'a'} ` +
-        `${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}** with a ` +
+        `${factionLogoPrefix(target)}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}** with a ` +
         `${ball.emoji} **${ball.name}**!` +
         `${ballSaved ? `\n⚡ **${ball.name} not used!**` : ''}\n\n` +
         `Rarity: ` +
@@ -15329,7 +15334,7 @@ client.on('messageCreate', async (message) => {
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
-          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden))}**${wild.name}** appeared! ` +
+          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden))}${factionLogoPrefix(wild)}**${wild.name}** appeared! ` +
             `(${getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden)} ${wildRarity}) — throw a ball with the buttons on the right.`;
         } else if (!catchHandler) {
           statusText = foundText;
