@@ -1994,6 +1994,40 @@ function incrementUser(userId, increments) {
   return getUser(userId);
 }
 
+function grantGlobalUserReward() {
+  const grantKey = 'global_user_reward_2026_10_21';
+  return db.transaction(() => {
+    const existingGrant = db.prepare('SELECT value FROM bot_settings WHERE key = ?').get(grantKey);
+    if (existingGrant) {
+      return { alreadyGranted: true, userCount: Number(existingGrant.value) || 0 };
+    }
+
+    const users = db.prepare('SELECT id FROM users ORDER BY id').all();
+    if (users.length === 0) {
+      throw new Error('Cannot grant the global reward because there are no registered users.');
+    }
+
+    const goldenPorygon = db.prepare(`
+      SELECT id, name, base_hp AS baseHp, base_atk AS baseAtk, base_def AS baseDef, base_spd AS baseSpd
+      FROM pokemon_forms
+      WHERE slug = 'porygon' AND species_id = 137 AND is_default = 1
+      LIMIT 1
+    `).get();
+    if (!goldenPorygon) {
+      throw new Error('Cannot grant the global reward because the default Porygon form is unavailable.');
+    }
+
+    for (const { id } of users) {
+      incrementUser(id, { coins: 10_000_000, vote_coins: 100 });
+      saveGoldenCatch(id, goldenPorygon);
+    }
+
+    db.prepare('INSERT INTO bot_settings (key, value) VALUES (?, ?)')
+      .run(grantKey, String(users.length));
+    return { alreadyGranted: false, userCount: users.length };
+  }).immediate();
+}
+
 // Per-tier Patreon boosts. Fill in the real values per tier key (matches users.patreon_tier).
 // incenseBonus = extra charges per Incense used (on top of the base 100).
 const NO_PATREON_PERKS = Object.freeze({
@@ -8887,6 +8921,7 @@ module.exports = {
   getUser,
   updateUser,
   incrementUser,
+  grantGlobalUserReward,
   processTopggVote,
   openVoteBox,
   getAmuletCoinBoost,

@@ -292,6 +292,7 @@ Configured bot admins can use `.p` and `.fish` without cooldowns and have guaran
 
 Configured bot admins can use `.admin` (or `.admingive`) to grant coins, currencies, items, or catalog Pokémon. `.admin item @user <item or currency> <amount>` supports the full item inventory (including cooldown and ability items, Double XP Tickets, Incubators, Mega Stones, Rotom appliances, vote boxes, and event promo items) plus supported balances such as PokéCoins, Patreon tokens, Vote Coins, Fishing Tokens, and Eggs. Use `.admin return cb [@user]` to bring an active CatchBot run back early; the owner can then collect its catches with `.cb claim`. Use `.p admin [shiny] <Pokémon name>` to spawn a catalog Pokémon for a guaranteed catch; the `shiny` option makes the spawned Pokémon shiny. Rarity spawn weights and catch chances are editable in the database:
 
+- `.admin globalreward confirm` grants 10,000,000 PokéCoins, 100 Vote Coins, and one Golden Porygon to all existing users once; configured bot admins only
 - `.admin rarity list`
 - `.admin rarity set <name> <spawn weight> <catch chance>` (for example, `.admin rarity set Super Rare 50 25`)
 - `.admin pokemon rarity <Pokémon name|Pokédex number> -- <rarity name>`

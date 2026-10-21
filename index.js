@@ -208,6 +208,7 @@ const {
   spawnWorldBoss,
   WORLD_BOSS_POOL,
   incrementUser,
+  grantGlobalUserReward,
   processTopggVote,
   openVoteBox,
   listOnMarket,
@@ -10868,6 +10869,28 @@ client.on('messageCreate', async (message) => {
       const subtype = args[0]?.toLowerCase();
       const action = args[1]?.toLowerCase();
 
+      if (command === 'admin' && subtype === 'globalreward') {
+        if (args.length !== 2 || action !== 'confirm') {
+          return message.reply(`Usage: \`${PREFIX}admin globalreward confirm\`.`);
+        }
+
+        try {
+          const result = grantGlobalUserReward();
+          if (result.alreadyGranted) {
+            return message.reply(
+              `ℹ️ The global reward has already been granted to **${result.userCount.toLocaleString()}** users.`
+            );
+          }
+          return message.reply(
+            `✅ Granted **10,000,000 PokéCoins**, **100 Vote Coins**, and one **Golden Porygon** ` +
+            `to **${result.userCount.toLocaleString()}** existing users.`
+          );
+        } catch (error) {
+          console.error('Failed to grant the global user reward:', error);
+          return message.reply('⚠️ The global reward could not be completed; no users were changed.');
+        }
+      }
+
       if (command === 'admin' && (subtype === 'help' || args.length === 0)) {
         const adminPages = [
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Channel Setup').setDescription(
@@ -10887,6 +10910,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin token @User <amount>\` — Add or remove Patreon tokens\n` +
             `• \`${PREFIX}admin research points @User [amount]\` — Check or adjust a user's Research Points\n` +
             `• \`${PREFIX}admin item @User <item or currency> <amount>\` — Give or remove items (including Research items) and balances\n` +
+            `• \`${PREFIX}admin globalreward confirm\` — One-time reward for all existing users\n` +
             `• \`${PREFIX}admin incense [amount]\` — Add 1,000 shared Incense charges per amount to this server\n` +
             `• \`${PREFIX}admin pokemon @User <Pokémon|form|number> [amount] [shiny|golden]\` — Give Pokémon\n` +
             `• \`${PREFIX}p admin [shiny] <Pokémon name>\` — Spawn a catalog Pokémon for a guaranteed catch\n` +
