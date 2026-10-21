@@ -8084,7 +8084,7 @@ const FACTION_TEAMS = {
       '<:rocketadminproton:1561371568951525488> Rocket Admin Proton, ' +
       '<:rocketadminpretel:1561371591466549450> Rocket Admin Pretel\n' +
       '<:leader:1560312904560025680> Leader: <:rocketleadergiovanni:1561371612446457906> Rocket Leader Giovanni',
-    favoritePokemon: '👾 Persian, Meowth, Mewtwo',
+    favoritePokemon: 'Persian, Meowth, Mewtwo',
     goals: 'Steal strong and rare Pokémon for global domination and criminal profit.',
   },
   magma: {
@@ -8097,7 +8097,7 @@ const FACTION_TEAMS = {
       '<:admin:1560312876596461578> Admin: <:magmaadmincourtney:1561376339523674232> Magma Admin Courtney, ' +
       '<:magmaadmintabitha:1561376360260182066> Magma Admin Tabitha\n' +
       '<:leader:1560312904560025680> Leader: <:magmaleadermaxie:1561376382016290866> Magma Leader Maxie',
-    favoritePokemon: '👾 Groudon, Camerupt, Mightyena',
+    favoritePokemon: 'Groudon, Camerupt, Mightyena',
     goals: "Awaken ancient legendary power to expand the world's landmass.",
   },
   aqua: {
@@ -8110,7 +8110,7 @@ const FACTION_TEAMS = {
       '<:admin:1560312876596461578> Admin: <:aquaadminmatt:1561376222003462295> Aqua Admin Matt, ' +
       '<:aquaadminshelly:1561376248322850867> Aqua Admin Shelly\n' +
       '<:leader:1560312904560025680> Leader: <:aqualeaderarchie:1561376270883889204> Aqua Leader Archie',
-    favoritePokemon: '👾 Kyogre, Sharpedo, Walrein',
+    favoritePokemon: 'Kyogre, Sharpedo, Walrein',
     goals: 'Expand the global oceans to return the world to prehistoric beauty.',
   },
   galactic: {
@@ -8121,7 +8121,7 @@ const FACTION_TEAMS = {
       '<:grunt:1560312842039726150> Grunt: Galactic Grunt Male, Galactic Grunt Female\n' +
       '<:admin:1560312876596461578> Admin: Mars, Charon, Jupiter, Saturn\n' +
       '<:leader:1560312904560025680> Leader: Cyrus',
-    favoritePokemon: '👾 Dialga, Palkia, Weavile',
+    favoritePokemon: 'Dialga, Palkia, Weavile',
     goals: 'Create a brand new universe devoid of spirit, grief, and human emotion.',
   },
   plasma: {
@@ -8134,7 +8134,7 @@ const FACTION_TEAMS = {
       '<:admin:1560312876596461578> Admin: <:plasmaadminshadow:1561371380937789460> Plasma Admin Shadow, ' +
       '<:plasmaadminN:1561371409140162561> Plasma Admin N\n' +
       '<:leader:1560312904560025680> Leader: <:plasmaleaderghetsis:1561371442153525370> Plasma Leader Ghetsis',
-    favoritePokemon: '👾 Reshiram, Zekrom, Hydreigon',
+    favoritePokemon: 'Reshiram, Zekrom, Hydreigon',
     goals: 'Liberate Pokémon from trainers to monopolize total authority.',
   },
   flare: {
@@ -8145,7 +8145,7 @@ const FACTION_TEAMS = {
       '<:grunt:1560312842039726150> Grunt: Flare Grunt Male, Flare Grunt Female\n' +
       '<:admin:1560312876596461578> Admin: Flare Admin Male, Flare Admin Female\n' +
       '<:leader:1560312904560025680> Leader: Lysandre',
-    favoritePokemon: '👾 Yveltal, Xerneas, Pyroar, Malamar',
+    favoritePokemon: 'Yveltal, Xerneas, Pyroar, Malamar',
     goals: 'Purge imperfection to build a flawless, beautiful world of chosen elites.',
   },
   skull: {
@@ -8156,7 +8156,7 @@ const FACTION_TEAMS = {
       '<:grunt:1560312842039726150> Grunt: Skull Grunt Male, Skull Grunt Female\n' +
       '<:admin:1560312876596461578> Admin: Plumeria\n' +
       '<:leader:1560312904560025680> Leader: Guzma',
-    favoritePokemon: '👾 Golisopod, Salazzle, Alolan Marowak',
+    favoritePokemon: 'Golisopod, Salazzle, Alolan Marowak',
     goals: 'Cause absolute chaos across the islands and reject the Island Challenge.',
   },
   yell: {
@@ -8167,7 +8167,7 @@ const FACTION_TEAMS = {
       '<:grunt:1560312842039726150> Grunt: Yell Grunt Male, Yell Grunt Female\n' +
       '<:admin:1560312876596461578> Admin: Marnie\n' +
       '<:leader:1560312904560025680> Leader: Piers',
-    favoritePokemon: '👾 Obstagoon, Grimmsnarl, Morpeko',
+    favoritePokemon: 'Obstagoon, Grimmsnarl, Morpeko',
     goals: 'Disrupt competitors and rally unwavering devotion to crown Marnie champion.',
   },
   star: {
@@ -8181,7 +8181,7 @@ const FACTION_TEAMS = {
       '<:mela:1561091314802495539> Star Admin Mela, <:atticus:1561091500010373221> Star Admin Atticus, ' +
       '<:ortega:1561091237769908375> Star Admin Ortega, <:eri:1561091421488816160> Star Admin Eri\n' +
       '<:leader:1560312904560025680> Leader: <:penny:1561053211102683146> Star Leader Penny',
-    favoritePokemon: '👾 Revavroom, Kingambit, Armarouge, Ceruledge',
+    favoritePokemon: 'Revavroom, Kingambit, Armarouge, Ceruledge',
     goals: 'Stand against academy bullies, preserve camaraderie, and protect the Starmobiles.',
   },
 };
@@ -8236,7 +8236,7 @@ for (const team of Object.values(FACTION_TEAMS)) {
   Object.defineProperty(team, 'favoritePokemon', {
     enumerable: true,
     get() {
-      return `👾 ${getFactionFavorites(team.id).map((entry) => entry.species_name).join(', ')}`;
+      return `${getFactionFavorites(team.id).map((entry) => entry.species_name).join(', ')}`;
     },
   });
 }

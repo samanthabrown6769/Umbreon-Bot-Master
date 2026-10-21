@@ -1732,7 +1732,7 @@ function getPokemonSpriteEmoji(pokemon) {
 }
 
 function formatFactionFavorites(factionKey) {
-  return `👾 ${getFactionFavorites(factionKey)
+  return `${getFactionFavorites(factionKey)
     .map((entry) => getPokemonSpriteEmoji({ name: entry.species_name }) || entry.species_name)
     .join(' ')}`;
 }
@@ -14500,7 +14500,7 @@ client.on('messageCreate', async (message) => {
       const buildMoveEmbed = (page) => {
         const learners = learnersList
           .slice((page - 1) * learnersPerPage, page * learnersPerPage)
-          .map((name) => `👾 ${name}`)
+          .map((name) => `${name}`)
           .join(' ');
         return new EmbedBuilder()
           .setColor(0x0099ff)
@@ -14747,6 +14747,7 @@ client.on('messageCreate', async (message) => {
             `${progress}\n\n` +
             `**${team.name} Information**\n` +
             `• **Favorite Pokémon:** ${formatFactionFavorites(team.id)}\n\n` +
+            `${team.npcs}\n\n` +
             `🎯 **Today's Daily Ball:** ${ballEmoji} **${dailyBall.name}**\n` +
             `*Catch Pokémon using ${ballEmoji} ${dailyBall.name} to earn bonus Faction Points — higher rarities earn more!*\n\n` +
             earnInfo(true, dailyBall) +
@@ -14850,7 +14851,7 @@ client.on('messageCreate', async (message) => {
         .setAuthor({ name: team ? `Factions — ${team.name}` : 'Factions — Join a Team!', iconURL: client.user.displayAvatarURL() })
         .setDescription(
           (team
-            ? `${team.emoji} **${team.name}**\n• **Favorite Pokémon:** ${formatFactionFavorites(team.id)}\n\n` +
+            ? `${team.emoji} **${team.name}**\n• **Favorite Pokémon:** ${formatFactionFavorites(team.id)}\n\n${team.npcs}\n\n` +
               `Press **Join** to pledge to this team, or pick another.`
             : `❌ **You are not in a faction!**\n\n` +
               `Factions are differentiated by their favorite Pokémon.\n\n` +
@@ -15429,7 +15430,7 @@ client.on('messageCreate', async (message) => {
             .map((id) => db.prepare('SELECT name, level FROM catches WHERE id = ? AND user_id = ?').get(id, userId))
             .filter(Boolean);
           if (!mons.length) return '*Pokémon missing from box*';
-          return mons.map((mon) => `👾 ${mon.name} \`Lv. ${mon.level}\``).join('\n');
+          return mons.map((mon) => `${mon.name} \`Lv. ${mon.level}\``).join('\n');
         };
         const embed = new EmbedBuilder()
           .setColor(0x0099ff)
