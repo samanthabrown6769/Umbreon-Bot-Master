@@ -3641,6 +3641,8 @@ function getWorldBossBattle(playerState, boss) {
         atk: pokemon.atk, def: pokemon.def, spd: pokemon.spd, moves: playerState.moves,
         held_item: pokemon.held_item, level: pokemon.level,
         ev_spa: pokemon.ev_spa || 0, ev_spdef: pokemon.ev_spdef || 0,
+      },
+      boss: {
         name: boss.name, hp: WORLD_BOSS_DUMMY_HP, max_hp: WORLD_BOSS_DUMMY_HP, types: JSON.parse(form.types), moves: null,
         stats: combatStats({
           hp: template.baseHp, attack: template.baseAtk, defense: template.baseDef, speed: template.baseSpd,
@@ -14260,8 +14262,16 @@ client.on('messageCreate', async (message) => {
       if (action === 'rr') {
         const requestedStat = args[1]?.toLowerCase();
         const stat = requestedStat === 'spe' ? 'spd' : requestedStat;
-        if (args.length !== 2 || !['atk', 'def', 'hp', 'spd'].includes(stat)) {
-          return message.reply(`Usage: \`${PREFIX}buddy rr <atk|def|hp|spd|spe>\` (1 Vote Coin per reroll).`);
+        const statLabels = {
+          atk: 'Attack',
+          def: 'Defense',
+          hp: 'HP',
+          spa: 'Special Attack',
+          spdef: 'Special Defense',
+          spd: 'Speed',
+        };
+        if (args.length !== 2 || !Object.hasOwn(statLabels, stat)) {
+          return message.reply(`Usage: \`${PREFIX}buddy rr <atk|def|hp|spa|spdef|spd|spe>\` (1 Vote Coin per reroll).`);
         }
         const result = rerollBuddyIv(userId, stat);
         if (result.error === 'no_buddy') {
@@ -14322,7 +14332,7 @@ client.on('messageCreate', async (message) => {
             if (confirmedResult.error === 'not_enough_vote_coins') {
               return interaction.update({ content: `You need 1 ${EMOJIS.votecoin} Vote Coin to reroll a buddy IV.`, components: [] });
             }
-            const statName = { atk: 'Attack', def: 'Defense', hp: 'HP', spd: 'Speed' }[confirmedResult.stat];
+            const statName = statLabels[confirmedResult.stat];
             return interaction.update({
               content:
                 `🎲 **${confirmedResult.pokemon} ${statName} IV rerolled:** **${confirmedResult.oldIv}** → ` +
@@ -14342,9 +14352,9 @@ client.on('messageCreate', async (message) => {
           return;
         }
         if (result.error === 'invalid_stat') {
-          return message.reply(`Usage: \`${PREFIX}buddy rr <atk|def|hp|spd|spe>\`.`);
+          return message.reply(`Usage: \`${PREFIX}buddy rr <atk|def|hp|spa|spdef|spd|spe>\`.`);
         }
-        const statName = { atk: 'Attack', def: 'Defense', hp: 'HP', spd: 'Speed' }[result.stat];
+        const statName = statLabels[result.stat];
         return message.reply(
           `🎲 **${result.pokemon} ${statName} IV rerolled:** **${result.oldIv}** → **${result.newIv}** ` +
           `(${EMOJIS.votecoin} ${result.voteCoins.toLocaleString()} Vote Coins remaining).`
@@ -14460,7 +14470,7 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           `Usage: \`${PREFIX}buddy\`, \`${PREFIX}buddy info <Pokémon>\`, \`${PREFIX}buddy set [shiny|golden] <Pokémon form name|Pokédex number>\`, ` +
           `\`${PREFIX}buddy clear\`, \`${PREFIX}buddy nickname <name|reset>\`, or ` +
-          `\`${PREFIX}buddy rr <atk|def|hp|spd|spe>\` (1 Vote Coin).`
+          `\`${PREFIX}buddy rr <atk|def|hp|spa|spdef|spd|spe>\` (1 Vote Coin).`
         );
       }
 
@@ -14551,12 +14561,14 @@ client.on('messageCreate', async (message) => {
           `**${expProgress}**\n${buddyExpBar}\n\n` +
           `**Pokémon IVs**\n` +
           `\`ATK\` ${ivValue(buddy.atk_iv)}  \`DEF\` ${ivValue(buddy.def_iv)}\n` +
+          `\`SPA\` ${ivValue(buddy.spa_iv)}  \`SPD\` ${ivValue(buddy.spdef_iv)}\n` +
           `\`HP\` ${ivValue(buddy.hp_iv)}  \`SPE\` ${ivValue(buddy.spd_iv)}\n\n` +
           `**Pokémon EVs [${EV_STATS.reduce((sum, stat) => sum + (buddy[`ev_${stat}`] || 0), 0)}/${EV_TOTAL_LIMIT}]**\n` +
           `\`ATK\` ${buddy.ev_atk || 0}  \`DEF\` ${buddy.ev_def || 0}  \`HP\` ${buddy.ev_hp || 0}  ` +
           `\`SPA\` ${buddy.ev_spa || 0}  \`SPD\` ${buddy.ev_spdef || 0}  \`SPE\` ${buddy.ev_spe || 0}\n\n` +
           `**Pokémon Stats**\n` +
           `⚔️ \`Atk\` **${buddy.atk}**  🛡️ \`Def\` **${buddy.def}**\n` +
+          `✨ \`SpA\` **${buddy.spa}**  🛡️ \`SpD\` **${buddy.spdef}**\n` +
           `❤️ \`HP\` **${buddy.max_hp}**  ⚡ \`Spe\` **${buddy.spd}**`
         )
         .setFooter({

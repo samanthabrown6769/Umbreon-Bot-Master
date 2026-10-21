@@ -171,6 +171,10 @@ async function main() {
     const stats = Object.fromEntries(
       pokemon.stats.map(({ base_stat: value, stat }) => [stat.name, value])
     );
+    if (!Number.isSafeInteger(stats['special-attack'])
+        || !Number.isSafeInteger(stats['special-defense'])) {
+      throw new Error(`Missing special stats for Pokémon form ${pokemon.id} (${pokemon.name}).`);
+    }
     const baseStatTotal = Object.values(stats).reduce((total, value) => total + value, 0);
     const evolutionStage = getEvolutionStage(speciesId, speciesById, evolutionStages);
     const defaultSprites = defaultSpritesBySpecies.get(speciesId);
@@ -192,6 +196,8 @@ async function main() {
       base_hp: stats.hp,
       base_atk: stats.attack,
       base_def: stats.defense,
+      base_spa: stats['special-attack'],
+      base_spdef: stats['special-defense'],
       base_spd: stats.speed,
       base_stat_total: baseStatTotal,
       types: JSON.stringify(types),

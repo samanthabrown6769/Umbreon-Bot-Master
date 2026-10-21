@@ -20,6 +20,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10033.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10033.png",
     "generation": "generation-i",
+    "base_spa": 122,
+    "base_spdef": 120,
     "dex_number": 4501,
     "variant": "shiny"
   },
@@ -44,6 +46,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10034.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10034.png",
     "generation": "generation-i",
+    "base_spa": 130,
+    "base_spdef": 85,
     "dex_number": 4502,
     "variant": "shiny"
   },
@@ -68,6 +72,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10035.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10035.png",
     "generation": "generation-i",
+    "base_spa": 159,
+    "base_spdef": 115,
     "dex_number": 4503,
     "variant": "shiny"
   },
@@ -92,6 +98,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10036.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10036.png",
     "generation": "generation-i",
+    "base_spa": 135,
+    "base_spdef": 115,
     "dex_number": 4504,
     "variant": "shiny"
   },
@@ -116,6 +124,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10090.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10090.png",
     "generation": "generation-i",
+    "base_spa": 15,
+    "base_spdef": 80,
     "dex_number": 4505,
     "variant": "shiny"
   },
@@ -140,6 +150,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10073.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10073.png",
     "generation": "generation-i",
+    "base_spa": 135,
+    "base_spdef": 80,
     "dex_number": 4506,
     "variant": "shiny"
   },
@@ -164,6 +176,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10304.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10304.png",
     "generation": "generation-i",
+    "base_spa": 90,
+    "base_spdef": 95,
     "dex_number": 4507,
     "variant": "shiny"
   },
@@ -188,6 +202,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10305.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10305.png",
     "generation": "generation-i",
+    "base_spa": 160,
+    "base_spdef": 80,
     "dex_number": 4508,
     "variant": "shiny"
   },
@@ -212,6 +228,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10278.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10278.png",
     "generation": "generation-i",
+    "base_spa": 135,
+    "base_spdef": 110,
     "dex_number": 4509,
     "variant": "shiny"
   },
@@ -236,6 +254,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10037.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10037.png",
     "generation": "generation-i",
+    "base_spa": 175,
+    "base_spdef": 105,
     "dex_number": 4510,
     "variant": "shiny"
   },
@@ -260,6 +280,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10279.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10279.png",
     "generation": "generation-i",
+    "base_spa": 135,
+    "base_spdef": 95,
     "dex_number": 4511,
     "variant": "shiny"
   },
@@ -284,6 +306,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10071.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10071.png",
     "generation": "generation-i",
+    "base_spa": 130,
+    "base_spdef": 80,
     "dex_number": 4512,
     "variant": "shiny"
   },
@@ -308,6 +332,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10038.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10038.png",
     "generation": "generation-i",
+    "base_spa": 170,
+    "base_spdef": 95,
     "dex_number": 4513,
     "variant": "shiny"
   },
@@ -332,6 +358,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10039.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10039.png",
     "generation": "generation-i",
+    "base_spa": 60,
+    "base_spdef": 100,
     "dex_number": 4514,
     "variant": "shiny"
   },
@@ -356,6 +384,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10280.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10280.png",
     "generation": "generation-i",
+    "base_spa": 130,
+    "base_spdef": 105,
     "dex_number": 4515,
     "variant": "shiny"
   },
@@ -380,6 +410,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10040.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10040.png",
     "generation": "generation-i",
+    "base_spa": 65,
+    "base_spdef": 90,
     "dex_number": 4516,
     "variant": "shiny"
   },
@@ -404,6 +436,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10041.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10041.png",
     "generation": "generation-i",
+    "base_spa": 70,
+    "base_spdef": 130,
     "dex_number": 4517,
     "variant": "shiny"
   },
@@ -428,6 +462,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10042.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10042.png",
     "generation": "generation-i",
+    "base_spa": 70,
+    "base_spdef": 95,
     "dex_number": 4518,
     "variant": "shiny"
   },
@@ -452,6 +488,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10281.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10281.png",
     "generation": "generation-i",
+    "base_spa": 145,
+    "base_spdef": 125,
     "dex_number": 4519,
     "variant": "shiny"
   },
@@ -476,6 +514,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10043.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10043.png",
     "generation": "generation-i",
+    "base_spa": 154,
+    "base_spdef": 100,
     "dex_number": 4520,
     "variant": "shiny"
   },
@@ -500,6 +540,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10044.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10044.png",
     "generation": "generation-i",
+    "base_spa": 194,
+    "base_spdef": 120,
     "dex_number": 4521,
     "variant": "shiny"
   },
@@ -524,6 +566,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10282.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10282.png",
     "generation": "generation-ii",
+    "base_spa": 143,
+    "base_spdef": 115,
     "dex_number": 4522,
     "variant": "shiny"
   },
@@ -548,6 +592,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10283.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10283.png",
     "generation": "generation-ii",
+    "base_spa": 89,
+    "base_spdef": 93,
     "dex_number": 4523,
     "variant": "shiny"
   },
@@ -572,6 +618,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10045.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10045.png",
     "generation": "generation-ii",
+    "base_spa": 165,
+    "base_spdef": 110,
     "dex_number": 4524,
     "variant": "shiny"
   },
@@ -596,6 +644,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10072.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10072.png",
     "generation": "generation-ii",
+    "base_spa": 55,
+    "base_spdef": 95,
     "dex_number": 4525,
     "variant": "shiny"
   },
@@ -620,6 +670,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10046.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10046.png",
     "generation": "generation-ii",
+    "base_spa": 65,
+    "base_spdef": 100,
     "dex_number": 4526,
     "variant": "shiny"
   },
@@ -644,6 +696,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10047.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10047.png",
     "generation": "generation-ii",
+    "base_spa": 40,
+    "base_spdef": 105,
     "dex_number": 4527,
     "variant": "shiny"
   },
@@ -668,6 +722,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10284.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10284.png",
     "generation": "generation-ii",
+    "base_spa": 40,
+    "base_spdef": 100,
     "dex_number": 4528,
     "variant": "shiny"
   },
@@ -692,6 +748,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10048.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10048.png",
     "generation": "generation-ii",
+    "base_spa": 140,
+    "base_spdef": 90,
     "dex_number": 4529,
     "variant": "shiny"
   },
@@ -716,6 +774,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10049.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10049.png",
     "generation": "generation-ii",
+    "base_spa": 95,
+    "base_spdef": 120,
     "dex_number": 4530,
     "variant": "shiny"
   },
@@ -740,6 +800,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10065.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10065.png",
     "generation": "generation-iii",
+    "base_spa": 145,
+    "base_spdef": 85,
     "dex_number": 4531,
     "variant": "shiny"
   },
@@ -764,6 +826,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10050.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10050.png",
     "generation": "generation-iii",
+    "base_spa": 130,
+    "base_spdef": 80,
     "dex_number": 4532,
     "variant": "shiny"
   },
@@ -788,6 +852,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10064.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10064.png",
     "generation": "generation-iii",
+    "base_spa": 95,
+    "base_spdef": 110,
     "dex_number": 4533,
     "variant": "shiny"
   },
@@ -812,6 +878,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10051.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10051.png",
     "generation": "generation-iii",
+    "base_spa": 165,
+    "base_spdef": 135,
     "dex_number": 4534,
     "variant": "shiny"
   },
@@ -836,6 +904,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10066.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10066.png",
     "generation": "generation-iii",
+    "base_spa": 85,
+    "base_spdef": 115,
     "dex_number": 4535,
     "variant": "shiny"
   },
@@ -860,6 +930,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10052.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10052.png",
     "generation": "generation-iii",
+    "base_spa": 55,
+    "base_spdef": 95,
     "dex_number": 4536,
     "variant": "shiny"
   },
@@ -884,6 +956,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10053.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10053.png",
     "generation": "generation-iii",
+    "base_spa": 60,
+    "base_spdef": 80,
     "dex_number": 4537,
     "variant": "shiny"
   },
@@ -908,6 +982,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10054.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10054.png",
     "generation": "generation-iii",
+    "base_spa": 80,
+    "base_spdef": 85,
     "dex_number": 4538,
     "variant": "shiny"
   },
@@ -932,6 +1008,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10055.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10055.png",
     "generation": "generation-iii",
+    "base_spa": 135,
+    "base_spdef": 80,
     "dex_number": 4539,
     "variant": "shiny"
   },
@@ -956,6 +1034,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10070.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10070.png",
     "generation": "generation-iii",
+    "base_spa": 110,
+    "base_spdef": 65,
     "dex_number": 4540,
     "variant": "shiny"
   },
@@ -980,6 +1060,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10087.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10087.png",
     "generation": "generation-iii",
+    "base_spa": 145,
+    "base_spdef": 105,
     "dex_number": 4541,
     "variant": "shiny"
   },
@@ -1004,6 +1086,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10067.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10067.png",
     "generation": "generation-iii",
+    "base_spa": 110,
+    "base_spdef": 105,
     "dex_number": 4542,
     "variant": "shiny"
   },
@@ -1028,6 +1112,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10056.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10056.png",
     "generation": "generation-iii",
+    "base_spa": 93,
+    "base_spdef": 83,
     "dex_number": 4543,
     "variant": "shiny"
   },
@@ -1052,6 +1138,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10306.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10306.png",
     "generation": "generation-iii",
+    "base_spa": 135,
+    "base_spdef": 120,
     "dex_number": 4544,
     "variant": "shiny"
   },
@@ -1076,6 +1164,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10057.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10057.png",
     "generation": "generation-iii",
+    "base_spa": 115,
+    "base_spdef": 60,
     "dex_number": 4545,
     "variant": "shiny"
   },
@@ -1100,6 +1190,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10307.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10307.png",
     "generation": "generation-iii",
+    "base_spa": 75,
+    "base_spdef": 60,
     "dex_number": 4546,
     "variant": "shiny"
   },
@@ -1124,6 +1216,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10074.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10074.png",
     "generation": "generation-iii",
+    "base_spa": 120,
+    "base_spdef": 80,
     "dex_number": 4547,
     "variant": "shiny"
   },
@@ -1148,6 +1242,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10089.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10089.png",
     "generation": "generation-iii",
+    "base_spa": 120,
+    "base_spdef": 90,
     "dex_number": 4548,
     "variant": "shiny"
   },
@@ -1172,6 +1268,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10076.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10076.png",
     "generation": "generation-iii",
+    "base_spa": 105,
+    "base_spdef": 110,
     "dex_number": 4549,
     "variant": "shiny"
   },
@@ -1196,6 +1294,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10062.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10062.png",
     "generation": "generation-iii",
+    "base_spa": 140,
+    "base_spdef": 150,
     "dex_number": 4550,
     "variant": "shiny"
   },
@@ -1220,6 +1320,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10063.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10063.png",
     "generation": "generation-iii",
+    "base_spa": 160,
+    "base_spdef": 120,
     "dex_number": 4551,
     "variant": "shiny"
   },
@@ -1244,6 +1346,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10079.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10079.png",
     "generation": "generation-iii",
+    "base_spa": 180,
+    "base_spdef": 100,
     "dex_number": 4552,
     "variant": "shiny"
   },
@@ -1268,6 +1372,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10308.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10308.png",
     "generation": "generation-iv",
+    "base_spa": 60,
+    "base_spdef": 90,
     "dex_number": 4553,
     "variant": "shiny"
   },
@@ -1292,6 +1398,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10088.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10088.png",
     "generation": "generation-iv",
+    "base_spa": 54,
+    "base_spdef": 96,
     "dex_number": 4554,
     "variant": "shiny"
   },
@@ -1316,6 +1424,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10058.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10058.png",
     "generation": "generation-iv",
+    "base_spa": 120,
+    "base_spdef": 95,
     "dex_number": 4555,
     "variant": "shiny"
   },
@@ -1340,6 +1450,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10309.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10309.png",
     "generation": "generation-iv",
+    "base_spa": 141,
+    "base_spdef": 85,
     "dex_number": 4556,
     "variant": "shiny"
   },
@@ -1364,6 +1476,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10059.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10059.png",
     "generation": "generation-iv",
+    "base_spa": 140,
+    "base_spdef": 70,
     "dex_number": 4557,
     "variant": "shiny"
   },
@@ -1388,6 +1502,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10310.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10310.png",
     "generation": "generation-iv",
+    "base_spa": 164,
+    "base_spdef": 70,
     "dex_number": 4558,
     "variant": "shiny"
   },
@@ -1412,6 +1528,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10060.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10060.png",
     "generation": "generation-iv",
+    "base_spa": 132,
+    "base_spdef": 105,
     "dex_number": 4559,
     "variant": "shiny"
   },
@@ -1436,6 +1554,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10068.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10068.png",
     "generation": "generation-iv",
+    "base_spa": 65,
+    "base_spdef": 115,
     "dex_number": 4560,
     "variant": "shiny"
   },
@@ -1460,6 +1580,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10285.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10285.png",
     "generation": "generation-iv",
+    "base_spa": 140,
+    "base_spdef": 100,
     "dex_number": 4561,
     "variant": "shiny"
   },
@@ -1484,6 +1606,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10311.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10311.png",
     "generation": "generation-iv",
+    "base_spa": 175,
+    "base_spdef": 141,
     "dex_number": 4562,
     "variant": "shiny"
   },
@@ -1508,6 +1632,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10312.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10312.png",
     "generation": "generation-iv",
+    "base_spa": 165,
+    "base_spdef": 130,
     "dex_number": 4563,
     "variant": "shiny"
   },
@@ -1532,6 +1658,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10286.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10286.png",
     "generation": "generation-v",
+    "base_spa": 110,
+    "base_spdef": 110,
     "dex_number": 4564,
     "variant": "shiny"
   },
@@ -1556,6 +1684,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10287.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10287.png",
     "generation": "generation-v",
+    "base_spa": 65,
+    "base_spdef": 65,
     "dex_number": 4565,
     "variant": "shiny"
   },
@@ -1580,6 +1710,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10069.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10069.png",
     "generation": "generation-v",
+    "base_spa": 80,
+    "base_spdef": 126,
     "dex_number": 4566,
     "variant": "shiny"
   },
@@ -1604,6 +1736,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10288.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10288.png",
     "generation": "generation-v",
+    "base_spa": 75,
+    "base_spdef": 99,
     "dex_number": 4567,
     "variant": "shiny"
   },
@@ -1628,6 +1762,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10289.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10289.png",
     "generation": "generation-v",
+    "base_spa": 55,
+    "base_spdef": 135,
     "dex_number": 4568,
     "variant": "shiny"
   },
@@ -1652,6 +1788,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10290.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10290.png",
     "generation": "generation-v",
+    "base_spa": 135,
+    "base_spdef": 90,
     "dex_number": 4569,
     "variant": "shiny"
   },
@@ -1676,6 +1814,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10291.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10291.png",
     "generation": "generation-v",
+    "base_spa": 175,
+    "base_spdef": 110,
     "dex_number": 4570,
     "variant": "shiny"
   },
@@ -1700,6 +1840,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10313.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10313.png",
     "generation": "generation-v",
+    "base_spa": 70,
+    "base_spdef": 105,
     "dex_number": 4571,
     "variant": "shiny"
   },
@@ -1724,6 +1866,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10292.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10292.png",
     "generation": "generation-vi",
+    "base_spa": 74,
+    "base_spdef": 115,
     "dex_number": 4572,
     "variant": "shiny"
   },
@@ -1748,6 +1892,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10293.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10293.png",
     "generation": "generation-vi",
+    "base_spa": 159,
+    "base_spdef": 125,
     "dex_number": 4573,
     "variant": "shiny"
   },
@@ -1772,6 +1918,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10294.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10294.png",
     "generation": "generation-vi",
+    "base_spa": 133,
+    "base_spdef": 81,
     "dex_number": 4574,
     "variant": "shiny"
   },
@@ -1796,6 +1944,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10295.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10295.png",
     "generation": "generation-vi",
+    "base_spa": 129,
+    "base_spdef": 86,
     "dex_number": 4575,
     "variant": "shiny"
   },
@@ -1820,6 +1970,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10296.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10296.png",
     "generation": "generation-vi",
+    "base_spa": 155,
+    "base_spdef": 148,
     "dex_number": 4576,
     "variant": "shiny"
   },
@@ -1844,6 +1996,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10314.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10314.png",
     "generation": "generation-vi",
+    "base_spa": 143,
+    "base_spdef": 101,
     "dex_number": 4577,
     "variant": "shiny"
   },
@@ -1868,6 +2022,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10326.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10326.png",
     "generation": "generation-vi",
+    "base_spa": 143,
+    "base_spdef": 101,
     "dex_number": 4578,
     "variant": "shiny"
   },
@@ -1892,6 +2048,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10297.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10297.png",
     "generation": "generation-vi",
+    "base_spa": 98,
+    "base_spdef": 120,
     "dex_number": 4579,
     "variant": "shiny"
   },
@@ -1916,6 +2074,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10298.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10298.png",
     "generation": "generation-vi",
+    "base_spa": 64,
+    "base_spdef": 106,
     "dex_number": 4580,
     "variant": "shiny"
   },
@@ -1940,6 +2100,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10299.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10299.png",
     "generation": "generation-vi",
+    "base_spa": 132,
+    "base_spdef": 163,
     "dex_number": 4581,
     "variant": "shiny"
   },
@@ -1964,6 +2126,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10300.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10300.png",
     "generation": "generation-vi",
+    "base_spa": 74,
+    "base_spdef": 93,
     "dex_number": 4582,
     "variant": "shiny"
   },
@@ -1988,6 +2152,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/718.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/718.png",
     "generation": "generation-vi",
+    "base_spa": 216,
+    "base_spdef": 85,
     "dex_number": 4583,
     "variant": "shiny"
   },
@@ -2012,6 +2178,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10075.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10075.png",
     "generation": "generation-vi",
+    "base_spa": 160,
+    "base_spdef": 110,
     "dex_number": 4584,
     "variant": "shiny"
   },
@@ -2036,6 +2204,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10315.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10315.png",
     "generation": "generation-vii",
+    "base_spa": 62,
+    "base_spdef": 107,
     "dex_number": 4585,
     "variant": "shiny"
   },
@@ -2060,6 +2230,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10316.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10316.png",
     "generation": "generation-vii",
+    "base_spa": 70,
+    "base_spdef": 120,
     "dex_number": 4586,
     "variant": "shiny"
   },
@@ -2084,6 +2256,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10302.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10302.png",
     "generation": "generation-vii",
+    "base_spa": 160,
+    "base_spdef": 116,
     "dex_number": 4587,
     "variant": "shiny"
   },
@@ -2108,6 +2282,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10317.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10317.png",
     "generation": "generation-vii",
+    "base_spa": 170,
+    "base_spdef": 115,
     "dex_number": 4588,
     "variant": "shiny"
   },
@@ -2132,6 +2308,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10318.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10318.png",
     "generation": "generation-vii",
+    "base_spa": 170,
+    "base_spdef": 115,
     "dex_number": 4589,
     "variant": "shiny"
   },
@@ -2156,6 +2334,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10319.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10319.png",
     "generation": "generation-vii",
+    "base_spa": 147,
+    "base_spdef": 80,
     "dex_number": 4590,
     "variant": "shiny"
   },
@@ -2180,6 +2360,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10303.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10303.png",
     "generation": "generation-viii",
+    "base_spa": 70,
+    "base_spdef": 65,
     "dex_number": 4591,
     "variant": "shiny"
   },
@@ -2204,6 +2386,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10320.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10320.png",
     "generation": "generation-ix",
+    "base_spa": 138,
+    "base_spdef": 85,
     "dex_number": 4592,
     "variant": "shiny"
   },
@@ -2228,6 +2412,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10321.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10321.png",
     "generation": "generation-ix",
+    "base_spa": 150,
+    "base_spdef": 96,
     "dex_number": 4593,
     "variant": "shiny"
   },
@@ -2252,6 +2438,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10322.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10322.png",
     "generation": "generation-ix",
+    "base_spa": 135,
+    "base_spdef": 125,
     "dex_number": 4594,
     "variant": "shiny"
   },
@@ -2276,6 +2464,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10323.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10323.png",
     "generation": "generation-ix",
+    "base_spa": 135,
+    "base_spdef": 125,
     "dex_number": 4595,
     "variant": "shiny"
   },
@@ -2300,6 +2490,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10324.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10324.png",
     "generation": "generation-ix",
+    "base_spa": 135,
+    "base_spdef": 125,
     "dex_number": 4596,
     "variant": "shiny"
   },
@@ -2324,6 +2516,8 @@
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10325.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/10325.png",
     "generation": "generation-ix",
+    "base_spa": 105,
+    "base_spdef": 101,
     "dex_number": 4597,
     "variant": "shiny"
   }

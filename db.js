@@ -266,6 +266,8 @@ function rerollBuddyIv(userId, stat, confirmMaxed = false, expectedBuddyId = nul
     atk: 'atk_iv',
     def: 'def_iv',
     hp: 'hp_iv',
+    spa: 'spa_iv',
+    spdef: 'spdef_iv',
     spd: 'spd_iv',
   };
   const ivField = ivFields[stat];
@@ -279,7 +281,8 @@ function rerollBuddyIv(userId, stat, confirmMaxed = false, expectedBuddyId = nul
     }
     const buddy = db.prepare(`
       SELECT catches.*, pokemon_forms.base_hp, pokemon_forms.base_atk,
-        pokemon_forms.base_def, pokemon_forms.base_spd
+        pokemon_forms.base_def, pokemon_forms.base_spa, pokemon_forms.base_spdef,
+        pokemon_forms.base_spd
       FROM catches
       LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
       WHERE catches.id = ? AND catches.user_id = ?
@@ -313,7 +316,7 @@ function rerollBuddyIv(userId, stat, confirmMaxed = false, expectedBuddyId = nul
         nextValues.max_hp,
         buddy.hp + (nextValues.max_hp - buddy.max_hp)
       );
-    } else {
+    } else if (['atk', 'def', 'spd'].includes(stat)) {
       const baseStat = {
         atk: buddy.base_atk,
         def: buddy.base_def,
@@ -619,6 +622,8 @@ const catchDefinitions = {
   hp_iv: 'INTEGER NOT NULL DEFAULT 0',
   atk_iv: 'INTEGER NOT NULL DEFAULT 0',
   def_iv: 'INTEGER NOT NULL DEFAULT 0',
+  spa_iv: 'INTEGER NOT NULL DEFAULT 0',
+  spdef_iv: 'INTEGER NOT NULL DEFAULT 0',
   spd_iv: 'INTEGER NOT NULL DEFAULT 0',
   ev_hp: 'INTEGER NOT NULL DEFAULT 0',
   ev_atk: 'INTEGER NOT NULL DEFAULT 0',
@@ -699,6 +704,8 @@ db.exec(`
     hp_iv INTEGER NOT NULL DEFAULT 0,
     atk_iv INTEGER NOT NULL DEFAULT 0,
     def_iv INTEGER NOT NULL DEFAULT 0,
+    spa_iv INTEGER NOT NULL DEFAULT 0,
+    spdef_iv INTEGER NOT NULL DEFAULT 0,
     spd_iv INTEGER NOT NULL DEFAULT 0,
     hp INTEGER NOT NULL DEFAULT 10,
     max_hp INTEGER NOT NULL DEFAULT 10,
@@ -734,6 +741,8 @@ db.exec(`
     hp_iv INTEGER NOT NULL DEFAULT 0,
     atk_iv INTEGER NOT NULL DEFAULT 0,
     def_iv INTEGER NOT NULL DEFAULT 0,
+    spa_iv INTEGER NOT NULL DEFAULT 0,
+    spdef_iv INTEGER NOT NULL DEFAULT 0,
     spd_iv INTEGER NOT NULL DEFAULT 0,
     hp INTEGER NOT NULL DEFAULT 10,
     max_hp INTEGER NOT NULL DEFAULT 10,
@@ -808,6 +817,8 @@ db.exec(`
     base_hp INTEGER NOT NULL,
     base_atk INTEGER NOT NULL,
     base_def INTEGER NOT NULL,
+    base_spa INTEGER NOT NULL DEFAULT 50,
+    base_spdef INTEGER NOT NULL DEFAULT 50,
     base_spd INTEGER NOT NULL,
     base_stat_total INTEGER NOT NULL,
     types TEXT NOT NULL,
@@ -1435,6 +1446,8 @@ ensureColumns('pokemon_forms', {
   slug: "TEXT NOT NULL DEFAULT ''",
   evolution_chain_id: 'INTEGER',
   is_custom: 'INTEGER NOT NULL DEFAULT 0',
+  base_spa: 'INTEGER NOT NULL DEFAULT 50',
+  base_spdef: 'INTEGER NOT NULL DEFAULT 50',
 });
 ensureColumns('autospawn_channels', {
   message_count: 'INTEGER NOT NULL DEFAULT 0',
@@ -1471,7 +1484,16 @@ db.exec(`
   FROM users
   WHERE common_streak > 0 AND id IS NOT NULL
 `);
+const catchColumnsBeforeMigration = new Set(
+  db.prepare('PRAGMA table_info(catches)').all().map((column) => column.name)
+);
 ensureColumns('catches', catchDefinitions);
+if (!catchColumnsBeforeMigration.has('spa_iv')) {
+  db.exec('UPDATE catches SET spa_iv = (random() & 2147483647) % 32');
+}
+if (!catchColumnsBeforeMigration.has('spdef_iv')) {
+  db.exec('UPDATE catches SET spdef_iv = (random() & 2147483647) % 32');
+}
 db.prepare(`
   INSERT INTO pokemon_user_seen_counts (user_id, pokemon_id, is_shiny, is_golden, seen_count)
   SELECT user_id, pokemon_id, is_shiny, is_golden, COUNT(*)
@@ -1498,12 +1520,17 @@ db.exec(`
   )
   WHERE in_team = 1 AND team_slot IS NULL;
 `);
+const marketColumnsBeforeMigration = new Set(
+  db.prepare('PRAGMA table_info(market)').all().map((column) => column.name)
+);
 ensureColumns('market', {
   amount: 'INTEGER NOT NULL DEFAULT 1',
   is_golden: 'INTEGER NOT NULL DEFAULT 0',
   hp_iv: 'INTEGER NOT NULL DEFAULT 0',
   atk_iv: 'INTEGER NOT NULL DEFAULT 0',
   def_iv: 'INTEGER NOT NULL DEFAULT 0',
+  spa_iv: 'INTEGER NOT NULL DEFAULT 0',
+  spdef_iv: 'INTEGER NOT NULL DEFAULT 0',
   spd_iv: 'INTEGER NOT NULL DEFAULT 0',
   experience: 'INTEGER NOT NULL DEFAULT 0',
   hp: 'INTEGER NOT NULL DEFAULT 10',
@@ -1512,6 +1539,12 @@ ensureColumns('market', {
   def: 'INTEGER NOT NULL DEFAULT 5',
   spd: 'INTEGER NOT NULL DEFAULT 5',
 });
+if (!marketColumnsBeforeMigration.has('spa_iv')) {
+  db.exec('UPDATE market SET spa_iv = (random() & 2147483647) % 32');
+}
+if (!marketColumnsBeforeMigration.has('spdef_iv')) {
+  db.exec('UPDATE market SET spdef_iv = (random() & 2147483647) % 32');
+}
 ensureColumns('market_sales', {
   is_golden: 'INTEGER NOT NULL DEFAULT 0',
   tax_rate: 'INTEGER NOT NULL DEFAULT 15',
@@ -1595,12 +1628,12 @@ function toMegaDisplayName(name) {
 const upsertPokemonForm = db.prepare(`
   INSERT INTO pokemon_forms (
     id, species_id, species_name, slug, name, is_default, is_legendary, is_mythical,
-    evolution_chain_id, evolution_stage, rarity, base_hp, base_atk, base_def, base_spd,
+    evolution_chain_id, evolution_stage, rarity, base_hp, base_atk, base_def, base_spa, base_spdef, base_spd,
     base_stat_total, types, is_water, sprite, shiny_sprite, generation, is_custom
   )
   VALUES (
     @id, @species_id, @species_name, @slug, @name, @is_default, @is_legendary, @is_mythical,
-    @evolution_chain_id, @evolution_stage, @rarity, @base_hp, @base_atk, @base_def, @base_spd,
+    @evolution_chain_id, @evolution_stage, @rarity, @base_hp, @base_atk, @base_def, @base_spa, @base_spdef, @base_spd,
     @base_stat_total, @types, @is_water, @sprite, @shiny_sprite, @generation, 0
   )
   ON CONFLICT(id) DO UPDATE SET
@@ -1617,6 +1650,8 @@ const upsertPokemonForm = db.prepare(`
     base_hp = excluded.base_hp,
     base_atk = excluded.base_atk,
     base_def = excluded.base_def,
+    base_spa = excluded.base_spa,
+    base_spdef = excluded.base_spdef,
     base_spd = excluded.base_spd,
     base_stat_total = excluded.base_stat_total,
     types = excluded.types,
@@ -1634,7 +1669,12 @@ const markCatalogId = db.prepare('INSERT INTO pokemon_catalog_import_ids (id) VA
 db.transaction(() => {
   db.exec('DELETE FROM pokemon_catalog_import_ids');
   for (const catalogEntry of pokemonCatalog) {
-    const pokemon = { ...catalogEntry, name: toMegaDisplayName(catalogEntry.name) };
+    const pokemon = {
+      ...catalogEntry,
+      name: toMegaDisplayName(catalogEntry.name),
+      base_spa: catalogEntry.base_spa ?? 50,
+      base_spdef: catalogEntry.base_spdef ?? 50,
+    };
     const rarity = pokemonRarityById.get(pokemon.id).rarity;
     const evolutionChainId = evolutionChainsBySpecies[pokemon.species_id]
       || persistedEvolutionChainsBySpecies.get(pokemon.species_id)
@@ -1713,13 +1753,17 @@ db.transaction(() => {
       db.prepare(`
         INSERT INTO pokemon_forms (
           id, species_id, species_name, slug, name, is_default, is_legendary, is_mythical,
-          evolution_chain_id, evolution_stage, rarity, base_hp, base_atk, base_def, base_spd,
-          base_stat_total, types, is_water, sprite, shiny_sprite, generation, is_custom
-        ) VALUES (?, ?, ?, ?, ?, 1, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'custom', 1)
-      `).run(
-        id, dex, record.name, record.slug, record.name, dex, record.rarity,
-        stat(source.base_hp, 50), stat(source.base_atk, 50), stat(source.base_def, 50), stat(source.base_spd, 50),
-        stat(source.base_hp, 50) + stat(source.base_atk, 50) + stat(source.base_def, 50) + stat(source.base_spd, 50),
+          evolution_chain_id, evolution_stage, rarity, base_hp, base_atk, base_def,
+          base_spa, base_spdef, base_spd, base_stat_total, types, is_water, sprite,
+          shiny_sprite, generation, is_custom
+        ) VALUES (?, ?, ?, ?, ?, 1, 0, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'custom', 1)
+        `).run(
+          id, dex, record.name, record.slug, record.name, dex, record.rarity,
+          stat(source.base_hp, 50), stat(source.base_atk, 50), stat(source.base_def, 50), stat(source.base_spd, 50),
+          stat(source.base_spa, 50), stat(source.base_spdef, 50),
+          stat(source.base_spd, 50),
+          stat(source.base_hp, 50) + stat(source.base_atk, 50) + stat(source.base_def, 50)
+            + stat(source.base_spa, 50) + stat(source.base_spdef, 50) + stat(source.base_spd, 50),
         types, source.is_water ? 1 : 0, record.sprite, record.shinySprite || record.sprite
       );
       form = getFormBySlug.get(record.slug);
@@ -2835,6 +2879,8 @@ db.exec(`
   );
 `);
 ensureColumns('user_pokemon_state_snapshots', {
+  spa_iv: 'INTEGER NOT NULL DEFAULT 0',
+  spdef_iv: 'INTEGER NOT NULL DEFAULT 0',
   ev_hp: 'INTEGER NOT NULL DEFAULT 0',
   ev_atk: 'INTEGER NOT NULL DEFAULT 0',
   ev_def: 'INTEGER NOT NULL DEFAULT 0',
@@ -2843,7 +2889,7 @@ ensureColumns('user_pokemon_state_snapshots', {
   ev_spe: 'INTEGER NOT NULL DEFAULT 0',
 });
 const SNAPSHOT_COLUMNS = 'user_id, pokemon_id, is_shiny, is_golden, experience, level, '
-  + 'hp_iv, atk_iv, def_iv, spd_iv, friendship, moves, sketched_moves, '
+  + 'hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv, friendship, moves, sketched_moves, '
   + 'ev_hp, ev_atk, ev_def, ev_spa, ev_spdef, ev_spe';
 const SNAPSHOT_OLD_VALUES = SNAPSHOT_COLUMNS.split(', ').map((column) => `OLD.${column}`).join(', ');
 db.exec(`
@@ -2898,6 +2944,8 @@ const DUPLICATE_CATCH_STATE_FIELDS = [
   'hp_iv',
   'atk_iv',
   'def_iv',
+  'spa_iv',
+  'spdef_iv',
   'spd_iv',
   'ev_hp',
   'ev_atk',
@@ -3012,7 +3060,7 @@ function rebaseTransferredPokemon(userId, catchId) {
     LIMIT 1
   `).get(userId, catchId, pokemon.species_id);
   const recipientCopy = db.prepare(`
-    SELECT hp_iv, atk_iv, def_iv, spd_iv, level, experience, friendship,
+    SELECT hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv, level, experience, friendship,
       ev_hp, ev_atk, ev_def, ev_spa, ev_spdef, ev_spe
     FROM catches
     WHERE user_id = ? AND id != ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
@@ -3028,6 +3076,8 @@ function rebaseTransferredPokemon(userId, catchId) {
   const hpIv = recipientCopy?.hp_iv ?? snapshot?.hp_iv ?? Math.floor(Math.random() * 32);
   const atkIv = recipientCopy?.atk_iv ?? snapshot?.atk_iv ?? Math.floor(Math.random() * 32);
   const defIv = recipientCopy?.def_iv ?? snapshot?.def_iv ?? Math.floor(Math.random() * 32);
+  const spaIv = recipientCopy?.spa_iv ?? snapshot?.spa_iv ?? Math.floor(Math.random() * 32);
+  const spdefIv = recipientCopy?.spdef_iv ?? snapshot?.spdef_iv ?? Math.floor(Math.random() * 32);
   const spdIv = recipientCopy?.spd_iv ?? snapshot?.spd_iv ?? Math.floor(Math.random() * 32);
   const maxHp = calculateStat(
     pokemon.base_hp ?? 50, hpIv, level, true, Boolean(pokemon.is_shiny), evs.hp
@@ -3043,12 +3093,14 @@ function rebaseTransferredPokemon(userId, catchId) {
   );
   db.prepare(`
     UPDATE catches
-    SET level = ?, experience = ?, hp_iv = ?, atk_iv = ?, def_iv = ?, spd_iv = ?,
+    SET level = ?, experience = ?, hp_iv = ?, atk_iv = ?, def_iv = ?,
+      spa_iv = ?, spdef_iv = ?, spd_iv = ?,
       friendship = ?, hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?,
       ev_hp = ?, ev_atk = ?, ev_def = ?, ev_spa = ?, ev_spdef = ?, ev_spe = ?
     WHERE id = ? AND user_id = ?
   `).run(
-    level, experience, hpIv, atkIv, defIv, spdIv, friendship, maxHp, maxHp, atk, def, spd,
+    level, experience, hpIv, atkIv, defIv, spaIv, spdefIv, spdIv, friendship,
+    maxHp, maxHp, atk, def, spd,
     evs.hp, evs.atk, evs.def, evs.spa, evs.spdef, evs.spe,
     catchId, userId
   );
@@ -3127,6 +3179,8 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
   const hpIv = Math.floor(Math.random() * 32);
   const atkIv = Math.floor(Math.random() * 32);
   const defIv = Math.floor(Math.random() * 32);
+  const spaIv = Math.floor(Math.random() * 32);
+  const spdefIv = Math.floor(Math.random() * 32);
   const spdIv = Math.floor(Math.random() * 32);
   const level = 1;
   const baseHp = pokemon.baseHp ?? 50;
@@ -3149,9 +3203,10 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
     const result = db.prepare(`
       INSERT INTO catches (
         user_id, pokemon_id, name, rarity, is_shiny, is_golden, level,
-        hp_iv, atk_iv, def_iv, spd_iv, hp, max_hp, atk, def, spd, in_team, team_slot, moves
+        hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv,
+        hp, max_hp, atk, def, spd, in_team, team_slot, moves
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
       pokemon.id,
@@ -3163,6 +3218,8 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
       hpIv,
       atkIv,
       defIv,
+      spaIv,
+      spdefIv,
       spdIv,
       maxHp,
       maxHp,
@@ -4791,7 +4848,9 @@ function getUserBuddyHistory(userId, sortBy = 'ivs') {
     SELECT * FROM catches WHERE user_id = ? AND ever_buddy = 1
   `).all(userId).map((mon) => ({
     ...mon,
-    iv_percent: ((mon.hp_iv + mon.atk_iv + mon.def_iv + mon.spd_iv) / 124) * 100,
+    iv_percent: (
+      (mon.hp_iv + mon.atk_iv + mon.def_iv + mon.spa_iv + mon.spdef_iv + mon.spd_iv) / 186
+    ) * 100,
   }));
   const compareIv = (a, b) => b.iv_percent - a.iv_percent || b.id - a.id;
   let compareRows = compareIv;
@@ -4839,12 +4898,19 @@ function getUserBuddy(userId) {
       pokemon_forms.id AS form_id, pokemon_forms.species_id,
       COALESCE(pokemon_forms.species_id, catches.pokemon_id)
         + CASE WHEN catches.is_shiny = 1 THEN 2000 ELSE 0 END AS dex_number,
-      pokemon_forms.base_hp, pokemon_forms.base_atk, pokemon_forms.base_def, pokemon_forms.base_spd
+      pokemon_forms.base_hp, pokemon_forms.base_atk, pokemon_forms.base_def,
+      pokemon_forms.base_spa, pokemon_forms.base_spdef, pokemon_forms.base_spd
     FROM catches
     LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
     WHERE catches.id = ? AND catches.user_id = ?
   `).get(buddyId, userId);
   if (!buddy) return null;
+  buddy.spa = calculateStat(
+    buddy.base_spa ?? 50, buddy.spa_iv, buddy.level, false, Boolean(buddy.is_shiny), buddy.ev_spa
+  );
+  buddy.spdef = calculateStat(
+    buddy.base_spdef ?? 50, buddy.spdef_iv, buddy.level, false, Boolean(buddy.is_shiny), buddy.ev_spdef
+  );
   if (buddy.is_golden) buddy.rarity = 'Golden';
   buddy.nickname = db.prepare('SELECT value FROM bot_settings WHERE key = ?')
     .get(`buddy_nickname:${userId}:${buddy.id}`)?.value || null;
@@ -5591,10 +5657,10 @@ function addCustomPokemon(name, rarityName, sprite = null) {
     db.prepare(`
       INSERT INTO pokemon_forms (
         id, species_id, species_name, slug, name, is_default, is_legendary, is_mythical,
-        evolution_stage, rarity, base_hp, base_atk, base_def, base_spd,
+        evolution_stage, rarity, base_hp, base_atk, base_def, base_spa, base_spdef, base_spd,
         base_stat_total, types, is_water, sprite, shiny_sprite, generation, is_custom
       )
-      VALUES (?, ?, ?, ?, ?, 1, ?, 0, 1, ?, 50, 50, 50, 50, 200, '["normal"]', 0, ?, ?, NULL, 1)
+      VALUES (?, ?, ?, ?, ?, 1, ?, 0, 1, ?, 50, 50, 50, 50, 50, 50, 300, '["normal"]', 0, ?, ?, NULL, 1)
     `).run(
       id,
       id,
@@ -6120,12 +6186,14 @@ function listOnMarket(sellerId, catchId, price) {
     const inserted = db.prepare(`
       INSERT INTO market (
         seller_id, pokemon_id, name, rarity, is_shiny, is_golden, level, price, amount,
-        hp_iv, atk_iv, def_iv, spd_iv, experience, hp, max_hp, atk, def, spd
+        hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv,
+        experience, hp, max_hp, atk, def, spd
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       sellerId, mon.pokemon_id, mon.name, mon.rarity, mon.is_shiny, mon.is_golden, mon.level, price,
-      mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spd_iv, mon.experience, mon.hp, mon.max_hp, mon.atk, mon.def, mon.spd
+      mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spa_iv, mon.spdef_iv, mon.spd_iv,
+      mon.experience, mon.hp, mon.max_hp, mon.atk, mon.def, mon.spd
     );
     db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(catchId);
     saveCatchStateSnapshot(sellerId, catchId);
@@ -6182,13 +6250,14 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceVariant = 
     const result = db.prepare(`
       INSERT INTO market (
         seller_id, pokemon_id, name, rarity, is_shiny, is_golden, level, price, amount,
-        hp_iv, atk_iv, def_iv, spd_iv, experience, hp, max_hp, atk, def, spd
+        hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv,
+        experience, hp, max_hp, atk, def, spd
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       sellerId, mon.pokemon_id, mon.name, mon.rarity, mon.is_shiny, mon.is_golden,
       mon.level, price, amount,
-      mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spd_iv, mon.experience,
+      mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spa_iv, mon.spdef_iv, mon.spd_iv, mon.experience,
       mon.hp, mon.max_hp, mon.atk, mon.def, mon.spd
     );
     const deleteCatches = db.prepare(
@@ -6317,10 +6386,10 @@ function restoreMarketListings(playerListings) {
   const restoreCatch = db.prepare(`
     INSERT INTO catches (
       user_id, pokemon_id, name, rarity, is_shiny, is_golden, level,
-      hp_iv, atk_iv, def_iv, spd_iv, experience,
+      hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv, experience,
       hp, max_hp, atk, def, spd, in_team, team_slot
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
   `);
   for (const listing of playerListings) {
     getUser(listing.seller_id);
@@ -6336,6 +6405,8 @@ function restoreMarketListings(playerListings) {
         listing.hp_iv,
         listing.atk_iv,
         listing.def_iv,
+        listing.spa_iv,
+        listing.spdef_iv,
         listing.spd_iv,
         listing.experience,
         listing.hp,
@@ -6401,15 +6472,17 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
     const insert = db.prepare(`
       INSERT INTO market (
         seller_id, pokemon_id, name, rarity, is_shiny, level, price,
-        hp_iv, atk_iv, def_iv, spd_iv, hp, max_hp, atk, def, spd
+        hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv, hp, max_hp, atk, def, spd
       )
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const listings = [];
     for (let index = 0; index < quantity; index += 1) {
       const hpIv = Math.floor(Math.random() * 32);
       const atkIv = Math.floor(Math.random() * 32);
       const defIv = Math.floor(Math.random() * 32);
+      const spaIv = Math.floor(Math.random() * 32);
+      const spdefIv = Math.floor(Math.random() * 32);
       const spdIv = Math.floor(Math.random() * 32);
       const maxHp = calculateStat(pokemon.base_hp, hpIv, 1, true, isShiny);
       const inserted = insert.run(
@@ -6422,6 +6495,8 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
         hpIv,
         atkIv,
         defIv,
+        spaIv,
+        spdefIv,
         spdIv,
         maxHp,
         maxHp,
@@ -6495,6 +6570,8 @@ function buyMarketItem(buyerId, listingId) {
       hp_iv: item.hp_iv,
       atk_iv: item.atk_iv,
       def_iv: item.def_iv,
+      spa_iv: item.spa_iv,
+      spdef_iv: item.spdef_iv,
       spd_iv: item.spd_iv,
     }, item.is_shiny, false, Boolean(item.is_golden));
     rebaseTransferredPokemon(buyerId, newCatchId);

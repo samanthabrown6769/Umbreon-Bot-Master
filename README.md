@@ -97,11 +97,17 @@ Use `.vote` to view your Vote Coin balance, streak, milestones, and voting link.
 
 The project ships with `discloud.config` (bot type, `index.js` entry, 256MB RAM, auto-restart) and `.discloudignore`.
 
-1. Zip the project (or use the Discloud VS Code extension / dashboard upload).
-2. Keep `.env` in the zip — dotenv reads it from the app filesystem.
-3. **First deploy:** temporarily remove `pokemon.sqlite` from `.discloudignore` to seed your data. **Later deploys:** keep it ignored — Discloud replaces files on every deploy, so an included database would wipe live data.
-4. `better-sqlite3` installs from prebuilt binaries; if the install ever fails on a native build, enable `APT=tools` in `discloud.config`.
-5. `RAM=256` needs a paid plan — on the free tier, change it to `RAM=100`. The bot loads its catalog data into memory, so watch for out-of-memory restarts on the free tier.
+To deploy automatically when changes are pushed to GitHub:
+
+1. In the Discloud dashboard, connect your GitHub account under **Settings → GitHub Integration** and grant access to this repository.
+2. Under **Applications → Upload → GitHub**, select this repository and the `master` branch, then deploy it. Discloud automatically redeploys on later pushes to the selected branch.
+3. Add the production environment variables in the Discloud upload settings. Do not commit or upload `.env`; it is ignored by Git and should stay that way.
+
+If the app was originally uploaded manually, connect it through the GitHub upload flow above to enable automatic redeploys. Pushes to another branch, such as a local branch not selected in Discloud, will not trigger deployment.
+
+For a manual deployment, zip the project or use the Discloud VS Code extension or dashboard upload. **First deploy:** temporarily remove `pokemon.sqlite` from `.discloudignore` to seed your data. **Later deploys:** keep it ignored so a deployment does not overwrite the live database.
+
+`better-sqlite3` installs from prebuilt binaries; if the install ever fails on a native build, enable `APT=tools` in `discloud.config`. `RAM=256` needs a paid plan — on the free tier, change it to `RAM=100`. The bot loads its catalog data into memory, so watch for out-of-memory restarts on the free tier.
 
 Make sure to add your bot to a server or open a direct message with it, to test the functionalities.
 
@@ -134,12 +140,12 @@ The event checklist and shop are configured separately in `events/halloween-2026
 - `.counters` / `.co` — View your Legendary and Shiny encounter counts since your last catch in each category for `.p` and `.f`; catching one resets your matching command/category counter.
 - `.worldboss register` / `.wb register` — register for the active World Boss at any time, even after the battle has started; registration locks in your current active team. Use `.worldboss update` / `.wb update` to replace that lineup with your current active team. Registered players can use `.worldboss fight` / `.wb fight` after the 2-minute wait to join the shared battle and attack with their registered team's move buttons. Use the **Forfeit Battle** button on your battle panel to leave your fight; Eternatus Eternamax has 50 million HP and other World Bosses have 10 million HP; claim pending rewards with `.wb claim` before entering another raid; there is no cooldown between moves
 - `.battle user <@user|id>` — spar against another trainer's team; switch your active Pokémon during battle, and the winner earns 200–2,000 Buddy/Exp. Share EXP.
-- `.buddy` / `.bud` / `.buddy set [shiny] <Pokémon form name|Pokédex number>` / `.buddy clear` — inspect, select any owned form by name or Pokédex number, select its shiny variant with the `shiny` prefix, or clear your buddy; higher-rarity catches grant more EXP. Copies of the same form and variant share IVs, level, EXP, stats, HP, moves, and held item; setting one as buddy synchronizes its copies.
+- `.buddy` / `.bud` / `.buddy set [shiny] <Pokémon form name|Pokédex number>` / `.buddy clear` — inspect, select any owned form by name or Pokédex number, select its shiny variant with the `shiny` prefix, or clear your buddy; the buddy card shows all six stats and IVs. Higher-rarity catches grant more EXP. Copies of the same form and variant share IVs, level, EXP, stats, HP, moves, and held item; setting one as buddy synchronizes its copies.
 - `.buddy list [ivs|stats|num]` — view buddy history with one entry per form and variant.
 - `.buddy info <Pokémon>` — view its current ability and open the Ability button to use an Ability Capsule or Ability Patch.
 - `.ability` / `.ab` — browse all abilities; `.ability <Pokémon name|Pokédex number>` lists that Pokémon's abilities, and `.ability <ability name>` shows its effect and Pokémon that can have it.
 - `.buddy nickname <name|reset>` — set or clear the nickname on your current buddy; the nickname appears on its Buddy card and moves embed.
-- `.buddy rr <atk|def|hp|spd|spe>` — spend 1 Vote Coin to reroll that buddy IV (0–31); `spe` is an alias for Speed (`spd`). Rerolling a perfect 31 IV requires button confirmation. Matching duplicate Pokémon inherit the updated IV and stats.
+- `.buddy rr <atk|def|hp|spa|spdef|spd|spe>` — spend 1 Vote Coin to reroll that buddy IV (0–31); `spe` is an alias for Speed (`spd`). Rerolling a perfect 31 IV requires button confirmation. Matching duplicate Pokémon inherit the updated IV and stats.
 - `.moves` — view the active buddy's equipped and learnable moves; use `.move replace <equipped move name|slot> <new move name>` to replace an equipped move, `.move delete <slot>` to clear a move slot for free, or `.move swap <slot> <slot>` to swap two equipped moves. Replacing a move uses the regular move-change cost; deleting and swapping slots are free. Gigantamax forms can learn the Max Moves matching their type(s), along with their form-specific G-Max move; Eternatus Eternamax can learn Max Moves.
 - `.battle npc 1` / `.b npc 1` — start the sequential regional Gym/Trial/Elite Four/Champion campaign with Brock; use `.npc list [region]` (or `.battle npc list [region]`) to browse challengers, `.battle npc volo` to challenge Volo's Giratina Origin team at any time, and `.league` to check progress. Switch Pokémon during battle; embeds show the active opponent's animated sprite and include a Forfeit Battle button. `.faction npc list` lists the battleable Grunts, Admins, and Leaders for every faction; `.faction battle` lists the challengers, and `.faction battle <trainer|faction>` challenges one by name. Faction NPCs have full Level 100 teams with 2×–3× combat stats; victories earn a random 1,000–10,000 base faction points (faction rank multipliers apply), and each challenger has a 1/1,000 chance to drop their faction icon. Drops are added to `.battle icons` and can be equipped with `.battle set-icon`. `.gym` remains the Kanto-only shortcut
 - Each faction headquarters has a **Shop** button. At Leader rank, buy that faction's one-time Golden Pokémon for 1.5 billion faction points: Plasma—Scraggy, Magma—Numel, Aqua—Carvanha, Rocket—Grimer, Yell—Galarian Zigzagoon, Skull—Yungoos, Flare—Litleo, Galactic—Croagunk, and Star—Varoom. Change factions with `.faction change <faction name>` after buying a Team Medallion in `.patreon shop` (1,000 Patreon Tokens; also `.shop buy team medallion`). Changing factions consumes one Medallion, resets rank and points to Recruit/0, and has a 30-day cooldown.
