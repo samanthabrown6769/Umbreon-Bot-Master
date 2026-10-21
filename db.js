@@ -4884,7 +4884,7 @@ function getUserTeam(userId) {
   assertUserId(userId);
   return db.prepare(
     `SELECT catches.*, pokemon_forms.name AS form_name, pokemon_forms.slug AS form_slug,
-      pokemon_forms.base_spa, pokemon_forms.base_spdef
+      pokemon_forms.base_spa, pokemon_forms.base_spdef, pokemon_forms.types
     FROM catches
     LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
     WHERE catches.user_id = ? AND catches.in_team = 1

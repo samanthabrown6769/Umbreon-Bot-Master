@@ -15902,7 +15902,13 @@ client.on('messageCreate', async (message) => {
         embed.setFooter({ text: "Set up your team for battling other trainers & NPC's" });
         return message.reply({ embeds: [embed] });
       }
-      if (action === 'expshare') {
+      if (action === 'enable' || action === 'disable') {
+        if (args[1]?.toLowerCase() !== 'expshare' || args.length > 2) {
+          return message.reply(`Usage: \`${PREFIX}team ${action} expshare\`.`);
+        }
+        args.splice(0, 2, 'expshare', action === 'enable' ? 'on' : 'off');
+      }
+      if (action === 'expshare' || action === 'enable' || action === 'disable') {
         const setting = args[1]?.toLowerCase();
         if (args.length > 2 || (setting && !['on', 'off'].includes(setting))) {
           return message.reply(`Usage: \`${PREFIX}team expshare [on|off]\`.`);
@@ -16110,19 +16116,44 @@ client.on('messageCreate', async (message) => {
         );
       }
       const embed = makeEmbed(`⚔️ ${message.author.username}'s Battle Team`, '', 0x34495e);
-      for (const pokemon of team) {
+      const teamAbilities = await Promise.all(team.map(async (pokemon) => {
+        if (pokemon.ability) return pokemon.ability;
+        try {
+          const abilities = await fetchPokemonAbilities(pokemon.pokemon_id);
+          return abilities.find((ability) => !ability.hidden)?.name || null;
+        } catch {
+          return null;
+        }
+      }));
+      const teamBlocks = team.map((pokemon, index) => {
         const sprite = getPokemonSpriteEmoji(pokemon);
-        embed.addFields({
-          name: `Slot ${pokemon.team_slot} ${sprite ? `${sprite} ` : ''}${pokemon.name} (Lv. ${pokemon.level})`,
-          value: `**HP:** ${pokemon.hp}/${pokemon.max_hp} | **ATK:** ${pokemon.atk} | ` +
-            `**DEF:** ${pokemon.def} | **SPA:** ${pokemon.spa} | **SPD:** ${pokemon.spdef} | **SPE:** ${pokemon.spd}\n` +
-            `*IVs:* ${pokemon.hp_iv}HP/${pokemon.atk_iv}Atk/${pokemon.def_iv}Def/` +
-            `${pokemon.spa_iv ?? 0}SpA/${pokemon.spdef_iv ?? 0}SpD/${pokemon.spd_iv}Spe\n` +
-            `*EVs:* ${pokemon.ev_hp || 0}HP/${pokemon.ev_atk || 0}Atk/${pokemon.ev_def || 0}Def/` +
-            `${pokemon.ev_spa || 0}SpA/${pokemon.ev_spdef || 0}SpD/${pokemon.ev_spe || 0}Spe\n` +
-            `**Held item:** ${pokemon.held_item || 'None'} | **Friendship:** 💖 ${pokemon.friendship ?? 0}`,
-        });
-      }
+        let types = [];
+        try {
+          types = JSON.parse(pokemon.types || '[]');
+        } catch {
+          types = [];
+        }
+        const nextLevelAt = experienceForNextLevel(pokemon.level);
+        return (
+          `[${pokemon.team_slot ?? index + 1}] <:pokeball:1367833067817009223> **${sprite ? `${sprite} ` : ''}${pokemon.name}**\n` +
+          `\`Lvl\` **${pokemon.level}**\n` +
+          `\`EXP\` ${pokemon.level >= 100 ? 'MAX' : `${(pokemon.experience || 0).toLocaleString()} / ${nextLevelAt.toLocaleString()}`}\n` +
+          `\`Type\` ${types.map((type) => getTypeEmoji(type)).join(' ') || 'Unknown'}\n` +
+          (teamAbilities[index] ? `\`Ability\` ${teamAbilities[index]}\n` : '') +
+          `\`Item\` ${pokemon.held_item || 'None'}\n` +
+          `⚔️ \`${pokemon.atk}\` 💥 \`${pokemon.spa}\`\n` +
+          `🛡️ \`${pokemon.def}\` 🔰 \`${pokemon.spdef}\`\n` +
+          `💖 \`${pokemon.max_hp}\` ⚡ \`${pokemon.spd}\`\n` +
+          `*IVs:* ${pokemon.hp_iv}HP/${pokemon.atk_iv}Atk/${pokemon.def_iv}Def/` +
+          `${pokemon.spa_iv ?? 0}SpA/${pokemon.spdef_iv ?? 0}SpD/${pokemon.spd_iv}Spe\n` +
+          `*EVs:* ${pokemon.ev_hp || 0}HP/${pokemon.ev_atk || 0}Atk/${pokemon.ev_def || 0}Def/` +
+          `${pokemon.ev_spa || 0}SpA/${pokemon.ev_spdef || 0}SpD/${pokemon.ev_spe || 0}Spe`
+        );
+      });
+      embed.setDescription(teamBlocks.join('\n\n'));
+      embed.setFooter({
+        text: `Exp. Share: ${getUser(userId).team_exp_share ? 'ON' : 'OFF'} • ${PREFIX}team enable|disable expshare`,
+      });
       return message.reply({ embeds: [embed] });
     }
 
