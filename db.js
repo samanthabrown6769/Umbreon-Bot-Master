@@ -473,7 +473,7 @@ const CB_CONFIG = Object.freeze({
   }),
   luck: Object.freeze({
     maxLvl: 10,
-    costForLvl: (level) => catchbotUpgradeCost(2500000, level),
+    costForLvl: () => 2500000,
     getStat: (level) => level,
   }),
 });

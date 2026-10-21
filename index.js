@@ -2000,7 +2000,7 @@ const EVENT_TICKET_SHINY_RATES = Object.freeze({
   patreon: { event: 1 / 100, nonEvent: 1 / 500 },
   standard: { event: 1 / 200, nonEvent: 1 / 1000 },
 });
-const CATCHBOT_SHINY_MULTIPLIER = 0.5;
+const CATCHBOT_SHINY_MULTIPLIER = 0.25;
 const GRAZZ_ENCOUNTERS_PER_BERRY = 50;
 const SPECIAL_SPAWN_EST_OFFSET_MS = 5 * 60 * 60 * 1000;
 const ENCOUNTER_RARITY_WEIGHTS = Object.freeze({
@@ -3920,7 +3920,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
             refreshWorldBossMoves(playerState, playerTeam);
           } else {
             const batonStages = playerState.batonPass && playerState.battle
-              ? { ...battleFx.fx(playerState.battle.mon).stages }
+              ? battleFx.takeBatonState(playerState.battle.mon)
               : null;
             playerState.batonPass = false;
             let teamStates = teamStatesByPlayer.get(playerId);
@@ -3949,7 +3949,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
             if (batonStages) {
               playerState.incomingBaton = batonStages;
               if (playerState.battle) {
-                Object.assign(battleFx.fx(playerState.battle.mon).stages, batonStages);
+                battleFx.giveBatonState(playerState.battle.mon, batonStages);
                 playerState.incomingBaton = null;
               }
             }
@@ -4043,7 +4043,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
       }
       const bs = getWorldBossBattle(playerState, currentBoss);
       if (playerState.incomingBaton) {
-        Object.assign(battleFx.fx(bs.mon).stages, playerState.incomingBaton);
+        battleFx.giveBatonState(bs.mon, playerState.incomingBaton);
         playerState.incomingBaton = null;
       }
       const chosenMove = playerState.moves[moveIndex];
@@ -5767,11 +5767,7 @@ function isBatonPending(party, activeIndex) {
 }
 
 function completeBatonSwitch(from, to) {
-  const fromFx = battleFx.fx(from);
-  const stages = { ...fromFx.stages };
-  fromFx.batonPass = false;
-  for (const key of Object.keys(fromFx.stages)) fromFx.stages[key] = 0;
-  Object.assign(battleFx.fx(to).stages, stages);
+  battleFx.giveBatonState(to, battleFx.takeBatonState(from));
 }
 
 function buildSparParty(userId) {
@@ -6321,7 +6317,9 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
     if (!form) {
       throw new Error(`Missing catalog entry for league Pokémon ${entry.form_id || entry.pokemon_id}.`);
     }
-    const level = challenge.factionNpc
+    const level = challenge.evStat
+      ? 1
+      : challenge.factionNpc
       ? 100
       : Math.min(entry.level, Math.max(10, averageLevel + 6 + Math.floor(challengeIndex / 2) * 2));
     const stats = combatStats({
@@ -16050,7 +16048,10 @@ client.on('messageCreate', async (message) => {
           );
         }
         const evIndex = EV_TRAINING_NPCS.findIndex((npc) => npc.evStat === requestedStat);
-        return startLeagueChallengeWithCooldown(message, userId, evIndex, EV_TRAINING_NPCS);
+        return runLeagueChallenge(message, userId, evIndex, EV_TRAINING_NPCS).catch((error) => {
+          console.error(`Failed to start EV battle for user ${userId}:`, error);
+          return message.reply('❌ The EV battle could not be started. Please try again later.');
+        });
       }
       const sparTargetArg = battleSub === 'user' || battleSub === 'player' ? args[1] : args[0];
       const sparTargetId = message.mentions.users.first()?.id

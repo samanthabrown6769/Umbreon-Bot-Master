@@ -759,6 +759,27 @@ function performMove(ctx, A, B, move, L, depth = 0) {
   else applyStatusMove(ctx, A, B, move, L, depth);
 }
 
+const BATON_PASSED_FLAGS = ['aquaRing', 'ingrain', 'focus', 'sub', 'magnetRise', 'healBlock', 'embargo', 'perish', 'cursed'];
+
+// Captures what Baton Pass hands over (stat stages plus lingering effects like Aqua Ring) and clears it from the user.
+function takeBatonState(mon) {
+  const f = fx(mon);
+  const state = { stages: { ...f.stages }, flags: {} };
+  for (const key of BATON_PASSED_FLAGS) {
+    if (f[key]) state.flags[key] = f[key];
+  }
+  f.batonPass = false;
+  for (const key of Object.keys(f.stages)) f.stages[key] = 0;
+  for (const key of Object.keys(state.flags)) f[key] = typeof f[key] === 'number' ? 0 : false;
+  return state;
+}
+
+function giveBatonState(mon, state) {
+  const f = fx(mon);
+  Object.assign(f.stages, state.stages);
+  Object.assign(f, state.flags);
+}
+
 // Returns false if the actor is prevented from acting; logs the reason.
 function canAct(ctx, A, B, move, L) {
   const m = A.mon; const f = fx(m); const bf = fx(B.mon);
@@ -904,7 +925,7 @@ function runSwitchTurn(ctx, enemyMove) {
 module.exports = {
   EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
   applyStatusMove, canAct, performMove, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
-  DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, RECHARGE_MOVES,
+  DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, RECHARGE_MOVES, takeBatonState, giveBatonState,
   summarize(mon) {
     const f = fx(mon);
     const parts = [];
