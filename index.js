@@ -3451,7 +3451,9 @@ async function postWorldBossAnnouncementToChannel(guild, channel, boss) {
 // Posts the boss in every World Boss server; one failing server does not block the rest.
 async function announceWorldBossEverywhere(boss, fallbackMessage = null) {
   const posted = [];
-  for (const guildId of WORLD_BOSS_GUILD_IDS) {
+  const configuredGuildIds = db.prepare('SELECT guild_id FROM world_boss_announcement_channels').all()
+    .map((row) => row.guild_id);
+  for (const guildId of new Set([...WORLD_BOSS_GUILD_IDS, ...configuredGuildIds])) {
     try {
       const guild = client.guilds.cache.get(guildId);
       if (!guild) throw new Error(`World Boss server ${guildId} is unavailable.`);
@@ -12259,7 +12261,9 @@ client.on('messageCreate', async (message) => {
         );
       }
       if (subCommand === 'register') {
-        const currentTeam = getUserTeam(userId);
+        if (message.guildId !== WORLD_BOSS_GUILD_ID) {
+          return message.reply('❌ World Boss registration is only available in the official server. You can still fight from anywhere once registered.');
+        }
         if (!currentTeam.length) {
           return message.reply(
             `❌ Add at least one Pokémon to your active team before registering. ` +
