@@ -5292,6 +5292,7 @@ async function askForBall(
       `(${rarityData.rateText})**\n` +
       catchRateText +
       `${Array.isArray(target.types) && target.types.length ? `Type: ${formatTypes(target.types)}\n` : ''}` +
+      `${target.id ? `Balldex: ${getBallDexIconsForCatch(userId, target.id)}\n` : ''}` +
       `${tracksRarityStreak ? `${catchDisplayRarity} streak: ${currentStreak}\n` : ''}` +
       (allowAnyUserCatch
         ? '\nThe catcher will use their own Poké Balls.'
