@@ -5291,7 +5291,7 @@ async function askForBall(
     )
     .setDescription(
       `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonFactionTeam(target.speciesId)?.emoji ? `${getPokemonFactionTeam(target.speciesId).emoji} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!` +
-      `${spawnBallDexIcons ? ` ${spawnBallDexIcons}` : ''}\n` +
+      `\n` +
       (allowAnyUserCatch ? 'Anyone can catch it with the buttons or by typing a ball name.\n' : '') +
       heldItemEncounterHint(target) +
       (target.researchToolsConsumed?.length
@@ -5330,6 +5330,7 @@ async function askForBall(
   const spawnMessage = inline
     ? makeInlineEncounterHost(inline.onEdit)
     : await message.channel.send({
+      content: spawnBallDexIcons || undefined,
       embeds: [embed],
       components: ballRows,
     });
