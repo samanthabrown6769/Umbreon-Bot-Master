@@ -2211,12 +2211,14 @@ function activateEncounterModifier(userId, modifier, amount) {
   return db.transaction(() => {
     const user = getUser(userId);
     const active = [
-      ['Repel', user.repel_encounters],
-      ['Super Repel', user.super_repel_encounters],
-      ['Max Repel', user.max_repel_encounters],
-      ['Honey', user.honey_encounters],
-    ].find(([, encounters]) => encounters > 0);
-    if (active) return { error: 'modifier_active', activeName: active[0] };
+      ['Repel', 'repel_encounters', user.repel_encounters],
+      ['Super Repel', 'super_repel_encounters', user.super_repel_encounters],
+      ['Max Repel', 'max_repel_encounters', user.max_repel_encounters],
+      ['Honey', 'honey_encounters', user.honey_encounters],
+    ].find(([, , encounters]) => encounters > 0);
+    if (active && active[1] !== item.activeField) {
+      return { error: 'modifier_active', activeName: active[0] };
+    }
 
     const addedEncounters = amount * 30;
     const activeCount = user[item.activeField];
@@ -10065,7 +10067,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}item info lootbox\` — View Lootbox ownership and reward chances\n` +
             `• \`${PREFIX}lb all\` / \`${PREFIX}open <box> all\` — Open all owned Lootboxes or all boxes of one type\n` +
             `• \`${PREFIX}lb all\` / \`${PREFIX}open <box> all\` — Open all owned Lootboxes or all boxes of one type\n` +
-            `• \`${PREFIX}repel\`, \`${PREFIX}superrepel\` / \`${PREFIX}sr\`, \`${PREFIX}maxrepel\` / \`${PREFIX}mr\`, \`${PREFIX}honey\` — Activate 30-encounter modifiers (one active at a time)\n` +
+            `• \`${PREFIX}repel\`, \`${PREFIX}superrepel\` / \`${PREFIX}sr\`, \`${PREFIX}maxrepel\` / \`${PREFIX}mr\`, \`${PREFIX}honey\` — Activate 30-encounter modifiers; stack the same modifier to extend it\n` +
             `• \`${PREFIX}hunt\` — View your daily catch target and reward\n` +
             `• \`${PREFIX}daily\` — Claim daily PokéCoins and balls\n` +
             `• \`${PREFIX}clan\` — Manage clans; use \`${PREFIX}clan hs\` for clan highscores\n` +
@@ -18010,7 +18012,7 @@ client.on('messageCreate', async (message) => {
             .setAuthor({ name: `${itemDetails.name} — Item Information` })
             .setDescription(
               `${itemDetails.name} ${itemDetails.description}. Each unit lasts for 30 land encounters. ` +
-              `Only one encounter modifier can be active at a time.\n\n` +
+              `You can stack more of the same modifier while it is active; different modifiers cannot be combined.\n\n` +
               (itemDetails.modifier === 'max_repel'
                 ? ''
                 : `**Land encounter weights:** ${formatEncounterWeights(itemDetails.modifier)}\n\n`) +
@@ -19945,7 +19947,7 @@ client.on('messageCreate', async (message) => {
       const activation = activateEncounterModifier(userId, modifier, amount);
       if (activation.error === 'modifier_active') {
         return message.reply(
-          `❌ **${activation.activeName}** is already active. Wait for its encounters to finish before using another modifier.`
+          `❌ **${activation.activeName}** is already active. Wait for its encounters to finish before using a different modifier.`
         );
       }
       if (activation.error === 'insufficient') {
