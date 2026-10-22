@@ -2830,10 +2830,12 @@ function getRarityInfo(
   if (!displayRaritySetting) {
     throw new Error(`No configuration exists for Pokémon catch rarity "${catchRarity}".`);
   }
-  const encounterRate = Math.round(rarity.encounter_rate * (isShiny ? 0.01 : 1));
+  const encounterRate = Math.round(rarity.encounter_rate);
   return {
     catchChance: displayRaritySetting.catch_chance,
-    rateText: encounterRateText || `${encounterRate}% encounter rate`,
+    rateText: isShiny || rarityName === 'Legendary'
+      ? '0% encounter rate'
+      : encounterRateText || `${encounterRate}% encounter rate`,
   };
 }
 
