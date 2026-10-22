@@ -437,10 +437,17 @@ const EGG_ONLY_SHINY_SPECIES_KEYS = new Set(
     ...BOX_ONLY_SHINY_SPECIES.map((entry) => entry.name),
   ].map((name) => name.toLowerCase())
 );
+// Paldea Legendaries only appear through event checklists, never from catching, fishing or swapping.
+const PALDEA_LEGENDARY_SPECIES = Object.freeze([
+  'Wo Chien', 'Chien Pao', 'Ting Lu', 'Chi Yu', 'Koraidon', 'Miraidon', 'Walking Wake', 'Iron Leaves',
+  'Okidogi', 'Munkidori', 'Fezandipiti', 'Ogerpon', 'Gouging Fire', 'Raging Bolt', 'Iron Boulder',
+  'Iron Crown', 'Terapagos', 'Pecharunt',
+]);
 // Explore exclusives never spawn outside of explore.
 const SPECIAL_SPAWN_RESERVED_SPECIES = Object.freeze([
   ...BASE_SPAWN_RESERVED_SPECIES,
   ...EGG_ONLY_SPECIES,
+  ...PALDEA_LEGENDARY_SPECIES,
   ...db.prepare(
     `SELECT species_name FROM pokemon_forms WHERE is_default = 1 AND species_id IN (${EXPLORE_EXCLUSIVE_SPECIES_IDS.map(() => '?').join(', ')})`
   ).all(...EXPLORE_EXCLUSIVE_SPECIES_IDS).map((row) => row.species_name),
@@ -2057,11 +2064,11 @@ const ICONS = {
   box: '📦',
 };
 
-// Without an event ticket, shinies are 1/200 (1/160 for patrons); see EVENT_TICKET_SHINY_RATES for ticket holders.
-const BASE_SHINY_RATE = 1 / 200;
+// Without an event ticket, shinies are 1/2000 (1/1000 for patrons); see EVENT_TICKET_SHINY_RATES for ticket holders.
+const BASE_SHINY_RATE = 1 / 2000;
 // Incense: +10% shiny encounter rate and +10% promo item drop rate while server charges last.
 const INCENSE_BOOST = 1.1;
-const PATREON_SHINY_RATE = 1 / 160;
+const PATREON_SHINY_RATE = 1 / 1000;
 const EVENT_TICKET_SHINY_RATES = Object.freeze({
   patreon: { event: 1 / 100, nonEvent: 1 / 500 },
   standard: { event: 1 / 200, nonEvent: 1 / 1000 },
@@ -7605,7 +7612,7 @@ async function handleStatsCommand(message, args) {
     `${EMOJIS.golden} **Promos claimed:** ${user.promos_claimed}\n` +
     `${EMOJIS.pokecoin} **PokéCoins earned:** ${user.pkc_earned.toLocaleString()}`;
   const battling =
-    `${DEFAULT_TRAINER_ICONS.brendan.emoji} **Icons unlocked:** ${user.icons_unlocked}\n` +
+    `${DEFAULT_TRAINER_ICONS.brendan.emoji} **Icons unlocked:** ${getUnlockedBattleIcons(target.id).length}\n` +
     `🏆 **Battles won:** ${user.battles_won}\n` +
     `💀 **Battles lost:** ${user.battles_lost}\n` +
     `⚡ **Max QB streak:** ${user.max_qb_streak}\n` +
@@ -9513,7 +9520,7 @@ client.on('messageCreate', async (message) => {
           .setColor(0xff69b4)
           .setTitle('🗳️ Vote Exclusives')
           .setDescription(
-            '**Shiny Box Pokémon** (10% drop chance per Shiny Box, only if you voted in the last 12 hours)\n' +
+            '**Shiny Box Pokémon** (only if you voted in the last 12 hours)\n' +
             `${BOX_ONLY_SHINY_SPECIES.map((entry) =>
               `• ${entry.name}${entry.patreonOnly ? ' (Patreon)' : ''}`
             ).join('\n')}\n\n` +
@@ -9522,16 +9529,16 @@ client.on('messageCreate', async (message) => {
       } else if (exclusiveType === 'patreon') {
         const shinyEggExclusives = EGG_RARE_HATCHES
           .filter((entry) => entry.patreonOnly && entry.isShiny)
-          .map((entry) => `• ${entry.name} (1/${entry.denominator} per Egg hatch)`);
+          .map((entry) => `• ${entry.name}`);
         const shinySwapExclusives = SWAP_EXCLUSIVE_SHINIES
           .filter((entry) => entry.patreonOnly)
-          .map((entry) => `• ${entry.name} (1/2,000 base chance per PokeSwap)`);
+          .map((entry) => `• ${entry.name}`);
         const shinyFishExclusives = FISH_EXCLUSIVE_SHINIES
           .filter((name) => FISH_PATREON_ONLY_SHINY_KEYS.has(name.toLowerCase()))
           .map((name) => `• ${name}`);
         const shinyBoxExclusives = BOX_ONLY_SHINY_SPECIES
           .filter((entry) => entry.patreonOnly)
-          .map((entry) => `• ${entry.name} (10% drop chance from a Shiny Box if you voted in the last 12 hours)`);
+          .map((entry) => `• ${entry.name}`);
         embed = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle('💖 Patreon-exclusive Shiny Pokémon')
@@ -9550,9 +9557,9 @@ client.on('messageCreate', async (message) => {
           .setColor(0x5865f2)
           .setTitle('🔄 PokeSwap Exclusives')
           .setDescription(
-            '**Swap-exclusive Shiny Pokémon** (each 1/2,000)\n' +
+            '**Swap-exclusive Shiny Pokémon**\n' +
             `${shinyExclusives}\n\n` +
-            `**Golden exclusive**\n${EMOJIS.golden} Goomy (1/5,000)`
+            `**Golden exclusive**\n${EMOJIS.golden} Goomy`
           );
       } else if (exclusiveType === 'fish') {
         embed = new EmbedBuilder()
@@ -9561,7 +9568,7 @@ client.on('messageCreate', async (message) => {
           .setDescription(
             `**Shiny Pokémon**\n${FISH_EXCLUSIVE_SHINIES.map((name) => `• ${name}${FISH_PATREON_ONLY_SHINY_KEYS.has(name.toLowerCase()) ? ' (Patreon)' : ''}`).join('\n')}\n\n` +
             `**Golden Pokémon**\n${FISH_EXCLUSIVE_GOLDENS.map((name) => `• ${EMOJIS.golden} ${name}`).join('\n')}\n\n` +
-            `Golden-exclusive fishing encounters are **1/${FISH_EXCLUSIVE_GOLDEN_DENOMINATOR.toLocaleString()}**; Golden Patreon raises this rate by 25%.`
+            `Golden-exclusive fishing encounters are rare; Golden Patreon raises this rate by 25%.`
           );
       } else if (exclusiveType === 'catchbot') {
         embed = new EmbedBuilder()
@@ -9573,14 +9580,14 @@ client.on('messageCreate', async (message) => {
               const spriteEmoji = getPokemonSpriteEmoji({ name: `Golden ${pokemon.name}` });
               return `${spriteEmoji ? `${spriteEmoji} ` : ''}${EMOJIS.golden} ${pokemon.name}`;
             }).join('\n')}\n\n` +
-            'Each CatchBot Pokémon has a **1/1,000** chance to be Golden at maximum Luck.'
+            'Each CatchBot Pokémon has a chance to be Golden at maximum Luck.'
           );
       } else {
         const formatPool = (names) => names.map((name) => `• ${name}`).join('\n');
         const formatSpecials = (entries) => entries
           .map((entry) =>
             `• ${entry.isGolden ? `${EMOJIS.golden} Golden ` : entry.isShiny ? 'Shiny ' : ''}` +
-            `${entry.name}${entry.patreonOnly ? ' (Patreon)' : ''} (1/${entry.denominator})`
+            `${entry.name}${entry.patreonOnly ? ' (Patreon)' : ''}`
           )
           .join('\n');
         embed = new EmbedBuilder()
@@ -10089,6 +10096,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}dailycatchers\` / \`${PREFIX}dc\` — View today's top 10 Pokémon catchers\n` +
             `• \`${PREFIX}counters\` / \`${PREFIX}co\` — View Legendary and Shiny encounter counts since the last catch for .p and .f\n` +
             `• \`${PREFIX}lb [amount|all]\` / \`${PREFIX}lootbox open [amount|all]\` — Open Lootboxes\n` +
+            `• \`${PREFIX}bd [pokemon name/number]\` — View your Balldex or one Pokémon's; \`${PREFIX}lb bd\` / \`${PREFIX}leaderboard balldex\` — Top completed balldexes\n` +
             `• \`${PREFIX}boxes\` — View the boxes you own and their quantities\n` +
             `• \`${PREFIX}open [box name] [amount|all]\` — Open boxes (no argument lists all box types)\n` +
             `• \`${PREFIX}shop buy <number|item> [amount]\` / \`${PREFIX}s b <number|item> [amount]\` — Buy shop items\n` +
@@ -20008,7 +20016,7 @@ client.on('messageCreate', async (message) => {
                 `Swap cost: ${EMOJIS.pokecoin} **${Math.round(5000 * (1 - getPatreonPerks(userId).swapDiscount)).toLocaleString()} per swap**\n\n` +
                 `• Every 20 swaps adds **+1%** to your multiplier (**10% max**).\n` +
                 `• Your multiplier increases your Shiny/Golden swap odds.\n` +
-                `• The multiplier resets to **0%** at 12 AM EST every day.\n` +
+                `• The multiplier resets to **0%** at 12 AM EST (5 AM UTC) every day.\n` +
                 `• Your multiplier resets <t:${nextReset}:F>.\n\n` +
                 `${EMOJIS.golden} **Current Swap Golden:** ${EMOJIS.golden} **Golden Goomy**`
               )],
@@ -20047,8 +20055,8 @@ client.on('messageCreate', async (message) => {
           const multiplier = getSwapMultiplier(swapsToday);
           const shinyBonus = isShiny ? 1.35 * 1.25 : 1;
           const goldenBonus = isGolden ? 1.65 * 1.25 : 1;
-          const shinyChance = Math.min(1, multiplier * shinyBonus / 2000);
-          const goldenChance = Math.min(1, multiplier * goldenBonus * (1 + swapPerks.goldenBoost) / 5000);
+          const shinyChance = Math.min(1, multiplier * shinyBonus / 4000);
+          const goldenChance = Math.min(1, multiplier * goldenBonus * (1 + swapPerks.goldenBoost) / 10000);
           const exclusiveShinyHits = SWAP_EXCLUSIVE_SHINIES.filter((exclusive) =>
             (!exclusive.patreonOnly || user.has_patreon)
             && Math.random() < shinyChance
@@ -21599,6 +21607,38 @@ client.on('messageCreate', async (message) => {
       });
     }
 
+    if (command === 'leaderboard' || (command === 'lb' && ['balldex', 'bd'].includes(args[0]?.toLowerCase()))) {
+      if (!['balldex', 'bd'].includes(args[0]?.toLowerCase()) || args.length > 1) {
+        return message.reply(`Usage: \`${PREFIX}leaderboard balldex\` (alias \`${PREFIX}lb bd\`).`);
+      }
+      const ballKeys = BALLDEX_BALLS.map((ball) => ball.key);
+      const rows = db.prepare(`
+        SELECT user_id, COUNT(*) AS completed FROM (
+          SELECT catches.user_id, forms.species_id
+          FROM catches
+          JOIN pokemon_forms AS forms ON forms.id = catches.pokemon_id
+          WHERE catches.caught_ball IN (${ballKeys.map(() => '?').join(', ')})
+          GROUP BY catches.user_id, forms.species_id
+          HAVING COUNT(DISTINCT catches.caught_ball) = ?
+        )
+        GROUP BY user_id
+        ORDER BY completed DESC, user_id ASC
+        LIMIT 10
+      `).all(...ballKeys, ballKeys.length);
+      const totalSpecies = db.prepare('SELECT COUNT(*) AS c FROM pokemon_forms WHERE is_default = 1').get().c;
+      const lines = await Promise.all(rows.map(async (row, index) => {
+        const user = await client.users.fetch(row.user_id).catch(() => null);
+        return `**${index + 1}.** ${user?.username || row.user_id} — **${row.completed.toLocaleString()}**/${totalSpecies.toLocaleString()}`;
+      }));
+      return message.reply({
+        embeds: [new EmbedBuilder()
+          .setColor(0x0099ff)
+          .setTitle('🏆 Balldex Leaderboard — Top 10')
+          .setDescription(lines.length ? lines.join('\n') : '*Nobody has completed a balldex yet.*')
+          .setFooter({ text: 'Completed balldexes = species caught in every ball type' })],
+      });
+    }
+
     if (command === 'lb' || command === 'lootbox') {
       if (args.length > 2 || (args[0] && args[0].toLowerCase() !== 'open' && args.length > 1)) {
         return message.reply(`Usage: \`${PREFIX}lb [amount|all]\` or \`${PREFIX}lootbox open [amount|all]\`.`);
@@ -22048,11 +22088,21 @@ client.once('clientReady', () => {
   const spawnAndScheduleNextHour = () => {
     setTimeout(async () => {
       try {
-        const regularBosses = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny);
-        const shinyBosses = WORLD_BOSS_POOL.filter((entry) => entry.isShiny);
-        const template = Math.random() < 0.05
-          ? shinyBosses[Math.floor(Math.random() * shinyBosses.length)]
-          : regularBosses[Math.floor(Math.random() * regularBosses.length)];
+        const isEternamax = (entry) => /eternamax|eternatus/i.test(entry.name);
+        const regularBosses = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny && !isEternamax(entry));
+        const shinyBosses = WORLD_BOSS_POOL.filter((entry) => entry.isShiny && !isEternamax(entry));
+        // Eternamax spawns once per UTC day at an hour derived from the date, so it survives restarts.
+        const nowDate = new Date();
+        const dayNumber = Math.floor(nowDate.getTime() / 86400000);
+        const eternamaxHour = Math.floor(
+          (((Math.imul(dayNumber ^ 0x9e3779b9, 2654435761) >>> 0) ^ (dayNumber * 40503)) >>> 0) % 24
+        );
+        const eternamaxTemplate = WORLD_BOSS_POOL.find((entry) => !entry.isShiny && isEternamax(entry));
+        const template = eternamaxTemplate && nowDate.getUTCHours() === eternamaxHour
+          ? eternamaxTemplate
+          : Math.random() < 0.05
+            ? shinyBosses[Math.floor(Math.random() * shinyBosses.length)]
+            : regularBosses[Math.floor(Math.random() * regularBosses.length)];
         const previousBoss = getActiveWorldBoss();
         if (previousBoss) {
           await updateWorldBossAnnouncement(

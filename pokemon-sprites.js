@@ -163,17 +163,8 @@ function setSpriteOverrides(overrides) {
   spriteOverrides = overrides;
 }
 
-const SPRITE_RESIZE_WIDTH = 120;
-
-// Only the large pokestats.gg artwork is resized so it matches the animated sprite size.
-function resizeSprite(url) {
-  if (typeof url !== 'string' || !url.startsWith('https://assets.pokestats.gg/')) return url;
-  const source = url.replace(/^https?:\/\//, '');
-  return `https://images.weserv.nl/?url=${encodeURIComponent(source)}&w=${SPRITE_RESIZE_WIDTH}&output=png`;
-}
-
 function getPokemonShowdownSprite(slug, isShiny = false, fallback = null) {
-  return resizeSprite(getRawPokemonShowdownSprite(slug, isShiny, fallback));
+  return getRawPokemonShowdownSprite(slug, isShiny, fallback);
 }
 
 function getRawPokemonShowdownSprite(slug, isShiny = false, fallback = null) {
