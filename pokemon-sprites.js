@@ -147,6 +147,7 @@ const CUSTOM_SPRITES = {
   'hatterene-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/10221.webp',
   'butterfree-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/10198.webp',
   'pikachu-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/10199.webp',
+  'raging-bolt': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1021.webp',
 };
 const CUSTOM_SHINY_SPRITES = {
   'iron-valiant': 'https://res.cloudinary.com/apffqia5/image/upload/v1792084062/shiny_iron_valiant.gif',
@@ -185,6 +186,7 @@ const CUSTOM_SHINY_SPRITES = {
   'hatterene-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/shiny/10221.webp',
   'butterfree-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/shiny/10198.webp',
   'pikachu-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/shiny/10199.webp',
+  'raging-bolt': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/1021.webp',
 };
 
 function showdownSpriteSlug(slug) {
