@@ -5,3 +5,7 @@ node_modules
 pokemon.sqlite.bak-*
 
 yarn.lock
+Umbreon Bot VSC/
+umbreon-vsc/
+*.zip
+pokemon.sqlite-journal
