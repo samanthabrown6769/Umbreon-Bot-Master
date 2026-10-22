@@ -1886,7 +1886,7 @@ function getBallDexCaughtMap(userId) {
 
 function formatBallDexRow(caughtBalls) {
   const owned = caughtBalls || new Set();
-  const icons = BALLDEX_BALLS.map((ball) => (owned.has(ball.key) ? ball.unlocked : ball.locked)).join(' ');
+  const icons = BALLDEX_BALLS.map((ball) => (owned.has(ball.key) ? ball.unlocked : ball.locked)).join('');
   const count = BALLDEX_BALLS.filter((ball) => owned.has(ball.key)).length;
   return { icons, count };
 }
