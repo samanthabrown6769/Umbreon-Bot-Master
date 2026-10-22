@@ -16800,8 +16800,8 @@ client.on('messageCreate', async (message) => {
               name: 'Fishing',
               value:
                 `• ${EMOJIS.oldrod} **Rod:** ${bagUser.fish_rods}\n` +
-                `• ${EMOJIS.pokeLure} **Poké Lures:** ${bagUser.active_poke_lures.toLocaleString()}\n` +
-                `• ${EMOJIS.mistysLure} **Misty's Lures:** ${bagUser.active_mistys_lures.toLocaleString()}`,
+                `• ${EMOJIS.pokeLure} **Poké Lures:** ${(ownedItems.get('Poké Lure') || 0).toLocaleString()} (${bagUser.active_poke_lures.toLocaleString()} charges)\n` +
+                `• ${EMOJIS.mistysLure} **Misty's Lures:** ${(ownedItems.get("Misty's Lure") || 0).toLocaleString()} (${bagUser.active_mistys_lures.toLocaleString()} charges)`,
               inline: true,
             },
             {

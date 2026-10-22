@@ -875,7 +875,9 @@ function endOfTurn(ctx) {
     if (mon.hp > 0 && f.cursed) { const d = Math.max(1, Math.floor(mon.max_hp / 4)); mon.hp -= d; L(`${mon.name} is afflicted by the curse for **${d}** damage.`); }
     if (mon.hp > 0 && f.nightmare && f.status === 'slp') { const d = Math.max(1, Math.floor(mon.max_hp / 4)); mon.hp -= d; L(`${mon.name} is locked in a nightmare for **${d}** damage.`); }
     if (mon.hp > 0 && f.octolock) { changeStage(ctx, mon, side, 'def', -1, L); changeStage(ctx, mon, side, 'spdef', -1, L); }
-    if (mon.hp > 0 && (f.aquaRing || f.ingrain) && mon.hp < mon.max_hp) healMon(mon, mon.max_hp / 16, L);
+    for (const healingFlag of ['aquaRing', 'ingrain']) {
+      if (mon.hp > 0 && f[healingFlag] && mon.hp < mon.max_hp) healMon(mon, mon.max_hp / 16, L);
+    }
     if (mon.hp > 0 && f.yawn) { f.yawn -= 1; if (f.yawn <= 0) { f.yawn = 0; inflictStatus(ctx, mon, side, 'slp', L); } }
     if (mon.hp > 0 && f.perish) {
       f.perish -= 1;
