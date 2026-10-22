@@ -1860,6 +1860,43 @@ const BALL_CONFIG = {
   dv: { name: 'Diveball', column: 'diveballs', bonus: 0, usageColumn: null, emoji: EMOJIS.diveball, buttonEmoji: { name: 'diveball', id: '1560438056346198077' }, image: 'dive-ball.png', fishingOnly: true, catchChance: 85 },
 };
 
+const BALLDEX_BALLS = [
+  { key: 'pb', locked: '<:pokeballlocked:1562837019812434080>', unlocked: '<:pokeballunlocked:1562837059016597564>' },
+  { key: 'gb', locked: '<:greatballlocked:1562837018050830336>', unlocked: '<:greatballunlocked:1562837055048777869>' },
+  { key: 'ub', locked: '<:ultraballlocked:1562837015966384288>', unlocked: '<:ultraballunlocked:1562837057150132328>' },
+  { key: 'prb', locked: '<:premierballlocked:1562837013051211859>', unlocked: '<:premierballunlocked:1562837053857857566>' },
+  { key: 'mb', locked: '<:masterballlocked:1562837011750981682>', unlocked: '<:masterballunlocked:1562837052041728052>' },
+];
+
+// Shiny, golden and regular catches are merged per species.
+function getBallDexCaughtMap(userId) {
+  const caughtBySpecies = new Map();
+  const rows = db.prepare(`
+    SELECT DISTINCT forms.species_id, catches.caught_ball
+    FROM catches
+    JOIN pokemon_forms AS forms ON forms.id = catches.pokemon_id
+    WHERE catches.user_id = ? AND catches.caught_ball IS NOT NULL
+  `).all(userId);
+  for (const row of rows) {
+    if (!caughtBySpecies.has(row.species_id)) caughtBySpecies.set(row.species_id, new Set());
+    caughtBySpecies.get(row.species_id).add(row.caught_ball);
+  }
+  return caughtBySpecies;
+}
+
+function formatBallDexRow(caughtBalls) {
+  const owned = caughtBalls || new Set();
+  const icons = BALLDEX_BALLS.map((ball) => (owned.has(ball.key) ? ball.unlocked : ball.locked)).join(' ');
+  const count = BALLDEX_BALLS.filter((ball) => owned.has(ball.key)).length;
+  return { icons, count };
+}
+
+function getBallDexIconsForCatch(userId, pokemonFormId) {
+  const speciesId = db.prepare('SELECT species_id FROM pokemon_forms WHERE id = ?').get(pokemonFormId)?.species_id;
+  if (!speciesId) return '';
+  return formatBallDexRow(getBallDexCaughtMap(userId).get(speciesId)).icons;
+}
+
 const HELD_ITEM_EMOJI = '<:helditem:1561412843272937472>';
 function factionLogoPrefix(pokemon) {
   const emoji = getPokemonFactionTeam(pokemon?.speciesId ?? pokemon?.species_id)?.emoji;
@@ -5632,6 +5669,11 @@ async function askForBall(
           `gained **${teamAmount.toLocaleString()}** EXP!`
         );
       }
+    }
+    const ballDexIcons = getBallDexIconsForCatch(userId, target.id);
+    if (ballDexIcons) {
+      if (experienceLines.length) experienceLines[0] += ` ${ballDexIcons}`;
+      else experienceLines.push(ballDexIcons);
     }
     const experienceMessage = experienceLines.join('\n');
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
@@ -13981,6 +14023,116 @@ client.on('messageCreate', async (message) => {
           await pokedexMessage.edit({ components: disabled });
         } catch (error) {
           console.error('Failed to disable Pokédex controls:', error);
+        }
+      });
+      return;
+    }
+
+    if (command === 'balldex' || command === 'bd') {
+      const targetUser = message.mentions.users.first() || message.author;
+      const species = db.prepare(`
+        SELECT species_id, name FROM pokemon_forms WHERE is_default = 1 ORDER BY species_id
+      `).all();
+      const caughtBySpecies = getBallDexCaughtMap(targetUser.id);
+      const isComplete = (speciesId) => (caughtBySpecies.get(speciesId)?.size || 0) >= BALLDEX_BALLS.length;
+      const totalComplete = species.filter((entry) => isComplete(entry.species_id)).length;
+      const textArgs = args.filter((argument) => !/^<@!?\d+>$/.test(argument));
+
+      if (textArgs[0]?.toLowerCase() === 'status') {
+        const ballTotals = BALLDEX_BALLS.map((ball) => {
+          const count = species.filter((entry) => caughtBySpecies.get(entry.species_id)?.has(ball.key)).length;
+          return `${ball.unlocked} ${count}/${species.length}`;
+        });
+        return message.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x0099ff)
+            .setAuthor({ name: `${targetUser.username}'s Balldex`, iconURL: targetUser.displayAvatarURL() })
+            .setDescription(`Completed balldexes: **${totalComplete}/${species.length}**\n\n${ballTotals.join('\n')}`)],
+        });
+      }
+
+      const query = textArgs.join(' ').trim().toLowerCase();
+      const pageSize = 18;
+      let visibleSpecies = species;
+      if (query) {
+        visibleSpecies = /^\d+$/.test(query)
+          ? species.filter((entry) => entry.species_id === Number(query))
+          : species.filter((entry) => entry.name.toLowerCase() === query);
+        if (!visibleSpecies.length) {
+          return message.reply(`No Pokémon found for \`${query}\`.`);
+        }
+      }
+      const totalPages = Math.max(1, Math.ceil(visibleSpecies.length / pageSize));
+      const requestedPage = !query ? Number(args.find((argument) => /^\d+$/.test(argument))) : 1;
+      let currentPage = Number.isSafeInteger(requestedPage) && requestedPage > 0
+        ? Math.min(requestedPage, totalPages)
+        : 1;
+
+      const pageEmbed = () => {
+        const entries = visibleSpecies.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+        const completedOnPage = entries.filter((entry) => isComplete(entry.species_id)).length;
+        const embed = new EmbedBuilder()
+          .setColor(0x0099ff)
+          .setDescription(
+            `Displaying Pokémon #${entries[0].species_id} - ${entries[entries.length - 1].species_id}\n\n` +
+            `🎊 Total BDs complete (all pages): ${totalComplete}\n` +
+            `📋 **Count:** ${completedOnPage} out of ${entries.length} completed on this page`
+          )
+          .addFields(entries.map((entry) => {
+            const { icons, count } = formatBallDexRow(caughtBySpecies.get(entry.species_id));
+            const sprite = getPokemonSpriteEmoji({ name: entry.name });
+            return {
+              name: `${sprite ? `${sprite} ` : ''}${entry.name} #${entry.species_id}`,
+              value: `${icons} \`[${count}/${BALLDEX_BALLS.length}]\``,
+              inline: true,
+            };
+          }))
+          .setFooter({
+            text: `Page ${currentPage}/${totalPages} • Shiny & regular Pokémon balldexes are merged\n` +
+              `Quick summary of completions: ${PREFIX}bd status\n` +
+              `View a single Pokémon: ${PREFIX}bd {pokemon name/number}`,
+          });
+        return embed;
+      };
+      const pageButtons = () => totalPages > 1
+        ? [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('balldex:first').setEmoji('⏪').setStyle(ButtonStyle.Secondary).setDisabled(currentPage === 1),
+          new ButtonBuilder().setCustomId('balldex:prev').setEmoji('⬅️').setStyle(ButtonStyle.Primary).setDisabled(currentPage === 1),
+          new ButtonBuilder().setCustomId('balldex:next').setEmoji('➡️').setStyle(ButtonStyle.Primary).setDisabled(currentPage === totalPages),
+          new ButtonBuilder().setCustomId('balldex:last').setEmoji('⏩').setStyle(ButtonStyle.Secondary).setDisabled(currentPage === totalPages)
+        )]
+        : [];
+
+      const balldexMessage = await message.reply({ embeds: [pageEmbed()], components: pageButtons() });
+      if (totalPages === 1) return;
+      const collector = balldexMessage.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 90000,
+      });
+      collector.on('collect', async (interaction) => {
+        try {
+          if (interaction.user.id !== message.author.id) {
+            await interaction.reply({ content: `Use \`${PREFIX}bd\` yourself to browse the Balldex.`, ephemeral: true });
+            return;
+          }
+          if (interaction.customId === 'balldex:first') currentPage = 1;
+          else if (interaction.customId === 'balldex:prev') currentPage = Math.max(1, currentPage - 1);
+          else if (interaction.customId === 'balldex:next') currentPage = Math.min(totalPages, currentPage + 1);
+          else if (interaction.customId === 'balldex:last') currentPage = totalPages;
+          await interaction.update({ embeds: [pageEmbed()], components: pageButtons() });
+        } catch (error) {
+          console.error('Failed to update Balldex page:', error);
+        }
+      });
+      collector.on('end', async () => {
+        try {
+          await balldexMessage.edit({
+            components: pageButtons().map((row) => new ActionRowBuilder().addComponents(
+              row.components.map((button) => ButtonBuilder.from(button).setDisabled(true))
+            )),
+          });
+        } catch (error) {
+          console.error('Failed to disable Balldex controls:', error);
         }
       });
       return;
