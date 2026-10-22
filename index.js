@@ -11811,12 +11811,8 @@ client.on('messageCreate', async (message) => {
           swaptokens: 'swap_tokens',
           questresetscroll: 'quest_reset_scrolls',
           questresetscrolls: 'quest_reset_scrolls',
-          pokelure: 'active_poke_lures',
-          pokelures: 'active_poke_lures',
-          poklure: 'active_poke_lures',
-          poklures: 'active_poke_lures',
-          mistyslure: 'active_mistys_lures',
-          mistyslures: 'active_mistys_lures',
+          pokelurecharges: 'active_poke_lures',
+          mistyslurecharges: 'active_mistys_lures',
           amuletcoin: 'amulet_coins',
           amuletcoins: 'amulet_coins',
         };
@@ -11908,7 +11904,7 @@ client.on('messageCreate', async (message) => {
           || findQuestItem(itemQuery)
           || ROTOM_ITEMS.find((name) => name.toLowerCase().replace(/[^a-z0-9]/g, '') === item)
           || findUserItemName(itemQuery)
-          || ({ i: 'Incubator', si: 'Super Incubator', inc: 'Incense' }[item]);
+          || ({ i: 'Incubator', si: 'Super Incubator', inc: 'Incense', pokelure: 'Poké Lure', pokelures: 'Poké Lure', poklure: 'Poké Lure', poklures: 'Poké Lure', mistyslure: "Misty's Lure", mistyslures: "Misty's Lure" }[item]);
         if (storedItem) {
           const currentAmount = getUserItems(target.id)
             .find((entry) => entry.item_name === storedItem)?.amount || 0;
