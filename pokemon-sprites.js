@@ -118,6 +118,15 @@ const CUSTOM_SPRITES = {
   'urshifu-rapid-strike-gmax': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifurapidstrike-ezgif.com-resize.webp',
   'iron-leaves': 'https://res.cloudinary.com/apffqia5/image/upload/v1792270005/iron_leaves.webp',
   'iron-boulder': 'https://res.cloudinary.com/apffqia5/image/upload/v1792270237/iron_boulder.webp',
+  'copperajah-gmax': 'https://play.pokemonshowdown.com/sprites/ani/copperajah-gmax.gif',
+  'duraludon-gmax': 'https://play.pokemonshowdown.com/sprites/ani/duraludon-gmax.gif',
+  'snorlax-gmax': 'https://play.pokemonshowdown.com/sprites/ani/snorlax-gmax.gif',
+  'grimmsnarl-gmax': 'https://play.pokemonshowdown.com/sprites/ani/grimmsnarl-gmax.gif',
+  'kingler-gmax': 'https://play.pokemonshowdown.com/sprites/ani/kingler-gmax.gif',
+  'venusaur-gmax': 'https://images.wikidexcdn.net/mwuploads/wikidex/thumb/5/56/latest/20200621041242/Venusaur_Gigamax_EpEc.gif/270px-Venusaur_Gigamax_EpEc.gif',
+  'blastoise-gmax': 'https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/0bd9bfd3-9c76-4a31-977c-8dabbce099eb/dm8h0io-2a5bbc32-ac01-4d8a-afe7-4aad5a94af91.gif?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7InBhdGgiOiIvZi8wYmQ5YmZkMy05Yzc2LTRhMzEtOTc3Yy04ZGFiYmNlMDk5ZWIvZG04aDBpby0yYTViYmMzMi1hYzAxLTRkOGEtYWZlNy00YWFkNWE5NGFmOTEuZ2lmIn1dXSwiYXVkIjpbInVybjpzZXJ2aWNlOmZpbGUuZG93bmxvYWQiXX0.WGMmRxSMyAd74EHO0AchL0wbZu5qSoMGYNxFFqlJ7s0',
+  'cinderace-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/10210.webp',
+  'eevee-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/10205.webp',
 };
 const CUSTOM_SHINY_SPRITES = {
   'iron-valiant': 'https://res.cloudinary.com/apffqia5/image/upload/v1792084062/shiny_iron_valiant.gif',
@@ -127,6 +136,15 @@ const CUSTOM_SHINY_SPRITES = {
   'urshifu-single-strike-gmax': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifusinglestrikeshiny-ezgif.com-resize.webp',
   'urshifu-rapid-strike-gmax': 'https://res.cloudinary.com/apffqia5/image/upload/v1792271553/urshifurapidstrikeshiny-ezgif.com-resize.webp',
   'jellicent-male': 'https://play.pokemonshowdown.com/sprites/ani-shiny/jellicent.gif',
+  'copperajah-gmax': 'https://play.pokemonshowdown.com/sprites/ani-shiny/copperajah-gmax.gif',
+  'duraludon-gmax': 'https://play.pokemonshowdown.com/sprites/ani-shiny/duraludon-gmax.gif',
+  'snorlax-gmax': 'https://play.pokemonshowdown.com/sprites/ani-shiny/snorlax-gmax.gif',
+  'grimmsnarl-gmax': 'https://play.pokemonshowdown.com/sprites/ani-shiny/grimmsnarl-gmax.gif',
+  'kingler-gmax': 'https://play.pokemonshowdown.com/sprites/ani-shiny/kingler-gmax.gif',
+  'venusaur-gmax': 'https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/7e084b84-36bd-4558-86bc-1def94732308/dimkn2n-5c658a91-9920-4f72-9325-dfa17f3600fa.gif?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7InBhdGgiOiIvZi83ZTA4NGI4NC0zNmJkLTQ1NTgtODZiYy0xZGVmOTQ3MzIzMDgvZGlta24ybi01YzY1OGE5MS05OTIwLTRmNzItOTMyNS1kZmExN2YzNjAwZmEuZ2lmIn1dXSwiYXVkIjpbInVybjpzZXJ2aWNlOmZpbGUuZG93bmxvYWQiXX0.VAtNK-NFmp5bsxfdhurxpvGAsPiqO2VslOl0W48hRPI',
+  'blastoise-gmax': 'https://assets.pokestats.gg/pokeapi/v1/pokemon/other/showdown/shiny/10197.gif',
+  'cinderace-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/shiny/10210.webp',
+  'eevee-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/shiny/10205.webp',
 };
 
 function showdownSpriteSlug(slug) {
