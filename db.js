@@ -2316,7 +2316,7 @@ function processTopggVote(userId, timestamp = Date.now()) {
       streak,
       voteCoins,
       boxes: [...streakRewards.boxes],
-      voteBoxes: [],
+      bonusBoxes: [],
       lootboxes: 0,
       rareCandies: streakRewards.rare_candies,
       eggs: streakRewards.vote_eggs,
@@ -2324,19 +2324,17 @@ function processTopggVote(userId, timestamp = Date.now()) {
       goldenRazzBerries: 0,
     };
 
-    const voteBoxRoll = Math.random();
-    if (voteBoxRoll < 0.5) rewards.voteBoxes.push('Vote Rare Box');
-    else if (voteBoxRoll < 0.7) rewards.voteBoxes.push('Vote Super Rare Box');
-    else if (voteBoxRoll < 0.5 + 1 / 5 + 1 / 12) rewards.voteBoxes.push('Vote Legendary Box');
-    else if (voteBoxRoll < 0.5 + 1 / 5 + 1 / 12 + 1 / 30) rewards.voteBoxes.push('Vote Shiny Box');
+    const bonusBoxRoll = Math.random();
+    if (bonusBoxRoll < 0.5) rewards.bonusBoxes.push('Rare Box');
+    else if (bonusBoxRoll < 0.7) rewards.bonusBoxes.push('Super Rare Box');
+    else if (bonusBoxRoll < 0.5 + 1 / 5 + 1 / 12) rewards.bonusBoxes.push('Legendary Box');
+    else if (bonusBoxRoll < 0.5 + 1 / 5 + 1 / 12 + 1 / 30) rewards.bonusBoxes.push('Shiny Box');
 
     if (Math.random() < 0.2) rewards.lootboxes = 1;
     if (Math.random() < 0.2) rewards.goldenRazzBerries = 1;
 
-    for (const boxName of rewards.boxes) {
-      addUserItem(userId, boxName);
-    }
-    for (const boxName of rewards.voteBoxes) addUserItem(userId, boxName);
+    for (const boxName of rewards.boxes) addUserItem(userId, boxName);
+    for (const boxName of rewards.bonusBoxes) addUserItem(userId, boxName);
 
     incrementUser(userId, {
       votes_claimed: 1,

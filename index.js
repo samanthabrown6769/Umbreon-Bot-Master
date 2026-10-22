@@ -40,8 +40,8 @@ function startTopggWebhook() {
       const rewardLines = [
         `${EMOJIS.votecoin} **Vote Coins:** +${rewards.voteCoins}`,
         rewards.lootboxes ? `${LOOTBOX_EMOJI} **Lootbox:** +${rewards.lootboxes}` : null,
-        rewards.voteBoxes.length
-          ? `📦 **Vote Box:** ${rewards.voteBoxes.join(', ')} (open by box name or alias, e.g. \`${PREFIX}open voterare\`)`
+        rewards.bonusBoxes.length
+          ? `📦 **Box:** ${rewards.bonusBoxes.join(', ')}`
           : null,
         rewards.boxes.length ? `📦 **Streak Boxes:** ${rewards.boxes.join(', ')}` : null,
         rewards.rareCandies ? `${EMOJIS.rarecandy} **Rare Candies:** +${rewards.rareCandies}` : null,
@@ -130,6 +130,7 @@ const {
   clearDefendingTeam,
   equipSavedTeam,
   saveLastWorldBossTeam,
+  getLastWorldBossTeam,
   getUserBuddyHistory,
   setUserBuddyByQuery,
   syncDuplicateCatchState,
@@ -669,6 +670,7 @@ const NPC_SPECIAL_BATTLES = [
   },
 ];
 const EV_STAT_LABELS = { hp: 'HP', atk: 'Attack', def: 'Defense', spa: 'Sp. Atk', spdef: 'Sp. Def', spe: 'Speed' };
+const FACTION_BERRY_EV_LABELS = { hp: 'HP', def: 'DEF', spdef: 'SP.D', atk: 'ATK', spa: 'SP.A', spe: 'SPE' };
 const EV_STAT_ALIASES = {
   hp: 'hp', atk: 'atk', attack: 'atk', def: 'def', defense: 'def', defence: 'def',
   spa: 'spa', spatk: 'spa', 'sp.atk': 'spa', spattack: 'spa',
@@ -1360,7 +1362,7 @@ const EMOJIS = {
   // Replaced at startup with the server's :incense: emoji when the bot can see it.
   incense: '🌿',
   pokeradar: '📡',
-  bosscoin: '🪙',
+  bosscoin: '<:bosscoin:1560720374575141046>',
   patreonToken: '<:patreontoken:1560376902374522980>',
   abilityCapsule: '<:abilitycapsule:1561042642790391848>',
   cooldownMachine: '<:cooldownmachine:1561042605129863238>',
@@ -4939,6 +4941,38 @@ const ENCOUNTER_ITEM_BAG_ENTRIES = [
   ['Soft Sand', 'Soft sand', '<:softsand:1561413018628399104>'],
   ['Spell Tag', 'Spell tag', '<:spelltag:1561413016619196476>'],
   ['Twisted Spoon', 'Twisted spoon', '<:twistedspoon:1561413015402975382>'],
+];
+const EV_BAG_ITEMS = [
+  ['Pomeg Berry', EMOJIS.pomegberry],
+  ['Kelpsy Berry', EMOJIS.kelpsyberry],
+  ['Qualot Berry', EMOJIS.qualotberry],
+  ['Hondew Berry', EMOJIS.hondewberry],
+  ['Grepa Berry', EMOJIS.grepaberry],
+  ['Tamato Berry', EMOJIS.tamatoberry],
+  ['Power Weight', EMOJIS.powerweight],
+  ['Power Bracer', EMOJIS.powerbracer],
+  ['Power Belt', EMOJIS.powerbelt],
+  ['Power Lens', EMOJIS.powerlens],
+  ['Power Band', EMOJIS.powerband],
+  ['Power Anklet', EMOJIS.poweranklet],
+];
+const WORLD_BOSS_BAG_ITEMS = [
+  ['Max Potion', 'Max Potions', '🧪'],
+  ['Full Restore', 'Full Restores', EMOJIS.fullrestore],
+  ['Max Revive', 'Max Revives', EMOJIS.maxrevive],
+  ['Boss Coin', 'Boss Coins', EMOJIS.bosscoin],
+  ['Aux Guard', 'Aux Guard', EMOJIS.auxguard],
+  ['Aux Power', 'Aux Power', EMOJIS.auxpower],
+  ['Aux Powerguard', 'Aux Power Guard', EMOJIS.auxpowerguard],
+];
+const FUN_BAG_ITEMS = [
+  ['Candy', 'Candy'],
+  ['Lollipop', 'Lollipop'],
+  ['Chocolate Bar', 'Chocolate Bar'],
+  ['Broccoli', 'Broccoli'],
+  ['Candy Cane', 'Candy Cane'],
+  ['Cupcake', 'Cupcake'],
+  ['Gingerbread', 'Gingerbread Cookie'],
 ];
 
 function formatQuestRewards(quest) {
@@ -8760,7 +8794,7 @@ client.on('messageCreate', async (message) => {
   if ((command === 'market' || command === 'm') && args[0]?.toLowerCase() === 'offer') {
     args[0] = 'list';
   }
-  if (command === 's' && args[0]?.toLowerCase() === 'b') {
+  if (command === 's' && ['b', 'buy'].includes(args[0]?.toLowerCase())) {
     command = 'shop';
     args[0] = 'buy';
   }
@@ -12165,19 +12199,60 @@ client.on('messageCreate', async (message) => {
         );
       }
       if (subCommand === 'register') {
-        const team = getUserTeam(userId);
-        if (!team.length) {
+        const currentTeam = getUserTeam(userId);
+        if (!currentTeam.length) {
           return message.reply(
             `❌ Add at least one Pokémon to your active team before registering. ` +
             `Use \`${PREFIX}team\` to set your team.`
           );
         }
+        const formatTeam = (mons) => mons.map((mon) => `**${getPokemonSpriteEmoji(mon) || mon.name}**`).join(', ');
+        let team = currentTeam;
+        let respond = (payload) => message.reply(payload);
+        const previousTeam = isWorldBossPlayerRegistered(userId, boss.id) ? null : getLastWorldBossTeam(userId);
+        const sameTeam = previousTeam
+          && previousTeam.length === currentTeam.length
+          && previousTeam.every((mon, index) => mon.id === currentTeam[index].id);
+        if (previousTeam && !sameTeam) {
+          const prompt = await message.reply({
+            content:
+              `Which team would you like to register for **${boss.name}**?\n` +
+              `**Previous World Boss team:** ${formatTeam(previousTeam)}\n` +
+              `**Current team:** ${formatTeam(currentTeam)}`,
+            components: [new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('wbregister:previous').setLabel('Previous team').setStyle(ButtonStyle.Primary),
+              new ButtonBuilder().setCustomId('wbregister:current').setLabel('Current team').setStyle(ButtonStyle.Secondary)
+            )],
+          });
+          let choice;
+          try {
+            choice = await prompt.awaitMessageComponent({
+              componentType: ComponentType.Button,
+              filter: (interaction) => interaction.user.id === message.author.id,
+              time: 30000,
+            });
+          } catch {
+            return prompt.edit({ content: '⌛ World Boss registration timed out. Run the command again.', components: [] })
+              .catch(() => {});
+          }
+          if (choice.customId === 'wbregister:previous') {
+            const latestPrevious = getLastWorldBossTeam(userId);
+            if (!latestPrevious) {
+              return choice.update({
+                content: '❌ Your previous World Boss team is no longer available. Run the command again.',
+                components: [],
+              });
+            }
+            team = latestPrevious;
+          }
+          respond = (payload) => choice.update({ ...(typeof payload === 'string' ? { content: payload } : payload), components: [] });
+        }
         const registration = registerWorldBossPlayer(userId, boss.id, team.map((mon) => mon.id));
         if (registration.error === 'inactive') {
-          return message.reply('❌ There is no active World Boss to register for.');
+          return respond('❌ There is no active World Boss to register for.');
         }
         if (registration.error === 'invalid_team') {
-          return message.reply('❌ Your active team changed while registering. Set your team and try again.');
+          return respond('❌ Your selected team is no longer valid. Set your team and try again.');
         }
         scheduleWorldBossRegistrationClose(boss);
         await updateWorldBossAnnouncement(boss, createWorldBossEmbed(boss, message.client.user));
@@ -12194,11 +12269,8 @@ client.on('messageCreate', async (message) => {
         const registeredTeam = registration.registered
           ? team
           : getWorldBossPlayerTeam(userId, boss.id);
-        const registeredTeamDisplay = registeredTeam?.map((mon) => {
-          const sprite = getPokemonSpriteEmoji(mon);
-          return `**${sprite || mon.name}**`;
-        }).join(', ') || 'Unavailable';
-        return message.reply(
+        const registeredTeamDisplay = registeredTeam ? formatTeam(registeredTeam) : 'Unavailable';
+        return respond(
           `${registrationText}\n` +
           `**Registered team:** ${registeredTeamDisplay}\n` +
           `This lineup stays fixed; use \`${PREFIX}wb update\` to register your current team instead.`
@@ -15405,7 +15477,8 @@ client.on('messageCreate', async (message) => {
                 if (!entries.length) return '';
                 return `${FACTION_RANK_ICONS[rank] || ''} **${rank} buyables**${rank === 'Admin' ? ' (Admin rank or higher)' : ''}\n` +
                   entries.map(([id, item]) =>
-                    `\`ID: ${id}\` ${EMOJIS[item.name.replace(/\s+/g, '').toLowerCase()] || ''} ${item.name}: ` +
+                    `\`ID: ${id}\` ${EMOJIS[item.name.replace(/\s+/g, '').toLowerCase()] || ''} ${item.name}` +
+                    `${item.evStat ? ` (${FACTION_BERRY_EV_LABELS[item.evStat]})` : ''}: ` +
                     `${item.cost.toLocaleString()} points${item.max ? ` (max ${item.max})` : ''}`).join('\n');
               }).filter(Boolean).join('\n\n')}` +
               `\n\nBuy with \`${PREFIX}s buy <ID> [amount]\`.`
@@ -16698,7 +16771,7 @@ client.on('messageCreate', async (message) => {
       const targetId = targetUser.id;
       const bagUser = getUser(targetId);
       const ownedItems = new Map(getUserItems(targetId).map((row) => [row.item_name, row.amount]));
-      const totalPages = 7;
+      const totalPages = 8;
       const requestedPage = Number(args.find((arg) => /^\d+$/.test(arg)));
       let currentPage = requestedPage >= 1 && requestedPage <= totalPages ? requestedPage : 1;
       const itemLines = (entries) => entries
@@ -16810,23 +16883,6 @@ client.on('messageCreate', async (message) => {
             `\n\n*Inspect a box with \`${PREFIX}item info <box>\`.*`
           );
         } else if (page === 5) {
-          const questItems = [...ownedItems.entries()]
-            .filter(([name]) =>
-              !ENCOUNTER_ITEM_BAG_ENTRIES.some(([itemName]) => itemName === name)
-              && !WILD_HELD_ITEM_GROUPS.some((item) => item.name === name)
-              && !EVOLUTION_ITEMS[name]
-              && !BOXES[name]
-              && !VOTE_BOXES[name]
-              && !FUN_ITEM_NAMES.includes(name)
-              && name !== 'Rare Candy'
-              && name !== 'Swap Ticket'
-              && !['Super Repel', 'Max Repel', 'Honey'].includes(name)
-              && name !== 'Mega Bracelet'
-              && !['Incubator', 'Super Incubator'].includes(name)
-              && !['Cooldown Machine', 'Ability Capsule', 'Ability Patch'].includes(name)
-              && !getActivePromos().some((promo) => promo.itemName === name)
-              && !RESEARCH_ITEM_NAMES.includes(name)
-            );
           const encounterItemLines = (items) => items.map(([name, label, emoji]) =>
             `${emoji} **${(ownedItems.get(name) || 0).toLocaleString()}**x ${label}`
           ).join('\n');
@@ -16843,28 +16899,11 @@ client.on('messageCreate', async (message) => {
             },
             {
               name: 'Fun Items',
-              value: FUN_ITEM_NAMES
-                .filter((name) => name !== 'Sitrus Berry')
-                .map((name) => `• ${FUN_ITEM_EMOJIS[name]} **${name}:** ${(ownedItems.get(name) || 0).toLocaleString()}x`)
+              value: FUN_BAG_ITEMS
+                .map(([name, label]) => `• ${FUN_ITEM_EMOJIS[name]} **${label}:** ${(ownedItems.get(name) || 0).toLocaleString()}x`)
                 .join('\n'),
               inline: false,
             },
-            ...(questItems.length ? [{
-              name: 'Quest Items',
-              value: questItems.map(([name, amount]) => {
-                const emoji = {
-                  Honey: EMOJIS.honey,
-                  Incense: EMOJIS.incense,
-                  Pokeradar: EMOJIS.pokeradar,
-                  'Boss Coin': EMOJIS.bosscoin,
-                  'Super Repel': EMOJIS.superRepel,
-                  'Max Repel': EMOJIS.maxRepel,
-                  'Golden Razz': EMOJIS.goldenRazz,
-                }[name] || FUN_ITEM_EMOJIS[name] || EVOLUTION_ITEMS[name]?.emoji || '📦';
-                return `• ${emoji} **${name}:** ${amount.toLocaleString()}x`;
-              }).join('\n').slice(0, 1000),
-              inline: false,
-            }] : []),
             ...[
               [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS].slice(0, 12),
               [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS].slice(12),
@@ -16887,6 +16926,23 @@ client.on('messageCreate', async (message) => {
               ).join('\n'),
             inline: false,
           });
+        } else if (page === 8) {
+          embed.setTitle(`🎒 EVs & World Boss (Page 8/${totalPages})`).addFields(
+            {
+              name: 'Effort Values (EVs)',
+              value: EV_BAG_ITEMS
+                .map(([name, emoji]) => `• ${emoji} **${name}:** ${(ownedItems.get(name) || 0).toLocaleString()}x`)
+                .join('\n'),
+              inline: true,
+            },
+            {
+              name: 'World Boss',
+              value: WORLD_BOSS_BAG_ITEMS
+                .map(([name, label, emoji]) => `• ${emoji} **${label}:** ${(ownedItems.get(name) || 0).toLocaleString()}x`)
+                .join('\n'),
+              inline: true,
+            }
+          );
         } else {
           const stoneCounts = new Map(MEGA_STONE_NAMES.map((name) => [name, 0]));
           for (const stone of getMegaStones(targetId)) stoneCounts.set(stone.stone_name, stone.amount);
@@ -21290,9 +21346,6 @@ client.on('messageCreate', async (message) => {
           `${LOOTBOX_EMOJI} Lootbox: **${getUser(userId).lootboxes}** (\`${PREFIX}lb all\`)\n` +
           Object.entries(BOXES)
             .map(([name, box]) => `${box.emoji} ${name}: **${owned.get(name) || 0}** (\`${PREFIX}open ${box.aliases[0]} all\`)`)
-            .concat(Object.entries(VOTE_BOXES).map(([name, box]) =>
-              `${box.emoji} ${name}: **${owned.get(name) || 0}** (\`${PREFIX}open ${box.aliases[0]} all\`)`
-            ))
             .join('\n')
         );
       }
