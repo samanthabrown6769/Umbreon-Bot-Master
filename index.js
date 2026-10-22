@@ -20187,11 +20187,13 @@ client.on('messageCreate', async (message) => {
     if (command === 'collection' || command === 'collections' || command === 'coll') {
       const sub = args[0]?.toLowerCase();
       const parseCollectionPokemon = (query) => {
-        const isShiny = /^shiny\s+/i.test(query);
-        const pokemonQuery = isShiny ? query.replace(/^shiny\s+/i, '').trim() : query.trim();
+        const isGolden = /^golden\s+/i.test(query.trim());
+        const isShiny = !isGolden && /^shiny\s+/i.test(query.trim());
+        const pokemonQuery = query.trim().replace(/^(?:shiny|golden)\s+/i, '').trim();
         const form = resolvePokemonForm(pokemonQuery);
-        return form ? { form, isShiny } : null;
+        return form ? { form, isShiny, isGolden } : null;
       };
+      const variantLabel = (isShiny, isGolden) => (isGolden ? 'Golden ' : isShiny ? 'Shiny ' : '');
       const recentFilter = "gc.updated_at >= datetime('now', '-3 months')";
       const getRows = (options = {}) => {
         const conditions = [recentFilter];
@@ -20211,6 +20213,10 @@ client.on('messageCreate', async (message) => {
           conditions.push('gc.is_shiny = ?');
           values.push(Number(options.isShiny));
         }
+        if (options.isGolden !== undefined) {
+          conditions.push('gc.is_golden = ?');
+          values.push(Number(options.isGolden));
+        }
         if (options.pokemonName) {
           conditions.push(`(
             LOWER(gc.pokemon_name) = ?
@@ -20228,7 +20234,7 @@ client.on('messageCreate', async (message) => {
           conditions.push(`(
             SELECT COUNT(*) FROM catches owned
             WHERE owned.user_id = gc.user_id AND owned.pokemon_id = gc.pokemon_id
-              AND owned.is_shiny = gc.is_shiny
+              AND owned.is_shiny = gc.is_shiny AND owned.is_golden = gc.is_golden
           ) >= ?`);
           values.push(options.minimumCount);
         }
@@ -20236,11 +20242,11 @@ client.on('messageCreate', async (message) => {
           conditions.push(`(
             SELECT COUNT(*) FROM catches owned
             WHERE owned.user_id = gc.user_id AND owned.pokemon_id = gc.pokemon_id
-              AND owned.is_shiny = gc.is_shiny
+              AND owned.is_shiny = gc.is_shiny AND owned.is_golden = gc.is_golden
           ) * 100.0 / MAX(1, (
             SELECT COUNT(*) FROM catches population
             WHERE population.pokemon_id = gc.pokemon_id
-              AND population.is_shiny = gc.is_shiny
+              AND population.is_shiny = gc.is_shiny AND population.is_golden = gc.is_golden
           )) >= ?`);
           values.push(options.minimumShare);
         }
@@ -20249,10 +20255,10 @@ client.on('messageCreate', async (message) => {
             COALESCE(pf.rarity, 'Unknown') AS rarity,
             (SELECT COUNT(*) FROM catches owned
               WHERE owned.user_id = gc.user_id AND owned.pokemon_id = gc.pokemon_id
-                AND owned.is_shiny = gc.is_shiny) AS owned_count,
+                AND owned.is_shiny = gc.is_shiny AND owned.is_golden = gc.is_golden) AS owned_count,
             (SELECT COUNT(*) FROM catches population
               WHERE population.pokemon_id = gc.pokemon_id
-                AND population.is_shiny = gc.is_shiny) AS population_count
+                AND population.is_shiny = gc.is_shiny AND population.is_golden = gc.is_golden) AS population_count
           FROM global_collections gc
           LEFT JOIN pokemon_forms pf ON pf.id = gc.pokemon_id
           WHERE ${conditions.join(' AND ')}
@@ -20284,7 +20290,7 @@ client.on('messageCreate', async (message) => {
           const lines = entries.slice((page - 1) * pageSize, page * pageSize).map((row) => {
             const emoji = getRarityEmojis(row.rarity, row.pokemon_name, Boolean(row.is_shiny));
             const percent = ((row.owned_count / Math.max(1, row.population_count)) * 100).toFixed(2);
-            const variantName = row.is_shiny ? `Shiny ${row.pokemon_name}` : row.pokemon_name;
+            const variantName = `${variantLabel(row.is_shiny, row.is_golden)}${row.pokemon_name}`;
             return `${emoji ? `${emoji} ` : ''}**${variantName} x${row.owned_count.toLocaleString()}** ` +
               `\`#${row.pokemon_id}\` \`(${percent}%)\` • <@${row.user_id}> • ${formatRelativeTime(row.updated_at)}`;
           });
@@ -20341,7 +20347,7 @@ client.on('messageCreate', async (message) => {
           ? ` • Buying for: **${EMOJIS.pokecoin} ${row.buy_price.toLocaleString()}**`
           : '';
         const privacyText = showPrivacy && row.is_private ? ' 🔒 *(Private)*' : '';
-        const variantName = row.is_shiny ? `Shiny ${row.pokemon_name}` : row.pokemon_name;
+        const variantName = `${variantLabel(row.is_shiny, row.is_golden)}${row.pokemon_name}`;
         return `• <@${row.user_id}> — **#${row.pokemon_id} ${variantName}**` +
           ` • Count: \`${row.owned_count}\`${priceText}${privacyText}`;
       }).join('\n').slice(0, 4000);
@@ -20358,16 +20364,16 @@ client.on('messageCreate', async (message) => {
         .setDescription(
           'Show off your Pokémon and find trainers to help grow your collections.\n\n' +
           '**Registering and managing entries**\n' +
-          `\`${PREFIX}coll register [shiny] <Pokémon name|Pokédex number> [buy price]\` (maximum 15)\n` +
-          `\`${PREFIX}coll update [shiny] <Pokémon name|Pokédex number> [buy price]\`\n` +
+          `\`${PREFIX}coll register [shiny|golden] <Pokémon name|Pokédex number> [buy price]\` (maximum 15)\n` +
+          `\`${PREFIX}coll update [shiny|golden] <Pokémon name|Pokédex number> [buy price]\`\n` +
           `\`${PREFIX}coll update all\` — Refresh all of your entries\n` +
-          `\`${PREFIX}coll delete [shiny] <Pokémon name|Pokédex number>\`\n` +
-          `\`${PREFIX}coll private|unprivate [shiny] <Pokémon name|Pokédex number|all>\`\n` +
+          `\`${PREFIX}coll delete [shiny|golden] <Pokémon name|Pokédex number>\`\n` +
+          `\`${PREFIX}coll private|unprivate [shiny|golden] <Pokémon name|Pokédex number|all>\`\n` +
           '*These entries do not affect your actual box Pokémon.*\n\n' +
           '**Browsing collections**\n' +
           `\`${PREFIX}collection\` — Recent public collections\n` +
           `\`${PREFIX}collection view buyers\` — Recent public buy offers\n` +
-          `\`${PREFIX}collection view [shiny] <Pokédex number|name>\`\n` +
+          `\`${PREFIX}collection view [shiny|golden] <Pokédex number|name>\`\n` +
           `\`${PREFIX}collection view <rarity>\`\n` +
           `\`${PREFIX}collection count <amount|percentage%>\`\n` +
           `\`${PREFIX}collection mine\` or \`${PREFIX}collection <@user|user ID>\``
@@ -20412,17 +20418,17 @@ client.on('messageCreate', async (message) => {
         const pokemonQuery = values.join(' ').trim();
         const parsedPokemon = parseCollectionPokemon(pokemonQuery);
         if (!parsedPokemon) return message.reply(`Pokémon **${pokemonQuery}** was not found in the Pokédex.`);
-        const { form, isShiny } = parsedPokemon;
+        const { form, isShiny, isGolden } = parsedPokemon;
         const owned = db.prepare(
-          'SELECT name FROM catches WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? LIMIT 1'
-        ).get(userId, form.id, Number(isShiny));
+          'SELECT name FROM catches WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ? LIMIT 1'
+        ).get(userId, form.id, Number(isShiny), Number(isGolden));
         const pokemonName = owned?.name || form.name;
-        const registered = registerCollection(userId, form.id, pokemonName, buyPrice, isShiny);
+        const registered = registerCollection(userId, form.id, pokemonName, buyPrice, isShiny, isGolden);
         if (!registered) {
           return message.reply('❌ You can register a maximum of **15 Pokémon** in your Global Collection.');
         }
         return message.reply(
-          `🛰️ Registered **${isShiny ? 'Shiny ' : ''}${pokemonName}** to your Global Collection!` +
+          `🛰️ Registered **${variantLabel(isShiny, isGolden)}${pokemonName}** to your Global Collection!` +
           (buyPrice
             ? ` Buy price set to **${EMOJIS.pokecoin} ${buyPrice.toLocaleString()}**.`
             : '')
@@ -20434,12 +20440,13 @@ client.on('messageCreate', async (message) => {
         const parsedPokemon = parseCollectionPokemon(pokemonQuery);
         const form = parsedPokemon?.form;
         if (!form) {
-          return message.reply(`Usage: \`${PREFIX}coll delete [shiny] <Pokémon name|Pokédex number>\`.`);
+          return message.reply(`Usage: \`${PREFIX}coll delete [shiny|golden] <Pokémon name|Pokédex number>\`.`);
         }
-        const deleted = deleteCollection(userId, form.id, parsedPokemon.isShiny);
+        const label = variantLabel(parsedPokemon.isShiny, parsedPokemon.isGolden);
+        const deleted = deleteCollection(userId, form.id, parsedPokemon.isShiny, parsedPokemon.isGolden);
         return message.reply(deleted
-          ? `🗑️ Removed **${parsedPokemon.isShiny ? 'Shiny ' : ''}${form.name}** from your Global Collection.`
-          : `You do not have **${parsedPokemon.isShiny ? 'Shiny ' : ''}${form.name}** registered.`);
+          ? `🗑️ Removed **${label}${form.name}** from your Global Collection.`
+          : `You do not have **${label}${form.name}** registered.`);
       }
 
       if (sub === 'private' || sub === 'unprivate') {
@@ -20458,10 +20465,13 @@ client.on('messageCreate', async (message) => {
         const parsedPokemon = parseCollectionPokemon(targetArg);
         const form = parsedPokemon?.form;
         if (!form) return message.reply(`Pokémon **${targetArg}** was not found in the Pokédex.`);
-        const updated = setCollectionPrivacy(userId, form.id, isPrivate, parsedPokemon.isShiny);
+        const label = variantLabel(parsedPokemon.isShiny, parsedPokemon.isGolden);
+        const updated = setCollectionPrivacy(
+          userId, form.id, isPrivate, parsedPokemon.isShiny, parsedPokemon.isGolden
+        );
         return message.reply(updated
-          ? `🔒 Collection for **${parsedPokemon.isShiny ? 'Shiny ' : ''}${form.name}** is now **${isPrivate ? 'private' : 'public'}**.`
-          : `You do not have **${parsedPokemon.isShiny ? 'Shiny ' : ''}${form.name}** registered.`);
+          ? `🔒 Collection for **${label}${form.name}** is now **${isPrivate ? 'private' : 'public'}**.`
+          : `You do not have **${label}${form.name}** registered.`);
       }
 
       if (sub === 'mine' || message.mentions.users.first() || /^\d{17,20}$/.test(sub)) {
@@ -20506,10 +20516,10 @@ client.on('messageCreate', async (message) => {
         }
         const parsedPokemon = parseCollectionPokemon(viewArg);
         if (parsedPokemon) {
-          const { form, isShiny } = parsedPokemon;
-          const rows = getRows({ pokemonId: form.id, isShiny });
+          const { form, isShiny, isGolden } = parsedPokemon;
+          const rows = getRows({ pokemonId: form.id, isShiny, isGolden });
           return message.reply({
-            embeds: [collectionEmbed(`🛰️ Collections for ${isShiny ? 'Shiny ' : ''}${form.name}`, rows)],
+            embeds: [collectionEmbed(`🛰️ Collections for ${variantLabel(isShiny, isGolden)}${form.name}`, rows)],
           });
         }
         return message.reply(`Pokémon **${viewArg}** was not found in the Pokédex.`);

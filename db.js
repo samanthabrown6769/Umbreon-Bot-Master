@@ -1160,6 +1160,34 @@ if (!collectionTableSql.includes('is_shiny')) {
   }).immediate();
 }
 
+if (!/is_golden/.test(
+  db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'global_collections'").get()?.sql || ''
+)) {
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE global_collections RENAME TO global_collections_legacy;
+      CREATE TABLE global_collections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        pokemon_id INTEGER NOT NULL,
+        is_shiny INTEGER NOT NULL DEFAULT 0,
+        is_golden INTEGER NOT NULL DEFAULT 0,
+        pokemon_name TEXT NOT NULL,
+        buy_price INTEGER,
+        is_private INTEGER NOT NULL DEFAULT 0,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, pokemon_id, is_shiny, is_golden)
+      );
+      INSERT INTO global_collections (
+        id, user_id, pokemon_id, is_shiny, is_golden, pokemon_name, buy_price, is_private, updated_at
+      )
+      SELECT id, user_id, pokemon_id, is_shiny, 0, pokemon_name, buy_price, is_private, updated_at
+      FROM global_collections_legacy;
+      DROP TABLE global_collections_legacy;
+    `);
+  }).immediate();
+}
+
 const channelBoostColumns = new Set(
   db.prepare('PRAGMA table_info(channel_catch_rate_boosts)').all().map((column) => column.name)
 );
@@ -7870,7 +7898,7 @@ function getUserRegisteredCollections(userId) {
   ).all(userId);
 }
 
-function registerCollection(userId, pokemonId, pokemonName, buyPrice, isShiny = false) {
+function registerCollection(userId, pokemonId, pokemonName, buyPrice, isShiny = false, isGolden = false) {
   assertUserId(userId);
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0) {
     throw new TypeError('pokemonId must be a positive safe integer.');
@@ -7882,10 +7910,11 @@ function registerCollection(userId, pokemonId, pokemonName, buyPrice, isShiny = 
     throw new TypeError('buyPrice must be a positive safe integer or null.');
   }
   if (typeof isShiny !== 'boolean') throw new TypeError('isShiny must be a boolean.');
+  if (typeof isGolden !== 'boolean') throw new TypeError('isGolden must be a boolean.');
   return db.transaction(() => {
     const exists = db.prepare(
-      'SELECT 1 FROM global_collections WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?'
-    ).get(userId, pokemonId, Number(isShiny));
+      'SELECT 1 FROM global_collections WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?'
+    ).get(userId, pokemonId, Number(isShiny), Number(isGolden));
     if (!exists) {
       const count = db.prepare(
         'SELECT COUNT(*) AS count FROM global_collections WHERE user_id = ?'
@@ -7893,29 +7922,29 @@ function registerCollection(userId, pokemonId, pokemonName, buyPrice, isShiny = 
       if (count >= 15) return false;
     }
     db.prepare(`
-      INSERT INTO global_collections (user_id, pokemon_id, is_shiny, pokemon_name, buy_price, is_private, updated_at)
-      VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
-      ON CONFLICT(user_id, pokemon_id, is_shiny) DO UPDATE SET
+      INSERT INTO global_collections (user_id, pokemon_id, is_shiny, is_golden, pokemon_name, buy_price, is_private, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, pokemon_id, is_shiny, is_golden) DO UPDATE SET
         pokemon_name = excluded.pokemon_name,
         buy_price = excluded.buy_price,
         updated_at = CURRENT_TIMESTAMP
-    `).run(userId, pokemonId, Number(isShiny), pokemonName.trim(), buyPrice);
+    `).run(userId, pokemonId, Number(isShiny), Number(isGolden), pokemonName.trim(), buyPrice);
     return true;
   }).immediate();
 }
 
-function deleteCollection(userId, pokemonId, isShiny = false) {
+function deleteCollection(userId, pokemonId, isShiny = false, isGolden = false) {
   assertUserId(userId);
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0) {
     throw new TypeError('pokemonId must be a positive safe integer.');
   }
   if (typeof isShiny !== 'boolean') throw new TypeError('isShiny must be a boolean.');
   return db.prepare(
-    'DELETE FROM global_collections WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?'
-  ).run(userId, pokemonId, Number(isShiny)).changes > 0;
+    'DELETE FROM global_collections WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?'
+  ).run(userId, pokemonId, Number(isShiny), Number(isGolden)).changes > 0;
 }
 
-function setCollectionPrivacy(userId, pokemonIdOrAll, isPrivate, isShiny = false) {
+function setCollectionPrivacy(userId, pokemonIdOrAll, isPrivate, isShiny = false, isGolden = false) {
   assertUserId(userId);
   if (typeof isPrivate !== 'boolean') {
     throw new TypeError('isPrivate must be a boolean.');
@@ -7930,8 +7959,8 @@ function setCollectionPrivacy(userId, pokemonIdOrAll, isPrivate, isShiny = false
     throw new TypeError('pokemonIdOrAll must be a positive safe integer or "all".');
   }
   return db.prepare(
-    'UPDATE global_collections SET is_private = ? WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ?'
-  ).run(isPrivate ? 1 : 0, userId, pokemonIdOrAll, Number(isShiny)).changes;
+    'UPDATE global_collections SET is_private = ? WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?'
+  ).run(isPrivate ? 1 : 0, userId, pokemonIdOrAll, Number(isShiny), Number(isGolden)).changes;
 }
 
 function refreshAllCollections(userId) {
@@ -7944,6 +7973,7 @@ function refreshAllCollections(userId) {
         WHERE owned.user_id = global_collections.user_id
           AND owned.pokemon_id = global_collections.pokemon_id
           AND owned.is_shiny = global_collections.is_shiny
+          AND owned.is_golden = global_collections.is_golden
         LIMIT 1
       ), pokemon_name)
     WHERE user_id = ?
