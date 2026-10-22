@@ -12264,6 +12264,7 @@ client.on('messageCreate', async (message) => {
         if (message.guildId !== WORLD_BOSS_GUILD_ID) {
           return message.reply('❌ World Boss registration is only available in the official server. You can still fight from anywhere once registered.');
         }
+        const currentTeam = getUserTeam(userId);
         if (!currentTeam.length) {
           return message.reply(
             `❌ Add at least one Pokémon to your active team before registering. ` +
