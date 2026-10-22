@@ -16817,7 +16817,7 @@ client.on('messageCreate', async (message) => {
                 `• ${EMOJIS.incubator} **Incubators:** ${(ownedItems.get('Incubator') || 0).toLocaleString()}\n` +
                 `• ${EMOJIS.superIncubator} **Super Incubators:** ${(ownedItems.get('Super Incubator') || 0).toLocaleString()}\n` +
                 `• ${EMOJIS.repel} **Repel:** ${bagUser.repels.toLocaleString()} (${bagUser.repel_encounters.toLocaleString()} active)\n` +
-                `• ${EMOJIS.goldenRazz} **Golden Razz:** ${bagUser.grazz_berries.toLocaleString()}\n` +
+                `• ${EMOJIS.goldenRazz} **Golden Razz:** ${bagUser.grazz_berries.toLocaleString()} owned • ${bagUser.grazz_buff_encounters.toLocaleString()} charges active\n` +
                 `• ${EMOJIS.superRepel} **Super Repel:** ${(ownedItems.get('Super Repel') || 0).toLocaleString()} (${bagUser.super_repel_encounters.toLocaleString()} active)\n` +
                 `• ${EMOJIS.maxRepel} **Max Repel:** ${(ownedItems.get('Max Repel') || 0).toLocaleString()} (${bagUser.max_repel_encounters.toLocaleString()} active)\n` +
                 `• ${EMOJIS.honey} **Honey:** ${(ownedItems.get('Honey') || 0).toLocaleString()} (${bagUser.honey_encounters.toLocaleString()} active)\n` +
