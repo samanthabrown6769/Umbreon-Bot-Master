@@ -3207,6 +3207,7 @@ const EXTRA_CHANNEL_BOOSTER_IDS = new Set([
 ]);
 const UNLIMITED_CHANNEL_BOOSTER_IDS = new Set([
   '1514082847609061541',
+  '426946381098254336',
 ]);
 const WORLD_BOSS_SPAWN_ALLOWED_USER_IDS = new Set([
   '1352997432929288194',
@@ -5271,6 +5272,14 @@ async function askForBall(
     ? getUserRarityStreak(userId, catchDisplayRarity)
     : null;
   const trainerLabel = `${getTrainerIconEmoji(userId)} **${message.author.username}**`;
+  let spawnBallDexIcons = '';
+  try {
+    spawnBallDexIcons = target.id
+      ? getBallDexIconsForCatch(userId, target.id)
+      : formatBallDexRow(getBallDexCaughtMap(userId).get(target.speciesId)).icons;
+  } catch (error) {
+    console.error('Failed to build spawn Balldex icons:', error);
+  }
   const embed = new EmbedBuilder()
     .setColor(isEventOpen(halloweenEvent) && isEventChecklistSpawn(target)
       ? EVENT_EMBED_COLOR
@@ -5281,7 +5290,8 @@ async function askForBall(
         : `${ICONS.grass} A wild Pokémon appeared!`
     )
     .setDescription(
-      `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonFactionTeam(target.speciesId)?.emoji ? `${getPokemonFactionTeam(target.speciesId).emoji} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!\n` +
+      `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonFactionTeam(target.speciesId)?.emoji ? `${getPokemonFactionTeam(target.speciesId).emoji} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!` +
+      `${spawnBallDexIcons ? ` ${spawnBallDexIcons}` : ''}\n` +
       (allowAnyUserCatch ? 'Anyone can catch it with the buttons or by typing a ball name.\n' : '') +
       heldItemEncounterHint(target) +
       (target.researchToolsConsumed?.length
@@ -5292,7 +5302,6 @@ async function askForBall(
       `(${rarityData.rateText})**\n` +
       catchRateText +
       `${Array.isArray(target.types) && target.types.length ? `Type: ${formatTypes(target.types)}\n` : ''}` +
-      `${target.id ? `Balldex: ${getBallDexIconsForCatch(userId, target.id)}\n` : ''}` +
       `${tracksRarityStreak ? `${catchDisplayRarity} streak: ${currentStreak}\n` : ''}` +
       (allowAnyUserCatch
         ? '\nThe catcher will use their own Poké Balls.'
