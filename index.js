@@ -5272,6 +5272,8 @@ async function askForBall(
     ? getUserRarityStreak(userId, catchDisplayRarity)
     : null;
   const trainerLabel = `${getTrainerIconEmoji(userId)} **${message.author.username}**`;
+  const spawnFoundText =
+    `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonFactionTeam(target.speciesId)?.emoji ? `${getPokemonFactionTeam(target.speciesId).emoji} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!`;
   let spawnBallDexIcons = '';
   try {
     spawnBallDexIcons = target.id
@@ -5290,8 +5292,7 @@ async function askForBall(
         : `${ICONS.grass} A wild Pokémon appeared!`
     )
     .setDescription(
-      `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonFactionTeam(target.speciesId)?.emoji ? `${getPokemonFactionTeam(target.speciesId).emoji} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!` +
-      `\n` +
+      `${spawnFoundText}\n` +
       (allowAnyUserCatch ? 'Anyone can catch it with the buttons or by typing a ball name.\n' : '') +
       heldItemEncounterHint(target) +
       (target.researchToolsConsumed?.length
@@ -5330,7 +5331,7 @@ async function askForBall(
   const spawnMessage = inline
     ? makeInlineEncounterHost(inline.onEdit)
     : await message.channel.send({
-      content: spawnBallDexIcons || undefined,
+      content: [spawnFoundText, spawnBallDexIcons].filter(Boolean).join(' '),
       embeds: [embed],
       components: ballRows,
     });
