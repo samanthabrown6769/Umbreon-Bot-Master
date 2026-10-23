@@ -10193,6 +10193,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}perks\` — View server booster perks and your role status\n` +
             `• \`${PREFIX}vote\` — View your Top.gg vote balance, streak, and rewards\n` +
             `• \`${PREFIX}balance\` / \`${PREFIX}bal\` — View your currency balances\n` +
+            `• \`${PREFIX}charges\` — View remaining uses for active charge items and your unused items\n` +
             `• \`${PREFIX}bag\` / \`${PREFIX}inv\` / \`${PREFIX}inventory\` [page] — View your paginated bag (items, evolution items, boxes)\n` +
             `• \`${PREFIX}collection\` / \`${PREFIX}coll\` — Browse public Global Collections; use \`${PREFIX}coll help\` for options\n` +
             `• \`${PREFIX}use rarecandy <amount|all>\` (alias \`rc\`) — Level up your buddy with Rare Candy\n` +
@@ -17105,6 +17106,62 @@ client.on('messageCreate', async (message) => {
             text: `Tip: Use ${PREFIX}market list <Pokémon name|Pokédex number> <amount> <price> to list Pokémon for sale!`,
           })
           .setTimestamp()],
+      });
+    }
+
+    if (command === 'charges') {
+      const chargeUser = getUser(userId);
+      const chargeItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
+      const chargeLine = (emoji, name, count, unit, ownedCount) =>
+        `• ${emoji} **${name}:** ${count.toLocaleString()} ${unit} remaining` +
+        (ownedCount === undefined ? '' : ` • ${ownedCount.toLocaleString()} owned`);
+      const fields = [
+        {
+          name: 'Catching',
+          value: [
+            chargeLine(EMOJIS.goldenRazz, 'Golden Razz Berry', chargeUser.grazz_buff_encounters, 'encounters', chargeUser.grazz_berries),
+            chargeLine(EMOJIS.repel, 'Repel', chargeUser.repel_encounters, 'encounters', chargeUser.repels),
+            chargeLine(EMOJIS.superRepel, 'Super Repel', chargeUser.super_repel_encounters, 'encounters', chargeItems.get('Super Repel') || 0),
+            chargeLine(EMOJIS.maxRepel, 'Max Repel', chargeUser.max_repel_encounters, 'encounters', chargeItems.get('Max Repel') || 0),
+            chargeLine(EMOJIS.honey, 'Honey', chargeUser.honey_encounters, 'encounters', chargeItems.get('Honey') || 0),
+          ].join('\n'),
+          inline: true,
+        },
+        {
+          name: 'Fishing',
+          value: [
+            chargeLine(EMOJIS.pokeLure, 'Poké Lure', chargeUser.active_poke_lures, 'catches', chargeItems.get('Poké Lure') || 0),
+            chargeLine(EMOJIS.mistysLure, "Misty's Lure", chargeUser.active_mistys_lures, 'catches', chargeItems.get("Misty's Lure") || 0),
+          ].join('\n'),
+          inline: true,
+        },
+        {
+          name: 'Other',
+          value: [
+            chargeLine(EMOJIS.pokeradar, 'Pokeradar', chargeUser.pokeradar_charges, 'encounters', chargeItems.get('Pokeradar') || 0),
+            chargeLine(EMOJIS.dxpticket, 'Double XP', chargeUser.double_xp_charges, 'catches', chargeItems.get('Double XP Ticket') || 0),
+            chargeLine(
+              EMOJIS.cooldownMachine,
+              'Cooldown Machine',
+              chargeUser.cooldown_machine_catch_charges,
+              `${PREFIX}pokemon`,
+              chargeItems.get('Cooldown Machine') || 0
+            ),
+            `• ${EMOJIS.cooldownMachine} **Cooldown Machine:** ${chargeUser.cooldown_machine_fish_charges.toLocaleString()} ${PREFIX}fish`,
+            ...(message.guildId
+              ? [chargeLine(EMOJIS.incense, 'Incense', getIncenseCharges(message.guildId), 'server uses', chargeItems.get('Incense') || 0)]
+              : []),
+          ].join('\n'),
+          inline: false,
+        },
+      ];
+      return message.reply({
+        embeds: [new EmbedBuilder()
+          .setColor(0x0099ff)
+          .setAuthor({ name: `${message.author.username}'s Item Charges`, iconURL: message.author.displayAvatarURL() })
+          .setDescription('Active uses remaining are shown alongside any unused items you own.')
+          .addFields(fields)
+          .setFooter({ text: message.guildId ? 'Incense charges are shared with this server.' : `Use ${PREFIX}incense in a server to check shared Incense charges.` })],
       });
     }
 
