@@ -393,6 +393,8 @@ const {
   TYPE_BOOSTING_HELD_ITEMS,
   findBattleHeldItem,
   getHeldItemDamageMultiplier,
+  getHeldItemMoveType,
+  isPlateItem,
 } = require('./held-item-effects');
 const { getGoldenSpriteUrl } = require('./golden-pokemon');
 const { getCurrentPromo, getActivePromos, findPromoByItemName, rollPromoItemDrop } = require('./promo');
@@ -3828,12 +3830,16 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   const bossForm = db.prepare('SELECT types FROM pokemon_forms WHERE id = ?')
     .get(bossTemplate?.formId ?? bossTemplate?.id);
   const bossTypes = bossForm ? JSON.parse(bossForm.types) : [];
-  const effectiveness = typeEffectiveness(move.type, bossTypes);
+  const moveType = getHeldItemMoveType(move.name, move.type, pokemon.held_item);
+  const effectiveness = typeEffectiveness(moveType, bossTypes);
   if (effectiveness === 0) {
     return { error: 'no_effect', pokemon, move };
   }
-  const stab = types.includes(move.type) ? 1.5 : 1;
-  const heldItemMultiplier = getHeldItemDamageMultiplier(pokemon.held_item, move.type);
+  const attackerTypes = isPlateItem(pokemon.held_item) && String(pokemon.name).toLowerCase().includes('arceus')
+    ? [TYPE_BOOSTING_HELD_ITEMS[pokemon.held_item]]
+    : types;
+  const stab = attackerTypes.includes(moveType) ? 1.5 : 1;
+  const heldItemMultiplier = getHeldItemDamageMultiplier(pokemon.held_item, moveType);
   const stages = battleMon ? battleFx.fx(battleMon).stages : null;
   const isCritical = Math.random() < 0.15;
   const baseDamage = Math.max(
@@ -5099,8 +5105,9 @@ const ARCEUS_PLATES = [
   ['Toxic Plate', '<:toxicplate:1563193012865994842>'],
   ['Zap Plate', '<:zapplate:1563193010634760395>'],
 ];
+Object.assign(FUN_ITEM_EMOJIS, Object.fromEntries(ARCEUS_PLATES));
 const WORLD_BOSS_BAG_ITEMS = [
-  ['Max Potion', 'Max Potions', '🧪'],
+  ['Max Potion', 'Max Potions', '<:maxpotions:1563198663788986458>'],
   ['Full Restore', 'Full Restores', EMOJIS.fullrestore],
   ['Max Revive', 'Max Revives', EMOJIS.maxrevive],
   ['Boss Coin', 'Boss Coins', EMOJIS.bosscoin],
@@ -5636,6 +5643,12 @@ async function askForBall(
       addUserItem(userId, 'Ancient Fossil');
       ancientFossilDropText = '\n🦴 You found an **Ancient Fossil**!';
     }
+    let arceusPlateDropText = '';
+    if (target.speciesId === 493 || /^(shiny |golden )?arceus\b/i.test(String(target.name))) {
+      const [plateName, plateEmoji] = ARCEUS_PLATES[Math.floor(Math.random() * ARCEUS_PLATES.length)];
+      addUserItem(userId, plateName);
+      arceusPlateDropText = `\n${plateEmoji} You received a **${plateName}**!`;
+    }
     let huntRewardText = '';
     if (!isFishing) {
       const huntProgress = recordDailyHuntCatch(userId, target);
@@ -5754,7 +5767,7 @@ async function askForBall(
         `${streakRewardText}\n` +
         `${isNewDexEntry ? `${target.name} has been added to your Pokédex.\n\n` : ''}` +
         `${huntRewardText}` +
-        `${ancientFossilDropText}` +
+        `${ancientFossilDropText}${arceusPlateDropText}` +
         `Pokémon roll: ${Math.round(playerRoll)}\n` +
         `Your catch rate: ${Math.round(targetRate)}%\n\n` +
         `═══════ Balls left ═══════\n` +
@@ -5941,6 +5954,22 @@ function describeBattleField(field) {
 }
 
 function getEquippedBattleMoves(pokemon, speciesId, formId = null) {
+  return getEquippedBattleMovesBase(pokemon, speciesId, formId)
+    .map((move) => {
+      const type = getHeldItemMoveType(move.name, move.type, pokemon.held_item);
+      return type === move.type ? move : { ...move, type };
+    });
+}
+
+// A plate-holding Arceus takes on the plate's type.
+function getBattleTypes(pokemon, form) {
+  const types = JSON.parse(form.types);
+  return form.species_id === 493 && isPlateItem(pokemon.held_item)
+    ? [TYPE_BOOSTING_HELD_ITEMS[pokemon.held_item]]
+    : types;
+}
+
+function getEquippedBattleMovesBase(pokemon, speciesId, formId = null) {
   let equipped = [];
   try {
     equipped = JSON.parse(pokemon.moves || '[]');
@@ -6216,7 +6245,7 @@ function buildSparParty(userId) {
     if (!moves.length) return null;
     return {
       ...pokemon,
-      types: JSON.parse(form.types),
+      types: getBattleTypes(pokemon, form),
       moves,
       hp: pokemon.max_hp,
       spriteUrl: getPokemonShowdownSprite(form.slug),
@@ -6425,7 +6454,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
     if (!moves.length) throw new Error(`${pokemon.name} has no damaging moves in the move database.`);
     return {
       ...pokemon,
-      types: JSON.parse(form.types),
+      types: getBattleTypes(pokemon, form),
       moves,
       hp: pokemon.max_hp,
     };
@@ -6709,7 +6738,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
   const partyData = party.map((pokemon) => {
     const form = db.prepare('SELECT * FROM pokemon_forms WHERE id = ?').get(pokemon.pokemon_id);
     if (!form) throw new Error(`Missing catalog form ${pokemon.pokemon_id} for team catch ${pokemon.id}.`);
-    const types = JSON.parse(form.types);
+    const types = getBattleTypes(pokemon, form);
     const moves = getEquippedBattleMoves(pokemon, form.species_id, form.id);
     if (!moves.length) throw new Error(`${pokemon.name} has no damaging moves in the move database.`);
     return {
@@ -6737,6 +6766,8 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       }
       if (pokemon.held_item !== latestPokemon.held_item) {
         pokemon.held_item = latestPokemon.held_item;
+        pokemon.moves = moves;
+        pokemon.types = getBattleTypes(latestPokemon, form);
         changed = true;
       }
     }
@@ -13966,7 +13997,7 @@ client.on('messageCreate', async (message) => {
           return message.reply(`❌ You do not have an active quest in Slot #${questSlot}.`);
         }
         rerollNotice = reroll.usedScroll
-          ? `📜 Used **1 Quest Reset Scroll** to reroll **Quest #${reroll.quest.slot}**.\n\n`
+          ? `<:questreset:1563198665408122970> Used **1 Quest Reset Scroll** to reroll **Quest #${reroll.quest.slot}**.\n\n`
           : `🔄 Quest **#${reroll.quest.slot}** rerolled for ` +
             `${EMOJIS.pokecoin} **${reroll.cost.toLocaleString()}** PokéCoins.\n\n`;
       }
@@ -17123,7 +17154,7 @@ client.on('messageCreate', async (message) => {
             {
               name: 'Fishing',
               value: [
-                line(EMOJIS.oldrod, bagUser.fish_rods, 'Rods'),
+                `${EMOJIS.oldrod} **${bagUser.fish_rods}**`,
                 line(EMOJIS.pokeLure, owned('Poké Lure'), `Poké Lures (${bagUser.active_poke_lures.toLocaleString()} active)`),
                 line(EMOJIS.mistysLure, owned("Misty's Lure"), `Misty's Lures (${bagUser.active_mistys_lures.toLocaleString()} active)`),
               ].join('\n'),
@@ -17180,17 +17211,15 @@ client.on('messageCreate', async (message) => {
               name: 'Buddy',
               value: [
                 line(EMOJIS.expshare, bagUser.exp_share_owned ? 1 : 0, 'Exp. Share'),
-                line('💎', stoneCount.toLocaleString(), 'Evolution stones'),
+                line('<:evolutionstones:1563198671779008572>', stoneCount.toLocaleString(), 'Evolution stones'),
                 line(EMOJIS.rarecandy, bagUser.rare_candies.toLocaleString(), 'Rare candies'),
-                line('🎟️', bagUser.double_xp_charges.toLocaleString(), 'Double XP Ticket'),
+                line('<:doupleexpticket:1563198670352949348>', bagUser.double_xp_charges.toLocaleString(), 'Double XP Ticket'),
                 '**Other Items**',
                 line(EMOJIS.shinyCharm, bagUser.shiny_charms, 'Shiny charms'),
-                line('🍀', owned('Catching Charm'), 'Catching charms'),
-                line('🚩', owned('Team Boost'), 'Team boosts'),
+                line('<:catchingcharm:1562495630201454752>', owned('Catching Charm'), 'Catching charms'),
+                line('<:teamboost:1562495631480848404>', owned('Team Boost'), 'Team boosts'),
                 line(EMOJIS.amuletcoin, amuletBoost.owned, 'Amulet coins'),
-                line('📜', bagUser.quest_reset_scrolls.toLocaleString(), 'Quest reset scrolls'),
-                line(EMOJIS.abilityCapsule, owned('Ability Capsule'), 'Ability capsules'),
-                line(EMOJIS.abilityPatch, owned('Ability Patch'), 'Ability patches'),
+                line('<:questreset:1563198665408122970>', bagUser.quest_reset_scrolls.toLocaleString(), 'Quest reset scrolls'),
               ].join('\n'),
               inline: true,
             },
@@ -18378,7 +18407,7 @@ client.on('messageCreate', async (message) => {
             .setAuthor({ name: 'Quest Reset Scroll — Item Information' })
             .setDescription(
               `Reset one of your active rotating quests to a new quest.\n\n` +
-              `**You currently own:** 📜 **${user.quest_reset_scrolls}x Quest Reset Scroll**\n\n` +
+              `**You currently own:** <:questreset:1563198665408122970> **${user.quest_reset_scrolls}x Quest Reset Scroll**\n\n` +
               `**Usage**\nUse \`${PREFIX}quest reset <1-3>\`.\n\n` +
               `**How to obtain**\nBuy for ${EMOJIS.pokecoin} **10,000 each** with \`${PREFIX}shop buy quest reset scroll [amount]\`.\n\n` +
               '**Can be held by Pokémon?** ❌ No'
@@ -18548,7 +18577,7 @@ client.on('messageCreate', async (message) => {
             `\`4\` ${EMOJIS.masterball} **Masterball** — 50,000 ${EMOJIS.pokecoin}\n` +
             `══════════ **Items** ══════════\n` +
             `\`11\` ${EMOJIS.amuletcoin} **Amulet Coin** — 150,000 ${EMOJIS.pokecoin}\n` +
-            `\`13\` 📜 **Quest Scroll** — 10,000 ${EMOJIS.pokecoin}\n` +
+            `\`13\` <:questreset:1563198665408122970> **Quest Scroll** — 10,000 ${EMOJIS.pokecoin}\n` +
             `\`12\` ${EMOJIS.repel} **Repel [30 uses]** — 5,000 ${EMOJIS.pokecoin}\n` +
             `\`8\` ${EMOJIS.shinyCharm} **Shiny Charm** — 25 ${EMOJIS.votecoin}\n` +
             `\`24\` ${LOOTBOX_EMOJI} **Lootbox** — 1 ${EMOJIS.votecoin}\n` +
@@ -19434,7 +19463,7 @@ client.on('messageCreate', async (message) => {
         }[item];
         const emoji = {
           repel: EMOJIS.repel,
-          questreset: '📜',
+          questreset: '<:questreset:1563198665408122970>',
           superrepel: EMOJIS.superRepel,
           maxrepel: EMOJIS.maxRepel,
           honey: EMOJIS.honey,
@@ -21902,7 +21931,7 @@ client.on('messageCreate', async (message) => {
         `• ${EMOJIS.repel} **${opened.rewards.repels}x** Repels\n` +
         `• ${EMOJIS.goldenRazz} **${opened.rewards.goldenRazz}x** Golden Razz Berries\n` +
         `• ${EMOJIS.pokeEgg} **${opened.rewards.eggs}x** Eggs\n` +
-        `• 📜 **${opened.rewards.questResetScrolls}x** Quest Reset Scrolls\n` +
+        `• <:questreset:1563198665408122970> **${opened.rewards.questResetScrolls}x** Quest Reset Scrolls\n` +
         `• ${EMOJIS.rarecandy} **${opened.rewards.rareCandies}x** Rare Candies`;
       return message.reply({
         embeds: [makeEmbed(`📦 Lootbox${opened.amount === 1 ? '' : 'es'} Unboxed!`, description, 0xf39c12)],

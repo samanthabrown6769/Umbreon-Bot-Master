@@ -9,6 +9,7 @@ const {
   KINGS_ROCK_ITEM,
   LEFTOVERS_ITEM,
   getHeldItemDamageMultiplier,
+  getHeldItemMoveType,
 } = require('./held-item-effects');
 
 const slug = (name) => String(name || '').toLowerCase().replace(/\s*\((physical|special)\)\s*$/, '').replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -364,7 +365,7 @@ function applyContactEffect(ctx, A, B, kind, L) {
 
 function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   const m = A.mon; const t = B.mon; const f = fx(m); const tf = fx(t);
-  let type = move.type;
+  let type = getHeldItemMoveType(move.name, move.type, m.held_item);
   if (f.electrified) { type = 'electric'; f.electrified = false; } else if (ctx.field.ionDeluge && type === 'normal') type = 'electric';
   if (f.powdered && type === 'fire') {
     m.hp -= Math.max(1, Math.floor(m.max_hp / 4)); f.powdered = false;

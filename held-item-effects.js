@@ -19,6 +19,23 @@ const TYPE_BOOSTING_HELD_ITEMS = Object.freeze({
   'Soft Sand': 'ground',
   'Spell Tag': 'ghost',
   'Twisted Spoon': 'psychic',
+  'Draco Plate': 'dragon',
+  'Dread Plate': 'dark',
+  'Earth Plate': 'ground',
+  'Fist Plate': 'fighting',
+  'Flame Plate': 'fire',
+  'Icicle Plate': 'ice',
+  'Insect Plate': 'bug',
+  'Iron Plate': 'steel',
+  'Meadow Plate': 'grass',
+  'Mind Plate': 'psychic',
+  'Pixie Plate': 'fairy',
+  'Sky Plate': 'flying',
+  'Splash Plate': 'water',
+  'Spooky Plate': 'ghost',
+  'Stone Plate': 'rock',
+  'Toxic Plate': 'poison',
+  'Zap Plate': 'electric',
 });
 
 const LEFTOVERS_ITEM = 'Leftovers';
@@ -57,6 +74,16 @@ function getHeldItemDamageMultiplier(itemName, moveType) {
   return boostedType && boostedType === String(moveType).toLowerCase() ? 1.2 : 1;
 }
 
+function isPlateItem(itemName) {
+  return typeof itemName === 'string' && itemName.endsWith(' Plate') && itemName in TYPE_BOOSTING_HELD_ITEMS;
+}
+
+// Judgment takes the type of the Plate its holder carries.
+function getHeldItemMoveType(moveName, moveType, itemName) {
+  const isJudgment = String(moveName || '').toLowerCase().replace(/[^a-z]/g, '') === 'judgment';
+  return isJudgment && isPlateItem(itemName) ? TYPE_BOOSTING_HELD_ITEMS[itemName] : moveType;
+}
+
 module.exports = {
   BATTLE_HELD_ITEM_NAMES,
   ASSAULT_VEST_ITEM,
@@ -66,4 +93,7 @@ module.exports = {
   TYPE_BOOSTING_HELD_ITEMS,
   POWER_ITEM_EVS,
   getHeldItemDamageMultiplier,
+  getHeldItemMoveType,
+  isPlateItem,
+  findBattleHeldItem,
 };
