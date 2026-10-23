@@ -6585,9 +6585,9 @@ function clearMarketListings() {
 
 function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0
-      || !Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 100
+      || !Number.isSafeInteger(quantity)       || quantity <= 0
       || !Number.isSafeInteger(price) || price <= 0) {
-    throw new TypeError('pokemonId and price must be positive; quantity must be between 1 and 100.');
+    throw new TypeError('pokemonId, quantity and price must be positive.');
   }
 
   return db.transaction(() => {

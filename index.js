@@ -11696,10 +11696,10 @@ client.on('messageCreate', async (message) => {
         const quantity = parseAmount(values.pop());
         const pokemonQuery = values.join(' ').trim();
         if (!pokemonQuery
-            || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100
+            || !Number.isSafeInteger(quantity) || quantity < 1
             || !Number.isSafeInteger(price) || price <= 0) {
           return message.reply(
-            `Usage: \`${PREFIX}admin market stock <Pokémon name or Pokédex number> <quantity 1-100> <price> [shiny]\``
+            `Usage: \`${PREFIX}admin market stock <Pokémon name or Pokédex number> <quantity> <price> [shiny]\``
           );
         }
         const pokemon = resolvePokemonForm(pokemonQuery);
@@ -12226,9 +12226,9 @@ client.on('messageCreate', async (message) => {
 
         if (action === 'multi') {
           const entries = pokemonArgs.join(' ').split(',').map((entry) => entry.trim()).filter(Boolean);
-          if (!entries.length || entries.length > 100) {
+          if (!entries.length) {
             return message.reply(
-              `Usage: \`${PREFIX}admin pokemon multi @User <Pokémon[, Pokémon...]>\` (1-100 Pokémon; prefix entries with \`shiny\` or \`golden\`).`
+              `Usage: \`${PREFIX}admin pokemon multi @User <Pokémon[, Pokémon...]>\` (prefix entries with \`shiny\` or \`golden\`).`
             );
           }
           const grants = [];
@@ -12305,8 +12305,8 @@ client.on('messageCreate', async (message) => {
         const hasAmount = pokemonArgs.length > 1 && /^-?\d+(?:\.\d+)?$/.test(amountArgument || '');
         const amount = hasAmount ? Number(amountArgument) : 1;
         if (hasAmount) pokemonArgs.pop();
-        if (!Number.isSafeInteger(amount) || amount < 1 || amount > 100) {
-          return message.reply('The Pokémon grant amount must be a whole number from 1 to 100.');
+        if (!Number.isSafeInteger(amount) || amount < 1) {
+          return message.reply('The Pokémon grant amount must be a whole number of at least 1.');
         }
         const pokemonName = pokemonArgs.join(' ').trim();
         if (!pokemonName) {
