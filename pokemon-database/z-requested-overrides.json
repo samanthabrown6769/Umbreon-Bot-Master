@@ -169,5 +169,10 @@
     "slug": "ogerpon-cornerstone-mask",
     "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509191/ogerponcornerstone-ezgif.com-resize.webp",
     "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509191/ogerponcornerstoneshiny-ezgif.com-resize.webp"
+  },
+  {
+    "slug": "raging-bolt",
+    "animated_sprite": "https://assets.pokestats.gg/pokeapi/v1/pokemon/other/showdown/1021.gif",
+    "shiny_animated_sprite": "https://assets.pokestats.gg/pokeapi/v1/pokemon/other/showdown/shiny/1021.gif"
   }
 ]
