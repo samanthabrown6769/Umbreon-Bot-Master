@@ -379,7 +379,7 @@ const { parseTradeMonInput } = require('./trade-parser');
 const {
   getPokemonDexNumbers,
   getGoldenDexNumber,
-  GOLDEN_DEX_START,
+  getGoldenSpeciesId,
   isGoldenFormSupported,
   isGoldenDexNumber,
 } = require('./pokemon-dex-numbers');
@@ -14362,9 +14362,10 @@ client.on('messageCreate', async (message) => {
             && isGoldenFormSupported(pokemon.species_id, pokemon.slug)
             && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === numericDex
         );
+      const goldenSpeciesId = numericDex === null ? null : getGoldenSpeciesId(numericDex);
       const goldenByNumber = !numericMatch
         && numericDex !== null
-        && isGoldenDexNumber(numericDex);
+        && (goldenSpeciesId !== null || isGoldenDexNumber(numericDex));
       const goldenEntry = previewGolden || goldenByNumber;
       const shinyEntry = !goldenEntry && (previewShiny || (
         numericMatch ? numericMatchIsShiny : numericDex !== null && numericDex > dexIndexOffset
@@ -14372,7 +14373,7 @@ client.on('messageCreate', async (message) => {
       const speciesId = numericDex === null || numericMatch || goldenFormByNumber
         ? null
         : goldenByNumber
-          ? numericDex - (GOLDEN_DEX_START - 1)
+          ? goldenSpeciesId
           : (numericDex > dexIndexOffset ? numericDex - dexIndexOffset : numericDex);
       let selectedPokemon;
       if (numericMatch) {
@@ -19919,9 +19920,20 @@ client.on('messageCreate', async (message) => {
         ) {
           return message.reply(`Usage: \`${PREFIX}release number <Pokédex number> [amount]\`.`);
         }
-        const normalizedDexNumber = dexNumber > getDexIndexOffset()
-          ? dexNumber - getDexIndexOffset()
-          : dexNumber;
+        const pokemonForms = db.prepare(`
+          SELECT id, species_id, name, slug, is_default
+          FROM pokemon_forms
+          ORDER BY species_id, id
+        `).all();
+        const dexNumbersByFormId = getPokemonDexNumbers(pokemonForms);
+        const matchingForm = pokemonForms.find((pokemon) => {
+          const numbers = dexNumbersByFormId.get(pokemon.id);
+          return numbers?.dexNumber === dexNumber || numbers?.shinyDexNumber === dexNumber;
+        });
+        const normalizedDexNumber = matchingForm?.species_id
+          ?? (dexNumber > getDexIndexOffset()
+            ? dexNumber - getDexIndexOffset()
+            : dexNumber);
         const matching = db.prepare(`
           SELECT c.id, c.name, c.rarity, c.is_shiny, c.is_golden
           FROM catches c

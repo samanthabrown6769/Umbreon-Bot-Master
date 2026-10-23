@@ -33,15 +33,18 @@ function readPokemonDatabase() {
       const whole = (value) => (Number.isSafeInteger(value) && value > 0 ? value : null);
       if (entry.variant === 'shiny') {
         record.shinySprite = text(entry.sprite) ?? record.shinySprite;
-        record.shinyDexNumber = whole(entry.dex_number) ?? record.shinyDexNumber;
+        if (!entry.is_default && entry.id !== entry.dex_number) {
+          record.shinyDexNumber = whole(entry.dex_number) ?? record.shinyDexNumber;
+        }
         record.shinyAnimated = text(entry.shiny_animated_sprite) ?? record.shinyAnimated;
       } else {
         record.entry = entry;
         record.name = text(entry.name) ?? record.name;
         record.rarity = text(entry.rarity) ?? record.rarity;
         record.sprite = text(entry.sprite) ?? record.sprite;
-        record.dexNumber = whole(entry.dex_number) ?? record.dexNumber;
-        record.shinyDexNumber = whole(entry.shiny_dex_number) ?? record.shinyDexNumber;
+        if (entry.id !== entry.dex_number) {
+          record.dexNumber = whole(entry.dex_number) ?? record.dexNumber;
+        }
         record.animated = text(entry.animated_sprite) ?? record.animated;
         record.shinyAnimated = text(entry.shiny_animated_sprite) ?? record.shinyAnimated;
         record.shinySprite = text(entry.shiny_sprite) ?? record.shinySprite;

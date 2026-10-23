@@ -5001,7 +5001,7 @@ function getUserBuddy(userId) {
       pokemon_forms.sprite, pokemon_forms.shiny_sprite,
       pokemon_forms.id AS form_id, pokemon_forms.species_id,
       COALESCE(pokemon_forms.species_id, catches.pokemon_id)
-        + CASE WHEN catches.is_shiny = 1 THEN 2000 ELSE 0 END AS dex_number,
+        + CASE WHEN catches.is_shiny = 1 THEN 1000 ELSE 0 END AS dex_number,
       pokemon_forms.base_hp, pokemon_forms.base_atk, pokemon_forms.base_def,
       pokemon_forms.base_spa, pokemon_forms.base_spdef, pokemon_forms.base_spd
     FROM catches
@@ -5511,7 +5511,7 @@ function getUserCatches(userId) {
 }
 
 function getDexIndexOffset() {
-  return 2000;
+  return 1000;
 }
 
 function findPokemonForms(query, limit = 10) {

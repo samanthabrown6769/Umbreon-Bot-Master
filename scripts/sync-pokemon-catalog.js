@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { displayName, regionalPokemonName } = require('../pokemon-names');
+const { appendCustomPokemonForms } = require('./pokemon-custom-forms');
 
 const API = 'https://pokeapi.co/api/v2';
 const OUTPUT = path.join(__dirname, '..', 'data', 'pokemon-catalog.json');
@@ -207,6 +208,8 @@ async function main() {
       generation: species.generation.name,
     };
   }).sort((left, right) => left.id - right.id);
+  appendCustomPokemonForms(catalog);
+  catalog.sort((left, right) => left.id - right.id);
 
   fs.mkdirSync(path.dirname(OUTPUT), { recursive: true });
   fs.writeFileSync(OUTPUT, `${JSON.stringify(catalog)}\n`);

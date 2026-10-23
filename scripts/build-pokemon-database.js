@@ -9,19 +9,28 @@ const { regionalPokemonName } = require('../pokemon-names');
 const { loadPokemonDatabase } = require('../pokemon-database');
 const { getGoldenSpriteUrl } = require('../golden-pokemon');
 const {
+  getDexNumberOverride,
   getGoldenDexNumber,
   getPokemonDexGroups,
   getPokemonDexNumbers,
+  getShinyDexNumberOverride,
   isGoldenFormSupported,
 } = require('../pokemon-dex-numbers');
 
 const catalog = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf8'));
 const rarityOverrides = JSON.parse(fs.readFileSync(RARITIES_PATH, 'utf8'));
+const customFormDefinitions = JSON.parse(
+  fs.readFileSync(path.join(ROOT, 'data', 'custom-pokemon-forms.json'), 'utf8')
+);
 if (!Array.isArray(catalog) || !Array.isArray(rarityOverrides)) {
   throw new Error('Pokémon catalog and rarity data must both be JSON arrays.');
 }
+if (!Array.isArray(customFormDefinitions)) {
+  throw new Error('Custom Pokémon forms data must be a JSON array.');
+}
 
 const rarityById = new Map(rarityOverrides.map((entry) => [entry.id, entry.rarity]));
+const customFormSlugs = new Set(customFormDefinitions.map((form) => form.slug));
 const dexNumbersById = getPokemonDexNumbers(catalog);
 const seenIds = new Set();
 const datasets = {
@@ -34,6 +43,23 @@ const datasets = {
   'gmax.json': [],
   'shiny-gmax.json': [],
 };
+
+function addGoldenForm(pokemon, record) {
+  if (customFormSlugs.has(pokemon.slug)
+      || !isGoldenFormSupported(pokemon.species_id, pokemon.slug)) {
+    return;
+  }
+  const dexNumber = getGoldenDexNumber(pokemon.species_id, pokemon.slug);
+  if (dexNumber === null) {
+    throw new Error(`Missing Golden Dex number for supported form ${pokemon.slug}.`);
+  }
+  datasets['golden-dex.json'].push({
+    ...record,
+    dex_number: dexNumber,
+    sprite: getGoldenSpriteUrl(pokemon.species_id, pokemon.slug),
+    variant: 'golden',
+  });
+}
 
 let catalogChanged = false;
 for (const pokemon of catalog) {
@@ -71,6 +97,7 @@ for (const pokemon of catalog) {
       sprite: record.shiny_sprite || record.sprite,
       variant: 'shiny',
     });
+    addGoldenForm(pokemon, record);
   } else if (isMega) {
     datasets['mega.json'].push({ ...record, dex_number: pokemon.species_id });
     datasets['shiny-mega.json'].push({
@@ -79,11 +106,16 @@ for (const pokemon of catalog) {
       sprite: record.shiny_sprite || record.sprite,
       variant: 'shiny',
     });
+    addGoldenForm(pokemon, record);
   } else if (pokemon.is_default) {
-    datasets['base-dex.json'].push({ ...record, dex_number: pokemon.species_id });
+    datasets['base-dex.json'].push({
+      ...record,
+      dex_number: getDexNumberOverride(pokemon.slug) ?? pokemon.species_id,
+    });
     datasets['shiny-dex.json'].push({
       ...record,
-      dex_number: dexNumbersById.get(pokemon.id).shinyDexNumber,
+      dex_number: getShinyDexNumberOverride(pokemon.slug)
+        ?? dexNumbersById.get(pokemon.id).shinyDexNumber,
       sprite: record.shiny_sprite || record.sprite,
       variant: 'shiny',
     });
@@ -93,14 +125,10 @@ for (const pokemon of catalog) {
       sprite: getGoldenSpriteUrl(pokemon.species_id),
       variant: 'golden',
     });
-  } else if (isGoldenFormSupported(pokemon.species_id, pokemon.slug)) {
+  } else if (!customFormSlugs.has(pokemon.slug)
+      && isGoldenFormSupported(pokemon.species_id, pokemon.slug)) {
     datasets['formes.json'].push({ ...record, dex_number: pokemon.species_id });
-    datasets['golden-dex.json'].push({
-      ...record,
-      dex_number: getGoldenDexNumber(pokemon.species_id, pokemon.slug),
-      sprite: getGoldenSpriteUrl(pokemon.species_id, pokemon.slug),
-      variant: 'golden',
-    });
+    addGoldenForm(pokemon, record);
   } else {
     datasets['formes.json'].push({ ...record, dex_number: pokemon.species_id });
   }

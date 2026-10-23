@@ -25024,7 +25024,7 @@
     "generation": "generation-ix",
     "base_spa": 133,
     "base_spdef": 91,
-    "dex_number": 1000
+    "dex_number": 7940
   },
   {
     "id": 1001,
@@ -25049,7 +25049,7 @@
     "generation": "generation-ix",
     "base_spa": 95,
     "base_spdef": 135,
-    "dex_number": 1001
+    "dex_number": 7943
   },
   {
     "id": 1002,
@@ -25074,7 +25074,7 @@
     "generation": "generation-ix",
     "base_spa": 90,
     "base_spdef": 65,
-    "dex_number": 1002
+    "dex_number": 7946
   },
   {
     "id": 1003,
@@ -25099,7 +25099,7 @@
     "generation": "generation-ix",
     "base_spa": 55,
     "base_spdef": 80,
-    "dex_number": 1003
+    "dex_number": 7949
   },
   {
     "id": 1004,
@@ -25124,7 +25124,7 @@
     "generation": "generation-ix",
     "base_spa": 135,
     "base_spdef": 120,
-    "dex_number": 1004
+    "dex_number": 7952
   },
   {
     "id": 1005,
@@ -25151,7 +25151,7 @@
     "base_spdef": 101,
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/roaringmoon.gif",
     "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/roaringmoon.gif",
-    "dex_number": 1005
+    "dex_number": 7955
   },
   {
     "id": 1006,
@@ -25176,7 +25176,7 @@
     "generation": "generation-ix",
     "base_spa": 120,
     "base_spdef": 60,
-    "dex_number": 1006
+    "dex_number": 7958
   },
   {
     "id": 1007,
@@ -25201,7 +25201,7 @@
     "generation": "generation-ix",
     "base_spa": 85,
     "base_spdef": 100,
-    "dex_number": 1007
+    "dex_number": 7967
   },
   {
     "id": 1008,
@@ -25226,7 +25226,7 @@
     "generation": "generation-ix",
     "base_spa": 135,
     "base_spdef": 115,
-    "dex_number": 1008
+    "dex_number": 7970
   },
   {
     "id": 1009,
@@ -25253,7 +25253,7 @@
     "base_spdef": 83,
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/walkingwake.gif",
     "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/walkingwake.gif",
-    "dex_number": 1009
+    "dex_number": 7973
   },
   {
     "id": 1010,
@@ -25278,7 +25278,7 @@
     "generation": "generation-ix",
     "base_spa": 70,
     "base_spdef": 108,
-    "dex_number": 1010
+    "dex_number": 7976
   },
   {
     "id": 1011,
@@ -25303,7 +25303,7 @@
     "generation": "generation-ix",
     "base_spa": 95,
     "base_spdef": 80,
-    "dex_number": 1011
+    "dex_number": 8149
   },
   {
     "id": 1012,
@@ -25328,7 +25328,7 @@
     "generation": "generation-ix",
     "base_spa": 74,
     "base_spdef": 54,
-    "dex_number": 1012
+    "dex_number": 8152
   },
   {
     "id": 1013,
@@ -25353,7 +25353,7 @@
     "generation": "generation-ix",
     "base_spa": 121,
     "base_spdef": 80,
-    "dex_number": 1013
+    "dex_number": 8155
   },
   {
     "id": 1014,
@@ -25378,7 +25378,7 @@
     "generation": "generation-ix",
     "base_spa": 58,
     "base_spdef": 86,
-    "dex_number": 1014
+    "dex_number": 8158
   },
   {
     "id": 1015,
@@ -25403,7 +25403,7 @@
     "generation": "generation-ix",
     "base_spa": 130,
     "base_spdef": 90,
-    "dex_number": 1015
+    "dex_number": 8161
   },
   {
     "id": 1016,
@@ -25428,7 +25428,7 @@
     "generation": "generation-ix",
     "base_spa": 70,
     "base_spdef": 125,
-    "dex_number": 1016
+    "dex_number": 8164
   },
   {
     "id": 1017,
@@ -25455,57 +25455,7 @@
     "base_spdef": 96,
     "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509192/ogerponshiny-ezgif.com-resize.webp",
     "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792509192/ogerpon-ezgif.com-resize.webp",
-    "dex_number": 1017
-  },
-  {
-    "id": 1018,
-    "species_id": 1018,
-    "species_name": "Archaludon",
-    "slug": "archaludon",
-    "name": "Archaludon",
-    "is_default": 1,
-    "is_legendary": 0,
-    "is_mythical": 0,
-    "evolution_stage": 1,
-    "rarity": "Super Rare",
-    "base_hp": 90,
-    "base_atk": 105,
-    "base_def": 130,
-    "base_spd": 85,
-    "base_stat_total": 600,
-    "types": "[\"steel\",\"dragon\"]",
-    "is_water": 0,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1018.png",
-    "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1018.png",
-    "generation": "generation-ix",
-    "base_spa": 125,
-    "base_spdef": 65,
-    "dex_number": 1018
-  },
-  {
-    "id": 1019,
-    "species_id": 1019,
-    "species_name": "Hydrapple",
-    "slug": "hydrapple",
-    "name": "Hydrapple",
-    "is_default": 1,
-    "is_legendary": 0,
-    "is_mythical": 0,
-    "evolution_stage": 2,
-    "rarity": "Super Rare",
-    "base_hp": 106,
-    "base_atk": 80,
-    "base_def": 110,
-    "base_spd": 44,
-    "base_stat_total": 540,
-    "types": "[\"grass\",\"dragon\"]",
-    "is_water": 0,
-    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1019.png",
-    "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1019.png",
-    "generation": "generation-ix",
-    "base_spa": 120,
-    "base_spdef": 80,
-    "dex_number": 1019
+    "dex_number": 8167
   },
   {
     "id": 1020,
@@ -25530,7 +25480,57 @@
     "generation": "generation-ix",
     "base_spa": 65,
     "base_spdef": 93,
-    "dex_number": 1020
+    "dex_number": 8176
+  },
+  {
+    "id": 1018,
+    "species_id": 1018,
+    "species_name": "Archaludon",
+    "slug": "archaludon",
+    "name": "Archaludon",
+    "is_default": 1,
+    "is_legendary": 0,
+    "is_mythical": 0,
+    "evolution_stage": 1,
+    "rarity": "Super Rare",
+    "base_hp": 90,
+    "base_atk": 105,
+    "base_def": 130,
+    "base_spd": 85,
+    "base_stat_total": 600,
+    "types": "[\"steel\",\"dragon\"]",
+    "is_water": 0,
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1018.png",
+    "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1018.png",
+    "generation": "generation-ix",
+    "base_spa": 125,
+    "base_spdef": 65,
+    "dex_number": 8300
+  },
+  {
+    "id": 1019,
+    "species_id": 1019,
+    "species_name": "Hydrapple",
+    "slug": "hydrapple",
+    "name": "Hydrapple",
+    "is_default": 1,
+    "is_legendary": 0,
+    "is_mythical": 0,
+    "evolution_stage": 2,
+    "rarity": "Super Rare",
+    "base_hp": 106,
+    "base_atk": 80,
+    "base_def": 110,
+    "base_spd": 44,
+    "base_stat_total": 540,
+    "types": "[\"grass\",\"dragon\"]",
+    "is_water": 0,
+    "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1019.png",
+    "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/1019.png",
+    "generation": "generation-ix",
+    "base_spa": 120,
+    "base_spdef": 80,
+    "dex_number": 8302
   },
   {
     "id": 1021,
@@ -25555,7 +25555,9 @@
     "generation": "generation-ix",
     "base_spa": 137,
     "base_spdef": 89,
-    "dex_number": 1021
+    "animated_sprite": "https://assets.pokestats.gg/pokeapi/v1/pokemon/other/showdown/1021.gif",
+    "shiny_animated_sprite": "https://assets.pokestats.gg/pokeapi/v1/pokemon/other/showdown/shiny/1021.gif",
+    "dex_number": 8304
   },
   {
     "id": 1022,
@@ -25580,7 +25582,7 @@
     "generation": "generation-ix",
     "base_spa": 68,
     "base_spdef": 108,
-    "dex_number": 1022
+    "dex_number": 8306
   },
   {
     "id": 1023,
@@ -25605,7 +25607,7 @@
     "generation": "generation-ix",
     "base_spa": 122,
     "base_spdef": 108,
-    "dex_number": 1023
+    "dex_number": 8308
   },
   {
     "id": 1024,
@@ -25632,7 +25634,7 @@
     "base_spdef": 85,
     "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792508785/terapagos-ezgif.com-resize.webp",
     "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1792508785/terapagosshiny-ezgif.com-resize.webp",
-    "dex_number": 1024
+    "dex_number": 8310
   },
   {
     "id": 1025,
@@ -25659,6 +25661,6 @@
     "base_spdef": 88,
     "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1025.webp&w=120&output=png",
     "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/1025.webp&w=120&output=png",
-    "dex_number": 1025
+    "dex_number": 8312
   }
 ]
