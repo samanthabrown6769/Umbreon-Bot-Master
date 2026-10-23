@@ -2,22 +2,22 @@
 const BOXES = {
   'Rare Box': {
     aliases: ['rarebox', 'rb'], emoji: '<:rarebox:1559925073308291224>',
-    rarity: 'Rare', shiny: false, pokemonDropChance: 0.1, coins: [2000, 7000],
+    rarity: 'Rare', shiny: false, pokemonDropChance: 0.1, coins: [2000, 7000], eggs: [0.05, 1, 1],
     description: 'Gives PokéCoins and has a 10% chance to drop a random Rare Pokémon; otherwise, it gives Greatballs and Ultraballs.',
   },
   'Super Rare Box': {
     aliases: ['superrarebox', 'srb'], emoji: '<:superrarebox:1559925071697420298>',
-    rarity: 'Super Rare', shiny: false, pokemonDropChance: 0.1, coins: [5000, 15000],
+    rarity: 'Super Rare', shiny: false, pokemonDropChance: 0.1, coins: [5000, 15000], eggs: [0.065, 1, 1],
     description: 'Gives PokéCoins and has a 10% chance to drop a random Super Rare Pokémon; otherwise, it gives Greatballs and Ultraballs.',
   },
   'Legendary Box': {
     aliases: ['legendarybox', 'legbox', 'lgb'], emoji: '<:legendarybox:1559925069831082105>',
-    rarity: 'Legendary', shiny: false, pokemonDropChance: 0.1, coins: [25000, 25000],
+    rarity: 'Legendary', shiny: false, pokemonDropChance: 0.1, coins: [25000, 25000], eggs: [0.125, 1, 1],
     description: 'Gives 25,000 PokéCoins and has a 10% chance to drop a random Legendary Pokémon; otherwise, it gives Greatballs and Ultraballs.',
   },
   'Shiny Box': {
     aliases: ['shinybox', 'sb'], emoji: '<a:shinybox:1559925068254154803>',
-    rarity: null, shiny: true, pokemonDropChance: 0.1, coins: [50000, 50000],
+    rarity: null, shiny: true, pokemonDropChance: 0.1, coins: [50000, 50000], eggs: [0.3, 1, 3],
   },
 };
 

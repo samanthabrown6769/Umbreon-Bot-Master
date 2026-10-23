@@ -291,6 +291,11 @@ const {
   joinClan,
   leaveClan,
   disbandClan,
+  banUser,
+  unbanUser,
+  isUserBanned,
+  wipeUserData,
+  deleteClanByName,
   trackClanActivity,
   setClanCoLeader,
   getClanCoLeaderIds,
@@ -1005,7 +1010,7 @@ const NPC_ICON_ALIASES = {
   drake: 'drake-gen3',
   stevenstone: 'steven',
 };
-const NPC_ICON_DROP_CHANCE = 1 / 1000;
+const NPC_ICON_DROP_CHANCE = 1 / 500;
 const DEFAULT_TRAINER_ICONS = {
   brendan: { value: -1, name: 'Brendan', emoji: '<:trainerbrendan:1560314274973352016>' },
   may: { value: -2, name: 'May', emoji: '<:trainermay:1560314251565076630>' },
@@ -1060,6 +1065,47 @@ function getNpcTrainerName(index) {
   const challenge = getNpcChallenge(index);
   if (!challenge) throw new RangeError(`Unknown NPC index ${index}.`);
   return challenge.name.split('\u2014').pop().trim();
+}
+
+async function sendBattleIconUnlockedEmbed(channel, userId, iconIndex) {
+  const trainerName = getNpcTrainerName(iconIndex);
+  const emoji = getNpcIconEmojiOrBlank(iconIndex);
+  const label = `${emoji} **${trainerName}**`.trim();
+  const buttonId = `battle_icon_use:${userId}:${iconIndex}`;
+  const embed = new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setDescription(
+      `🎉 Congratulations <@${userId}>! You have unlocked ${label}'s trainer icon!\n` +
+      `• Set ${label} as your icon with \`${PREFIX}battle set-icon ${trainerName.toLowerCase()}\`\n` +
+      `• View all of your unlocked icons using \`${PREFIX}battle icons\``
+    );
+  const buildRow = (disabled) => new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(buttonId)
+      .setLabel('Use Icon')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled)
+      .setEmoji(emoji.match(/^<(a?):(\w+):(\d+)>$/)
+        ? { id: emoji.match(/:(\d+)>$/)[1] }
+        : '🎉')
+  );
+  const sent = await channel.send({ embeds: [embed], components: [buildRow(false)] });
+  const collector = sent.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    filter: (i) => i.customId === buttonId,
+    time: 120000,
+  });
+  collector.on('collect', async (i) => {
+    if (i.user.id !== userId) {
+      return i.reply({ content: 'Only the trainer who unlocked this icon can use it.', ephemeral: true }).catch(() => {});
+    }
+    setSelectedBattleIcon(userId, iconIndex);
+    collector.stop('used');
+    return i.update({ components: [buildRow(true)] }).catch(() => {});
+  });
+  collector.on('end', (_, reason) => {
+    if (reason !== 'used') sent.edit({ components: [buildRow(true)] }).catch(() => {});
+  });
 }
 
 function getNpcIconUrl(index) {
@@ -4777,6 +4823,33 @@ async function announceRareSpawn(guild, user, pokemon) {
   }
 }
 
+async function announceBattleIconDrop(guild, user, iconIndex) {
+  if (!guild) return;
+  try {
+    const rareChannels = await resolveAnnouncementChannels(getAllRareSpawnAnnouncementChannels());
+    if (!rareChannels.length) return;
+    const trainerName = getNpcTrainerName(iconIndex);
+    const emoji = getNpcIconEmojiOrBlank(iconIndex);
+    const embed = new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setAuthor({
+        name: `${client.user.username} Global Rare Spawns`,
+        iconURL: client.user.displayAvatarURL(),
+      })
+      .setTitle(
+        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} has unlocked ` +
+        `${emoji} ${trainerName}'s battle icon!`.replace('  ', ' ')
+      )
+      .setFooter({ text: `Battle icon drop • Today at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}` })
+      .setTimestamp();
+    const iconUrl = getNpcIconUrl(iconIndex);
+    if (iconUrl) embed.setThumbnail(iconUrl);
+    await sendToChannels(rareChannels, { embeds: [embed] });
+  } catch (error) {
+    console.error(`Failed to announce battle icon drop from guild ${guild.id}:`, error);
+  }
+}
+
 async function sendRareSpawnChannelEmbed(guild, embed) {
   if (!guild) return false;
   const channelId = getRareSpawnAnnouncementChannel(guild.id);
@@ -5448,9 +5521,11 @@ async function askForBall(
     const targetRate = guaranteedCatch
       ? 100
       : getBallCatchRate(selectedBall, ball, target, catchDisplayRarity,       rarityData.catchChance, clanPerks.crBonus + ninjaBonus, channelCatchRateBoost);
-    const criticalCatch = !guaranteedCatch && selectedBall !== 'mb' && playerRoll >= targetRate
+    const rollMatchesRate = targetRate > 0 && Math.round(playerRoll) <= Math.round(targetRate);
+    const criticalCatch = !guaranteedCatch && selectedBall !== 'mb' && playerRoll >= targetRate && !rollMatchesRate
       && Math.random() < getCatchingCharmCritChance(userId);
-    const isSuccess = guaranteedCatch || criticalCatch || selectedBall === 'mb' || playerRoll < targetRate;
+    const isSuccess = guaranteedCatch || criticalCatch || selectedBall === 'mb' || playerRoll < targetRate
+      || rollMatchesRate;
     const baseCoinsEarned = getCatchCoinReward(target.rarity, Boolean(target.isShiny));
     const getRemainingBalls = () => {
       const remainingUser = getUser(userId);
@@ -6983,6 +7058,9 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
             });
             announceQuestCompletions(userId, message.channel, iconQuests);
             resultSummary += `\n🆕 Unlocked ${getNpcTrainerName(unlockedIconIndex)}'s battle icon.`;
+            announceBattleIconDrop(message.guild, interaction.user, unlockedIconIndex);
+            sendBattleIconUnlockedEmbed(message.channel, userId, unlockedIconIndex)
+              .catch((error) => console.error('Failed to send battle icon unlock embed:', error));
           }
         }
       } else if (lost) {
@@ -7675,6 +7753,11 @@ async function handleStatsCommand(message, args) {
 }
 
 client.on('interactionCreate', (interaction) => {
+  if (interaction.user && isUserBanned(interaction.user.id)) {
+    if (interaction.isRepliable()) interaction.reply({ content: '⛔ You are banned from this bot.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    interaction.__banned = true;
+    return;
+  }
   if (interaction.isButton()) {
     const remainingMs = getButtonClickCooldownRemaining(interaction.user.id);
     if (remainingMs) {
@@ -8842,6 +8925,7 @@ client.on('messageCreate', async (message) => {
     if (!message.author.bot) trackAutoSpawnMessage(message);
     return;
   }
+  if (isUserBanned(message.author.id)) return;
   if (isCommandThrottled(message.author.id)) return;
 
   const input = message.content.slice(PREFIX.length).trim();
@@ -9483,7 +9567,7 @@ client.on('messageCreate', async (message) => {
       const emptyEmoji = '<:empty:1560342156630167764>';
       const catchableRows = [
         `${hasLegendaryTrio ? '✅' : '❌'} ${pokemonVariantsDisplay('Keldeo')}\n` +
-          `${emptyEmoji} You need ${requiredTrio.map(pokemonDisplay).join(' ')} in your box.`,
+          `${emptyEmoji} You need ${requiredTrio.map((name) => pokemonDisplay(name)).join(' ')} in your box.`,
         `${ancientFossilCount > 0 ? '✅' : '❌'} ${pokemonVariantsDisplay('Genesect')}\n` +
           `${emptyEmoji} Requires ${EMOJIS.ancientFossil} **Ancient Fossil**. ` +
           `Obtained from catching \`${PREFIX}pokemon\`.`,
@@ -9944,7 +10028,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}market remove <listing_id|all>\` — Remove your listing(s) and return unsold Pokémon\n` +
             `• \`${PREFIX}market view <Pokémon name|Pokédex number>\` / \`${PREFIX}m view <Pokémon name|Pokédex number>\` — Search listings\n` +
             `• \`${PREFIX}market search [shiny] <Pokémon name|Pokédex number>\` / \`${PREFIX}m search [shiny] <Pokémon name|Pokédex number>\` — Find listings of one exact Pokémon and variant\n` +
-            `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy one Pokémon\n` +
+            `• \`${PREFIX}market buy <listing_id> [amount|all]\` / \`${PREFIX}m b <listing_id> [amount|all]\` — Buy one or more Pokémon\n` +
             `• \`${PREFIX}market multibuy <id1> <id2> ...\` / \`${PREFIX}m mb <id1> <id2> ...\` — Buy one Pokémon from each listed ID`,
         },
         research: {
@@ -10107,7 +10191,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}market\` / \`${PREFIX}m\` — Browse market listings; use \`${PREFIX}market view <Pokémon name>\` or \`${PREFIX}m view <Pokémon name>\` to search; \`${PREFIX}m search [shiny] <Pokémon name|number>\` finds one exact Pokémon and variant\n` +
             `• \`${PREFIX}market listing mine\` — View your active market listings and sold counts\n` +
             `• \`${PREFIX}market list [shiny] <Pokémon name|number> <amount 1-50000> <price>\` / \`${PREFIX}m offer [shiny]\` — List owned Pokémon at the price per Pokémon; prefix the name with \`shiny\` to select Shiny copies; one listing can contain up to 50,000 copies of one variant\n` +
-            `• \`${PREFIX}market buy <listing_id>\` / \`${PREFIX}m b <listing_id>\` — Buy a market listing`
+            `• \`${PREFIX}market buy <listing_id> [amount|all]\` / \`${PREFIX}m b <listing_id> [amount|all]\` — Buy a market listing`
           )
           .setFooter({ text: 'Page 2/4 • Select a category below' }),
         battles: new EmbedBuilder()
@@ -11358,6 +11442,31 @@ client.on('messageCreate', async (message) => {
         });
       }
 
+      if (command === 'admin' && ['ban', 'unban', 'wipe'].includes(subtype)) {
+        const targetId = message.mentions.users.first()?.id || args[1]?.match(/^\d{15,25}$/)?.[0];
+        if (!targetId) return message.reply(`Usage: \`${PREFIX}admin ${subtype} <@User|id>\`${subtype === 'wipe' ? ' confirm' : ''}.`);
+        if (subtype === 'unban') {
+          return message.reply(unbanUser(targetId) ? `✅ Unbanned <@${targetId}>.` : `ℹ️ <@${targetId}> was not banned.`);
+        }
+        if (subtype === 'ban') {
+          banUser(targetId);
+          return message.reply(`🔨 Banned <@${targetId}> from the bot. Use \`${PREFIX}admin wipe ${targetId} confirm\` to also delete their data.`);
+        }
+        if (args[2]?.toLowerCase() !== 'confirm') {
+          return message.reply(`⚠️ This permanently deletes all data for <@${targetId}>. Run \`${PREFIX}admin wipe ${targetId} confirm\` to proceed.`);
+        }
+        const deleted = wipeUserData(targetId);
+        const summary = Object.entries(deleted).map(([table, n]) => `${table}: ${n}`).join(', ') || 'no rows found';
+        return message.reply(`🗑️ Wiped data for <@${targetId}> (${summary.slice(0, 1500)}).`);
+      }
+
+      if (command === 'admin' && subtype === 'clan' && action === 'delete') {
+        const clanName = args.slice(2).join(' ').trim();
+        if (!clanName) return message.reply(`Usage: \`${PREFIX}admin clan delete <clan name>\`.`);
+        const removed = deleteClanByName(clanName);
+        return message.reply(removed ? `🗑️ Deleted clan **${removed.name}**.` : `❌ No clan named **${clanName}** found.`);
+      }
+
       if (command === 'admin' && subtype === 'clan' && action === 'perks') {
         const targetId = message.mentions.users.first()?.id || args[2]?.match(/^\d{15,25}$/)?.[0];
         const rankName = (args[3] || 'onyx').toLowerCase();
@@ -12205,6 +12314,7 @@ client.on('messageCreate', async (message) => {
           Masterball: EMOJIS.masterball,
           Ultraball: EMOJIS.ultraball,
           Lootbox: LOOTBOX_EMOJI,
+          Egg: EMOJIS.pokeEgg,
         }[name] || EVOLUTION_ITEMS[name]?.emoji || BOXES[name]?.emoji || '📦');
         const bossTemplate = WORLD_BOSS_POOL.find((entry) => entry.name === record.boss_name);
         return message.reply({
@@ -14636,7 +14746,7 @@ client.on('messageCreate', async (message) => {
           const run = claimCatchbotRun(userId, now);
           if (run.error) return run;
           const totalPokemon = run.pokemonPerHour * run.hours;
-          const counts = { c: 0, u: 0, r: 0, sr: 0, l: 0, s: 0, g: 0 };
+          const counts = { c: 0, u: 0, r: 0, sr: 0, l: 0, s: 0, g: 0, golden: 0 };
           let goldenCount = 0;
           const caughtPokemon = [];
           const rarityCounts = {};
@@ -14655,7 +14765,10 @@ client.on('messageCreate', async (message) => {
             rarityCounts[displayRarity] = (rarityCounts[displayRarity] || 0) + 1;
             awardCatchExperience(userId, getCatchExperienceReward(pokemon.isGolden ? 'Common' : displayRarity));
             trackClanActivity(userId, 'catch');
-            if (pokemon.isGolden) goldenCount += 1;
+            if (pokemon.isGolden) {
+              goldenCount += 1;
+              counts.golden += 1;
+            }
             if (pokemon.isShiny) counts.s += 1;
             else if (pokemon.rarity === 'Legendary') counts.l += 1;
             else if (pokemon.rarity === 'Super Rare') counts.sr += 1;
@@ -14756,7 +14869,7 @@ client.on('messageCreate', async (message) => {
         `${getRarityEmojis('Common')} ${cb.c_caught} • ${getRarityEmojis('Uncommon')} ${cb.u_caught} • ` +
         `${getRarityEmojis('Rare')} ${cb.r_caught}\n` +
         `${getRarityEmojis('Super Rare')} ${cb.sr_caught} • ${getRarityEmojis('Legendary')} ${cb.l_caught} • ` +
-        `${getRarityEmojis('Shiny')} ${cb.s_caught}\n` +
+        `${getRarityEmojis('Shiny')} ${cb.s_caught} • ${EMOJIS.golden} ${(cb.golden_caught || 0).toLocaleString()}\n` +
         `Upgrades spent: **${cb.spent_upgrades.toLocaleString()} PokéCoins**\n\n` +
         `Commands: \`${PREFIX}cb upgrade <pokemon|cost|duration|luck>\`, ` +
         `\`${PREFIX}cb run [hours]\`, \`${PREFIX}cb claim\``;
@@ -15508,7 +15621,7 @@ client.on('messageCreate', async (message) => {
                   const teamEmoji = FACTION_TEAMS[challenge.factionKey].emoji;
                   return `**${index + 1}. ${teamEmoji} ${trainerName}** — ${challenge.strengthMultiplier}× opponent stats`;
                 }).join('\n') +
-                `\n\nFaction NPCs have a **1/1,000** chance to drop their battle icon.\n` +
+                `\n\nFaction NPCs have a **1/500** chance to drop their battle icon.\n` +
                 `Challenge one with \`${PREFIX}faction battle <leader name|faction name>\`.`
               )],
           });
@@ -16920,6 +17033,7 @@ client.on('messageCreate', async (message) => {
         `${EMOJIS.votecoin} **${user.vote_coins.toLocaleString()} Vote coins**`,
         `${EMOJIS.fishingtoken} **${user.fishing_tokens.toLocaleString()} Fishing tokens**`,
         `🎟️ **${(getUserItems(userId).find((item) => item.item_name === 'Swap Ticket')?.amount || 0).toLocaleString()} Swap tickets**`,
+        `${RESEARCH_POINT_EMOJI} **${(user.research_points || 0).toLocaleString()} Research points**`,
       ];
       const faction = getUserFaction(userId);
       if (faction) {
@@ -16960,30 +17074,73 @@ client.on('messageCreate', async (message) => {
           .setColor(0x0099ff)
           .setAuthor({ name: `${targetUser.username}'s Bag`, iconURL: targetUser.displayAvatarURL() });
         if (page === 1) {
+          const owned = (name) => (ownedItems.get(name) || 0).toLocaleString();
+          const line = (emoji, amount, label) => `${emoji} **${amount}x** ${label}`;
           embed.setTitle(`🎒 Currencies & Gear (Page 1/${totalPages})`).addFields(
-            { name: 'Currency', value: `• ${EMOJIS.pokecoin} **PokéCoins:** ${bagUser.coins.toLocaleString()}\n• ${EMOJIS.votecoin} **Vote Coins:** ${bagUser.vote_coins.toLocaleString()}\n• ${EMOJIS.patreonToken} **Patreon Tokens:** ${bagUser.patreon_tokens.toLocaleString()}\n• ${EMOJIS.fishingtoken} **Fishing Tokens:** ${bagUser.fishing_tokens.toLocaleString()}\n• ${RESEARCH_POINT_EMOJI} **Research Points:** ${bagUser.research_points.toLocaleString()}\n• 🎟️ **Swap Tickets:** ${(ownedItems.get('Swap Ticket') || 0).toLocaleString()}`, inline: false },
             {
-              name: 'Pokéballs',
-              value:
-                `• ${EMOJIS.pokeball} **Pokéball:** ${bagUser.pokeballs.toLocaleString()}\n` +
-                `• ${EMOJIS.greatball} **Greatball:** ${bagUser.greatballs.toLocaleString()}\n` +
-                `• ${EMOJIS.ultraball} **Ultraball:** ${bagUser.ultraballs.toLocaleString()}\n` +
-                `• ${EMOJIS.masterball} **Masterball:** ${bagUser.masterballs.toLocaleString()}\n` +
-                `• ${EMOJIS.premierball} **Premierball:** ${bagUser.premierballs.toLocaleString()}\n` +
-                `• ${EMOJIS.diveball} **Diveball:** ${bagUser.diveballs.toLocaleString()}`,
+              name: 'Currencies',
+              value: [
+                line(EMOJIS.pokecoin, bagUser.coins.toLocaleString(), 'PokéCoins'),
+                line(EMOJIS.fishingtoken, bagUser.fishing_tokens.toLocaleString(), 'Fishing tokens'),
+                line(EMOJIS.patreonToken, bagUser.patreon_tokens.toLocaleString(), 'Patreon tokens'),
+                line(RESEARCH_POINT_EMOJI, bagUser.research_points.toLocaleString(), 'Research Points'),
+                line(EMOJIS.votecoin, bagUser.vote_coins.toLocaleString(), 'Vote coins'),
+                line('🎟️', owned('Swap Ticket'), 'Swap tickets'),
+              ].join('\n'),
+              inline: true,
+            },
+            {
+              name: 'Balls',
+              value: [
+                line(EMOJIS.pokeball, bagUser.pokeballs.toLocaleString(), 'Poké ball'),
+                line(EMOJIS.greatball, bagUser.greatballs.toLocaleString(), 'Great ball'),
+                line(EMOJIS.ultraball, bagUser.ultraballs.toLocaleString(), 'Ultra ball'),
+                line(EMOJIS.diveball, bagUser.diveballs.toLocaleString(), 'Dive ball'),
+                line(EMOJIS.masterball, bagUser.masterballs.toLocaleString(), 'Master ball'),
+                line(EMOJIS.premierball, bagUser.premierballs.toLocaleString(), 'Premier ball'),
+              ].join('\n'),
               inline: true,
             },
             {
               name: 'Fishing',
-              value:
-                `• ${EMOJIS.oldrod} **Rod:** ${bagUser.fish_rods}\n` +
-                `• ${EMOJIS.pokeLure} **Poké Lures:** ${(ownedItems.get('Poké Lure') || 0).toLocaleString()} owned • ${bagUser.active_poke_lures.toLocaleString()} charges active\n` +
-                `• ${EMOJIS.mistysLure} **Misty's Lures:** ${(ownedItems.get("Misty's Lure") || 0).toLocaleString()} owned • ${bagUser.active_mistys_lures.toLocaleString()} charges active`,
+              value: [
+                line(EMOJIS.oldrod, bagUser.fish_rods, 'Rods'),
+                line(EMOJIS.pokeLure, owned('Poké Lure'), `Poké Lures (${bagUser.active_poke_lures.toLocaleString()} active)`),
+                line(EMOJIS.mistysLure, owned("Misty's Lure"), `Misty's Lures (${bagUser.active_mistys_lures.toLocaleString()} active)`),
+              ].join('\n'),
               inline: true,
             },
             {
-              name: 'Event',
-              value: `• ${EMOJIS.eventticket} **Event Ticket:** ${bagUser.event_ticket ? 'Active' : 'None'}`,
+              name: 'Eggs',
+              value: [
+                line(EMOJIS.pokeEgg, bagUser.vote_eggs.toLocaleString(), 'Eggs'),
+                line(EMOJIS.incubator, owned('Incubator'), 'Incubators'),
+                line(EMOJIS.superIncubator, owned('Super Incubator'), 'Super Incubators'),
+              ].join('\n'),
+              inline: true,
+            },
+            {
+              name: 'Catching',
+              value: [
+                line(EMOJIS.repel, bagUser.repels.toLocaleString(), 'Repels'),
+                line(EMOJIS.superRepel, owned('Super Repel'), 'Super Repels'),
+                line(EMOJIS.maxRepel, owned('Max Repel'), 'Max Repels'),
+                line(EMOJIS.honey, owned('Honey'), 'Honey'),
+                line(EMOJIS.goldenRazz, bagUser.grazz_berries.toLocaleString(), 'GRazz Berries'),
+                line(EMOJIS.incense, owned('Incense'), 'Incenses'),
+                line(LOOTBOX_EMOJI, bagUser.lootboxes.toLocaleString(), 'Lootboxes'),
+                line(EMOJIS.pokeradar, owned('Pokeradar'), 'Pokeradars'),
+                line(EMOJIS.cooldownMachine, owned('Cooldown Machine'), 'Cooldown Machine'),
+              ].join('\n'),
+              inline: true,
+            },
+            {
+              name: 'Promo',
+              value: (() => {
+                const promos = getActivePromos();
+                if (!promos.length) return '*No active promo.*';
+                return promos.map((promo) => line(promo.itemEmoji, owned(promo.itemName), promo.itemName)).join('\n');
+              })(),
               inline: false,
             }
           );
@@ -20923,16 +21080,21 @@ client.on('messageCreate', async (message) => {
 
       if (args[0]?.toLowerCase() === 'buy') {
         const listingId = /^\d+$/.test(args[1] || '') ? Number(args[1]) : NaN;
-        if (args.length !== 2 || !Number.isSafeInteger(listingId) || listingId <= 0) {
-          return message.reply(`Usage: \`${PREFIX}market buy <market_id>\` (alias: \`${PREFIX}m b <market_id>\`).`);
+        const amountArg = args[2]?.toLowerCase();
+        const buyAmount = amountArg === undefined ? 1 : amountArg === 'all' ? 'all' : parseAmount(args[2]);
+        if (args.length > 3 || !Number.isSafeInteger(listingId) || listingId <= 0
+            || (buyAmount !== 'all' && (!Number.isSafeInteger(buyAmount) || buyAmount < 1))) {
+          return message.reply(
+            `Usage: \`${PREFIX}market buy <market_id> [amount|all]\` (alias: \`${PREFIX}m b <market_id> [amount|all]\`).`
+          );
         }
-        const result = buyMarketItem(userId, listingId);
+        const result = buyMarketItem(userId, listingId, buyAmount);
         if (result.error) return message.reply(`❌ ${result.error}`);
         if (result.sale && getMarketCompletionNotificationsEnabled(result.item.seller_id)) {
           try {
             const seller = await client.users.fetch(result.item.seller_id);
             await seller.send(
-              `✅ Your market listing **#${listingId}** sold: ${formatMarketPokemon(result.item)} ` +
+              `✅ Your market listing **#${listingId}** sold: ${result.amount > 1 ? `${result.amount.toLocaleString()}x ` : ''}${formatMarketPokemon(result.item)} ` +
               `for ${EMOJIS.pokecoin} **${result.sale.salePrice.toLocaleString()} PokéCoins**.\n` +
               `Market tax (${result.sale.taxRate}%): ${EMOJIS.pokecoin} **${result.sale.taxAmount.toLocaleString()}**\n` +
               `Credited to your balance: ${EMOJIS.pokecoin} **${result.sale.payoutAmount.toLocaleString()} PokéCoins**.`
@@ -20942,7 +21104,7 @@ client.on('messageCreate', async (message) => {
           }
         }
         return message.reply(
-          `🎉 You bought ${formatMarketPokemon(result.item)} for ${EMOJIS.pokecoin} **${result.item.price}** PokéCoins!`
+          `🎉 You bought ${result.amount > 1 ? `**${result.amount.toLocaleString()}x** ` : ''}${formatMarketPokemon(result.item)} for ${EMOJIS.pokecoin} **${result.totalPrice.toLocaleString()}** PokéCoins!`
           + (result.remainingAmount ? ` **${result.remainingAmount.toLocaleString()}** remain in listing #${listingId}.` : '')
         );
       }
@@ -21553,8 +21715,12 @@ client.on('messageCreate', async (message) => {
         let coins = 0;
         let greatballs = 0;
         let ultraballs = 0;
+        let eggs = 0;
         for (let index = 0; index < amount; index += 1) {
           coins += box.coins[0] + Math.floor(Math.random() * (box.coins[1] - box.coins[0] + 1));
+          if (Math.random() < box.eggs[0]) {
+            eggs += box.eggs[1] + Math.floor(Math.random() * (box.eggs[2] - box.eggs[1] + 1));
+          }
           if (Math.random() < box.pokemonDropChance) {
             let pokemon = null;
             if (box.shiny) {
@@ -21587,8 +21753,9 @@ client.on('messageCreate', async (message) => {
         incrementUser(userId, {
           greatballs,
           ultraballs,
+          vote_eggs: eggs,
         });
-        return { results, coins: boostedCoins, greatballs, ultraballs };
+        return { results, coins: boostedCoins, greatballs, ultraballs, eggs };
       }).immediate();
       if (!opened) return message.reply(`❌ You don't own ${amount}x **${boxName}**. Check \`${PREFIX}open\`.`);
       const lines = opened.results.map((pokemon) => {
@@ -21608,7 +21775,8 @@ client.on('messageCreate', async (message) => {
           `${displayLines.length ? displayLines.join('\n') : '*No Pokémon dropped this time.*'}\n\n` +
           `${EMOJIS.pokecoin} **${opened.coins.toLocaleString()}** PokéCoins\n` +
           `${EMOJIS.greatball} **${opened.greatballs}x** Greatballs\n` +
-          `${EMOJIS.ultraball} **${opened.ultraballs}x** Ultraballs`,
+          `${EMOJIS.ultraball} **${opened.ultraballs}x** Ultraballs` +
+          (opened.eggs ? `\n${EMOJIS.pokeEgg} **${opened.eggs}x** Egg${opened.eggs === 1 ? '' : 's'}` : ''),
           box.shiny ? 0xff69b4 : 0xf1c40f
         )],
       });

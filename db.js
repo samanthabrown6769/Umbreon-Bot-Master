@@ -1316,6 +1316,7 @@ if (clansToRenumber.length) {
 }
 ensureColumns('catchbot_data', {
   completion_notified_until: 'INTEGER NOT NULL DEFAULT 0',
+  golden_caught: 'INTEGER NOT NULL DEFAULT 0',
 });
 db.exec(`
   UPDATE clans
@@ -2529,6 +2530,7 @@ function recordCatchbotResults(userId, counts) {
     l: 'l_caught',
     s: 's_caught',
     g: 'g_caught',
+    golden: 'golden_caught',
   };
   for (const key of Object.keys(columns)) {
     if (!Number.isSafeInteger(counts[key]) || counts[key] < 0) {
@@ -5554,6 +5556,8 @@ const SPECIAL_SPAWN_RESERVED_SPECIES = Object.freeze([
   'Volcanion',
   'Keldeo',
   'Genesect',
+  'Solgaleo',
+  'Lunala',
 ]);
 
 function getRandomPokemon(
@@ -6199,6 +6203,7 @@ function distributeWorldBossRewards(bossId) {
       for (const extra of rollWorldBossExtraDrops(isMvp)) {
         if (extra.name === 'Rare Candy') incrementUser(entry.user_id, { rare_candies: extra.amount });
         else if (extra.name === 'Repel') incrementUser(entry.user_id, { repels: extra.amount });
+        else if (extra.name === 'Egg') incrementUser(entry.user_id, { vote_eggs: extra.amount });
         else addUserItem(entry.user_id, extra.name, extra.amount);
         extraDrops.push({ userId: entry.user_id, ...extra });
         received.push(extra);
@@ -6234,6 +6239,9 @@ function rollWorldBossExtraDrops(isMvp) {
   }
   if (Math.random() < (isMvp ? 0.25 : 0.1)) {
     drops.push({ name: pick(WORLD_BOSS_REPEL_DROPS), amount: 1 + Math.floor(Math.random() * 2) });
+  }
+  if (Math.random() < (isMvp ? 0.15 : 0.08)) {
+    drops.push({ name: 'Egg', amount: 1 });
   }
   return drops;
 }
@@ -6628,10 +6636,13 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
   }).immediate();
 }
 
-function buyMarketItem(buyerId, listingId) {
+function buyMarketItem(buyerId, listingId, quantity = 1) {
   assertUserId(buyerId);
   if (!Number.isSafeInteger(listingId) || listingId <= 0) {
     throw new TypeError('listingId must be a positive safe integer.');
+  }
+  if (quantity !== 'all' && (!Number.isSafeInteger(quantity) || quantity <= 0)) {
+    throw new TypeError('quantity must be a positive safe integer or "all".');
   }
 
   return db.transaction(() => {
@@ -6640,16 +6651,21 @@ function buyMarketItem(buyerId, listingId) {
     if (item.seller_id === buyerId) {
       return { error: 'You cannot buy your own listing.' };
     }
+    const amount = quantity === 'all' ? item.amount : quantity;
+    if (amount > item.amount) {
+      return { error: `Only ${item.amount.toLocaleString()} remain in this listing.` };
+    }
+    const totalPrice = item.price * amount;
 
     const buyer = getUser(buyerId);
-    if (buyer.coins < item.price) return { error: 'Insufficient coins.' };
+    if (buyer.coins < totalPrice) return { error: 'Insufficient coins.' };
 
-    incrementUser(buyerId, { coins: -item.price });
+    incrementUser(buyerId, { coins: -totalPrice });
     const isPlayerListing = item.seller_id !== null
       && item.seller_id !== '999999999999999999';
     const taxRate = isPlayerListing ? getPatreonPerks(item.seller_id).marketTax : 0;
-    const taxAmount = isPlayerListing ? Math.floor(item.price * taxRate) : 0;
-    const saleProceeds = item.price - taxAmount;
+    const taxAmount = isPlayerListing ? Math.floor(totalPrice * taxRate) : 0;
+    const saleProceeds = totalPrice - taxAmount;
     if (isPlayerListing) {
       incrementUser(item.seller_id, { coins: saleProceeds, pkc_earned: saleProceeds });
     }
@@ -6669,40 +6685,44 @@ function buyMarketItem(buyerId, listingId) {
         item.rarity,
         item.is_shiny,
         item.is_golden,
-        item.price,
+        totalPrice,
         taxAmount,
         Math.round(taxRate * 100),
         saleProceeds
       );
     }
-    if (item.amount > 1) {
-      db.prepare('UPDATE market SET amount = amount - 1 WHERE id = ?').run(listingId);
+    if (item.amount > amount) {
+      db.prepare('UPDATE market SET amount = amount - ? WHERE id = ?').run(amount, listingId);
     } else {
       db.prepare('DELETE FROM market WHERE id = ?').run(listingId);
     }
     const remainingAmount = db.prepare('SELECT amount FROM market WHERE id = ?').get(listingId)?.amount || 0;
-    const newCatchId = saveCatch(buyerId, {
-      id: item.pokemon_id,
-      name: item.name,
-      rarity: item.rarity,
-      hp_iv: item.hp_iv,
-      atk_iv: item.atk_iv,
-      def_iv: item.def_iv,
-      spa_iv: item.spa_iv,
-      spdef_iv: item.spdef_iv,
-      spd_iv: item.spd_iv,
-    }, item.is_shiny, false, Boolean(item.is_golden));
-    rebaseTransferredPokemon(buyerId, newCatchId);
-    syncNewCatchState(buyerId, newCatchId);
+    for (let index = 0; index < amount; index += 1) {
+      const newCatchId = saveCatch(buyerId, {
+        id: item.pokemon_id,
+        name: item.name,
+        rarity: item.rarity,
+        hp_iv: item.hp_iv,
+        atk_iv: item.atk_iv,
+        def_iv: item.def_iv,
+        spa_iv: item.spa_iv,
+        spdef_iv: item.spdef_iv,
+        spd_iv: item.spd_iv,
+      }, item.is_shiny, false, Boolean(item.is_golden));
+      rebaseTransferredPokemon(buyerId, newCatchId);
+      syncNewCatchState(buyerId, newCatchId);
+    }
 
     return {
       success: true,
       item,
+      amount,
+      totalPrice,
       remainingAmount,
       sale: isPlayerListing
         ? {
           listingId: item.id,
-          salePrice: item.price,
+          salePrice: totalPrice,
           taxAmount,
           taxRate: Math.round(taxRate * 100),
           payoutAmount: saleProceeds,
@@ -7743,6 +7763,53 @@ function disbandClan(userId) {
     db.prepare('UPDATE users SET clan = ? WHERE clan = ?').run('None', clan.name);
     db.prepare('DELETE FROM clans WHERE id = ?').run(clan.id);
     return { clan };
+  }).immediate();
+}
+
+db.exec('CREATE TABLE IF NOT EXISTS banned_users (user_id TEXT PRIMARY KEY, banned_at INTEGER NOT NULL)');
+
+function banUser(userId) {
+  db.prepare('INSERT OR REPLACE INTO banned_users (user_id, banned_at) VALUES (?, ?)').run(userId, Date.now());
+}
+
+function unbanUser(userId) {
+  return db.prepare('DELETE FROM banned_users WHERE user_id = ?').run(userId).changes > 0;
+}
+
+function isUserBanned(userId) {
+  return !!db.prepare('SELECT 1 FROM banned_users WHERE user_id = ?').get(userId);
+}
+
+function wipeUserData(userId) {
+  const keep = new Set(['banned_users', 'market_sales', 'patreon_token_trades']);
+  return db.transaction(() => {
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
+    const deleted = {};
+    for (const { name } of tables) {
+      if (keep.has(name)) continue;
+      const columns = db.prepare(`PRAGMA table_info("${name}")`).all().map((c) => c.name);
+      const idColumns = columns.filter((c) =>
+        (name === 'users' && c === 'id') || ['user_id', 'seller_id', 'sender_id', 'receiver_id'].includes(c)
+      );
+      for (const column of idColumns) {
+        const { changes } = db.prepare(`DELETE FROM "${name}" WHERE "${column}" = ?`).run(userId);
+        if (changes) deleted[name] = (deleted[name] || 0) + changes;
+      }
+    }
+    return deleted;
+  }).immediate();
+}
+
+function deleteClanByName(name) {
+  return db.transaction(() => {
+    const clan = db.prepare('SELECT * FROM clans WHERE LOWER(name) = LOWER(?)').get(name);
+    if (!clan) return null;
+    db.prepare('UPDATE users SET clan = ? WHERE clan = ?').run('None', clan.name);
+    for (const table of ['clan_members', 'clan_activity_periods']) {
+      db.prepare(`DELETE FROM ${table} WHERE clan_id = ?`).run(clan.id);
+    }
+    db.prepare('DELETE FROM clans WHERE id = ?').run(clan.id);
+    return clan;
   }).immediate();
 }
 
@@ -9174,6 +9241,11 @@ module.exports = {
   joinClan,
   leaveClan,
   disbandClan,
+  banUser,
+  unbanUser,
+  isUserBanned,
+  wipeUserData,
+  deleteClanByName,
   trackClanActivity,
   registerEvent,
   getPokemonFormBySlug,
