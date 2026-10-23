@@ -104,10 +104,17 @@
   },
   {
     "slug": "iron-bundle",
-    "sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp&w=120&output=png",
-    "shiny_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp&w=120&output=png",
-    "animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp&w=120&output=png",
-    "shiny_animated_sprite": "https://images.weserv.nl/?url=assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp&w=120&output=png"
+    "sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp",
+    "shiny_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp",
+    "animated_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp",
+    "shiny_animated_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp"
+  },
+  {
+    "slug": "iron-jugulis",
+    "sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/993.webp",
+    "shiny_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/993.webp",
+    "animated_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/993.webp",
+    "shiny_animated_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/993.webp"
   },
   {
     "slug": "ho-oh",

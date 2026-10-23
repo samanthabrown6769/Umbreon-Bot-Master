@@ -6597,41 +6597,41 @@ function stockMarketPokemon(pokemonId, quantity, price, isShiny = false) {
     const sellerId = '999999999999999999';
     const insert = db.prepare(`
       INSERT INTO market (
-        seller_id, pokemon_id, name, rarity, is_shiny, level, price,
+        seller_id, pokemon_id, name, rarity, is_shiny, level, price, amount,
         hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv, hp, max_hp, atk, def, spd
       )
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const listings = [];
-    for (let index = 0; index < quantity; index += 1) {
-      const hpIv = Math.floor(Math.random() * 32);
-      const atkIv = Math.floor(Math.random() * 32);
-      const defIv = Math.floor(Math.random() * 32);
-      const spaIv = atkIv;
-      const spdefIv = defIv;
-      const spdIv = Math.floor(Math.random() * 32);
-      const maxHp = calculateStat(pokemon.base_hp, hpIv, 1, true, isShiny);
-      const inserted = insert.run(
-        sellerId,
-        pokemon.id,
-        pokemon.name,
-        pokemon.rarity,
-        isShiny ? 1 : 0,
-        price,
-        hpIv,
-        atkIv,
-        defIv,
-        spaIv,
-        spdefIv,
-        spdIv,
-        maxHp,
-        maxHp,
-        calculateStat(pokemon.base_atk, atkIv, 1, false, isShiny),
-        calculateStat(pokemon.base_def, defIv, 1, false, isShiny),
-        calculateStat(pokemon.base_spd, spdIv, 1, false, isShiny)
-      );
-      listings.push(db.prepare('SELECT * FROM market WHERE id = ?').get(Number(inserted.lastInsertRowid)));
-    }
+    const hpIv = Math.floor(Math.random() * 32);
+    const atkIv = Math.floor(Math.random() * 32);
+    const defIv = Math.floor(Math.random() * 32);
+    const spaIv = atkIv;
+    const spdefIv = defIv;
+    const spdIv = Math.floor(Math.random() * 32);
+    const maxHp = calculateStat(pokemon.base_hp, hpIv, 1, true, isShiny);
+    const inserted = insert.run(
+      sellerId,
+      pokemon.id,
+      pokemon.name,
+      pokemon.rarity,
+      isShiny ? 1 : 0,
+      price,
+      quantity,
+      hpIv,
+      atkIv,
+      defIv,
+      spaIv,
+      spdefIv,
+      spdIv,
+      maxHp,
+      maxHp,
+      calculateStat(pokemon.base_atk, atkIv, 1, false, isShiny),
+      calculateStat(pokemon.base_def, defIv, 1, false, isShiny),
+      calculateStat(pokemon.base_spd, spdIv, 1, false, isShiny)
+    );
+    const listings = [
+      db.prepare('SELECT * FROM market WHERE id = ?').get(Number(inserted.lastInsertRowid)),
+    ];
     return { pokemon, quantity, price, isShiny, listings };
   }).immediate();
 }
