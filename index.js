@@ -5080,6 +5080,25 @@ const EV_BAG_ITEMS = [
   ['Power Band', EMOJIS.powerband],
   ['Power Anklet', EMOJIS.poweranklet],
 ];
+const ARCEUS_PLATES = [
+  ['Draco Plate', '<:dracoplate:1563193038463836250>'],
+  ['Dread Plate', '<:dreadplate:1563193036790431764>'],
+  ['Earth Plate', '<:earthplate:1563193035297128448>'],
+  ['Fist Plate', '<:fistplate:1563193033288323184>'],
+  ['Flame Plate', '<:flameplate:1563193031769727027>'],
+  ['Icicle Plate', '<:icicleplate:1563193030146789407>'],
+  ['Insect Plate', '<:insectplate:1563193028775116941>'],
+  ['Iron Plate', '<:ironplate:1563193026845614190>'],
+  ['Meadow Plate', '<:meadowplate:1563193025146921011>'],
+  ['Mind Plate', '<:mindplate:1563193023188172960>'],
+  ['Pixie Plate', '<:pixieplate:1563193021237956648>'],
+  ['Sky Plate', '<:skyplate:1563193019698520104>'],
+  ['Splash Plate', '<:splashplate:1563193017873997894>'],
+  ['Spooky Plate', '<:spookyplate:1563193016292999218>'],
+  ['Stone Plate', '<:stoneplate:1563193014569009304>'],
+  ['Toxic Plate', '<:toxicplate:1563193012865994842>'],
+  ['Zap Plate', '<:zapplate:1563193010634760395>'],
+];
 const WORLD_BOSS_BAG_ITEMS = [
   ['Max Potion', 'Max Potions', '🧪'],
   ['Full Restore', 'Full Restores', EMOJIS.fullrestore],
@@ -17062,7 +17081,7 @@ client.on('messageCreate', async (message) => {
       const targetId = targetUser.id;
       const bagUser = getUser(targetId);
       const ownedItems = new Map(getUserItems(targetId).map((row) => [row.item_name, row.amount]));
-      const totalPages = 8;
+      const totalPages = 6;
       const requestedPage = Number(args.find((arg) => /^\d+$/.test(arg)));
       let currentPage = requestedPage >= 1 && requestedPage <= totalPages ? requestedPage : 1;
       const itemLines = (entries) => entries
@@ -17146,138 +17165,115 @@ client.on('messageCreate', async (message) => {
           );
         } else if (page === 2) {
           const amuletBoost = getAmuletCoinBoost(targetId);
+          const owned = (name) => (ownedItems.get(name) || 0).toLocaleString();
+          const line = (emoji, amount, label) => `${emoji} **${amount}x** ${label}`;
+          const stoneCount = Object.entries(EVOLUTION_ITEMS)
+            .filter(([, item]) => item.kind === 'stone')
+            .reduce((sum, [name]) => sum + (ownedItems.get(name) || 0), 0);
+          const battleItems = [
+            ['Sitrus Berry', FUN_ITEM_EMOJIS['Sitrus Berry']],
+            ['Leftovers', FUN_ITEM_EMOJIS.Leftovers],
+            ...RESEARCH_HELD_ITEMS.map((item) => [item.name, item.emoji]),
+          ];
           embed.setTitle(`🎒 Utility Items (Page 2/${totalPages})`).addFields(
             {
-              name: 'Boosters',
-              value:
-                `• ${EMOJIS.rarecandy} **Rare Candy:** ${bagUser.rare_candies.toLocaleString()}\n` +
-                `• ${EMOJIS.pokeEgg} **Eggs:** ${bagUser.vote_eggs.toLocaleString()}${bagUser.held_egg_target > 0 ? ` (+ held: ${bagUser.held_egg_progress}/${bagUser.held_egg_target})` : ''}\n` +
-                `• ${EMOJIS.incubator} **Incubators:** ${(ownedItems.get('Incubator') || 0).toLocaleString()}\n` +
-                `• ${EMOJIS.superIncubator} **Super Incubators:** ${(ownedItems.get('Super Incubator') || 0).toLocaleString()}\n` +
-                `• ${EMOJIS.repel} **Repel:** ${bagUser.repels.toLocaleString()} (${bagUser.repel_encounters.toLocaleString()} active)\n` +
-                `• ${EMOJIS.goldenRazz} **Golden Razz:** ${bagUser.grazz_berries.toLocaleString()} owned • ${bagUser.grazz_buff_encounters.toLocaleString()} charges active\n` +
-                `• ${EMOJIS.superRepel} **Super Repel:** ${(ownedItems.get('Super Repel') || 0).toLocaleString()} (${bagUser.super_repel_encounters.toLocaleString()} active)\n` +
-                `• ${EMOJIS.maxRepel} **Max Repel:** ${(ownedItems.get('Max Repel') || 0).toLocaleString()} (${bagUser.max_repel_encounters.toLocaleString()} active)\n` +
-                `• ${EMOJIS.honey} **Honey:** ${(ownedItems.get('Honey') || 0).toLocaleString()} (${bagUser.honey_encounters.toLocaleString()} active)\n` +
-                `• 📜 **Quest Reset Scroll:** ${bagUser.quest_reset_scrolls.toLocaleString()}\n` +
-                `• ${EMOJIS.expshare} **Exp. Share:** ${bagUser.exp_share_owned ? 'Owned' : 'Not owned'}\n` +
-                `• ${EMOJIS.amuletcoin} **Amulet Coin:** ${amuletBoost.owned}/10`,
+              name: 'Buddy',
+              value: [
+                line(EMOJIS.expshare, bagUser.exp_share_owned ? 1 : 0, 'Exp. Share'),
+                line('💎', stoneCount.toLocaleString(), 'Evolution stones'),
+                line(EMOJIS.rarecandy, bagUser.rare_candies.toLocaleString(), 'Rare candies'),
+                line('🎟️', bagUser.double_xp_charges.toLocaleString(), 'Double XP Ticket'),
+                '**Other Items**',
+                line(EMOJIS.shinyCharm, bagUser.shiny_charms, 'Shiny charms'),
+                line('🍀', owned('Catching Charm'), 'Catching charms'),
+                line('🚩', owned('Team Boost'), 'Team boosts'),
+                line(EMOJIS.amuletcoin, amuletBoost.owned, 'Amulet coins'),
+                line('📜', bagUser.quest_reset_scrolls.toLocaleString(), 'Quest reset scrolls'),
+                line(EMOJIS.abilityCapsule, owned('Ability Capsule'), 'Ability capsules'),
+                line(EMOJIS.abilityPatch, owned('Ability Patch'), 'Ability patches'),
+              ].join('\n'),
               inline: true,
             },
             {
-              name: 'Patreon Items',
-              value:
-                `• ${EMOJIS.cooldownMachine} **Cooldown Machines:** ${(ownedItems.get('Cooldown Machine') || 0).toLocaleString()}\n` +
-                `• ${EMOJIS.abilityCapsule} **Ability Capsules:** ${(ownedItems.get('Ability Capsule') || 0).toLocaleString()}\n` +
-                `• ${EMOJIS.abilityPatch} **Ability Patches:** ${(ownedItems.get('Ability Patch') || 0).toLocaleString()}`,
+              name: 'Encounter',
+              value: ENCOUNTER_ITEM_BAG_ENTRIES.map(([name, label, emoji]) => line(emoji, owned(name), label)).join('\n'),
               inline: true,
             },
             {
-              name: 'Charms',
-              value:
-                `• ${EMOJIS.shinyCharm} **Shiny Charm:** ${bagUser.shiny_charms}/5`,
-              inline: true,
-            },
-            {
-              name: 'Promo Items',
-              value: (() => {
-                const promos = getActivePromos();
-                if (!promos.length) return '*No active promo.*';
-                return promos.map((promo) =>
-                  `• ${promo.itemEmoji} **${promo.itemName}:** ${(ownedItems.get(promo.itemName) || 0).toLocaleString()}x`
-                ).join('\n');
-              })(),
+              name: 'Battle',
+              value: battleItems.map(([name, emoji]) => line(emoji, owned(name), name)).join('\n'),
               inline: true,
             }
           );
         } else if (page === 3) {
-          const evolutionEntries = Object.entries(EVOLUTION_ITEMS);
-          const heldEntries = evolutionEntries.filter(([, item]) => item.kind === 'held');
-          const heldSplit = Math.ceil(heldEntries.length / 2);
-          embed.setTitle(`🎒 Evolution & Mega Items (Page 3/${totalPages})`).addFields(
+          const owned = (name) => (ownedItems.get(name) || 0).toLocaleString();
+          const line = (emoji, amount, label) => `${emoji} **${amount}x** ${label}`;
+          embed.setTitle(`🎒 Research, EVs & Plates (Page 3/${totalPages})`).addFields(
             {
-              name: 'Evolution Stones',
-              value: itemLines(evolutionEntries.filter(([, item]) => item.kind === 'stone')),
-              inline: false,
-            },
-            { name: 'Held Evolution Items', value: itemLines(heldEntries.slice(0, heldSplit)), inline: true },
-            { name: '\u200b', value: itemLines(heldEntries.slice(heldSplit)), inline: true },
-            {
-              name: 'Mega Bracelet',
-              value: `${EMOJIS.megabracelet} **${(ownedItems.get('Mega Bracelet') || 0) > 0 ? 'Owned' : 'Not owned'}** — required for \`${PREFIX}mega evo\` (Mega Stones are on page 6)`,
-              inline: false,
-            }
-          );
-        } else if (page === 4) {
-          embed.setTitle(`🎒 Boxes (Page 4/${totalPages})`).setDescription(
-            `• ${LOOTBOX_EMOJI} **Lootbox:** ${bagUser.lootboxes.toLocaleString()}x *(\`${PREFIX}lb all\`)*\n` +
-            Object.entries(BOXES)
-              .map(([name, box]) => `• ${box.emoji} **${name}:** ${(ownedItems.get(name) || 0).toLocaleString()}x *(\`${PREFIX}open ${box.aliases[0]}\`)*`)
-              .join('\n') +
-            `\n\n*Inspect a box with \`${PREFIX}item info <box>\`.*`
-          );
-        } else if (page === 5) {
-          const encounterItemLines = (items) => items.map(([name, label, emoji]) =>
-            `${emoji} **${(ownedItems.get(name) || 0).toLocaleString()}**x ${label}`
-          ).join('\n');
-          embed.setTitle(`🎒 Encounter Items (Page 5/${totalPages})`).addFields(
-            {
-              name: 'Encounter Items',
-              value: encounterItemLines(ENCOUNTER_ITEM_BAG_ENTRIES.slice(0, 9)),
+              name: 'Research',
+              value: RESEARCH_SHOP_ITEMS.map((item) => line(item.emoji, owned(item.name), item.name)).join('\n'),
               inline: true,
             },
-            {
-              name: '\u200b',
-              value: encounterItemLines(ENCOUNTER_ITEM_BAG_ENTRIES.slice(9)),
-              inline: true,
-            },
-            {
-              name: 'Fun Items',
-              value: FUN_BAG_ITEMS
-                .map(([name, label]) => `• ${FUN_ITEM_EMOJIS[name]} **${label}:** ${(ownedItems.get(name) || 0).toLocaleString()}x`)
-                .join('\n'),
-              inline: false,
-            },
-            ...[
-              [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS].slice(0, 12),
-              [...RESEARCH_SHOP_ITEMS, ...RESEARCH_VALUABLES, ...RESEARCH_RELICS].slice(12),
-            ].map((researchItems, index) => ({
-              name: index === 0 ? 'Research Items' : '\u200b',
-              value: researchItems.map((item) =>
-                `• ${item.emoji} **${item.name}:** ${(ownedItems.get(item.name) || 0).toLocaleString()}x`
-              ).join('\n'),
-              inline: true,
-            }))
-          );
-        } else if (page === 7) {
-          embed.setTitle(`🎒 Battle (Page 7/${totalPages})`).addFields({
-            name: 'Battle Items',
-            value:
-              `• ${FUN_ITEM_EMOJIS['Sitrus Berry']} **Sitrus Berry:** ${(ownedItems.get('Sitrus Berry') || 0).toLocaleString()}x\n` +
-              `• ${FUN_ITEM_EMOJIS.Leftovers} **Leftovers:** ${(ownedItems.get('Leftovers') || 0).toLocaleString()}x\n` +
-              RESEARCH_HELD_ITEMS.map((item) =>
-                `• ${item.emoji} **${item.name}:** ${(ownedItems.get(item.name) || 0).toLocaleString()}x`
-              ).join('\n'),
-            inline: false,
-          });
-        } else if (page === 8) {
-          embed.setTitle(`🎒 EVs & World Boss (Page 8/${totalPages})`).addFields(
             {
               name: 'Effort Values (EVs)',
-              value: EV_BAG_ITEMS
-                .map(([name, emoji]) => `• ${emoji} **${name}:** ${(ownedItems.get(name) || 0).toLocaleString()}x`)
+              value: EV_BAG_ITEMS.map(([name, emoji]) => line(emoji, owned(name), name)).join('\n'),
+              inline: true,
+            },
+            {
+              name: 'Arceus Plates',
+              value: ARCEUS_PLATES.map(([name, emoji]) => `${emoji} **${owned(name)}x** ${name}s`).join('\n'),
+              inline: true,
+            }
+          );
+        } else if (page === 6) {
+          const owned = (name) => (ownedItems.get(name) || 0).toLocaleString();
+          const line = (emoji, amount, label) => `${emoji} **${amount}x** ${label}`;
+          embed.setTitle(`🎒 Boxes, Boss & Fun Items (Page 6/${totalPages})`).addFields(
+            {
+              name: 'Vote boxes',
+              value: Object.entries(BOXES)
+                .map(([name, box]) => line(box.emoji, owned(name), name.replace(/ Box$/, ' boxes')))
                 .join('\n'),
+              inline: true,
+            },
+            {
+              name: 'Abilities',
+              value: [
+                line(EMOJIS.abilityCapsule, owned('Ability Capsule'), 'Ability capsule'),
+                line(EMOJIS.abilityPatch, owned('Ability Patch'), 'Ability patch'),
+              ].join('\n'),
               inline: true,
             },
             {
               name: 'World Boss',
-              value: WORLD_BOSS_BAG_ITEMS
-                .map(([name, label, emoji]) => `• ${emoji} **${label}:** ${(ownedItems.get(name) || 0).toLocaleString()}x`)
-                .join('\n'),
+              value: WORLD_BOSS_BAG_ITEMS.map(([name, label, emoji]) => line(emoji, owned(name), label)).join('\n'),
+              inline: true,
+            },
+            {
+              name: 'Fun Items',
+              value: FUN_BAG_ITEMS.map(([name, label]) => line(FUN_ITEM_EMOJIS[name], owned(name), label)).join('\n'),
               inline: true,
             }
           );
-        } else {
+        } else if (page === 5) {
+          const evolutionEntries = Object.entries(EVOLUTION_ITEMS);
+          const evoLine = ([name, item]) => `${item.emoji} **${(ownedItems.get(name) || 0).toLocaleString()}x** ${name.replace('Linking Cord', 'Link Cable')}`;
+          const questNames = new Set([
+            'Auspicious Armor', 'Deep Sea Scale', 'Deep Sea Tooth', 'Dubious Disc', 'Galarica Cuff', 'Galarica Wreath',
+            'Linking Cord', 'Malicious Armor', 'Prism Scale', 'Protector', 'Reaper Cloth', 'Sachet', 'Upgrade', 'Whipped Dream',
+          ]);
+          const byName = (a, b) => a[0].localeCompare(b[0]);
+          const questEntries = evolutionEntries.filter(([name]) => questNames.has(name)).sort(byName);
+          const stoneEntries = evolutionEntries.filter(([name, item]) => item.kind === 'stone' || name === 'Oval Stone').sort(byName);
+          const encounterEntries = evolutionEntries
+            .filter(([name, item]) => item.kind === 'held' && !questNames.has(name) && name !== 'Oval Stone')
+            .sort(byName);
+          embed.setTitle(`🎒 Evolution Items (Page 5/${totalPages})`).addFields(
+            { name: 'Quest Evolution Items', value: questEntries.map(evoLine).join('\n'), inline: true },
+            { name: 'Evolution Stones', value: stoneEntries.map(evoLine).join('\n'), inline: true },
+            { name: 'Encounter Evolution Items', value: encounterEntries.map(evoLine).join('\n'), inline: true }
+          );
+        } else if (page === 4) {
           const stoneCounts = new Map(MEGA_STONE_NAMES.map((name) => [name, 0]));
           for (const stone of getMegaStones(targetId)) stoneCounts.set(stone.stone_name, stone.amount);
           for (const config of Object.values(CHAMBER_CONFIG)) {
@@ -17300,7 +17296,7 @@ client.on('messageCreate', async (message) => {
             stoneFieldLength += line.length + (stoneFieldLines.length > 1 ? 1 : 0);
           }
           if (stoneFieldLines.length) stoneFields.push(stoneFieldLines);
-          embed.setTitle(`🎒 Mega Stones (Page 6/${totalPages})`)
+          embed.setTitle(`🎒 Mega Stones (Page 4/${totalPages})`)
             .setDescription(
               `${EMOJIS.megabracelet} **Mega Bracelet:** ${(ownedItems.get('Mega Bracelet') || 0) > 0 ? 'Owned' : 'Not owned'} — required for \`${PREFIX}mega evo\`\n` +
               `**Collected:** ${owned}/${stoneEntries.length} • Earn stones from \`${PREFIX}mc\``
@@ -17862,6 +17858,24 @@ client.on('messageCreate', async (message) => {
     if ((command === 'item' || command === 'i') && args[0]?.toLowerCase() === 'info') {
       const query = args.slice(1).join(' ').toLowerCase().trim();
       if (query) {
+        const plateQuery = query.replace(/[^a-z0-9]/g, '').replace(/plates?$/, '');
+        const plate = plateQuery && ARCEUS_PLATES.find(([name]) =>
+          name.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/plate$/, '') === plateQuery
+        );
+        if (plate) {
+          const [plateName, plateEmoji] = plate;
+          const plateOwned = getUserItems(userId).find((item) => item.item_name === plateName)?.amount || 0;
+          return message.reply({
+            embeds: [new EmbedBuilder()
+              .setColor(0x0099ff)
+              .setAuthor({ name: `${plateName} — Item information` })
+              .setDescription(
+                `Plates boost the power of the holder's moves of the corresponding type by 20%, and change Arceus and its signature move Judgment to that type.\n\n` +
+                `**You currently own:** ${plateEmoji} **${plateOwned.toLocaleString()}x ${plateName}**`
+              )
+              .setFooter({ text: `Item info: ${PREFIX}item info <item>` })],
+          });
+        }
         const normalizedResearchQuery = query.replace(/[^a-z0-9]/g, '');
         const researchShopItem = RESEARCH_SHOP_ITEMS_BY_NAME.get(normalizedResearchQuery);
         const researchValuable = RESEARCH_VALUABLES.find((item) =>
