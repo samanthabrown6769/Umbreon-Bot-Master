@@ -608,7 +608,7 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     if (t.types.includes('grass') || tf.leech) L(tf.leech ? 'But it failed!' : `It doesn't affect ${t.name}...`);
     else { tf.leech = A.side; L(`${t.name} was seeded!`); }
   }
-  if (eff.attract) { if (tf.attract) L('But it failed!'); else { tf.attract = true; L(`${t.name} fell in love!`); } }
+  if (eff.attract) { if (tf.attract) L('But it failed!'); else { tf.attract = m; L(`${t.name} fell in love!`); } }
   if (eff.nightmare) { if (tf.status === 'slp' && !tf.nightmare) { tf.nightmare = true; L(`${t.name} is locked in a nightmare!`); } else L('But it failed!'); }
   if (eff.yawn) { if (tf.status || tf.yawn) L('But it failed!'); else { tf.yawn = 2; L(`${t.name} grew drowsy!`); } }
   if (eff.disable) { if (tf.lastMove) { tf.disabled = slug(tf.lastMove.name); tf.disableTurns = 4; L(`${t.name}'s **${tf.lastMove.name}** was disabled!`); } else L('But it failed!'); }
@@ -825,7 +825,9 @@ function canAct(ctx, A, B, move, L) {
       }
     }
   }
-  if (f.attract && Math.random() < 0.5) { L(`${m.name} is immobilized by love!`); return false; }
+  // Infatuation ends when the Pokémon that caused it has fainted, and it only blocks damaging moves.
+  if (f.attract && f.attract.hp <= 0) f.attract = false;
+  if (f.attract && move.power && Math.random() < 0.5) { L(`${m.name} is immobilized by love!`); return false; }
   if (f.taunt > 0 && !move.power) { L(`${m.name} can't use **${move.name}** after the taunt!`); return false; }
   if (f.torment && f.lastMove && slug(f.lastMove.name) === slugName) { L(`${m.name} can't use the same move twice in a row (Torment)!`); return false; }
   if (f.disabled && f.disabled === slugName && f.disableTurns > 0) { L(`${m.name}'s **${move.name}** is disabled!`); return false; }

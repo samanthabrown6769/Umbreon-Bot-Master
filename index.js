@@ -3341,6 +3341,19 @@ function getHuntTargetSprite(user) {
   return form ? getPokemonShowdownSprite(form.slug, false, form.sprite) : null;
 }
 
+// A numeric query names an exact variant: a shiny dex number lists the shiny, any other lists the normal one.
+function getDexQueryMarketVariant(pokemon, query) {
+  if (!/^\d+$/.test(query.trim())) return null;
+  const forms = db.prepare(`
+    SELECT id, species_id, name, slug, is_default
+    FROM pokemon_forms
+    ORDER BY species_id, id
+  `).all();
+  const numbers = getPokemonDexNumbers(forms).get(pokemon.id);
+  const requested = Number(query.trim());
+  return numbers?.shinyDexNumber === requested && numbers.dexNumber !== requested ? 'shiny' : 'normal';
+}
+
 function getPokemonFormDexNumber(pokemon) {
   const forms = db.prepare(`
     SELECT id, species_id, name, slug, is_default
@@ -7750,8 +7763,7 @@ async function handleStatsCommand(message, args) {
     `⚡ **Max QB streak:** ${user.max_qb_streak}\n` +
     `⚔️ **Live wins/losses:** ${user.live_wins}/${user.live_losses}\n` +
     `${EMOJIS.megabracelet} **Mega Chambers won:** ${user.mega_chambers_won}\n` +
-    `${WORLD_BOSS_EMOJI} **World Boss MVPs:** ${user.world_boss_mvps}\n` +
-    `🗼 **Battle Tower wins:** ${user.battle_tower_wins}`;
+    `${WORLD_BOSS_EMOJI} **World Boss MVPs:** ${user.world_boss_mvps}`;
   const items =
     `${EMOJIS.amuletcoin} **Amulet coins:** ${user.amulet_coins}\n` +
     `${EMOJIS.shinyCharm} **Shiny charms:** ${user.shiny_charms}\n` +
@@ -16774,7 +16786,7 @@ client.on('messageCreate', async (message) => {
           ).get(targetMon.id, userId);
           if (!currentMon) return 'not_found';
           if (currentMon.held_item) return 'item_held';
-          const researchHeldItemError = getResearchHeldItemError(userId, giveLabel, targetMon.id);
+          const researchHeldItemError = getResearchHeldItemError(userId, giveLabel);
           if (researchHeldItemError) return researchHeldItemError;
           const updated = db.prepare(`
             UPDATE catches SET held_item = ?
@@ -16795,12 +16807,6 @@ client.on('messageCreate', async (message) => {
         if (result === 'relic_exchange_required') {
           return message.reply(
             `❌ Exchange a full relic set with \`${PREFIX}res exchange relics\` before giving this item.`
-          );
-        }
-        if (result === 'ineligible_pokemon') {
-          const researchItem = RESEARCH_HELD_ITEMS.find((item) => item.name === giveLabel);
-          return message.reply(
-            `❌ **${giveLabel}** can only be held by ${researchItem.species.map((name) => `**${name}**`).join(', ')}.`
           );
         }
         return message.reply(`✅ Gave **1x ${giveLabel}** to **${targetMon.name}**.`);
@@ -18181,7 +18187,7 @@ client.on('messageCreate', async (message) => {
             || 'A research discovery collected at the Research Lab.';
           const canBeHeld = RESEARCH_HOLDABLE_ITEM_NAMES.includes(researchItem.name);
           const usage = researchHeldItem
-            ? `Equip it with \`${PREFIX}hold ${researchHeldItem.name} <Pokémon>\`; it can only be held by ${researchHeldItem.species.join(', ')} after a relic exchange.`
+            ? `Equip it with \`${PREFIX}team give ${researchHeldItem.name.toLowerCase().replace(/[^a-z0-9]/g, '')} <slot|name>\`; any Pokémon on your team can hold it during the 7-day unlock after a relic exchange.`
             : researchShopItem
             ? researchShopItem.unlocks
               ? `Automatically consumed for a single encounter with **${researchShopItem.unlocks.flatMap((species) =>
@@ -18202,11 +18208,11 @@ client.on('messageCreate', async (message) => {
               : researchRelic
                 ? `Regular .pokemon encounters have a **10% chance** to find one missing relic while relic drops are available; drops pause for 7 days after each relic exchange.`
                 : researchHeldItem
-                  ? `Certain Pokémon can hold this for 7 days after you exchange a relic set; eligible species: ${researchHeldItem.species.join(', ')}.`
+                  ? `Certain Pokémon can spawn holding this during the 7-day unlock after you exchange a relic set; eligible species: ${researchHeldItem.species.join(', ')}.`
                   : 'Exchange with a Research Lab command or obtain it from its listed source.';
           const canHoldText = canBeHeld
             ? researchHeldItem
-              ? `**Can be held by Pokémon?** ✅ Only ${researchHeldItem.species.join(', ')} during the 7-day unlock after a relic exchange.`
+              ? `**Can be held by Pokémon?** ✅ Any Pokémon on your team during the 7-day unlock after a relic exchange.`
               : `**Can be held by Pokémon?** ✅ Yes — \`${PREFIX}team give ${researchItem.name.toLowerCase().replace(/[^a-z0-9]/g, '')} {mon}\``
             : '**Can be held by Pokémon?** ❌ No';
           return message.reply({
@@ -21487,7 +21493,8 @@ client.on('messageCreate', async (message) => {
         if (!pokemon) {
           return message.reply(`No exact Pokémon or form named **${pokemonQuery}** was found in the catalog.`);
         }
-        const listed = listPokemonOnMarket(userId, pokemon.id, amount, price, forceVariant);
+        const listVariant = forceVariant || getDexQueryMarketVariant(pokemon, pokemonQuery);
+        const listed = listPokemonOnMarket(userId, pokemon.id, amount, price, listVariant);
         if (listed?.error === 'listing_limit') {
           return message.reply(
             `❌ You have **${listed.listingCount}/${listed.listingLimit}** active market listings. ` +
@@ -21538,7 +21545,9 @@ client.on('messageCreate', async (message) => {
         if (!pokemon) {
           return message.reply(`No exact Pokémon or form named **${pokemonQuery}** was found in the catalog.`);
         }
-        const listings = listPokemonOnMarket(userId, pokemon.id, 1, price);
+        const listings = listPokemonOnMarket(
+          userId, pokemon.id, 1, price, getDexQueryMarketVariant(pokemon, pokemonQuery)
+        );
         if (listings?.error === 'listing_limit') {
           return message.reply(
             `❌ You have **${listings.listingCount}/${listings.listingLimit}** active market listings. ` +
@@ -21888,7 +21897,6 @@ client.on('messageCreate', async (message) => {
         item_held: `Your **${parsed.pokemon}** is already holding an item.`,
         no_item: `You do not have a **${parsed.itemName}**.`,
         relic_exchange_required: `Exchange a full relic set with \`${PREFIX}res exchange relics\` first; this item can only be equipped during the 7-day relic unlock window.`,
-        ineligible_pokemon: `**${parsed.itemName}** can only be held by ${RESEARCH_HELD_ITEMS.find((item) => item.name === result.itemName)?.species.map((name) => `**${name}**`).join(', ')}.`,
       };
       if (result.error) return message.reply(`❌ ${failures[result.error]}`);
       if (BATTLE_HELD_ITEM_NAMES.has(result.itemName)) {

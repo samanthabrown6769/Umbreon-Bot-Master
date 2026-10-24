@@ -199,7 +199,7 @@
     "id": 29,
     "dex_number": 29,
     "shiny_dex_number": 2029,
-    "name": "Nidoran♀",
+    "name": "Nidoran F",
     "rarity": "Common"
   },
   {
@@ -220,7 +220,7 @@
     "id": 32,
     "dex_number": 32,
     "shiny_dex_number": 2032,
-    "name": "Nidoran♂",
+    "name": "Nidoran M",
     "rarity": "Common"
   },
   {
@@ -4679,7 +4679,7 @@
     "id": 669,
     "dex_number": 669,
     "shiny_dex_number": 2669,
-    "name": "Flabébé",
+    "name": "Flabebe",
     "rarity": "Common"
   },
   {

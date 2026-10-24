@@ -1442,6 +1442,20 @@ db.exec(`
   );
 `);
 
+// Backfill the Stats counter from recorded placements (idempotent: only raises it).
+db.exec(`
+  UPDATE users
+  SET lotteries_won = (
+    SELECT wins_first + wins_second + wins_third FROM lottery_user_stats
+    WHERE lottery_user_stats.user_id = users.id
+  )
+  WHERE id IN (SELECT user_id FROM lottery_user_stats)
+    AND lotteries_won < (
+      SELECT wins_first + wins_second + wins_third FROM lottery_user_stats
+      WHERE lottery_user_stats.user_id = users.id
+    )
+`);
+
 // Promo items live in user_items; migrate any legacy promo_tokens balances across.
 if (db.prepare('PRAGMA table_info(users)').all().some((column) => column.name === 'promo_tokens')) {
   db.exec(`
@@ -4601,13 +4615,9 @@ function holdEvolutionItem(userId, itemQuery, pokemonQuery) {
     if (!owned.length) return { error: 'pokemon_not_owned' };
     const candidates = owned.filter((row) => !row.held_item);
     if (!candidates.length) return { error: 'item_held' };
-    const eligibleCandidates = researchHeldItem
-      ? candidates.filter((row) => researchHeldItem.species.includes(row.form_species_name))
-      : candidates;
-    if (!eligibleCandidates.length) return { error: 'ineligible_pokemon', itemName };
     const target = EVOLUTION_ITEMS[itemName]
-      ? eligibleCandidates.find((row) => resolveItemEvolution(itemName, row)) || eligibleCandidates[0]
-      : eligibleCandidates[0];
+      ? candidates.find((row) => resolveItemEvolution(itemName, row)) || candidates[0]
+      : candidates[0];
     if (!takeUserItem(userId, itemName)) return { error: 'no_item', itemName };
     db.prepare('UPDATE catches SET held_item = ? WHERE id = ? AND user_id = ?')
       .run(itemName, target.id, userId);
@@ -4616,7 +4626,7 @@ function holdEvolutionItem(userId, itemQuery, pokemonQuery) {
   }).immediate();
 }
 
-function getResearchHeldItemError(userId, itemName, pokemonId, now = Date.now()) {
+function getResearchHeldItemError(userId, itemName, now = Date.now()) {
   assertUserId(userId);
   const item = RESEARCH_HELD_ITEMS.find((entry) => entry.name === itemName);
   if (!item) return null;
@@ -4624,14 +4634,7 @@ function getResearchHeldItemError(userId, itemName, pokemonId, now = Date.now())
   if (item.requiresRelicExchange && getUser(userId).research_relic_unlock_until <= now) {
     return 'relic_exchange_required';
   }
-  const pokemon = db.prepare(`
-    SELECT pokemon_forms.species_name
-    FROM catches
-    JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
-    WHERE catches.id = ? AND catches.user_id = ?
-  `).get(pokemonId, userId);
-  if (!pokemon) return 'pokemon_not_owned';
-  return item.species.includes(pokemon.species_name) ? null : 'ineligible_pokemon';
+  return null;
 }
 
 function unholdEvolutionItem(userId, pokemonQuery) {
@@ -6335,7 +6338,7 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceVariant = 
   if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0
       || !Number.isSafeInteger(amount) || amount <= 0 || amount > 50000
       || !Number.isSafeInteger(price) || price <= 0
-      || ![null, 'shiny', 'golden'].includes(forced)) {
+      || ![null, 'normal', 'shiny', 'golden'].includes(forced)) {
     throw new TypeError('pokemonId and price must be positive; amount must be between 1 and 50000.');
   }
 
@@ -6350,13 +6353,14 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceVariant = 
       FROM catches
       WHERE user_id = ? AND pokemon_id = ? AND in_team = 0
         AND (? IS NULL
+          OR (? = 'normal' AND is_shiny = 0 AND is_golden = 0)
           OR (? = 'shiny' AND is_shiny = 1 AND is_golden = 0)
           OR (? = 'golden' AND is_golden = 1))
       GROUP BY is_shiny, is_golden
       HAVING COUNT(*) >= ?
       ORDER BY latest_id DESC
       LIMIT 1
-    `).get(sellerId, pokemonId, forced, forced, forced, amount);
+    `).get(sellerId, pokemonId, forced, forced, forced, forced, amount);
     if (!variant) {
       if (forced) return null;
       const available = db.prepare(`
@@ -8191,6 +8195,7 @@ function drawLottery(now = Date.now()) {
         SET ${winColumn} = ${winColumn} + 1, lifetime_winnings = lifetime_winnings + ?
         WHERE user_id = ?
       `).run(prizes[place], winnerId);
+      db.prepare('UPDATE users SET lotteries_won = lotteries_won + 1 WHERE id = ?').run(winnerId);
     });
     if (winners[0] && goldenPrize) {
       const form = db.prepare(

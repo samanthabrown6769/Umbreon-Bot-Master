@@ -1,5 +1,5 @@
 const SPECIAL_NAMES = {
-  flabebe: 'Flabébé',
+  flabebe: 'Flabebe',
   farfetchd: "Farfetch'd",
   sirfetchd: "Sirfetch'd",
   'ho-oh': 'Ho-Oh',
@@ -21,8 +21,8 @@ const SPECIAL_NAMES = {
   'dudunsparce-two-segment': 'Dudunsparce',
   'tatsugiri-curly': 'Tatsugiri',
   'type-null': 'Type: Null',
-  'nidoran-f': 'Nidoran♀',
-  'nidoran-m': 'Nidoran♂',
+  'nidoran-f': 'Nidoran F',
+  'nidoran-m': 'Nidoran M',
   missingno: 'MissingNo.',
   'missingno-ghost': 'MissingNo. (Ghost)',
   'missingno-aerodactyl': 'MissingNo. (Aerodactyl)',
