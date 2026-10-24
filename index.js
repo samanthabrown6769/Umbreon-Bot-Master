@@ -9996,41 +9996,225 @@ client.on('messageCreate', async (message) => {
           `\`${PREFIX}egg hatch-incubator <i|si> <slot|all>\`.`
         );
       }
-      const user = getUser(userId);
-      const eggs = user.vote_eggs;
-      const incubators = getUserEggIncubators(userId);
-      const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
-      const heldText = user.held_egg_target > 0
-        ? `✅ **You ARE holding an Egg!** (${user.held_egg_progress.toLocaleString()}/${user.held_egg_target.toLocaleString()} catches)` +
-          (user.held_egg_progress >= user.held_egg_target ? ` — ready to hatch with \`${PREFIX}egg hatch\`.` : '')
-        : '❌ **You are NOT holding an Egg!**';
-      const incubatorLines = (type, max, emoji, name) => {
-        const active = incubators.filter((entry) => entry.incubator_type === type);
-        const statusBySlot = new Map(active.map((entry) => [entry.slot, entry]));
-        return `**${emoji} ${name}s — You have ${ownedItems.get(name) || 0} ${name}s left**\n` +
-          Array.from({ length: max }, (_, index) => {
-            const slot = index + 1;
-            const entry = statusBySlot.get(slot);
-            return entry
-              ? `${slot}. ${emoji} **${entry.progress >= entry.target ? 'Ready to hatch' : 'In use'}:** ${entry.progress}/${entry.target} catches`
-              : `${slot}. ${emoji} ❌ Not in use`;
-          }).join('\n');
+      const buildEggEmbed = () => {
+        const currentUser = getUser(userId);
+        const currentIncubators = getUserEggIncubators(userId);
+        const currentOwnedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
+        const heldText = currentUser.held_egg_target > 0
+          ? `✅ **You ARE holding an Egg!** (${currentUser.held_egg_progress.toLocaleString()}/${currentUser.held_egg_target.toLocaleString()} catches)` +
+            (currentUser.held_egg_progress >= currentUser.held_egg_target ? ` — ready to hatch with \`${PREFIX}egg hatch\`.` : '')
+          : '❌ **You are NOT holding an Egg!**';
+        const incubatorLines = (type, max, emoji, name) => {
+          const active = currentIncubators.filter((entry) => entry.incubator_type === type);
+          const statusBySlot = new Map(active.map((entry) => [entry.slot, entry]));
+          return `**${emoji} ${name}s — You have ${currentOwnedItems.get(name) || 0} ${name}s left**\n` +
+            Array.from({ length: max }, (_, index) => {
+              const slot = index + 1;
+              const entry = statusBySlot.get(slot);
+              return entry
+                ? `${slot}. ${emoji} **${entry.progress >= entry.target ? 'Ready to hatch' : 'In use'}:** ${entry.progress}/${entry.target} catches`
+                : `${slot}. ${emoji} ❌ Not in use`;
+            }).join('\n');
+        };
+        return new EmbedBuilder()
+          .setColor(0x8e44ad)
+          .setTitle(`${EMOJIS.pokeEgg} Umbreon Egg Centre — View & Hatch your Eggs!`)
+          .setDescription(
+            `${EMOJIS.pokeEgg} **Your Eggs:** ${currentUser.vote_eggs.toLocaleString()}\n\n` +
+            `${heldText}\n` +
+            `Use the buttons below to hold Eggs in all available slots or hatch every ready Egg. ` +
+            `You can also use \`${PREFIX}egg hold\` or \`${PREFIX}egg hatch\`.\n\n` +
+            `${incubatorLines('incubator', EGG_INCUBATOR_LIMITS.incubator, EMOJIS.incubator, 'Incubator')}\n\n` +
+            `${incubatorLines('super_incubator', EGG_INCUBATOR_LIMITS.super_incubator, EMOJIS.superIncubator, 'Super Incubator')}\n\n` +
+            `Use \`${PREFIX}egg use-incubator <i|si> <amount|all>\` to start incubators and ` +
+            `\`${PREFIX}egg hatch-incubator <i|si> <slot|all>\` to hatch ready Eggs.\n` +
+            `Incubators need 30–130 catches; Super Incubators need half as many.`
+          )
+          .setThumbnail('https://cdn.discordapp.com/emojis/1560319652402561124.webp?size=96');
       };
-      const embed = new EmbedBuilder()
-        .setColor(0x8e44ad)
-        .setTitle(`${EMOJIS.pokeEgg} Umbreon Egg Centre — View & Hatch your Eggs!`)
-        .setDescription(
-          `${EMOJIS.pokeEgg} **Your Eggs:** ${eggs.toLocaleString()}\n\n` +
-          `${heldText}\n` +
-          `To hold or hatch a free Egg, use \`${PREFIX}egg hold\` or \`${PREFIX}egg hatch\`.\n\n` +
-          `${incubatorLines('incubator', EGG_INCUBATOR_LIMITS.incubator, EMOJIS.incubator, 'Incubator')}\n\n` +
-          `${incubatorLines('super_incubator', EGG_INCUBATOR_LIMITS.super_incubator, EMOJIS.superIncubator, 'Super Incubator')}\n\n` +
-          `Use \`${PREFIX}egg use-incubator <i|si> <amount|all>\` to start incubators and ` +
-          `\`${PREFIX}egg hatch-incubator <i|si> <slot|all>\` to hatch ready Eggs.\n` +
-          `Incubators need 30–130 catches; Super Incubators need half as many.`
-        )
-        .setThumbnail('https://cdn.discordapp.com/emojis/1560319652402561124.webp?size=96');
-      return message.reply({ embeds: [embed] });
+      const buildEggButtons = (disabled = false) => new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('egg:hold-all')
+          .setLabel('Hold All')
+          .setEmoji(EMOJIS.pokeEgg)
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(disabled),
+        new ButtonBuilder()
+          .setCustomId('egg:hatch-all')
+          .setLabel('Hatch All')
+          .setEmoji(EMOJIS.pokeEgg)
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(disabled)
+      );
+      const eggPanel = await message.reply({
+        embeds: [buildEggEmbed()],
+        components: [buildEggButtons()],
+      });
+      const eggCollector = eggPanel.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 120000,
+      });
+      let processingEggAction = false;
+      eggCollector.on('collect', async (interaction) => {
+        let ownsProcessingLock = false;
+        try {
+          if (interaction.user.id !== userId) {
+            await interaction.reply({ content: 'These Egg buttons belong to another trainer.', ephemeral: true });
+            return;
+          }
+          if (processingEggAction) {
+            await interaction.reply({ content: 'An Egg action is already in progress.', ephemeral: true });
+            return;
+          }
+          processingEggAction = true;
+          ownsProcessingLock = true;
+          if (interaction.customId === 'egg:hold-all') {
+            const summary = [];
+            const currentUser = getUser(userId);
+            if (currentUser.held_egg_target > 0) {
+              summary.push('Your free held-Egg slot is already in use.');
+            } else if (currentUser.vote_eggs > 0) {
+              const target = getEggCatchTarget(userId);
+              const result = holdEgg(userId, target);
+              if (result.error === 'no_eggs') {
+                summary.push('No Eggs were available for the free held-Egg slot.');
+              } else if (result.error) {
+                throw new Error(`Could not start the held Egg: ${result.error}.`);
+              } else {
+                summary.push(`Started the free held-Egg slot (**0/${target} catches**).`);
+              }
+            }
+
+            for (const [type, itemName, label] of [
+              ['incubator', 'Incubator', 'Incubator'],
+              ['super_incubator', 'Super Incubator', 'Super Incubator'],
+            ]) {
+              const active = getUserEggIncubators(userId)
+                .filter((incubator) => incubator.incubator_type === type);
+              const freeSlots = EGG_INCUBATOR_LIMITS[type] - active.length;
+              const owned = getUserItems(userId)
+                .find((item) => item.item_name === itemName)?.amount || 0;
+              const availableEggs = getUser(userId).vote_eggs;
+              const amount = Math.min(freeSlots, owned, availableEggs);
+              if (amount < 1) {
+                const reason = freeSlots < 1
+                  ? 'all slots are in use'
+                  : owned < 1
+                    ? 'no unused incubators are available'
+                    : 'no Eggs are available';
+                summary.push(`${label}: skipped (${reason}).`);
+                continue;
+              }
+              const targets = Array.from({ length: amount }, () => {
+                const catches = getEggCatchTarget(userId);
+                return type === 'super_incubator' ? Math.ceil(catches / 2) : catches;
+              });
+              const result = startEggIncubators(userId, type, targets);
+              if (result.error) {
+                summary.push(`${label}: could not start Eggs (${result.error.replaceAll('_', ' ')}).`);
+                continue;
+              }
+              summary.push(
+                `Started **${result.started.length} ${label}${result.started.length === 1 ? '' : 's'}** ` +
+                `(slot${result.started.length === 1 ? '' : 's'} ${result.started.map((entry) => entry.slot).join(', ')}).`
+              );
+            }
+
+            await interaction.update({ embeds: [buildEggEmbed()], components: [buildEggButtons()] });
+            await interaction.followUp({
+              content: `${EMOJIS.pokeEgg} **Hold All results**\n${summary.join('\n')}`,
+            });
+            return;
+          }
+
+          if (interaction.customId === 'egg:hatch-all') {
+            const user = getUser(userId);
+            const hatched = [];
+            const hatchedPokemon = [];
+            let experienceAwarded = false;
+            const heldEgg = getUser(userId);
+            if (heldEgg.held_egg_target > 0 && heldEgg.held_egg_progress >= heldEgg.held_egg_target) {
+              const hatch = rollEggHatch(heldEgg.held_egg_target, Boolean(user.has_patreon));
+              const result = hatchEgg(userId, hatch.pokemon, hatch);
+              if (result.error && result.error !== 'egg_not_ready') {
+                throw new Error(`Could not hatch the held Egg: ${result.error}.`);
+              }
+              if (!result.error) {
+                const experience = awardCatchExperience(userId, getCatchExperienceReward('Egg'));
+                rollActivityPromoDrops(message.author, message.guild, message.channel, 'egg');
+                experienceAwarded = experienceAwarded || experience.awarded;
+                const variant = result.isGolden ? 'Golden ' : result.isShiny ? 'Shiny ' : '';
+                const variantEmoji = result.isGolden ? EMOJIS.golden : result.isShiny ? EMOJIS.shiny : '';
+                hatched.push(`${variantEmoji}Held Egg: **${variant}${hatch.pokemon.name}**`);
+                hatchedPokemon.push({ ...hatch.pokemon, isShiny: result.isShiny, isGolden: result.isGolden });
+              }
+            }
+
+            for (const type of ['incubator', 'super_incubator']) {
+              const ready = getUserEggIncubators(userId)
+                .filter((incubator) => incubator.incubator_type === type && incubator.progress >= incubator.target);
+              for (const incubator of ready) {
+                const hatch = rollEggHatch(incubator.target, Boolean(user.has_patreon));
+                const result = hatchEggFromIncubator(userId, type, incubator.slot, hatch.pokemon, hatch);
+                if (result.error === 'egg_not_ready' || result.error === 'no_incubator_egg') continue;
+                if (result.error) {
+                  throw new Error(`Could not hatch Egg from ${type} slot ${incubator.slot}: ${result.error}.`);
+                }
+                const experience = awardCatchExperience(userId, getCatchExperienceReward('Egg'));
+                rollActivityPromoDrops(message.author, message.guild, message.channel, 'egg');
+                experienceAwarded = experienceAwarded || experience.awarded;
+                const variant = result.isGolden ? 'Golden ' : result.isShiny ? 'Shiny ' : '';
+                const variantEmoji = result.isGolden ? EMOJIS.golden : result.isShiny ? EMOJIS.shiny : '';
+                const emoji = type === 'incubator' ? EMOJIS.incubator : EMOJIS.superIncubator;
+                hatched.push(`${emoji} Slot ${incubator.slot}: ${variantEmoji}**${variant}${hatch.pokemon.name}**`);
+                hatchedPokemon.push({ ...hatch.pokemon, isShiny: result.isShiny, isGolden: result.isGolden });
+              }
+            }
+
+            const latestUser = getUser(userId);
+            const pending = [];
+            if (latestUser.held_egg_target > 0 && latestUser.held_egg_progress < latestUser.held_egg_target) {
+              pending.push(`Held Egg: ${latestUser.held_egg_target - latestUser.held_egg_progress} catches remaining.`);
+            }
+            for (const incubator of getUserEggIncubators(userId)) {
+              if (incubator.progress < incubator.target) {
+                pending.push(
+                  `${incubator.incubator_type === 'incubator' ? EMOJIS.incubator : EMOJIS.superIncubator} ` +
+                  `Slot ${incubator.slot}: ${incubator.target - incubator.progress} catches remaining.`
+                );
+              }
+            }
+            const description = hatched.length
+              ? `${hatched.join('\n')}\n\n` +
+                `Eggs remaining: **${latestUser.vote_eggs.toLocaleString()}**\n` +
+                (experienceAwarded
+                  ? 'EXP was awarded to your Buddy and eligible Exp. Share team members.'
+                  : 'No Buddy or active Exp. Share team was available to receive hatch EXP.') +
+                (pending.length ? `\n\n**Still incubating**\n${pending.join('\n')}` : '')
+              : `No Eggs are ready to hatch.${pending.length ? `\n\n${pending.join('\n')}` : ''}`;
+            const resultEmbed = new EmbedBuilder()
+              .setColor(0x8e44ad)
+              .setTitle(`${EMOJIS.pokeEgg} ${hatched.length ? `Hatched ${hatched.length} Egg${hatched.length === 1 ? '' : 's'}!` : 'No Eggs Ready'}`)
+              .setDescription(description);
+            await interaction.update({ embeds: [buildEggEmbed()], components: [buildEggButtons()] });
+            await interaction.followUp({ embeds: [resultEmbed] });
+            for (const pokemon of hatchedPokemon) {
+              await announceRareSpawn(message.guild, message.author, pokemon);
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to process Egg button "${interaction.customId}" for user ${userId}:`, error);
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: '❌ The Egg action could not be completed. Please try again.', ephemeral: true });
+          }
+        } finally {
+          if (ownsProcessingLock) processingEggAction = false;
+        }
+      });
+      eggCollector.on('end', () => {
+        eggPanel.edit({ components: [buildEggButtons(true)] }).catch(() => {});
+      });
+      return eggPanel;
     }
 
     if (command === 'help') {
@@ -10115,6 +10299,7 @@ client.on('messageCreate', async (message) => {
           title: '🥚 Egg Inventory',
           description:
             `• \`${PREFIX}egg\` — View your Eggs, active progress, and incubator slots\n` +
+            `• Egg Centre buttons: **Hold All** fills every available held/incubator slot; **Hatch All** hatches every ready Egg\n` +
             `• \`${PREFIX}egg hold\` — Hold an Egg and begin counting successful Pokémon catches\n` +
             `• \`${PREFIX}egg hatch\` — Hatch a ready free-held Egg into an Egg-exclusive Pokémon\n` +
             `• \`${PREFIX}excl egg\` — View Egg-exclusive Pokémon\n` +
