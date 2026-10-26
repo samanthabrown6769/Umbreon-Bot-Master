@@ -8,9 +8,15 @@ const {
   FOCUS_BAND_ITEM,
   KINGS_ROCK_ITEM,
   LEFTOVERS_ITEM,
+  CHOICE_ITEMS,
+  CHOICE_ATTACK_ITEMS,
+  CHOICE_SPECIAL_ATTACK_ITEMS,
+  CHOICE_SPEED_ITEMS,
+  getMultiHitCount,
   getHeldItemDamageMultiplier,
   getHeldItemMoveType,
 } = require('./held-item-effects');
+const AB = require('./ability-effects');
 
 const slug = (name) => String(name || '').toLowerCase().replace(/\s*\((physical|special)\)\s*$/, '').replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const STAGE_KEYS = ['atk', 'def', 'spa', 'spdef', 'spe', 'acc', 'eva'];
@@ -171,9 +177,10 @@ const isGrounded = (m, field) => {
 function effectiveSpeed(m, field, side) {
   const f = fx(m);
   let speed = (baseStat(m, 'spd') || 1) * stageMult(f.stages.spe);
-  if (f.status === 'par') speed *= 0.5;
+  if (CHOICE_SPEED_ITEMS.has(m.held_item)) speed *= 1.5;
+  if (f.status === 'par' && !AB.has(m, 'quick-feet')) speed *= 0.5;
   if (field.sides[side].tailwind > 0) speed *= 2;
-  return speed;
+  return speed * AB.speedMultiplier(m, field);
 }
 
 // Stat multiplier for outgoing damage calculations: stage-adjusted attack and defense for a move.
@@ -186,7 +193,9 @@ function damageStats(attacker, defender, move, field) {
   let defKey = physical ? 'def' : 'spdef';
   if (field.wonder > 0) defKey = physical ? 'spdef' : 'def';
   let atk = (baseStat(attacker, 'atk') + (physical ? 0 : evBonus(attacker, 'ev_spa'))) * stageMult(af.stages[physical ? 'atk' : 'spa']);
-  if (af.status === 'brn' && physical) atk *= 0.5;
+  if (physical && CHOICE_ATTACK_ITEMS.has(attacker.held_item)) atk *= 1.5;
+  if (!physical && CHOICE_SPECIAL_ATTACK_ITEMS.has(attacker.held_item)) atk *= 1.5;
+  if (af.status === 'brn' && physical && !AB.has(attacker, 'guts')) atk *= 0.5;
   const def = (baseStat(defender, 'def') + (defKey === 'spdef' ? evBonus(defender, 'ev_spdef') : 0))
     * stageMult(df.stages[defKey])
     * (defender.held_item === ASSAULT_VEST_ITEM && defKey === 'spdef' ? 1.5 : 1);
@@ -213,7 +222,9 @@ function changeStage(ctx, mon, side, key, delta, L, fromFoe = false) {
   if (fromFoe && delta < 0) {
     if (ctx.field.sides[side].mist > 0) { L(`${mon.name} is protected by Mist!`); return false; }
     if (f.sub > 0) return false;
+    if (AB.blocksStatDrop(mon, key)) { L(`${mon.name}'s **${mon.ability}** prevents its ${STAGE_NAMES[key]} from being lowered!`); return false; }
   }
+  delta = AB.adjustStageDelta(mon, delta);
   const next = Math.max(-6, Math.min(6, f.stages[key] + delta));
   if (next === f.stages[key]) {
     L(`${mon.name}'s ${STAGE_NAMES[key]} won't go any ${delta > 0 ? 'higher' : 'lower'}!`);
@@ -222,6 +233,7 @@ function changeStage(ctx, mon, side, key, delta, L, fromFoe = false) {
   const applied = next - f.stages[key];
   f.stages[key] = next;
   L(stageText(applied, STAGE_NAMES[key], mon.name));
+  if (fromFoe && applied < 0) AB.onStatDropped(AH, ctx, mon, side, L);
   return true;
 }
 
@@ -241,6 +253,9 @@ function inflictStatus(ctx, mon, side, status, L, { quiet = false, sourceSide = 
   if (f.status) return fail(`${mon.name} is already ${f.status === 'slp' ? 'asleep' : 'afflicted'}!`);
   if (f.sub > 0 && sourceSide && sourceSide !== side) return fail('But it failed!');
   if (ctx.field.sides[side].safeguard > 0 && sourceSide && sourceSide !== side) return fail(`${mon.name} is protected by Safeguard!`);
+  const sourceMon = sourceSide ? (sourceSide === 'player' ? ctx.player : ctx.enemy) : null;
+  const abilityBlock = AB.statusBlocked(ctx, mon, status, sourceMon);
+  if (abilityBlock) return fail(abilityBlock);
   const grounded = isGrounded(mon, ctx.field);
   if (ctx.field.terrain === 'misty' && grounded) return fail(`${mon.name} is protected by the Misty Terrain!`);
   if (status === 'slp' && ctx.field.terrain === 'electric' && grounded) return fail(`${mon.name} is protected by the Electric Terrain!`);
@@ -252,6 +267,7 @@ function inflictStatus(ctx, mon, side, status, L, { quiet = false, sourceSide = 
   f.sleep = status === 'slp' ? 1 + Math.floor(Math.random() * 3) : 0;
   f.tox = status === 'tox' ? 1 : 0;
   L(`${mon.name} ${STATUS_NAMES[status]}!`);
+  AB.onStatusInflicted(AH, ctx, mon, status, side, sourceMon, sourceSide);
   return true;
 }
 
@@ -312,12 +328,12 @@ function onSwitchIn(ctx, mon, side, L) {
     L(`${mon.name} was healed by the healing wish!`);
   }
   const grounded = isGrounded(mon, ctx.field);
-  if (s.rocks) {
+  if (s.rocks && !AB.ignoresIndirect(mon)) {
     const mult = ctx.typeEff ? ctx.typeEff('rock', mon.types) : 1;
     const dmg = Math.max(1, Math.floor(mon.max_hp * mult / 8));
     mon.hp = Math.max(1, mon.hp - dmg); L(`Pointed stones dug into ${mon.name} for **${dmg}** damage!`);
   }
-  if (s.spikes && grounded) {
+  if (s.spikes && grounded && !AB.ignoresIndirect(mon)) {
     const dmg = Math.max(1, Math.floor(mon.max_hp * [0, 1 / 8, 1 / 6, 1 / 4][s.spikes]));
     mon.hp = Math.max(1, mon.hp - dmg); L(`${mon.name} was hurt by the spikes for **${dmg}** damage!`);
   }
@@ -326,6 +342,8 @@ function onSwitchIn(ctx, mon, side, L) {
     else inflictStatus(ctx, mon, side, s.tspikes >= 2 ? 'tox' : 'psn', L);
   }
   if (s.web && grounded) changeStage(ctx, mon, side, 'spe', -1, L);
+  const foe = side === 'player' ? ctx.enemy : ctx.player;
+  AB.entry(AH, ctx, { mon, side }, { mon: foe, side: other(side) }, L);
 }
 
 function typeEffOf(ctx, type, types) { return ctx.typeEff ? ctx.typeEff(type, types) : 1; }
@@ -367,6 +385,8 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   const m = A.mon; const t = B.mon; const f = fx(m); const tf = fx(t);
   let type = getHeldItemMoveType(move.name, move.type, m.held_item);
   if (f.electrified) { type = 'electric'; f.electrified = false; } else if (ctx.field.ionDeluge && type === 'normal') type = 'electric';
+  const typeAdjust = AB.adjustMoveType(m, move, type);
+  type = typeAdjust.type;
   if (f.powdered && type === 'fire') {
     m.hp -= Math.max(1, Math.floor(m.max_hp / 4)); f.powdered = false;
     L(`${m.name} used **${move.name}**, but the powder exploded!`);
@@ -380,24 +400,34 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
       return;
     }
   }
-  if (!f.sureHit && move.accuracy) {
-    const chance = move.accuracy * accMult(f.stages.acc - tf.stages.eva);
+  if (!f.sureHit && move.accuracy && !AB.alwaysHits(m, t)) {
+    let chance = move.accuracy * accMult(f.stages.acc - tf.stages.eva) * AB.accuracyMultiplier(m, t, move, ctx.field);
+    if (m.held_item === 'Zoom Lens'
+        && effectiveSpeed(m, ctx.field, A.side) < effectiveSpeed(t, ctx.field, B.side)) {
+      chance *= 1.2;
+    }
+    chance = Math.min(100, chance);
     if (Math.random() * 100 >= chance) { L(`${m.name} used **${move.name}**, but missed.`); return; }
   }
   f.sureHit = false;
-  let defTypes = [...t.types];
+  let defTypes = AB.adjustDefenderTypes(m, type, [...t.types]);
   if (ctx.field.gravity > 0 && type === 'ground') defTypes = defTypes.filter((x) => x !== 'flying');
   const levitating = (tf.magnetRise > 0 || tf.telekinesis > 0) && ctx.field.gravity <= 0;
   const eff = (type === 'ground' && levitating) ? 0 : typeEffOf(ctx, type, defTypes);
+  if (AB.absorb(AH, ctx, A, B, move, type, eff, L)) return;
   const { atk, def, physical } = damageStats(m, t, move, ctx.field);
   let calcMove = { ...move, type };
   calcMove.power = effectivePower(move, f.stages);
   let dmg = eff === 0 ? 0 : ctx.calc(calcMove, atk, def, defTypes);
-  const heldItemMultiplier = getHeldItemDamageMultiplier(m.held_item, type);
+  const hitCount = ctx.worldBoss ? 1 : AB.multiHitCount(m, getMultiHitCount(move.name, m.held_item));
+  if (dmg > 0) dmg *= hitCount;
+  const heldItemMultiplier = getHeldItemDamageMultiplier(
+    m.held_item, type, eff, move.category, Boolean(ctx.worldBoss)
+  );
   let crit = false;
   if (dmg > 0) {
     let mult = heldItemMultiplier;
-    const w = ctx.field.weather;
+    const w = AB.activeWeather(ctx.field);
     if (w === 'rain') mult *= type === 'water' ? 1.5 : type === 'fire' ? 0.5 : 1;
     if (w === 'sun') mult *= type === 'fire' ? 1.5 : type === 'water' ? 0.5 : 1;
     const terrain = ctx.field.terrain;
@@ -410,7 +440,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     if (f.charge && type === 'electric') mult *= 2;
     if (ctx.field.waterSport > 0 && type === 'fire') mult *= 0.33;
     if (ctx.field.mudSport > 0 && type === 'electric') mult *= 0.33;
-    crit = f.laser || Math.random() < (f.focus ? 0.5 : 0.0625);
+    crit = f.laser || Math.random() < AB.critChance(m, t, f.focus ? 0.5 : 0.0625);
     if (crit) {
       mult *= 1.5;
       // Each Aux Guard / Aux Powerguard stack cuts one critical hit's damage by 75%.
@@ -418,6 +448,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     }
     const ts = ctx.field.sides[B.side];
     if (!crit && (ts.veil > 0 || (physical ? ts.reflect : ts.lightScreen) > 0)) mult *= 0.5;
+    mult *= AB.damageMultiplier(ctx, A, B, move, { type, eff, physical, crit, typeBoost: typeAdjust.boost });
     dmg = Math.max(1, Math.floor(dmg * mult));
   }
   f.charge = false; f.laser = false;
@@ -428,13 +459,26 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     tf.sub -= dmg;
     L(`${m.name} used **${move.name}** — the substitute took **${dmg}** damage${tf.sub <= 0 ? ' and faded!' : '.'}`);
     if (tf.sub <= 0) tf.sub = 0;
+    if (m.held_item === 'Life Orb' && m.hp > 0 && !AB.ignoresIndirect(m)) {
+      const recoil = Math.max(1, Math.floor(m.max_hp / 10));
+      m.hp -= recoil;
+      L(`${m.name} lost **${recoil}** HP to its Life Orb recoil.`);
+    }
     return;
   }
   const targetHpBefore = t.hp;
   t.hp -= dmg;
   let survivedText = '';
   if (t.hp <= 0 && tf.protect === 'endure') { t.hp = 1; survivedText = ` ${t.name} endured the hit!`; }
-  else if (t.hp <= 0 && t.held_item === FOCUS_BAND_ITEM && Math.random() < 0.1) {
+  else if (t.hp <= 0 && AB.survivesLethal(m, t, targetHpBefore)) {
+    t.hp = 1;
+    survivedText = ` ${t.name} endured the hit with its **${t.ability}**!`;
+  } else if (t.hp <= 0 && t.held_item === 'Focus Sash'
+      && targetHpBefore === t.max_hp && !tf.focusSashUsed) {
+    tf.focusSashUsed = true;
+    t.hp = 1;
+    survivedText = ` ${t.name} hung on with its Focus Sash!`;
+  } else if (t.hp <= 0 && t.held_item === FOCUS_BAND_ITEM && Math.random() < 0.1) {
     t.hp = 1;
     survivedText = ` ${t.name} hung on with its Focus Band!`;
   }
@@ -444,12 +488,26 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     tf.flinch = true;
     survivedText += ` ${t.name} flinched from the King's Rock!`;
   }
-  L(`${m.name} used **${move.name}** for **${dmg}** damage` +
+  if (dmg > 0 && m.held_item === 'Life Orb' && m.hp > 0 && !AB.ignoresIndirect(m)) {
+    const recoil = Math.max(1, Math.floor(m.max_hp / 10));
+    m.hp -= recoil;
+    survivedText += ` ${m.name} lost **${recoil}** HP to its Life Orb recoil.`;
+  }
+  for (const mon of [m, t]) {
+    const monFx = fx(mon);
+    if (mon.hp > 0 && mon.held_item === 'Sitrus Berry' && !monFx.sitrusBerryUsed
+        && mon.hp <= mon.max_hp / 2) {
+      monFx.sitrusBerryUsed = true;
+      healMon(mon, mon.max_hp / 4, L);
+    }
+  }
+  L(`${m.name} used **${move.name}**${hitCount > 1 ? ` ${hitCount} times` : ''} for **${dmg}** damage` +
     `${eff > 1 ? ' — super effective!' : eff === 0 ? ' — no effect.' : eff < 1 ? ' — not very effective.' : ''}` +
     `${heldItemMultiplier > 1 ? ` ${m.held_item} boosted the move!` : ''}` +
     `${crit && dmg > 0 ? ' A critical hit!' : ''}${survivedText}`);
   if (t.hp <= 0 && tf.destinyBond) { m.hp = 0; L(`${m.name} was taken down with ${t.name}!`); }
   applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L);
+  AB.afterHit(AH, ctx, A, B, move, dmg, { type, crit }, L);
   if (slug(move.name) === 'drain-punch' && dmg > 0 && m.hp > 0) {
     const damageDealt = Math.max(0, targetHpBefore - Math.max(0, t.hp));
     if (damageDealt > 0) healMon(m, Math.max(1, Math.floor(damageDealt / 2)), L);
@@ -510,7 +568,7 @@ function applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L) {
     for (const [key, delta] of Object.entries(selfBoost[1])) changeStage(ctx, A.mon, A.side, key, delta, L);
   }
   const drop = DAMAGE_STAT_DROPS[slug(move.name)];
-  if (!drop || dmg <= 0 || t.hp <= 0 || fx(t).sub > 0) return;
+  if (!drop || dmg <= 0 || t.hp <= 0 || fx(t).sub > 0 || AB.blocksSecondaryEffects(A.mon, t)) return;
   if (Math.random() * 100 >= drop[0]) return;
   for (const [key, delta] of Object.entries(drop[1])) changeStage(ctx, t, B.side, key, delta, L, true);
 }
@@ -600,6 +658,7 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   if (eff.status) inflictStatus(ctx, t, B.side, eff.status, L, { sourceSide: A.side });
   if (eff.confuse) {
     if (tf.confuse > 0) L(`${t.name} is already confused!`);
+    else if (AB.blocksConfusion(m, t)) L(`${t.name}'s **${t.ability}** prevents confusion!`);
     else if (ctx.field.sides[B.side].safeguard > 0) L(`${t.name} is protected by Safeguard!`);
     else if (ctx.field.terrain === 'misty' && isGrounded(t, ctx.field)) L(`${t.name} is protected by the Misty Terrain!`);
     else { tf.confuse = 2 + Math.floor(Math.random() * 4); L(`${t.name} became confused!`); }
@@ -608,7 +667,12 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     if (t.types.includes('grass') || tf.leech) L(tf.leech ? 'But it failed!' : `It doesn't affect ${t.name}...`);
     else { tf.leech = A.side; L(`${t.name} was seeded!`); }
   }
-  if (eff.attract) { if (tf.attract) L('But it failed!'); else { tf.attract = m; L(`${t.name} fell in love!`); } }
+  if (eff.attract) {
+    const gA = battleGender(m);
+    const gT = battleGender(t);
+    if (tf.attract || gA === 'genderless' || gT === 'genderless' || gA === gT || AB.blocksAttract(m, t)) L('But it failed!');
+    else { tf.attract = m; L(`${t.name} fell in love!`); }
+  }
   if (eff.nightmare) { if (tf.status === 'slp' && !tf.nightmare) { tf.nightmare = true; L(`${t.name} is locked in a nightmare!`); } else L('But it failed!'); }
   if (eff.yawn) { if (tf.status || tf.yawn) L('But it failed!'); else { tf.yawn = 2; L(`${t.name} grew drowsy!`); } }
   if (eff.disable) { if (tf.lastMove) { tf.disabled = slug(tf.lastMove.name); tf.disableTurns = 4; L(`${t.name}'s **${tf.lastMove.name}** was disabled!`); } else L('But it failed!'); }
@@ -701,7 +765,8 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   if (eff.weather) {
     if (ctx.field.weather === eff.weather) L('But it failed!');
     else {
-      ctx.field.weather = eff.weather; ctx.field.weatherTurns = 5;
+      ctx.field.weather = eff.weather;
+      ctx.field.weatherTurns = eff.weather === 'rain' && m.held_item === 'Damp Rock' ? 8 : 5;
       L({ rain: 'It started to rain!', sun: 'The sunlight turned harsh!', sand: 'A sandstorm kicked up!', hail: 'It started to hail!' }[eff.weather]);
     }
   }
@@ -798,7 +863,11 @@ function giveBatonState(mon, state) {
 function canAct(ctx, A, B, move, L) {
   const m = A.mon; const f = fx(m); const bf = fx(B.mon);
   const slugName = slug(move.name);
-  if (f.flinch) { f.flinch = false; L(`${m.name} flinched and couldn't move!`); return false; }
+  if (f.flinch) {
+    f.flinch = false;
+    if (AB.onFlinch(AH, ctx, m, A.side, L)) { L(`${m.name} flinched and couldn't move!`); return false; }
+  }
+  if (AB.truantLoafs(m, L)) return false;
   if (f.recharge) { f.recharge = false; L(`${m.name} must recharge!`); return false; }
   if (m.held_item === ASSAULT_VEST_ITEM && !move.power) {
     L(`${m.name} can't use status moves while holding an Assault Vest!`);
@@ -840,12 +909,24 @@ function runAction(ctx, A, B, prefix = '') {
   const L = (text) => { ctx.log.push(`${first ? prefix : '↳ '}${text}`); first = false; };
   const f = fx(A.mon);
   let move = A.move;
+  if (!CHOICE_ITEMS.has(A.mon.held_item)) {
+    f.choiceMove = null;
+    f.choiceMoveSlug = null;
+  }
+  if (CHOICE_ITEMS.has(A.mon.held_item) && f.choiceMove && slug(move.name) !== f.choiceMoveSlug) {
+    move = f.choiceMove;
+  }
   if (f.encore > 0 && f.lastMove) { move = f.lastMove; }
-  if (!canAct(ctx, A, B, move, L)) { f.lastMove = move; f.protectStreak = 0; return; }
+  if (!canAct(ctx, A, B, move, L)) { f.lastMove = move; f.protectStreak = 0; return false; }
   const isProtectLike = EFFECTS[slug(move.name)]?.protect;
   if (!isProtectLike) f.protectStreak = 0;
   f.lastMove = move;
+  if (CHOICE_ITEMS.has(A.mon.held_item) && !f.choiceMove) {
+    f.choiceMove = move;
+    f.choiceMoveSlug = slug(move.name);
+  }
   performMove(ctx, A, B, move, L);
+  return true;
 }
 
 function endOfTurn(ctx) {
@@ -856,32 +937,37 @@ function endOfTurn(ctx) {
     if (!mon || mon.hp <= 0) continue;
     const f = fx(mon);
     f.protect = false;
-    if (field.weather === 'sand' && !mon.types.some((x) => ['rock', 'ground', 'steel'].includes(x))) {
+    const weather = AB.activeWeather(field);
+    if (weather === 'sand' && !mon.types.some((x) => ['rock', 'ground', 'steel'].includes(x)) && !AB.ignoresWeatherDamage(mon, 'sand')) {
       const d = Math.max(1, Math.floor(mon.max_hp / 16)); mon.hp -= d; L(`${mon.name} is buffeted by the sandstorm for **${d}** damage.`);
     }
-    if (field.weather === 'hail' && !mon.types.includes('ice')) {
+    if (weather === 'hail' && !mon.types.includes('ice') && !AB.ignoresWeatherDamage(mon, 'hail')) {
       const d = Math.max(1, Math.floor(mon.max_hp / 16)); mon.hp -= d; L(`${mon.name} is pelted by hail for **${d}** damage.`);
     }
     if (mon.hp > 0 && field.terrain === 'grassy' && isGrounded(mon, field) && mon.hp < mon.max_hp) healMon(mon, mon.max_hp / 16, L);
     if (mon.hp > 0 && mon.held_item === LEFTOVERS_ITEM && mon.hp < mon.max_hp) {
       healMon(mon, mon.max_hp / 16, L);
     }
-    if (mon.hp > 0 && f.status === 'brn') { const d = Math.max(1, Math.floor(mon.max_hp / 16)); mon.hp -= d; L(`${mon.name} was hurt by its burn for **${d}** damage.`); }
-    if (mon.hp > 0 && f.status === 'psn') { const d = Math.max(1, Math.floor(mon.max_hp / 8)); mon.hp -= d; L(`${mon.name} was hurt by poison for **${d}** damage.`); }
-    if (mon.hp > 0 && f.status === 'tox') { const d = Math.max(1, Math.floor(mon.max_hp * Math.min(15, f.tox) / 16)); f.tox += 1; mon.hp -= d; L(`${mon.name} was badly poisoned for **${d}** damage.`); }
-    if (mon.hp > 0 && f.leech) {
+    const magicGuard = AB.ignoresIndirect(mon);
+    const poisonHeal = AB.has(mon, 'poison-heal') && (f.status === 'psn' || f.status === 'tox');
+    if (poisonHeal && mon.hp > 0 && mon.hp < mon.max_hp) { L(`✨ **${mon.name}'s ${mon.ability}**`); healMon(mon, mon.max_hp / 8, L); }
+    if (mon.hp > 0 && f.status === 'brn' && !magicGuard) { const d = Math.max(1, Math.floor(mon.max_hp / (AB.has(mon, 'heatproof') ? 32 : 16))); mon.hp -= d; L(`${mon.name} was hurt by its burn for **${d}** damage.`); }
+    if (mon.hp > 0 && f.status === 'psn' && !magicGuard && !poisonHeal) { const d = Math.max(1, Math.floor(mon.max_hp / 8)); mon.hp -= d; L(`${mon.name} was hurt by poison for **${d}** damage.`); }
+    if (mon.hp > 0 && f.status === 'tox' && !poisonHeal) { f.tox += 1; if (!magicGuard) { const d = Math.max(1, Math.floor(mon.max_hp * Math.min(15, f.tox - 1) / 16)); mon.hp -= d; L(`${mon.name} was badly poisoned for **${d}** damage.`); } }
+    if (mon.hp > 0 && f.leech && !magicGuard) {
       const d = Math.max(1, Math.floor(mon.max_hp / 8)); mon.hp -= d;
       const sapper = f.leech === 'player' ? ctx.player : ctx.enemy;
       L(`Leech Seed sapped **${d}** HP from ${mon.name}.`);
       if (sapper && sapper.hp > 0 && fx(sapper).healBlock <= 0) sapper.hp = Math.min(sapper.max_hp, sapper.hp + d);
     }
-    if (mon.hp > 0 && f.cursed) { const d = Math.max(1, Math.floor(mon.max_hp / 4)); mon.hp -= d; L(`${mon.name} is afflicted by the curse for **${d}** damage.`); }
-    if (mon.hp > 0 && f.nightmare && f.status === 'slp') { const d = Math.max(1, Math.floor(mon.max_hp / 4)); mon.hp -= d; L(`${mon.name} is locked in a nightmare for **${d}** damage.`); }
+    if (mon.hp > 0 && f.cursed && !magicGuard) { const d = Math.max(1, Math.floor(mon.max_hp / 4)); mon.hp -= d; L(`${mon.name} is afflicted by the curse for **${d}** damage.`); }
+    if (mon.hp > 0 && f.nightmare && f.status === 'slp' && !magicGuard) { const d = Math.max(1, Math.floor(mon.max_hp / 4)); mon.hp -= d; L(`${mon.name} is locked in a nightmare for **${d}** damage.`); }
     if (mon.hp > 0 && f.octolock) { changeStage(ctx, mon, side, 'def', -1, L); changeStage(ctx, mon, side, 'spdef', -1, L); }
     for (const healingFlag of ['aquaRing', 'ingrain']) {
       if (mon.hp > 0 && f[healingFlag] && mon.hp < mon.max_hp) healMon(mon, mon.max_hp / 16, L);
     }
     if (mon.hp > 0 && f.yawn) { f.yawn -= 1; if (f.yawn <= 0) { f.yawn = 0; inflictStatus(ctx, mon, side, 'slp', L); } }
+    AB.endTurn(AH, ctx, mon, side, side === 'player' ? ctx.enemy : ctx.player, L);
     if (mon.hp > 0 && f.perish) {
       f.perish -= 1;
       if (f.perish <= 0) { mon.hp = 0; f.perish = 0; L(`${mon.name}'s perish count ran out!`); }
@@ -914,11 +1000,16 @@ function endOfTurn(ctx) {
 function runTurn(ctx, playerMove, enemyMove) {
   const P = { mon: ctx.player, side: 'player', move: playerMove };
   const E = { mon: ctx.enemy, side: 'enemy', move: enemyMove };
+  let playerActed = false;
   const quashed = (a) => fx(a.mon).quashed;
+  AB.updateWeatherSuppression(ctx);
+  P.quickClawFirst = P.mon.held_item === 'Quick Claw' && Math.random() < 0.2;
+  E.quickClawFirst = E.mon.held_item === 'Quick Claw' && Math.random() < 0.2;
   const order = [P, E].sort((a, b) => {
     if (quashed(a) !== quashed(b)) return quashed(a) ? 1 : -1;
-    const pa = getPriority(a.move); const pb = getPriority(b.move);
+    const pa = AB.priorityFor(a.mon, a.move, getPriority(a.move)); const pb = AB.priorityFor(b.mon, b.move, getPriority(b.move));
     if (pa !== pb) return pb - pa;
+    if (a.quickClawFirst !== b.quickClawFirst) return a.quickClawFirst ? -1 : 1;
     const sa = effectiveSpeed(a.mon, ctx.field, a.side); const sb = effectiveSpeed(b.mon, ctx.field, b.side);
     if (sa === sb) return Math.random() < 0.5 ? -1 : 1;
     return ctx.field.trickRoom > 0 ? sa - sb : sb - sa;
@@ -926,9 +1017,10 @@ function runTurn(ctx, playerMove, enemyMove) {
   for (const actor of order) {
     const foe = actor === P ? E : P;
     if (actor.mon.hp <= 0 || foe.mon.hp <= 0) continue;
-    runAction(ctx, actor, foe);
+    if (runAction(ctx, actor, foe) && actor === P) playerActed = true;
   }
   endOfTurn(ctx);
+  return playerActed;
 }
 
 function runSwitchTurn(ctx, enemyMove) {
@@ -940,7 +1032,55 @@ function runSwitchTurn(ctx, enemyMove) {
   endOfTurn(ctx);
 }
 
+const GENDERLESS_NAME_RE = /^(magnemite|magneton|magnezone|voltorb|electrode|staryu|starmie|porygon|ditto|beldum|metang|metagross|bronzor|bronzong|golett|golurk|klink|klang|klinklang|rotom|solrock|lunatone|baltoy|claydol|shedinja|cryogonal|carbink|minior|falinks|dhelmise|mewtwo|mew|articuno|zapdos|moltres|raikou|entei|suicune|lugia|ho-oh|celebi|regi\w*|kyogre|groudon|rayquaza|jirachi|deoxys|dialga|palkia|giratina|arceus|genesect|zygarde|necrozma|zacian|zamazenta|eternatus|miraidon|koraidon)\b/;
+
+const genderlessCache = new Map();
+function isLegendaryName(name) {
+  const key = String(name || '').toLowerCase();
+  if (!genderlessCache.has(key)) {
+    let result = false;
+    try {
+      const { db } = require('./db');
+      result = Boolean(db.prepare(
+        'SELECT 1 FROM pokemon_forms WHERE (lower(name) = ? OR lower(species_name) = ?) AND (is_legendary = 1 OR is_mythical = 1) LIMIT 1'
+      ).get(key, key));
+    } catch { result = false; }
+    genderlessCache.set(key, result);
+  }
+  return genderlessCache.get(key);
+}
+
+// No stored gender: legendaries/mythicals and fixed-genderless species are genderless; others get a stable pseudo-gender.
+function battleGender(mon) {
+  const set = String(mon?.gender || '').toLowerCase();
+  if (['male', 'female', 'genderless'].includes(set)) return set;
+  const name = String(mon?.name || '').toLowerCase().replace(/\s+/g, '-');
+  if (GENDERLESS_NAME_RE.test(name) || isLegendaryName(mon?.name)) return 'genderless';
+  let h = 0;
+  for (const c of `${name}|${mon?.id ?? mon?.catch_id ?? ''}`) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % 2 ? 'male' : 'female';
+}
+
+// Helper bag handed to ability hooks (ability-effects.js has no direct dependency on this file).
+const AH = { changeStage, inflictStatus, healMon, cureStatus, fx };
+
+// Ability hooks for the World Boss flow, which runs its own damage formula.
+const abilities = {
+  has: AB.has,
+  entry: (ctx, A, B, L) => AB.entry(AH, ctx, A, B, L),
+  absorb: (ctx, A, B, move, type, eff, L) => AB.absorb(AH, ctx, A, B, move, type, eff, L),
+  afterHit: (ctx, A, B, move, dmg, info, L) => AB.afterHit(AH, ctx, A, B, move, dmg, info, L),
+  damageMultiplier: AB.damageMultiplier,
+  adjustMoveType: AB.adjustMoveType,
+  survivesLethal: AB.survivesLethal,
+  ignoresIndirect: AB.ignoresIndirect,
+  critChance: AB.critChance,
+  keyOf: AB.keyOf,
+};
+
 module.exports = {
+  abilities,
+  battleGender,
   EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
   applyStatusMove, canAct, performMove, effectivePower, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
   DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, RECHARGE_MOVES, takeBatonState, giveBatonState, cureStatus,

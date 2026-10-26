@@ -8,7 +8,12 @@ const {
   isGoldenDexNumber,
 } = require('./pokemon-dex-numbers');
 const { EVOLUTION_ITEMS, findEvolutionItem } = require('./evolution-items');
-const { BATTLE_HELD_ITEM_NAMES, POWER_ITEM_EVS, findBattleHeldItem } = require('./held-item-effects');
+const {
+  BATTLE_HELD_ITEM_NAMES,
+  BATTLE_HELD_ITEM_DETAILS,
+  POWER_ITEM_EVS,
+  findBattleHeldItem,
+} = require('./held-item-effects');
 const { BOXES, VOTE_BOXES } = require('./boxes');
 const { getPromoItemNames } = require('./promo');
 const { setSpriteOverrides } = require('./pokemon-sprites');
@@ -3346,20 +3351,23 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
     if (recordSeen) {
       const buddyCatchId = getUser(userId).buddy_catch_id;
       if (buddyCatchId) {
+        const friendshipGain = db.prepare(
+          'SELECT held_item FROM catches WHERE id = ? AND user_id = ?'
+        ).get(buddyCatchId, userId)?.held_item === 'Soothe Bell' ? 2 : 1;
         const bumped = db.prepare(`
-          UPDATE catches SET friendship = MIN(?, friendship + 1) WHERE id = ? AND user_id = ?
-        `).run(MAX_FRIENDSHIP, buddyCatchId, userId);
+          UPDATE catches SET friendship = MIN(?, friendship + ?) WHERE id = ? AND user_id = ?
+        `).run(MAX_FRIENDSHIP, friendshipGain, buddyCatchId, userId);
         if (bumped.changes) syncDuplicateCatchState(userId, buddyCatchId);
       }
     }
 
     if (recordSeen) {
-      db.prepare(`
-        INSERT INTO pokemon_user_seen_counts (user_id, pokemon_id, is_shiny, is_golden, seen_count)
-        VALUES (?, ?, ?, ?, 1)
-        ON CONFLICT (user_id, pokemon_id, is_shiny, is_golden)
-        DO UPDATE SET seen_count = seen_count + 1
-      `).run(userId, pokemon.id, isShiny || pokemon.isShiny ? 1 : 0, isGolden ? 1 : 0);
+      recordPokemonSeen(
+        userId,
+        pokemon.id,
+        Boolean(isShiny || pokemon.isShiny),
+        isGolden
+      );
     }
 
     incrementUser(userId, {
@@ -4317,7 +4325,15 @@ const ROTOM_ITEMS = Object.freeze([
   'Rotom Lawnmower',
   'Rotom Washer',
 ]);
+const EXP_CANDY_VALUES = Object.freeze({
+  'Exp. Candy XS': 100,
+  'Exp. Candy S': 800,
+  'Exp. Candy M': 3000,
+  'Exp. Candy L': 10000,
+  'Exp. Candy XL': 30000,
+});
 const SPECIAL_USER_ITEM_NAMES = Object.freeze([
+  ...Object.keys(EXP_CANDY_VALUES),
   'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
   'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
   'Team Medallion',
@@ -4906,23 +4922,32 @@ function equipSavedTeam(userId, teamName) {
 // Stored in saved_teams with is_defending = 2 so favorites/defending lists ignore it.
 const LAST_WORLD_BOSS_TEAM_NAME = '__last_world_boss__';
 
-function saveLastWorldBossTeam(userId, team) {
+function getLastWorldBossTeamName(bossId) {
+  if (!Number.isSafeInteger(bossId) || bossId <= 0) {
+    throw new TypeError('bossId must be a positive safe integer.');
+  }
+  return `${LAST_WORLD_BOSS_TEAM_NAME}:${bossId}`;
+}
+
+function saveLastWorldBossTeam(userId, bossId, team) {
   assertUserId(userId);
+  const teamName = getLastWorldBossTeamName(bossId);
   if (!team.length) return false;
   db.prepare(`
     INSERT INTO saved_teams (user_id, team_name, is_defending, pokemon_ids)
     VALUES (?, ?, 2, ?)
     ON CONFLICT(user_id, team_name) DO UPDATE SET pokemon_ids = excluded.pokemon_ids
-  `).run(userId, LAST_WORLD_BOSS_TEAM_NAME, JSON.stringify(team.slice(0, 3).map((mon) => mon.id)));
+  `).run(userId, teamName, JSON.stringify(team.slice(0, 3).map((mon) => mon.id)));
   return true;
 }
 
 // Returns the Pokémon still owned from the last World Boss team, or null if none remain.
-function getLastWorldBossTeam(userId) {
+function getLastWorldBossTeam(userId, bossId) {
   assertUserId(userId);
+  const teamName = getLastWorldBossTeamName(bossId);
   const saved = db.prepare(
     'SELECT pokemon_ids FROM saved_teams WHERE user_id = ? AND team_name = ?'
-  ).get(userId, LAST_WORLD_BOSS_TEAM_NAME);
+  ).get(userId, teamName);
   if (!saved) return null;
   const owned = JSON.parse(saved.pokemon_ids || '[]').slice(0, 3)
     .map((id) => db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?').get(id, userId))
@@ -4930,10 +4955,10 @@ function getLastWorldBossTeam(userId) {
   return owned.length ? owned : null;
 }
 
-function equipLastWorldBossTeam(userId) {
+function equipLastWorldBossTeam(userId, bossId) {
   assertUserId(userId);
   return db.transaction(() => {
-    const team = getLastWorldBossTeam(userId);
+    const team = getLastWorldBossTeam(userId, bossId);
     if (!team) return null;
     db.prepare('UPDATE catches SET in_team = 0, team_slot = NULL WHERE user_id = ?').run(userId);
     team.forEach((mon, index) => {
@@ -4942,6 +4967,22 @@ function equipLastWorldBossTeam(userId) {
     });
     return team;
   }).immediate();
+}
+
+function recordPokemonSeen(userId, pokemonId, isShiny = false, isGolden = false) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0) {
+    throw new TypeError('pokemonId must be a positive safe integer.');
+  }
+  if (typeof isShiny !== 'boolean' || typeof isGolden !== 'boolean') {
+    throw new TypeError('isShiny and isGolden must be booleans.');
+  }
+  db.prepare(`
+    INSERT INTO pokemon_user_seen_counts (user_id, pokemon_id, is_shiny, is_golden, seen_count)
+    VALUES (?, ?, ?, ?, 1)
+    ON CONFLICT (user_id, pokemon_id, is_shiny, is_golden)
+    DO UPDATE SET seen_count = seen_count + 1
+  `).run(userId, pokemonId, isShiny ? 1 : 0, isGolden ? 1 : 0);
 }
 
 function getUserBuddyHistory(userId, sortBy = 'ivs') {
@@ -5198,7 +5239,11 @@ function awardCatchExperience(userId, amount = 200) {
         continue;
       }
 
-      const experience = pokemon.experience + experienceAmount;
+      const awardedExperience = pokemon.held_item === 'Lucky Egg'
+        ? Math.floor(experienceAmount * 1.5)
+        : experienceAmount;
+      recipientExperience.set(catchId, awardedExperience);
+      const experience = pokemon.experience + awardedExperience;
       let level = pokemon.level;
       while (level < 100 && experience >= experienceForNextLevel(level)) level += 1;
       const baseHp = pokemon.base_hp ?? 50;
@@ -5221,7 +5266,7 @@ function awardCatchExperience(userId, amount = 200) {
         is_shiny: Boolean(pokemon.is_shiny),
         is_buddy: catchId === user.buddy_catch_id,
         on_team: team.some((member) => member.id === catchId),
-        experience: experienceAmount,
+        experience: awardedExperience,
       });
       if (level > pokemon.level) {
         levelUps.push({ name: pokemon.name, from: pokemon.level, to: level });
@@ -5294,6 +5339,56 @@ function useRareCandy(userId, amount = 1) {
     `).run(experience, level, hp, maxHp, atk, def, spd, catchId, userId);
     syncDuplicateCatchState(userId, catchId);
     return { pokemon, levelsGained, level, experience };
+  }).immediate();
+}
+
+// Feeds Exp. Candies of one size to the buddy; `amount` may be 'all' (as many as needed to reach level 100).
+function useExpCandy(userId, itemName, amount = 1) {
+  assertUserId(userId);
+  const perCandy = EXP_CANDY_VALUES[itemName];
+  if (!perCandy) throw new TypeError(`Unknown Exp. Candy: ${itemName}.`);
+  const useAll = amount === 'all';
+  if (!useAll && (!Number.isSafeInteger(amount) || amount <= 0)) {
+    throw new TypeError("amount must be a positive safe integer or 'all'.");
+  }
+
+  return db.transaction(() => {
+    const catchId = getUser(userId).buddy_catch_id;
+    if (!catchId) return { error: 'no_buddy' };
+    const pokemon = db.prepare(`
+      SELECT catches.*, pokemon_forms.base_hp, pokemon_forms.base_atk,
+        pokemon_forms.base_def, pokemon_forms.base_spd
+      FROM catches
+      LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
+      WHERE catches.id = ? AND catches.user_id = ?
+    `).get(catchId, userId);
+    if (!pokemon) return { error: 'no_buddy' };
+    if (pokemon.level >= 100) return { error: 'max_level' };
+
+    const owned = db.prepare('SELECT amount FROM user_items WHERE user_id = ? AND item_name = ?')
+      .get(userId, itemName)?.amount || 0;
+    if (owned < 1) return { error: 'no_candies' };
+    const capExperience = experienceForNextLevel(99);
+    const needed = Math.max(1, Math.ceil((capExperience - pokemon.experience) / perCandy));
+    const used = Math.min(useAll ? needed : amount, owned, needed);
+
+    const experience = pokemon.experience + used * perCandy;
+    let level = pokemon.level;
+    while (level < 100 && experience >= experienceForNextLevel(level)) level += 1;
+    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, level, true, pokemon.is_shiny, pokemon.ev_hp);
+    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, level, false, pokemon.is_shiny, pokemon.ev_atk);
+    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, level, false, pokemon.is_shiny, pokemon.ev_def);
+    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, level, false, pokemon.is_shiny, pokemon.ev_spe);
+    const hp = Math.min(maxHp, pokemon.hp + (maxHp - pokemon.max_hp));
+
+    takeUserItem(userId, itemName, used);
+    db.prepare(`
+      UPDATE catches
+      SET experience = ?, level = ?, hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
+      WHERE id = ? AND user_id = ?
+    `).run(experience, level, hp, maxHp, atk, def, spd, catchId, userId);
+    syncDuplicateCatchState(userId, catchId);
+    return { pokemon, used, level, experience, expGained: used * perCandy };
   }).immediate();
 }
 
@@ -6228,14 +6323,34 @@ function getUnclaimedWorldBossReward(userId) {
   `).get(userId) || null;
 }
 
+// XS, S and M only: L and XL are Patreon shop items. Smaller candies are more common.
+const EXP_CANDY_DROP_WEIGHTS = [['Exp. Candy XS', 60], ['Exp. Candy S', 30], ['Exp. Candy M', 10]];
+function rollExpCandy() {
+  let roll = Math.random() * EXP_CANDY_DROP_WEIGHTS.reduce((sum, [, weight]) => sum + weight, 0);
+  for (const [name, weight] of EXP_CANDY_DROP_WEIGHTS) {
+    roll -= weight;
+    if (roll < 0) return { name };
+  }
+  return { name: EXP_CANDY_DROP_WEIGHTS[0][0] };
+}
+
 const WORLD_BOSS_REPEL_DROPS = ['Repel', 'Super Repel', 'Max Repel'];
 
 // Extra per-player loot on top of the standard rewards; MVPs get better odds and amounts.
 function rollWorldBossExtraDrops(isMvp) {
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   const drops = [];
+  if (Math.random() < (isMvp ? 0.03 : 0.01)) {
+    drops.push({
+      name: pick(['Metronome', 'Loaded Dice', 'Choice Cloak']),
+      amount: 1,
+    });
+  }
   if (Math.random() < (isMvp ? 0.6 : 0.3)) {
     drops.push({ name: 'Rare Candy', amount: (isMvp ? 3 : 1) + Math.floor(Math.random() * 3) });
+  }
+  if (Math.random() < (isMvp ? 0.5 : 0.25)) {
+    drops.push({ ...rollExpCandy(), amount: (isMvp ? 2 : 1) + Math.floor(Math.random() * 2) });
   }
   if (Math.random() < (isMvp ? 0.3 : 0.1)) {
     drops.push({ name: pick(Object.keys(EVOLUTION_ITEMS)), amount: 1 });
@@ -9079,6 +9194,7 @@ module.exports = {
   saveLastWorldBossTeam,
   getLastWorldBossTeam,
   equipLastWorldBossTeam,
+  recordPokemonSeen,
   getUserBuddyHistory,
   awardCoinsWithBoost,
   getUserQuests,
@@ -9138,6 +9254,9 @@ module.exports = {
   awardCatchExperience,
   experienceForNextLevel,
   useRareCandy,
+  useExpCandy,
+  rollExpCandy,
+  EXP_CANDY_VALUES,
   awardPokemonEvs,
   EV_STATS,
   EV_TOTAL_LIMIT,
