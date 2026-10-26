@@ -6017,8 +6017,8 @@ const TYPE_EFFECTIVENESS = {
 };
 
 const MOVE_DAMAGE_SCALE = 0.45;
-const WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER = 3;
-const WORLD_BOSS_COUNTER_DAMAGE_MULTIPLIER = 3;
+const WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER = 1.5;
+const WORLD_BOSS_COUNTER_DAMAGE_MULTIPLIER = 2;
 // The boss's real HP is huge, so status chip damage is tracked on a small dummy HP pool and scaled up.
 const WORLD_BOSS_DUMMY_HP = 1600;
 const WORLD_BOSS_CHIP_PER_HP = 100;
