@@ -17647,6 +17647,9 @@ client.on('messageCreate', async (message) => {
             ['Sitrus Berry', FUN_ITEM_EMOJIS['Sitrus Berry']],
             ['Leftovers', FUN_ITEM_EMOJIS.Leftovers],
             ...RESEARCH_HELD_ITEMS.map((item) => [item.name, item.emoji]),
+            ...BATTLE_HELD_ITEM_DETAILS
+              .filter((item) => ['Metronome', 'Loaded Dice', 'Choice Cloak'].includes(item.name))
+              .map((item) => [item.name, item.emoji]),
           ];
           embed.setTitle(`🎒 Utility Items (Page 2/${totalPages})`).addFields(
             {
