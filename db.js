@@ -974,6 +974,13 @@ db.exec(`
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS challenger_invites (
+    user_id TEXT NOT NULL,
+    challenger_key TEXT NOT NULL,
+    invited_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, challenger_key)
+  );
+
   CREATE TABLE IF NOT EXISTS catchbot_data (
     user_id TEXT PRIMARY KEY,
     spent_upgrades INTEGER NOT NULL DEFAULT 0,
@@ -3866,6 +3873,25 @@ function clearLeagueChallenge(userId, expectedChallenge, reward) {
   }).immediate();
 }
 
+function getChallengerInvites(userId) {
+  assertUserId(userId);
+  return db.prepare('SELECT challenger_key FROM challenger_invites WHERE user_id = ?')
+    .all(userId).map((row) => row.challenger_key);
+}
+
+function addChallengerInvite(userId, challengerKey) {
+  assertUserId(userId);
+  getUser(userId);
+  return db.prepare('INSERT OR IGNORE INTO challenger_invites (user_id, challenger_key) VALUES (?, ?)')
+    .run(userId, challengerKey).changes > 0;
+}
+
+function removeChallengerInvite(userId, challengerKey) {
+  assertUserId(userId);
+  return db.prepare('DELETE FROM challenger_invites WHERE user_id = ? AND challenger_key = ?')
+    .run(userId, challengerKey).changes > 0;
+}
+
 const CHAMBER_CONFIG = {
   sableye: {
     id: 1,
@@ -6361,12 +6387,16 @@ function rollWorldBossExtraDrops(isMvp) {
   if (Math.random() < (isMvp ? 0.15 : 0.08)) {
     drops.push({ name: 'Egg', amount: 1 });
   }
+  if (Math.random() < (isMvp ? 0.08 : 0.04)) {
+    drops.push({ name: pick(['Full Restore', 'Max Revive', 'Max Potion']), amount: 1 });
+  }
   return drops;
 }
 
 function rollWorldBossClaimItems() {
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   return [
+    { name: 'Rare Candy', amount: 1 + Math.floor(Math.random() * 3) },
     { name: 'Rare Candy', amount: 1 + Math.floor(Math.random() * 3) },
     { name: pick(WORLD_BOSS_REPEL_DROPS), amount: 1 },
     { name: pick(Object.keys(BOXES)), amount: 1 },
@@ -9258,6 +9288,9 @@ module.exports = {
   rollExpCandy,
   EXP_CANDY_VALUES,
   awardPokemonEvs,
+  getChallengerInvites,
+  addChallengerInvite,
+  removeChallengerInvite,
   EV_STATS,
   EV_TOTAL_LIMIT,
   EV_STAT_LIMIT,

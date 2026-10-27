@@ -185,6 +185,9 @@ const {
   useExpCandy,
   rollExpCandy,
   EXP_CANDY_VALUES,
+  getChallengerInvites,
+  addChallengerInvite,
+  removeChallengerInvite,
   EV_STATS,
   EV_TOTAL_LIMIT,
   EV_STAT_LIMIT,
@@ -1004,6 +1007,52 @@ const FACTION_NPC_BATTLES = FACTION_NPC_BATTLE_DEFINITIONS.map(({
   };
 });
 NPC_SPECIAL_BATTLES.push(...FACTION_NPC_BATTLES);
+
+const CHALLENGER_STRENGTH_MULTIPLIER = 3;
+const CHALLENGER_INVITE_CHANCE = 0.06;
+const CHALLENGER_TIERS = {
+  basic: { label: 'Basic', questCategory: 'basic_challenger', coins: [5000, 10000], weight: 70 },
+  boss: { label: 'Boss', questCategory: 'boss_challenger', coins: [15000, 30000], weight: 22 },
+  master: { label: 'Master', questCategory: 'master_challenger', coins: [40000, 80000], weight: 8 },
+};
+const CHALLENGER_DEFINITIONS = [
+  { id: 208, key: 'ore_wes', name: 'Ore Wes', tier: 'basic', emoji: '<:orewes:1564683133348220999>', pokemon: ['Espeon', 'Umbreon', 'Heracross'] },
+  { id: 207, key: 'rocket_grunt_james', name: 'Rocket Grunt James', tier: 'basic', emoji: '<:rocketgruntjames:1564683113332867183>', pokemon: ['Weezing', 'Arbok', 'Growlithe'] },
+  { id: 206, key: 'rocket_grunt_jessie', name: 'Rocket Grunt Jessie', tier: 'basic', emoji: '<:rocketgruntjessie:1564683110824550400>', pokemon: ['Arbok', 'Wobbuffet', 'Dustox'] },
+  { id: 210, key: 'trainer_steven', name: 'Trainer Steven', tier: 'basic', emoji: '<:trainersteven:1564683108882710609>', pokemon: ['Skarmory', 'Aggron', 'Metagross'] },
+  { id: 209, key: 'trainer_red', name: 'Trainer Red', tier: 'basic', emoji: '<:trainerred:1564683106475311136>', pokemon: ['Pikachu', 'Lapras', 'Snorlax', 'Charizard'] },
+  { id: 201, key: 'magma_boss_maxie', name: 'Magma Boss Maxie', tier: 'boss', emoji: '<:magmabossmaxie:1564683270631854133>', pokemon: ['Mightyena', 'Camerupt', 'Crobat', 'Groudon'] },
+  { id: 202, key: 'aqua_boss_archie', name: 'Aqua Boss Archie', tier: 'boss', emoji: '<:aquabossarchie:1564683272745648179>', pokemon: ['Mightyena', 'Sharpedo', 'Crobat', 'Kyogre'] },
+  { id: 203, key: 'galactic_boss_cyrus', name: 'Galactic Boss Cyrus', tier: 'boss', emoji: '<:galacticbosscyrus:1564683274402537523>', pokemon: ['Honchkrow', 'Weavile', 'Gyarados', 'Dialga'] },
+  { id: 200, key: 'rocket_boss_giovanni', name: 'Rocket Boss Giovanni', tier: 'boss', emoji: '<:rocketbossgiovanni:1564683275937517639>', pokemon: ['Rhydon', 'Nidoking', 'Persian', 'Mewtwo'] },
+  { id: 204, key: 'plasma_boss_ghetsis', name: 'Plasma Boss Ghetsis', tier: 'boss', emoji: '<:plasmabossghetsis:1564683278286454905>', pokemon: ['Bisharp', 'Cofagrigus', 'Hydreigon', 'Zekrom'] },
+  { id: 205, key: 'flare_boss_lysandre', name: 'Flare Boss Lysandre', tier: 'boss', emoji: '<:flarebosslysandre:1564683280366829708>', pokemon: ['Mienshao', 'Pyroar', 'Gyarados', 'Yveltal'] },
+  { id: 211, key: 'cipher_head_evice', name: 'Cipher Head Evice', tier: 'master', emoji: '<:cipherheadevice:1564683389699629096>', pokemon: ['Tyranitar', 'Salamence', 'Metagross', 'Hydreigon', 'Dragonite', 'Garchomp'] },
+  { id: 212, key: 'professor_oak', name: 'Professor Oak', tier: 'master', emoji: '<:professoroak:1564683391562154015>', pokemon: ['Tauros', 'Arcanine', 'Exeggutor', 'Gyarados', 'Venusaur', 'Dragonite'] },
+  { id: 213, key: 'mystery_trainer', name: 'Mystery Trainer', tier: 'master', emoji: '<:mysterytrainer:1564683393411711076>', pokemon: ['Mew', 'Mewtwo', 'Lugia', 'Ho-Oh', 'Rayquaza', 'Arceus'] },
+].map((definition) => ({
+  challengerKey: definition.key,
+  challengerId: definition.id,
+  challengerTier: definition.tier,
+  name: definition.name,
+  region: 'Challengers',
+  iconEmoji: definition.emoji,
+  special: true,
+  invited: true,
+  strengthMultiplier: CHALLENGER_STRENGTH_MULTIPLIER,
+  pokemonNames: definition.pokemon,
+  team: definition.pokemon.map((pokemonName) => {
+    const form = resolvePokemonForm(pokemonName);
+    if (!form) throw new Error(`Missing catalog Pokémon ${pokemonName} for challenger ${definition.name}.`);
+    return { form_id: form.id, level: 100 };
+  }),
+  reward: 0,
+}));
+const CHALLENGER_DEFINITION_LIST = CHALLENGER_DEFINITIONS;
+NPC_SPECIAL_BATTLES.push(...CHALLENGER_DEFINITIONS);
+const GOLDEN_TIMBURR_EMOJI = '<:GoldenTimburr:1564685185121783980>';
+const GOLDEN_TIMBURR_DROP_CHANCE = 1 / 5000;
+
 for (const challenge of [...NPC_CAMPAIGN, ...NPC_SPECIAL_BATTLES]) {
   const trainerName = challenge.name.split('\u2014').pop().trim();
   const trainerKey = trainerName.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -6127,13 +6176,47 @@ function getEquippedBattleMovesBase(pokemon, speciesId, formId = null) {
   return selected.map((name) => getPokemonMove(name)).filter(Boolean);
 }
 
-const GAUNTLET_TRAINERS = [
-  { name: 'Ace Trainer Flint', pokemonId: 229 },
-  { name: 'Veteran Laura', pokemonId: 248 },
-  { name: 'Dragon Tamer Drake', pokemonId: 373 },
-  { name: 'Hex Maniac Valerie', pokemonId: 609 },
-  { name: 'Black Belt Kiyo', pokemonId: 448 },
+const GAUNTLET_POKEMON_IDS = [229, 248, 373, 609, 448];
+const CHAMBER_STRENGTH_MULTIPLIER = 3;
+const CHAMBER_TRAINERS = [
+  { name: 'Guitarist Nicki', emoji: '<:chamberguitaristnicki:1564687292403290354>' },
+  { name: 'Waitress Nicki', emoji: '<:chamberwaitressnicki:1564687293816504572>' },
+  { name: 'Ace Nicki', emoji: '<:chamberacenicki:1564687298262732961>' },
+  { name: 'Employee Nicki', emoji: '<:chamberemployeenicki:1564687300145844386>' },
+  { name: 'Kid Nick', emoji: '<:chamberkidnick:1564687301873766521>' },
+  { name: 'Cyclist Nick', emoji: '<:chambercyclistnick:1564687306408071168>' },
+  { name: 'Ranger Nicki', emoji: '<:chamberrangernicki:1564687307792056351>' },
+  { name: 'Reporter Nick', emoji: '<:chamberreporternick:1564687309444616282>' },
+  { name: 'Climber Nick', emoji: '<:chamberclimbernick:1564687312267509801>' },
+  { name: 'Backpacker Nick', emoji: '<:chamberbackpacknick:1564687314071064636>' },
+  { name: 'Ace Nick', emoji: '<:chamberacenick:1564687316797100173>' },
+  { name: 'Climber Nicki', emoji: '<:chamberclimbernicki:1564687319146041504>' },
+  { name: 'Guitarist Nick', emoji: '<:chamberguitaristnick:1564687320836476959>' },
+  { name: 'Reporter Nicki', emoji: '<:chamberreporternicki:1564687322912399471>' },
+  { name: 'Skier Nick', emoji: '<:chamberskiernick:1564687324359565364>' },
+  { name: 'Scientist Nick', emoji: '<:chamberscientistnick:1564691602310701056>' },
+  { name: 'Scientist Nicki', emoji: '<:chamberscientistnicki:1564691604030365756>' },
 ];
+const CHAMBER_MASTERS = [
+  { name: 'Chamber Master Harmon', emoji: '<:chambermasterharmon:1564687289127542945>' },
+  { name: 'Chamber Master Gordon', emoji: '<:chambermastergordon:1564687290565922928>' },
+  { name: 'Chamber Master Gail', emoji: '<:chambermastergail:1564687295540363404>' },
+  { name: 'Chamber Master Benga', emoji: '<:chambermasterbenga:1564687304516182179>' },
+  { name: 'Chamber Master Iria', emoji: '<:chambermasteriria:1564691410416832612>' },
+];
+const CHAMBER_ICON_DROP_CHANCE = 1 / 500;
+const CHAMBER_ICON_ENTRIES = [...CHAMBER_TRAINERS, ...CHAMBER_MASTERS].map((trainer) => ({
+  name: trainer.name,
+  region: 'Chambers',
+  iconEmoji: trainer.emoji,
+  special: true,
+  chamberIcon: true,
+  team: [],
+  reward: 0,
+}));
+NPC_SPECIAL_BATTLES.push(...CHAMBER_ICON_ENTRIES);
+const getChamberIconIndex = (trainerName) =>
+  NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.findIndex((entry) => entry.chamberIcon && entry.name === trainerName);
 
 const LEAGUE_REGIONS = [
   { name: 'Kanto', gen: 'I' },
@@ -6194,6 +6277,67 @@ function getLeagueEntries(categoryKey, regionName = null) {
 function getNpcCodeCategory(challenge) {
   const name = challenge.name.toLowerCase();
   return Object.keys(LEAGUE_CATEGORIES).find((key) => LEAGUE_CATEGORIES[key].matches(name)) || 'gym';
+}
+
+function pickChallengerInvite(userId) {
+  const invited = new Set(getChallengerInvites(userId));
+  const candidates = CHALLENGER_DEFINITION_LIST.filter((challenger) => !invited.has(challenger.challengerKey));
+  if (!candidates.length) return null;
+  const tierWeights = [...new Set(candidates.map((challenger) => challenger.challengerTier))]
+    .map((tier) => ({ tier, weight: CHALLENGER_TIERS[tier].weight }));
+  let roll = Math.random() * tierWeights.reduce((sum, entry) => sum + entry.weight, 0);
+  const chosenTier = (tierWeights.find((entry) => (roll -= entry.weight) < 0) || tierWeights[0]).tier;
+  const pool = candidates.filter((challenger) => challenger.challengerTier === chosenTier);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+async function maybeSendChallengerInvite(message, userId) {
+  try {
+    if (Math.random() >= CHALLENGER_INVITE_CHANCE) return;
+    const challenger = pickChallengerInvite(userId);
+    if (!challenger || !addChallengerInvite(userId, challenger.challengerKey)) return;
+    const tier = CHALLENGER_TIERS[challenger.challengerTier];
+    await message.channel.send({
+      content: `<@${userId}>`,
+      allowedMentions: { users: [userId] },
+      embeds: [new EmbedBuilder()
+        .setColor(0xe67e22)
+        .setTitle(`${challenger.iconEmoji} ${challenger.name} wants to battle!`)
+        .setDescription(
+          `A **${tier.label} challenger** has invited you to a battle! Their Pokémon are ` +
+          `**${CHALLENGER_STRENGTH_MULTIPLIER}× stronger** than normal opponents.\n\n` +
+          `Start it with \`${PREFIX}ch ${challenger.challengerKey}\` or see all invites with \`${PREFIX}ch\`.\n` +
+          `The invite is gone once you win or lose, so make it count!`
+        )],
+    });
+  } catch (error) {
+    console.error(`Failed to send challenger invite to user ${userId}:`, error);
+  }
+}
+
+function buildChallengerListEmbed(user, userId) {
+  const invited = new Set(getChallengerInvites(userId));
+  const sections = Object.entries(CHALLENGER_TIERS).map(([tierKey, tier]) => {
+    const all = CHALLENGER_DEFINITION_LIST.filter((challenger) => challenger.challengerTier === tierKey);
+    const waiting = all.filter((challenger) => invited.has(challenger.challengerKey));
+    const lines = waiting.length
+      ? waiting.map((challenger, index) =>
+        `${index + 1}. ${challenger.iconEmoji} \`${challenger.challengerKey}\` • ID: ${challenger.challengerId}`).join('\n')
+      : 'None';
+    return `**${tier.label} challenges** [${waiting.length}/${all.length}]\n${lines}`;
+  });
+  return new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`📨 ${user.username}'s Battle Invitations`)
+    .setDescription(
+      `Challengers invite you to battle while you catch, fish or battle. Any challenger can invite you at any time.\n\n` +
+      `Challengers are **${CHALLENGER_STRENGTH_MULTIPLIER}× stronger** than normal opponents, and an invite disappears once you win or lose.\n\n` +
+      `Type \`${PREFIX}ch <name/id>\` to start the battle.\n\n` +
+      `All challenges have a *chance* to drop a special battle-exclusive ${EMOJIS.golden} Pokémon and their trainer battle icon.\n\n` +
+      sections.join('\n\n') +
+      `\n\n**Currently available Battle-exclusive Golden**\n${EMOJIS.golden} ${GOLDEN_TIMBURR_EMOJI} Golden Timburr`
+    )
+    .setFooter({ text: 'Keep catching, fishing and battling to receive new invitations!' });
 }
 
 async function sendLeagueHub(message, userId, categoryKey, initialRegion = null) {
@@ -6598,18 +6742,31 @@ async function runMegaChamberGauntlet(message, userId, config) {
     1,
     Math.floor(party.reduce((total, pokemon) => total + pokemon.level, 0) / party.length)
   );
-  const shuffled = [...GAUNTLET_TRAINERS];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-  }
-  const opponents = shuffled.slice(0, 3).map((trainer) => {
-    const form = db.prepare(`
-      SELECT * FROM pokemon_forms
-      WHERE species_id = ? AND is_default = 1
-      LIMIT 1
-    `).get(trainer.pokemonId);
-    if (!form) throw new Error(`Missing Mega Chamber Pokémon ${trainer.pokemonId}.`);
+  const shuffle = (list) => {
+    const copy = [...list];
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+    }
+    return copy;
+  };
+  const master = CHAMBER_MASTERS[Math.floor(Math.random() * CHAMBER_MASTERS.length)];
+  const roster = [
+    ...shuffle(CHAMBER_TRAINERS).slice(0, 2).map((trainer) => ({
+      ...trainer,
+      formQuery: { species_id: shuffle(GAUNTLET_POKEMON_IDS)[0] },
+    })),
+    { ...master, formQuery: { slug: `${config.key}-mega` } },
+  ];
+  const opponents = roster.map((trainer) => {
+    const form = trainer.formQuery.slug
+      ? db.prepare('SELECT * FROM pokemon_forms WHERE slug = ? LIMIT 1').get(trainer.formQuery.slug)
+      : db.prepare(`
+        SELECT * FROM pokemon_forms
+        WHERE species_id = ? AND is_default = 1
+        LIMIT 1
+      `).get(trainer.formQuery.species_id);
+    if (!form) throw new Error(`Missing Mega Chamber Pokémon for ${trainer.name}.`);
     const level = Math.min(100, Math.max(10, averageLevel + 4));
     const stats = combatStats({
       hp: form.base_hp,
@@ -6617,12 +6774,17 @@ async function runMegaChamberGauntlet(message, userId, config) {
       defense: form.base_def,
       speed: form.base_spd,
     }, level);
+    for (const stat of Object.keys(stats)) {
+      stats[stat] = Math.floor(stats[stat] * CHAMBER_STRENGTH_MULTIPLIER);
+    }
     const moves = buildEnemyMoves(getSpeciesLearnset(form.species_id, form.id)
       .map((name) => getPokemonMove(name))
       .filter(Boolean));
     if (!moves.length) throw new Error(`${form.name} has no damaging moves in the move database.`);
     return {
-      trainer: trainer.name,
+      trainer: `${trainer.emoji} ${trainer.name}`,
+      trainerName: trainer.name,
+      trainerIconUrl: `https://cdn.discordapp.com/emojis/${trainer.emoji.match(/:(\d+)>$/)[1]}.png`,
       name: form.name,
       spriteUrl: getPokemonShowdownSprite(form.slug),
       types: JSON.parse(form.types),
@@ -6669,6 +6831,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
           : 'Choose a move or switch Pokémon.',
       });
     if (enemy?.spriteUrl) embed.setImage(enemy.spriteUrl);
+    if (enemy?.trainerIconUrl) embed.setThumbnail(enemy.trainerIconUrl);
     return embed;
   };
 
@@ -6782,6 +6945,18 @@ async function runMegaChamberGauntlet(message, userId, config) {
           log.push('❌ The chamber entry was no longer available; no reward was granted.');
         } else {
           incrementUser(userId, { cl_battles: 1 });
+          for (const defeated of opponents) {
+            const iconIndex = getChamberIconIndex(defeated.trainerName);
+            if (iconIndex < NPC_CAMPAIGN.length || Math.random() >= CHAMBER_ICON_DROP_CHANCE
+                || !unlockBattleIcon(userId, iconIndex)) continue;
+            log.push(`🆕 **Icon unlocked!** ${getNpcTrainerName(iconIndex)}'s battle icon dropped! View it with \`${PREFIX}battle icons\`.`);
+            announceQuestCompletions(userId, message.channel, advanceQuestProgress(userId, {
+              battleCategories: ['battle_icon'],
+            }));
+            announceBattleIconDrop(message.guild, interaction.user, iconIndex);
+            sendBattleIconUnlockedEmbed(message.channel, userId, iconIndex)
+              .catch((error) => console.error('Failed to send battle icon unlock embed:', error));
+          }
           const completedQuests = advanceQuestProgress(userId, {
             battleWins: 1,
             battleCategories: ['mega_chamber'],
@@ -6929,8 +7104,8 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
     if (!form) {
       throw new Error(`Missing catalog entry for league Pokémon ${entry.form_id || entry.pokemon_id}.`);
     }
-    const level = challenge.evStat
-      ? 1
+    const level = challenge.evStat || challenge.invited
+      ? (challenge.invited ? 100 : 1)
       : challenge.factionNpc
       ? 100
       : Math.min(entry.level, Math.max(10, averageLevel + 6 + Math.floor(challengeIndex / 2) * 2));
@@ -6940,7 +7115,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       defense: form.base_def,
       speed: form.base_spd,
     }, level);
-    if (challenge.factionNpc) {
+    if (challenge.factionNpc || challenge.invited) {
       for (const stat of Object.keys(stats)) {
         stats[stat] = Math.floor(stats[stat] * challenge.strengthMultiplier);
       }
@@ -6963,6 +7138,9 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       abilityFormId: form.id,
     };
   });
+  if (challenge.invited && !removeChallengerInvite(userId, challenge.challengerKey)) {
+    return message.reply('❌ That challenger is no longer waiting for you. Wait for a new invite!');
+  }
   await attachBattleAbilities(partyData, opponents);
   let partyIndex = 0;
   let opponentIndex = 0;
@@ -7125,7 +7303,8 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       const won = opponentIndex >= opponents.length;
       const lost = partyIndex < 0;
       if (won) {
-        const isRematch = challenge.special || challengeIndex < getLeagueProgress(userId).cleared_challenges;
+        const isRematch = challenge.special || challenge.evStat
+          || challengeIndex < getLeagueProgress(userId).cleared_challenges;
         const luckIncenseMultiplier = partyData.some((pokemon) =>
           attackingPokemon.has(pokemon.id) && pokemon.held_item === 'Luck Incense'
         ) ? 2 : 1;
@@ -7146,11 +7325,19 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           ];
           if (Math.random() < 0.4) voloItem = voloDrops[Math.floor(Math.random() * voloDrops.length)];
         }
+        let challengerCoins = 0;
+        if (challenge.invited) {
+          const [minCoins, maxCoins] = CHALLENGER_TIERS[challenge.challengerTier].coins;
+          challengerCoins = awardCoinsWithBoost(
+            userId,
+            (minCoins + Math.floor(Math.random() * (maxCoins - minCoins + 1))) * luckIncenseMultiplier
+          ).finalAmount;
+        }
         if (isRematch) {
-          rematchCoins = challenge.special
+          rematchCoins = challenge.special || challenge.evStat
             ? 0
             : Math.max(1, Math.floor(challenge.reward * 0.5 * luckIncenseMultiplier));
-          if (!challenge.special && Math.random() < 0.25) {
+          if (!challenge.special && !challenge.evStat && Math.random() < 0.25) {
             const drops = [
               ['greatballs', 3, 'Greatball'],
               ['ultraballs', 2, 'Ultraball'],
@@ -7160,7 +7347,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
             rematchItem = drops[Math.floor(Math.random() * drops.length)];
           }
         }
-        const reward = challenge.special
+        const reward = challenge.special || challenge.evStat
           ? 0
           : isRematch
             ? awardCoinsWithBoost(userId, rematchCoins).finalAmount
@@ -7223,6 +7410,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           if (normalizedChallengeName.includes('champion')) {
             battleCategories.push('champion', 'master_challenger');
           }
+          if (challenge.invited) battleCategories.push(CHALLENGER_TIERS[challenge.challengerTier].questCategory);
           const completedQuests = advanceQuestProgress(userId, {
             battleWins: 1,
             battleCategories,
@@ -7230,6 +7418,8 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           announceQuestCompletions(userId, message.channel, completedQuests);
           log.push(challenge.evStat
             ? `🏆 **${challenge.name} defeated!**\n💪 ${evText}`
+            : challenge.invited
+            ? `🏆 **${challenge.name} defeated!** You earned ${EMOJIS.pokecoin} **${challengerCoins.toLocaleString()} PokéCoins**.`
             : challenge.volo
             ? `🏆 **${challenge.name} defeated!** You earned ${EMOJIS.pokecoin} **${voloCoins.toLocaleString()} PokéCoins**` +
               `${voloItem ? ` and **${voloItem[1]}x ${voloItem[2]}**` : ''}.`
@@ -7246,7 +7436,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
               `🏆 **Victory!**\nYou defeated **${challenge.name}**.\n` +
               `${getUserFaction(userId).team.emoji} Earned **${factionPointsAwarded.toLocaleString()} faction points**.`;
           } else {
-            const awardedCoins = challenge.volo ? voloCoins : reward;
+            const awardedCoins = challenge.invited ? challengerCoins : challenge.volo ? voloCoins : reward;
             resultSummary =
               `🏆 **Victory!**\n` +
               `${EMOJIS.pokecoin} Earned **${awardedCoins.toLocaleString()} PokéCoins**` +
@@ -7261,7 +7451,8 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           const challengeIconIndex = challenge.special
             ? NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.indexOf(challenge)
             : challengeIndex;
-          const canDropIcon = !challenge.evStat && (challenges === NPC_CAMPAIGN || challenge.special)
+          const canDropIcon = !challenge.evStat
+            && (challenges === NPC_CAMPAIGN || challenge.special)
             && challengeIconIndex >= 0;
           let unlockedIconIndex = null;
           if (canDropIcon) {
@@ -7270,10 +7461,35 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
               challengeIconIndex,
               NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.length
             );
+            const iconDropChance = NPC_ICON_DROP_CHANCE;
             if (unlockedIconIndex === null
-                && Math.random() < NPC_ICON_DROP_CHANCE
+                && Math.random() < iconDropChance
                 && unlockBattleIcon(userId, challengeIconIndex)) {
               unlockedIconIndex = challengeIconIndex;
+            }
+          }
+          if (challenge.invited && Math.random() < GOLDEN_TIMBURR_DROP_CHANCE) {
+            const timburrForm = resolvePokemonForm('Timburr');
+            if (timburrForm) {
+              saveGoldenCatch(userId, {
+                id: timburrForm.id,
+                name: timburrForm.name,
+                rarity: 'Golden',
+                baseHp: timburrForm.base_hp,
+                baseAtk: timburrForm.base_atk,
+                baseDef: timburrForm.base_def,
+                baseSpd: timburrForm.base_spd,
+              });
+              log.push(`${EMOJIS.golden} ${GOLDEN_TIMBURR_EMOJI} **${challenge.name}** gave you a **Golden Timburr**!`);
+              resultSummary += `\n${EMOJIS.golden} ${GOLDEN_TIMBURR_EMOJI} You received a **Golden Timburr**!`;
+              announceRareSpawn(message.guild, interaction.user, {
+                id: timburrForm.id,
+                species_id: timburrForm.species_id,
+                slug: timburrForm.slug,
+                name: timburrForm.name,
+                rarity: 'Golden',
+                isGolden: true,
+              }).catch(() => {});
             }
           }
           if (unlockedIconIndex !== null) {
@@ -9248,6 +9464,10 @@ client.on('messageCreate', async (message) => {
     // Keep the stored Patreon tier fresh (at most every 10 minutes per user).
     if (Date.now() - (patreonTierSyncedAt.get(userId) || 0) > 600000) {
       await getPatreonTier(userId);
+    }
+
+    if (['pokemon', 'p', 'fish', 'f', 'battle', 'b'].includes(command)) {
+      setTimeout(() => maybeSendChallengerInvite(message, userId), 3000);
     }
 
     if (command === 'research') {
@@ -16615,6 +16835,30 @@ client.on('messageCreate', async (message) => {
       return sendLeagueHub(message, userId, 'e4', region);
     }
 
+    if (command === 'challenges' || command === 'ch') {
+      const query = args.join(' ').trim().toLowerCase();
+      if (!query) {
+        return message.reply({ embeds: [buildChallengerListEmbed(message.author, userId)] });
+      }
+      const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedQuery = normalize(query);
+      const matches = CHALLENGER_DEFINITION_LIST.filter((challenger) =>
+        String(challenger.challengerId) === query
+        || normalize(challenger.challengerKey) === normalizedQuery
+        || normalize(challenger.name) === normalizedQuery);
+      const challenger = matches[0]
+        || (CHALLENGER_DEFINITION_LIST.filter((entry) => normalize(entry.name).includes(normalizedQuery)).length === 1
+          ? CHALLENGER_DEFINITION_LIST.find((entry) => normalize(entry.name).includes(normalizedQuery))
+          : null);
+      if (!challenger) {
+        return message.reply(`No challenger matches that. Use \`${PREFIX}ch\` to see your invitations.`);
+      }
+      if (!getChallengerInvites(userId).includes(challenger.challengerKey)) {
+        return message.reply(`${challenger.iconEmoji} **${challenger.name}** hasn't invited you. Keep catching, fishing and battling!`);
+      }
+      return startLeagueChallengeWithCooldown(message, userId, 0, [challenger]);
+    }
+
     if (command === 'champion' || command === 'champions') {
       const region = resolveLeagueRegion(args[0]);
       if (region === undefined) return message.reply(`Usage: \`${PREFIX}champion [region]\`.`);
@@ -17367,7 +17611,7 @@ client.on('messageCreate', async (message) => {
               challenge,
               index: NPC_CAMPAIGN.length + index,
               special: true,
-            })),
+            })).filter(({ challenge }) => !challenge.invited && !challenge.chamberIcon),
           ]
             .filter(({ challenge }) => !regionFilter || challenge.region?.toLowerCase() === regionFilter);
           if (!entries.length) return message.reply('No NPCs match that region.');
@@ -17447,6 +17691,11 @@ client.on('messageCreate', async (message) => {
         }
         if (npcIndex >= NPC_CAMPAIGN.length) {
           const specialChallenge = NPC_SPECIAL_BATTLES[npcIndex - NPC_CAMPAIGN.length];
+          if (specialChallenge.invited || specialChallenge.chamberIcon) {
+            return message.reply(specialChallenge.chamberIcon
+              ? `Chamber trainers are fought through \`${PREFIX}mc battle\`.`
+              : `Challengers battle through invitations. Use \`${PREFIX}ch\`.`);
+          }
           return startLeagueChallengeWithCooldown(message, userId, 0, [specialChallenge]);
         }
         if (npcIndex > progress.cleared_challenges) {
