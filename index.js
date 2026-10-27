@@ -9467,13 +9467,18 @@ let globalWindowCount = 0;
 function recordCommandCadence(message) {
   const userId = message.author.id;
   const now = message.createdTimestamp || Date.now();
+  const commandInput = message.content.startsWith(PREFIX)
+    ? message.content.slice(PREFIX.length).trim().split(/\s+/)
+    : [];
+  if (commandInput[0]?.toLowerCase() === 'b' && commandInput[1]?.toLowerCase() === 'ev') {
+    commandCadenceByUser.delete(userId);
+    return null;
+  }
   const state = commandCadenceByUser.get(userId) || {
     lastMessageAt: 0,
     recentMessages: [],
   };
-  const commandName = message.content.startsWith(PREFIX)
-    ? message.content.slice(PREFIX.length).trim().split(/\s+/)[0]?.toLowerCase() || null
-    : null;
+  const commandName = commandInput[0]?.toLowerCase() || null;
   state.recentMessages.push({ at: now, commandName });
   if (state.recentMessages.length > 6) state.recentMessages.shift();
   state.lastMessageAt = now;
