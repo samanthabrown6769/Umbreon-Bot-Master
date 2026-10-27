@@ -9456,7 +9456,9 @@ async function announceMarketListings(message, listings) {
 
 const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
 const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
-const COMMAND_CADENCE_ALERT_OWNER_ID = '1514082847609061541';
+const COMMAND_CADENCE_ALERT_OWNER_ID = (process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
+  .split(',')[0]
+  .trim();
 const lastCommandAt = new Map();
 const commandCadenceByUser = new Map();
 let globalWindowStart = 0;
@@ -9488,7 +9490,11 @@ function recordCommandCadence(message) {
   const recent = state.recentMessages;
   if (recent.length < 6 || recent.some((entry) => !entry.commandName)) return null;
   const intervals = recent.slice(1).map((entry, index) => entry.at - recent[index].at);
-  if (intervals.some((interval) => interval <= 0 || interval !== intervals[0])) return null;
+  if (intervals.some((interval) => interval <= 0)) return null;
+  const sortedIntervals = [...intervals].sort((a, b) => a - b);
+  const medianInterval = sortedIntervals[Math.floor(sortedIntervals.length / 2)];
+  const intervalToleranceMs = Math.max(150, medianInterval * 0.15);
+  if (intervals.some((interval) => Math.abs(interval - medianInterval) > intervalToleranceMs)) return null;
 
   const names = recent.map((entry) => entry.commandName);
   const repeatedCommand = names.every((name) => name === names[0]);
@@ -9501,7 +9507,8 @@ function recordCommandCadence(message) {
     pattern: repeatedCommand ? `.${names[0]} repeated 6 times` : `.${names[0]} → .${names[1]} repeated 3 times`,
     startedAt: recent[0].at,
     detectedAt: recent[recent.length - 1].at,
-    intervalMs: intervals[0],
+    intervalMs: medianInterval,
+    intervalToleranceMs,
   };
 }
 
@@ -9512,7 +9519,7 @@ async function notifyOwnerOfCommandCadence(userId, activity) {
       `Possible automated command pattern detected\n` +
       `User ID: ${userId}\n` +
       `Pattern: ${activity.pattern}\n` +
-      `Interval: exactly ${activity.intervalMs} ms across five consecutive intervals\n` +
+      `Interval: about ${activity.intervalMs} ms (within ±${Math.round(activity.intervalToleranceMs)} ms) across five consecutive intervals\n` +
       `Observed: <t:${Math.floor(activity.startedAt / 1000)}:F> – <t:${Math.floor(activity.detectedAt / 1000)}:F>\n` +
       'This is a behavioral signal only; it does not identify software on the user’s device.',
     allowedMentions: { parse: [] },
