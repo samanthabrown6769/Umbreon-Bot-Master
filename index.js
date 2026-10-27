@@ -9457,6 +9457,7 @@ async function announceMarketListings(message, listings) {
 const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
 const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
 const COMMAND_CADENCE_WINDOW_MS = 5 * 60 * 1000;
+const COMMAND_CADENCE_TOLERANCE_MS = 10;
 const COMMAND_CADENCE_ALERT_OWNER_ID = (process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
   .split(',')[0]
   .trim();
@@ -9498,7 +9499,7 @@ function recordCommandCadence(message) {
   if (intervals.some((interval) => interval <= 0)) return null;
   const sortedIntervals = [...intervals].sort((a, b) => a - b);
   const medianInterval = sortedIntervals[Math.floor(sortedIntervals.length / 2)];
-  const intervalToleranceMs = Math.max(150, medianInterval * 0.15);
+  const intervalToleranceMs = COMMAND_CADENCE_TOLERANCE_MS;
   if (intervals.some((interval) => Math.abs(interval - medianInterval) > intervalToleranceMs)) return null;
 
   const commands = recent.map((entry) => entry.commandText);
@@ -12006,14 +12007,24 @@ client.on('messageCreate', async (message) => {
         const pageSize = 50;
         const totalPages = Math.ceil(users.length / pageSize);
         let page = 0;
+        const usernames = new Map();
+        const resolvePageUsernames = async () => {
+          const pageUsers = users.slice(page * pageSize, (page + 1) * pageSize);
+          await Promise.all(pageUsers.map(async ({ id }) => {
+            if (usernames.has(id)) return;
+            const discordUser = client.users.cache.get(id) || await client.users.fetch(id).catch(() => null);
+            usernames.set(id, discordUser?.username || 'Unknown');
+          }));
+        };
         const buildEmbed = () => new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`🤖 Bot Users (${users.length})`)
           .setDescription(users
             .slice(page * pageSize, (page + 1) * pageSize)
-            .map(({ id }) => `\`${id}\``)
+            .map(({ id }) => `**${usernames.get(id) ?? 'Unknown'}** — \`${id}\``)
             .join('\n'))
           .setFooter({ text: `Page ${page + 1} / ${totalPages}` });
+        await resolvePageUsernames();
         const buildButtons = (disabled = false) => new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId('admin-users-prev')
@@ -12050,7 +12061,9 @@ client.on('messageCreate', async (message) => {
             page = interaction.customId === 'admin-users-prev'
               ? Math.max(0, page - 1)
               : Math.min(totalPages - 1, page + 1);
-            return interaction.update({ embeds: [buildEmbed()], components: [buildButtons()] });
+            await interaction.deferUpdate();
+            await resolvePageUsernames();
+            return interaction.editReply({ embeds: [buildEmbed()], components: [buildButtons()] });
           });
           listCollector.on('end', () => {
             listMessage.edit({ components: [buildButtons(true)] }).catch((error) => {
@@ -12123,7 +12136,7 @@ client.on('messageCreate', async (message) => {
             `• Edit the files in \`pokemon-database/\` (names, rarity, numbers, sprites) and restart the bot to apply`
           ),
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Market & Misc').setDescription(
-            `• \`${PREFIX}admin users\` — DM all Discord user IDs registered with the bot\n` +
+            `• \`${PREFIX}admin users\` — DM all registered users' names and Discord IDs\n` +
             `• \`${PREFIX}admin servers\` — DM the servers the bot is in\n` +
             `• \`${PREFIX}admin market listings\` — Create 10 random market listings\n` +
             `• \`${PREFIX}admin perks [@user|user ID]\` — Check someone's Patreon perks\n` +
