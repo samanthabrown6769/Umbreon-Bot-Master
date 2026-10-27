@@ -326,22 +326,25 @@ function rerollBuddyIv(userId, stat, confirmMaxed = false, expectedBuddyId = nul
     };
     for (const field of rerolledIvFields) nextValues[field] = newIv;
     if (stat === 'hp') {
-      nextValues.max_hp = calculateStat(buddy.base_hp ?? 50, newIv, buddy.level, true, buddy.is_shiny, buddy.ev_hp);
+      nextValues.max_hp = calculateStat(buddy.base_hp ?? 50, newIv, buddy.level, true, buddy.is_shiny, buddy.ev_hp, Boolean(buddy.is_golden), buddy.rarity);
       nextValues.hp = Math.min(
         nextValues.max_hp,
         buddy.hp + (nextValues.max_hp - buddy.max_hp)
       );
     } else if (rerolledStats.includes('atk')) {
       nextValues.atk = calculateStat(
-        buddy.base_atk ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_atk
+        buddy.base_atk ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_atk,
+        Boolean(buddy.is_golden), buddy.rarity
       );
     } else if (rerolledStats.includes('def')) {
       nextValues.def = calculateStat(
-        buddy.base_def ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_def
+        buddy.base_def ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_def,
+        Boolean(buddy.is_golden), buddy.rarity
       );
     } else if (stat === 'spd') {
       nextValues.spd = calculateStat(
-        buddy.base_spd ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_spe
+        buddy.base_spd ?? 50, newIv, buddy.level, false, buddy.is_shiny, buddy.ev_spe,
+        Boolean(buddy.is_golden), buddy.rarity
       );
     }
     const assignments = Object.keys(nextValues).map((field) => `${field} = ?`).join(', ');
@@ -1870,6 +1873,7 @@ const defaultRaritySettings = [
   ['Shiny Mega', 0, 64],
   ['Shiny Gmax', 0, 64],
   ['Event Shiny', 0, 0],
+  ['Gem', 0, 50],
 ];
 const insertRaritySetting = db.prepare(`
   INSERT OR IGNORE INTO pokemon_rarity_settings (name, spawn_weight, catch_chance)
@@ -3035,12 +3039,24 @@ const EV_STAT_LIMIT = 252;
 const EV_PER_BATTLE = 9;
 const POWER_ITEM_EV_BONUS = 8;
 
-function calculateStat(base, iv, level, isHp = false, isShiny = false, ev = 0) {
+function calculateStat(
+  base,
+  iv,
+  level,
+  isHp = false,
+  isShiny = false,
+  ev = 0,
+  isGolden = false,
+  rarity = null
+) {
   const points = 2 * base + iv + Math.floor((ev || 0) / 4);
   const stat = isHp
     ? Math.floor((points * level) / 100) + level + 10
     : Math.floor((points * level) / 100) + 5;
-  return isShiny ? Math.floor(stat * SHINY_STAT_MULTIPLIER) : stat;
+  const statWithRarityBonus = stat
+    + (isGolden ? 10 : 0)
+    + (String(rarity || '').toLowerCase() === 'gem' ? 5 : 0);
+  return isShiny ? Math.floor(statWithRarityBonus * SHINY_STAT_MULTIPLIER) : statWithRarityBonus;
 }
 
 const DUPLICATE_CATCH_STATE_FIELDS = [
@@ -3185,16 +3201,20 @@ function rebaseTransferredPokemon(userId, catchId) {
   const spdefIv = defIv;
   const spdIv = recipientCopy?.spd_iv ?? snapshot?.spd_iv ?? Math.floor(Math.random() * 32);
   const maxHp = calculateStat(
-    pokemon.base_hp ?? 50, hpIv, level, true, Boolean(pokemon.is_shiny), evs.hp
+    pokemon.base_hp ?? 50, hpIv, level, true, Boolean(pokemon.is_shiny), evs.hp,
+    Boolean(pokemon.is_golden), pokemon.rarity
   );
   const atk = calculateStat(
-    pokemon.base_atk ?? 50, atkIv, level, false, Boolean(pokemon.is_shiny), evs.atk
+    pokemon.base_atk ?? 50, atkIv, level, false, Boolean(pokemon.is_shiny), evs.atk,
+    Boolean(pokemon.is_golden), pokemon.rarity
   );
   const def = calculateStat(
-    pokemon.base_def ?? 50, defIv, level, false, Boolean(pokemon.is_shiny), evs.def
+    pokemon.base_def ?? 50, defIv, level, false, Boolean(pokemon.is_shiny), evs.def,
+    Boolean(pokemon.is_golden), pokemon.rarity
   );
   const spd = calculateStat(
-    pokemon.base_spd ?? 50, spdIv, level, false, Boolean(pokemon.is_shiny), evs.spe
+    pokemon.base_spd ?? 50, spdIv, level, false, Boolean(pokemon.is_shiny), evs.spe,
+    Boolean(pokemon.is_golden), pokemon.rarity
   );
   db.prepare(`
     UPDATE catches
@@ -3250,6 +3270,7 @@ function applyShinyStatBonus() {
     SELECT catches.id, catches.level, catches.hp, catches.max_hp, catches.atk, catches.def, catches.spd,
       catches.hp_iv, catches.atk_iv, catches.def_iv, catches.spd_iv,
       catches.ev_hp, catches.ev_atk, catches.ev_def, catches.ev_spe,
+      catches.is_golden, catches.rarity,
       f.base_hp, f.base_atk, f.base_def, f.base_spd
     FROM catches JOIN pokemon_forms f ON f.id = catches.pokemon_id
     WHERE catches.is_shiny = 1
@@ -3257,10 +3278,10 @@ function applyShinyStatBonus() {
   const update = db.prepare('UPDATE catches SET hp = ?, max_hp = ?, atk = ?, def = ?, spd = ? WHERE id = ?');
   db.transaction(() => {
     for (const row of rows) {
-      const maxHp = calculateStat(row.base_hp ?? 50, row.hp_iv, row.level, true, true, row.ev_hp);
-      const atk = calculateStat(row.base_atk ?? 50, row.atk_iv, row.level, false, true, row.ev_atk);
-      const def = calculateStat(row.base_def ?? 50, row.def_iv, row.level, false, true, row.ev_def);
-      const spd = calculateStat(row.base_spd ?? 50, row.spd_iv, row.level, false, true, row.ev_spe);
+      const maxHp = calculateStat(row.base_hp ?? 50, row.hp_iv, row.level, true, true, row.ev_hp, Boolean(row.is_golden), row.rarity);
+      const atk = calculateStat(row.base_atk ?? 50, row.atk_iv, row.level, false, true, row.ev_atk, Boolean(row.is_golden), row.rarity);
+      const def = calculateStat(row.base_def ?? 50, row.def_iv, row.level, false, true, row.ev_def, Boolean(row.is_golden), row.rarity);
+      const spd = calculateStat(row.base_spd ?? 50, row.spd_iv, row.level, false, true, row.ev_spe, Boolean(row.is_golden), row.rarity);
       if (maxHp === row.max_hp && atk === row.atk && def === row.def && spd === row.spd) continue;
       const hp = row.max_hp > 0
         ? Math.min(maxHp, Math.max(1, Math.round((row.hp / row.max_hp) * maxHp)))
@@ -3270,7 +3291,34 @@ function applyShinyStatBonus() {
   })();
 }
 
+function applyRarityStatBonus() {
+  const rows = db.prepare(`
+    SELECT catches.id, catches.level, catches.hp, catches.max_hp, catches.atk, catches.def, catches.spd,
+      catches.hp_iv, catches.atk_iv, catches.def_iv, catches.spd_iv,
+      catches.ev_hp, catches.ev_atk, catches.ev_def, catches.ev_spe,
+      catches.is_shiny, catches.is_golden, catches.rarity,
+      f.base_hp, f.base_atk, f.base_def, f.base_spd
+    FROM catches
+    JOIN pokemon_forms f ON f.id = catches.pokemon_id
+    WHERE catches.is_golden = 1 OR lower(catches.rarity) = 'gem'
+  `).all();
+  const update = db.prepare('UPDATE catches SET hp = ?, max_hp = ?, atk = ?, def = ?, spd = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const row of rows) {
+      const maxHp = calculateStat(row.base_hp ?? 50, row.hp_iv, row.level, true, Boolean(row.is_shiny), row.ev_hp, Boolean(row.is_golden), row.rarity);
+      const atk = calculateStat(row.base_atk ?? 50, row.atk_iv, row.level, false, Boolean(row.is_shiny), row.ev_atk, Boolean(row.is_golden), row.rarity);
+      const def = calculateStat(row.base_def ?? 50, row.def_iv, row.level, false, Boolean(row.is_shiny), row.ev_def, Boolean(row.is_golden), row.rarity);
+      const spd = calculateStat(row.base_spd ?? 50, row.spd_iv, row.level, false, Boolean(row.is_shiny), row.ev_spe, Boolean(row.is_golden), row.rarity);
+      const hp = row.max_hp > 0
+        ? Math.min(maxHp, Math.max(1, Math.round((row.hp / row.max_hp) * maxHp)))
+        : maxHp;
+      update.run(hp, maxHp, atk, def, spd, row.id);
+    }
+  })();
+}
+
 applyShinyStatBonus();
+applyRarityStatBonus();
 reconcileDuplicateCatchStates();
 
 function migrateSharedAttackAndDefenseIvs() {
@@ -3309,10 +3357,11 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
   const baseAtk = pokemon.baseAtk ?? 50;
   const baseDef = pokemon.baseDef ?? 50;
   const baseSpd = pokemon.baseSpd ?? 50;
-  const maxHp = calculateStat(baseHp, hpIv, level, true, isShiny);
-  const atk = calculateStat(baseAtk, atkIv, level, false, isShiny);
-  const def = calculateStat(baseDef, defIv, level, false, isShiny);
-  const spd = calculateStat(baseSpd, spdIv, level, false, isShiny);
+  const rarity = pokemon.rarity || (isGolden ? 'Golden' : 'Common');
+  const maxHp = calculateStat(baseHp, hpIv, level, true, isShiny, 0, isGolden, rarity);
+  const atk = calculateStat(baseAtk, atkIv, level, false, isShiny, 0, isGolden, rarity);
+  const def = calculateStat(baseDef, defIv, level, false, isShiny, 0, isGolden, rarity);
+  const spd = calculateStat(baseSpd, spdIv, level, false, isShiny, 0, isGolden, rarity);
   const speciesId = db.prepare(
     'SELECT species_id FROM pokemon_forms WHERE id = ?'
   ).get(pokemon.id)?.species_id;
@@ -3333,7 +3382,7 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
       userId,
       pokemon.id,
       pokemon.name,
-      pokemon.rarity || 'Common',
+      rarity,
       isShiny || pokemon.isShiny ? 1 : 0,
       isGolden ? 1 : 0,
       level,
@@ -3797,6 +3846,15 @@ db.exec(`
     user_id TEXT PRIMARY KEY,
     npc_index INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS battle_trainer_stats (
+    user_id TEXT NOT NULL,
+    npc_index INTEGER NOT NULL,
+    fights INTEGER NOT NULL DEFAULT 0,
+    last_team TEXT NOT NULL DEFAULT '[]',
+    last_result TEXT,
+    last_fought_at DATETIME,
+    PRIMARY KEY (user_id, npc_index)
+  );
 `);
 
 const ICON_DROP_TEST_USER_ID = '1514082847609061541';
@@ -3853,6 +3911,73 @@ function setSelectedBattleIcon(userId, npcIndex) {
 
 function getSelectedBattleIcon(userId) {
   return db.prepare('SELECT npc_index FROM battle_icon_selected WHERE user_id = ?').get(userId)?.npc_index ?? null;
+}
+
+function recordBattleTrainerFight(userId, npcIndex, team) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(npcIndex) || npcIndex < 0 || !Array.isArray(team)) {
+    throw new TypeError('A valid NPC index and battle team are required.');
+  }
+  db.prepare(`
+    INSERT INTO battle_trainer_stats (
+      user_id, npc_index, fights, last_team, last_result, last_fought_at
+    ) VALUES (?, ?, 1, ?, NULL, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id, npc_index) DO UPDATE SET
+      fights = battle_trainer_stats.fights + 1,
+      last_team = excluded.last_team,
+      last_result = NULL,
+      last_fought_at = excluded.last_fought_at
+  `).run(userId, npcIndex, JSON.stringify(team));
+}
+
+function recordBattleTrainerResult(userId, npcIndex, result) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(npcIndex) || npcIndex < 0
+      || !['won', 'lost', 'forfeit'].includes(result)) {
+    throw new TypeError('A valid NPC index and battle result are required.');
+  }
+  db.prepare(`
+    UPDATE battle_trainer_stats
+    SET last_result = ?
+    WHERE user_id = ? AND npc_index = ?
+  `).run(result, userId, npcIndex);
+}
+
+function getBattleTrainerStats(userId, npcIndex) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(npcIndex) || npcIndex < 0) {
+    throw new TypeError('A valid NPC index is required.');
+  }
+  return db.prepare(`
+    SELECT fights, last_team, last_result, last_fought_at
+    FROM battle_trainer_stats
+    WHERE user_id = ? AND npc_index = ?
+  `).get(userId, npcIndex) || {
+    fights: 0,
+    last_team: '[]',
+    last_result: null,
+    last_fought_at: null,
+  };
+}
+
+function getBattleTrainerIconUnlock(userId, npcIndex) {
+  assertUserId(userId);
+  return db.prepare(`
+    SELECT unlocked_at
+    FROM battle_icons
+    WHERE user_id = ? AND npc_index = ?
+  `).get(userId, npcIndex) || null;
+}
+
+function getGlobalBattleTrainerIconUnlocks(npcIndex) {
+  if (!Number.isSafeInteger(npcIndex) || npcIndex < 0) {
+    throw new TypeError('A valid NPC index is required.');
+  }
+  return db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM battle_icons
+    WHERE npc_index = ?
+  `).get(npcIndex).count;
 }
 
 function getLeagueProgress(userId) {
@@ -4307,10 +4432,10 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
       };
     }
 
-    const maxHp = calculateStat(megaForm.base_hp, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, pokemon.ev_hp);
-    const atk = calculateStat(megaForm.base_atk, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, pokemon.ev_atk);
-    const def = calculateStat(megaForm.base_def, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny, pokemon.ev_def);
-    const spd = calculateStat(megaForm.base_spd, pokemon.spd_iv, pokemon.level, false, pokemon.is_shiny, pokemon.ev_spe);
+    const maxHp = calculateStat(megaForm.base_hp, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, pokemon.ev_hp, Boolean(pokemon.is_golden), pokemon.rarity);
+    const atk = calculateStat(megaForm.base_atk, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, pokemon.ev_atk, Boolean(pokemon.is_golden), pokemon.rarity);
+    const def = calculateStat(megaForm.base_def, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny, pokemon.ev_def, Boolean(pokemon.is_golden), pokemon.rarity);
+    const spd = calculateStat(megaForm.base_spd, pokemon.spd_iv, pokemon.level, false, pokemon.is_shiny, pokemon.ev_spe, Boolean(pokemon.is_golden), pokemon.rarity);
     const hp = pokemon.max_hp > 0
       ? Math.min(maxHp, Math.round((pokemon.hp / pokemon.max_hp) * maxHp))
       : maxHp;
@@ -4503,10 +4628,10 @@ function resolveItemEvolution(itemName, catchRow) {
 }
 
 function applyPokemonEvolution(userId, row, target, itemName = null, consumesHeldItem = false) {
-  const maxHp = calculateStat(target.base_hp, row.hp_iv, row.level, true, row.is_shiny, row.ev_hp);
-  const atk = calculateStat(target.base_atk, row.atk_iv, row.level, false, row.is_shiny, row.ev_atk);
-  const def = calculateStat(target.base_def, row.def_iv, row.level, false, row.is_shiny, row.ev_def);
-  const spd = calculateStat(target.base_spd, row.spd_iv, row.level, false, row.is_shiny, row.ev_spe);
+  const maxHp = calculateStat(target.base_hp, row.hp_iv, row.level, true, row.is_shiny, row.ev_hp, Boolean(row.is_golden), row.rarity);
+  const atk = calculateStat(target.base_atk, row.atk_iv, row.level, false, row.is_shiny, row.ev_atk, Boolean(row.is_golden), row.rarity);
+  const def = calculateStat(target.base_def, row.def_iv, row.level, false, row.is_shiny, row.ev_def, Boolean(row.is_golden), row.rarity);
+  const spd = calculateStat(target.base_spd, row.spd_iv, row.level, false, row.is_shiny, row.ev_spe, Boolean(row.is_golden), row.rarity);
   const hp = row.max_hp > 0
     ? Math.min(maxHp, Math.max(1, Math.round((row.hp / row.max_hp) * maxHp)))
     : maxHp;
@@ -5066,8 +5191,8 @@ function getUserTeam(userId) {
     ORDER BY catches.team_slot, catches.id LIMIT 3`
   ).all(userId).map((pokemon) => ({
     ...pokemon,
-    spa: calculateStat(pokemon.base_spa ?? 50, pokemon.spa_iv, pokemon.level, false, Boolean(pokemon.is_shiny), pokemon.ev_spa),
-    spdef: calculateStat(pokemon.base_spdef ?? 50, pokemon.spdef_iv, pokemon.level, false, Boolean(pokemon.is_shiny), pokemon.ev_spdef),
+    spa: calculateStat(pokemon.base_spa ?? 50, pokemon.spa_iv, pokemon.level, false, Boolean(pokemon.is_shiny), pokemon.ev_spa, Boolean(pokemon.is_golden), pokemon.rarity),
+    spdef: calculateStat(pokemon.base_spdef ?? 50, pokemon.spdef_iv, pokemon.level, false, Boolean(pokemon.is_shiny), pokemon.ev_spdef, Boolean(pokemon.is_golden), pokemon.rarity),
   }));
 }
 
@@ -5089,10 +5214,12 @@ function getUserBuddy(userId) {
   `).get(buddyId, userId);
   if (!buddy) return null;
   buddy.spa = calculateStat(
-    buddy.base_spa ?? 50, buddy.spa_iv, buddy.level, false, Boolean(buddy.is_shiny), buddy.ev_spa
+    buddy.base_spa ?? 50, buddy.spa_iv, buddy.level, false, Boolean(buddy.is_shiny), buddy.ev_spa,
+    Boolean(buddy.is_golden), buddy.rarity
   );
   buddy.spdef = calculateStat(
-    buddy.base_spdef ?? 50, buddy.spdef_iv, buddy.level, false, Boolean(buddy.is_shiny), buddy.ev_spdef
+    buddy.base_spdef ?? 50, buddy.spdef_iv, buddy.level, false, Boolean(buddy.is_shiny), buddy.ev_spdef,
+    Boolean(buddy.is_golden), buddy.rarity
   );
   if (buddy.is_golden) buddy.rarity = 'Golden';
   buddy.nickname = db.prepare('SELECT value FROM bot_settings WHERE key = ?')
@@ -5285,10 +5412,10 @@ function awardCatchExperience(userId, amount = 200) {
       const baseAtk = pokemon.base_atk ?? 50;
       const baseDef = pokemon.base_def ?? 50;
       const baseSpd = pokemon.base_spd ?? 50;
-      const maxHp = calculateStat(baseHp, pokemon.hp_iv, level, true, pokemon.is_shiny, pokemon.ev_hp);
-      const atk = calculateStat(baseAtk, pokemon.atk_iv, level, false, pokemon.is_shiny, pokemon.ev_atk);
-      const def = calculateStat(baseDef, pokemon.def_iv, level, false, pokemon.is_shiny, pokemon.ev_def);
-      const spd = calculateStat(baseSpd, pokemon.spd_iv, level, false, pokemon.is_shiny, pokemon.ev_spe);
+      const maxHp = calculateStat(baseHp, pokemon.hp_iv, level, true, pokemon.is_shiny, pokemon.ev_hp, Boolean(pokemon.is_golden), pokemon.rarity);
+      const atk = calculateStat(baseAtk, pokemon.atk_iv, level, false, pokemon.is_shiny, pokemon.ev_atk, Boolean(pokemon.is_golden), pokemon.rarity);
+      const def = calculateStat(baseDef, pokemon.def_iv, level, false, pokemon.is_shiny, pokemon.ev_def, Boolean(pokemon.is_golden), pokemon.rarity);
+      const spd = calculateStat(baseSpd, pokemon.spd_iv, level, false, pokemon.is_shiny, pokemon.ev_spe, Boolean(pokemon.is_golden), pokemon.rarity);
       const hp = Math.min(maxHp, pokemon.hp + (maxHp - pokemon.max_hp));
       db.prepare(`
         UPDATE catches
@@ -5357,10 +5484,10 @@ function useRareCandy(userId, amount = 1) {
     const levelsGained = Math.min(requested, user.rare_candies, 100 - pokemon.level);
     const level = pokemon.level + levelsGained;
     const experience = Math.max(pokemon.experience, experienceForNextLevel(level - 1));
-    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, level, true, pokemon.is_shiny, pokemon.ev_hp);
-    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, level, false, pokemon.is_shiny, pokemon.ev_atk);
-    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, level, false, pokemon.is_shiny, pokemon.ev_def);
-    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, level, false, pokemon.is_shiny, pokemon.ev_spe);
+    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, level, true, pokemon.is_shiny, pokemon.ev_hp, Boolean(pokemon.is_golden), pokemon.rarity);
+    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, level, false, pokemon.is_shiny, pokemon.ev_atk, Boolean(pokemon.is_golden), pokemon.rarity);
+    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, level, false, pokemon.is_shiny, pokemon.ev_def, Boolean(pokemon.is_golden), pokemon.rarity);
+    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, level, false, pokemon.is_shiny, pokemon.ev_spe, Boolean(pokemon.is_golden), pokemon.rarity);
     const hp = Math.min(maxHp, pokemon.hp + (maxHp - pokemon.max_hp));
 
     incrementUser(userId, {
@@ -5410,10 +5537,10 @@ function useExpCandy(userId, itemName, amount = 1) {
     const experience = pokemon.experience + used * perCandy;
     let level = pokemon.level;
     while (level < 100 && experience >= experienceForNextLevel(level)) level += 1;
-    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, level, true, pokemon.is_shiny, pokemon.ev_hp);
-    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, level, false, pokemon.is_shiny, pokemon.ev_atk);
-    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, level, false, pokemon.is_shiny, pokemon.ev_def);
-    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, level, false, pokemon.is_shiny, pokemon.ev_spe);
+    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, level, true, pokemon.is_shiny, pokemon.ev_hp, Boolean(pokemon.is_golden), pokemon.rarity);
+    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, level, false, pokemon.is_shiny, pokemon.ev_atk, Boolean(pokemon.is_golden), pokemon.rarity);
+    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, level, false, pokemon.is_shiny, pokemon.ev_def, Boolean(pokemon.is_golden), pokemon.rarity);
+    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, level, false, pokemon.is_shiny, pokemon.ev_spe, Boolean(pokemon.is_golden), pokemon.rarity);
     const hp = Math.min(maxHp, pokemon.hp + (maxHp - pokemon.max_hp));
 
     takeUserItem(userId, itemName, used);
@@ -5468,10 +5595,10 @@ function awardPokemonEvs(userId, catchIds, stat, amount = EV_PER_BATTLE) {
         bonus: powerStat ? { stat: powerStat, gained: bonusGained, item: pokemon.held_item } : null,
       });
       if (!gained && !bonusGained) continue;
-      const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, evs.hp);
-      const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, evs.atk);
-      const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny, evs.def);
-      const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, pokemon.level, false, pokemon.is_shiny, evs.spe);
+      const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, evs.hp, Boolean(pokemon.is_golden), pokemon.rarity);
+      const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, evs.atk, Boolean(pokemon.is_golden), pokemon.rarity);
+      const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny, evs.def, Boolean(pokemon.is_golden), pokemon.rarity);
+      const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, pokemon.level, false, pokemon.is_shiny, evs.spe, Boolean(pokemon.is_golden), pokemon.rarity);
       const hp = Math.min(maxHp, Math.max(1, pokemon.hp + (maxHp - pokemon.max_hp)));
       db.prepare(`
         UPDATE catches
@@ -5836,7 +5963,7 @@ function setPokemonRarity(pokemonId, rarityName) {
   }
 
   const rarity = rarityName.trim();
-  return db.transaction(() => {
+  const result = db.transaction(() => {
     const pokemon = db.prepare('SELECT id, name FROM pokemon_forms WHERE id = ?').get(pokemonId);
     if (!pokemon) return null;
     const existingEntry = pokemonRarityById.get(pokemonId);
@@ -5865,6 +5992,8 @@ function setPokemonRarity(pokemonId, rarityName) {
     db.prepare('UPDATE market SET rarity = ? WHERE pokemon_id = ?').run(rarity, pokemonId);
     return db.prepare('SELECT * FROM pokemon_forms WHERE id = ?').get(pokemonId);
   }).immediate();
+  applyRarityStatBonus();
+  return result;
 }
 
 function addCustomPokemon(name, rarityName, sprite = null) {
@@ -9104,10 +9233,10 @@ function eatBuddyBerry(userId, itemName, amount = 1) {
     if (!takeUserItem(userId, itemName, eaten)) return { error: 'not_enough_items' };
     const evs = Object.fromEntries(EV_STATS.map((key) => [key, pokemon[`ev_${key}`] || 0]));
     evs[entry.evStat] = after;
-    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, evs.hp);
-    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, evs.atk);
-    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny, evs.def);
-    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, pokemon.level, false, pokemon.is_shiny, evs.spe);
+    const maxHp = calculateStat(pokemon.base_hp ?? 50, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, evs.hp, Boolean(pokemon.is_golden), pokemon.rarity);
+    const atk = calculateStat(pokemon.base_atk ?? 50, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, evs.atk, Boolean(pokemon.is_golden), pokemon.rarity);
+    const def = calculateStat(pokemon.base_def ?? 50, pokemon.def_iv, pokemon.level, false, pokemon.is_shiny, evs.def, Boolean(pokemon.is_golden), pokemon.rarity);
+    const spd = calculateStat(pokemon.base_spd ?? 50, pokemon.spd_iv, pokemon.level, false, pokemon.is_shiny, evs.spe, Boolean(pokemon.is_golden), pokemon.rarity);
     const hp = Math.min(maxHp, Math.max(1, pokemon.hp));
     db.prepare(`
       UPDATE catches
@@ -9278,6 +9407,11 @@ module.exports = {
   getBattleIconRank,
   setSelectedBattleIcon,
   getSelectedBattleIcon,
+  recordBattleTrainerFight,
+  recordBattleTrainerResult,
+  getBattleTrainerStats,
+  getBattleTrainerIconUnlock,
+  getGlobalBattleTrainerIconUnlocks,
   CHAMBER_CONFIG,
   getUserChambers,
   getMegaStones,

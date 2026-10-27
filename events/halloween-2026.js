@@ -53,6 +53,8 @@ const event = {
   ],
 
   // Change reward Pokémon by using its catalog slug. `displayName` is saved in the box.
+  // Optional `rarity: 'Gem'` is reserved for checklist rewards; leave unset unless a reward
+  // is intentionally designated as Gem rarity.
   rewards: {
     regular: {
       pokemonSlug: 'typhlosion-hisui',

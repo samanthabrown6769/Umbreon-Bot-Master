@@ -157,6 +157,11 @@ const {
   getBattleIconRank,
   setSelectedBattleIcon,
   getSelectedBattleIcon,
+  recordBattleTrainerFight,
+  recordBattleTrainerResult,
+  getBattleTrainerStats,
+  getBattleTrainerIconUnlock,
+  getGlobalBattleTrainerIconUnlocks,
   CB_CONFIG,
   getCatchbotData,
   upgradeCatchbot,
@@ -680,6 +685,7 @@ const NPC_SPECIAL_BATTLES = [
     region: 'Hisui',
     special: true,
     volo: true,
+    eventOnly: 'halloween-2026',
     team: [
       { form_id: 10007, level: 100 },
       { form_id: 10007, level: 100, is_shiny: true },
@@ -1123,6 +1129,43 @@ function getNpcTrainerName(index) {
   const challenge = getNpcChallenge(index);
   if (!challenge) throw new RangeError(`Unknown NPC index ${index}.`);
   return challenge.name.split('\u2014').pop().trim();
+}
+
+function getBattleStatsChallenge(query) {
+  const allChallenges = [
+    ...NPC_CAMPAIGN,
+    ...NPC_SPECIAL_BATTLES,
+  ];
+  const normalized = String(query || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (/^\d+$/.test(normalized)) {
+    const index = Number(normalized) - 1;
+    return Number.isSafeInteger(index) && index >= 0 && index < allChallenges.length
+      ? { challenge: allChallenges[index], index }
+      : null;
+  }
+  const exact = allChallenges.findIndex((challenge) => challenge.name.toLowerCase() === normalized);
+  const index = exact >= 0
+    ? exact
+    : allChallenges.findIndex((challenge) => challenge.name.toLowerCase().includes(normalized));
+  return index >= 0 ? { challenge: allChallenges[index], index } : null;
+}
+
+function formatBattleStatsDate(value) {
+  if (!value) return 'Never';
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value;
+  return `<t:${Math.floor(timestamp / 1000)}:f>`;
+}
+
+function parseBattleStatsTeam(raw) {
+  try {
+    const team = JSON.parse(raw || '[]');
+    return Array.isArray(team) ? team : [];
+  } catch (error) {
+    console.error('Failed to parse stored battle trainer team:', error);
+    return [];
+  }
 }
 
 async function sendBattleIconUnlockedEmbed(channel, userId, iconIndex) {
@@ -1585,6 +1628,7 @@ const EMOJIS = {
   mega: '<:mega:1558844548564918472>',
   shiny: '<:shiny:1558841136905326784>',
   golden: '<:golden:1559951535062909128>',
+  gem: '<:GemRarity:1564704119359541408>',
   legendary: '<:legendary:1558841138193113221>',
   superRare: '<:superrare:1558841140441120858>',
   rare: '<:rare:1558841142878015559>',
@@ -1791,6 +1835,7 @@ const RARITY_EMOJIS = {
   mega: EMOJIS.mega,
   gmax: EMOJIS.gmax,
   shiny: EMOJIS.shiny,
+  gem: EMOJIS.gem,
   golden: EMOJIS.golden,
   'shiny mega': EMOJIS.shinyMega,
   'shiny gmax': EMOJIS.shinyGmax,
@@ -1803,6 +1848,7 @@ const RARITY_COLORS = {
   'super rare': 0xffff00,
   legendary: 0x800080,
   shiny: 0xffb6c1,
+  gem: 0x00d4ff,
   golden: 0xffd700,
 };
 const EVENT_EMBED_COLOR = 0x8b0000;
@@ -5538,8 +5584,7 @@ async function askForBall(
 ) {
   guaranteedCatch = guaranteedCatch
     && (allowAnyUserCatch || !GUARANTEED_CATCH_EXCLUDED_USER_IDS.has(userId));
-  const overworldAbility = target.overworldAbility
-    || await resolveLeadOverworldAbility(userId);
+  const overworldAbility = await resolveLeadOverworldAbility(userId);
   target = {
     ...target,
     name: target.name.replace(/\btotem\b/gi, '').replace(/\s+/g, ' ').trim(),
@@ -7093,6 +7138,9 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
   if (!challenge || !Array.isArray(challenge.team) || !challenge.team.length) {
     return message.reply('❌ That battle is unavailable right now. Please try again later.');
   }
+  if (challenge.eventOnly === halloweenEvent.id && !isEventOpen(halloweenEvent)) {
+    return message.reply(`🎃 **${challenge.name}** is only available during the ${halloweenEvent.name} event.`);
+  }
   if (challenge.factionNpc && !getUserFaction(userId)) {
     return message.reply(`Join a faction with \`${PREFIX}faction\` before challenging faction NPCs.`);
   }
@@ -7115,6 +7163,18 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       max_hp: pokemon.max_hp,
     };
   });
+  const trainerStatsIndex = challenges === NPC_CAMPAIGN
+    ? challengeIndex
+    : NPC_SPECIAL_BATTLES.indexOf(challenge) >= 0
+      ? NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.indexOf(challenge)
+      : -1;
+  if (trainerStatsIndex >= 0) {
+    recordBattleTrainerFight(userId, trainerStatsIndex, partyData.map((pokemon) => ({
+      name: pokemon.name,
+      is_shiny: Boolean(pokemon.is_shiny),
+      is_golden: Boolean(pokemon.is_golden),
+    })));
+  }
   const refreshLeaguePartyMoves = () => {
     const latestTeam = new Map(getUserTeam(userId).map((pokemon) => [pokemon.id, pokemon]));
     let changed = false;
@@ -7269,6 +7329,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
         });
         actionInProgress = false;
         activeLeagueBattles.delete(battleMessage.id);
+        if (trainerStatsIndex >= 0) recordBattleTrainerResult(userId, trainerStatsIndex, 'forfeit');
         collector.stop('forfeit');
         return;
       }
@@ -7558,6 +7619,9 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
         resultSummary = '💀 **Defeat.** No rewards were earned.';
       }
       if (finished) {
+        if (trainerStatsIndex >= 0) {
+          recordBattleTrainerResult(userId, trainerStatsIndex, won ? 'won' : 'lost');
+        }
         trackClanActivity(userId, 'battle');
         rollActivityPromoDrops(interaction.user, interaction.guild, interaction.channel, 'battle');
       }
@@ -8048,7 +8112,11 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
         updateUser(userId, {
           [claimColumn]: 1,
         });
-        saveCatch(userId, { ...species, name: reward.displayName }, reward.shiny);
+        saveCatch(userId, {
+          ...species,
+          name: reward.displayName,
+          ...(reward.rarity ? { rarity: reward.rarity } : {}),
+        }, reward.shiny);
         return true;
       }).immediate();
       if (!claimed) {
@@ -8058,7 +8126,13 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
         await announceEventChecklistCompletion(
           message.guild,
           message.author,
-          { ...species, slug: reward.pokemonSlug, name: reward.announcementName, isShiny: reward.shiny },
+          {
+            ...species,
+            slug: reward.pokemonSlug,
+            name: reward.announcementName,
+            isShiny: reward.shiny,
+            ...(reward.rarity ? { rarity: reward.rarity } : {}),
+          },
           eventProgress.size,
           message.channel
         );
@@ -8069,11 +8143,13 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
             ...species,
             name: reward.announcementName,
             isShiny: reward.shiny,
+            ...(reward.rarity ? { rarity: reward.rarity } : {}),
           })}!`
           : `${halloweenEvent.emojis.claimRegular} **Checklist Reward Claimed!** You received ${formatPokemonReward({
             ...species,
             name: reward.announcementName,
             isShiny: reward.shiny,
+            ...(reward.rarity ? { rarity: reward.rarity } : {}),
           })}!`
       );
     }
@@ -17573,6 +17649,51 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'battle' || command === 'b') {
       const battleSub = args[0]?.toLowerCase();
+      if (battleSub === 'stats' || battleSub === 'stat') {
+        const query = args.slice(1).join(' ').trim();
+        const match = getBattleStatsChallenge(query);
+        if (!match) {
+          return message.reply(
+            `Usage: \`${PREFIX}battle stats <NPC number or name>\`. ` +
+            `NPC numbers range from **1** to **${NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.length}**.`
+          );
+        }
+        const { challenge, index } = match;
+        const personal = getBattleTrainerStats(userId, index);
+        const unlock = getBattleTrainerIconUnlock(userId, index);
+        const globalUnlocks = getGlobalBattleTrainerIconUnlocks(index);
+        const team = parseBattleStatsTeam(personal.last_team);
+        const teamText = team.length
+          ? team.map((pokemon) => {
+            const variant = pokemon.is_golden ? 'Golden ' : pokemon.is_shiny ? 'Shiny ' : '';
+            const emoji = getPokemonSpriteEmoji({
+              name: pokemon.name,
+              isGolden: pokemon.is_golden,
+              isShiny: pokemon.is_shiny,
+            });
+            return `${emoji ? `${emoji} ` : ''}${variant}${pokemon.name}`;
+          }).join(' ')
+          : 'No recorded team';
+        const iconEmoji = getNpcIconEmojiOrBlank(index);
+        const trainerLabel = `${iconEmoji ? `${iconEmoji} ` : ''}${challenge.name}`;
+        const iconStatus = unlock
+          ? `✅ Unlocked on ${formatBattleStatsDate(unlock.unlocked_at)}`
+          : '❌ Not unlocked';
+        const embed = new EmbedBuilder()
+          .setColor(unlock ? 0x2ecc71 : 0xe67e22)
+          .setTitle(`${trainerLabel} — Your Stats`)
+          .setDescription(
+            `**NPC Name:** \`${challenge.name}\`\n` +
+            `**NPC ID:** ${index + 1}\n\n` +
+            `You fought **${personal.fights}** battle${personal.fights === 1 ? '' : 's'} against ${trainerLabel}\n` +
+            `**Icon:** ${iconStatus}\n` +
+            `**Last team used:** ${teamText}\n` +
+            `**Last fought:** ${formatBattleStatsDate(personal.last_fought_at)}\n` +
+            `🌎 **Global unlocks:** **${globalUnlocks.toLocaleString()}** player${globalUnlocks === 1 ? '' : 's'} unlocked ${trainerLabel}\n\n` +
+            `View your personal battling stats with \`${PREFIX}battle stats\` • Global counts update immediately`
+          );
+        return message.reply({ embeds: [embed] });
+      }
       if (battleSub === 'icons' || battleSub === 'icon') {
         const mentioned = message.mentions.users.first();
         const idArg = args[1] && /^\d{17,20}$/.test(args[1]) ? args[1] : null;
