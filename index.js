@@ -1021,7 +1021,7 @@ const CHALLENGER_STAT_MULTIPLIERS = Object.freeze({
   attack: 2,
   defense: 1.5,
 });
-const CHALLENGER_INVITE_CHANCE = 0.06;
+const CHALLENGER_INVITE_CHANCE = 1 / 250;
 const CHALLENGER_TIERS = {
   basic: { label: 'Basic', questCategory: 'basic_challenger', coins: [5000, 10000], weight: 70 },
   boss: { label: 'Boss', questCategory: 'boss_challenger', coins: [15000, 30000], weight: 22 },
@@ -1474,7 +1474,7 @@ async function fetchPokemonItemDetails(itemQuery) {
 function startLeagueChallengeWithCooldown(message, userId, challengeIndex, challenges) {
   const cooldownExempt = hasCooldownExemption(userId);
   if (!cooldownExempt && battleCooldowns.has(userId)) {
-    return message.reply('⏳ Battle cooldown is active (30s)!');
+    return message.reply('⏳ Battle cooldown is active (60s)!');
   }
   if (!getUserTeam(userId).length) {
     return runLeagueChallenge(message, userId, challengeIndex, challenges)
@@ -1493,7 +1493,7 @@ function startLeagueChallengeWithCooldown(message, userId, challengeIndex, chall
       userId,
       message.author.username,
       message.channel,
-      30000,
+      60000,
       'battle'
     );
   }
@@ -1512,7 +1512,7 @@ const ROD_CONFIGS = {
     name: 'Old Rod',
     baseShinyRate: 1 / 16384,
     baseSpawnChance: 0.65,
-    cooldownMs: 15000,
+    cooldownMs: 20000,
     pullWaitMs: 15000,
     enablesShiny: false,
     enablesLegendary: false,
@@ -1522,7 +1522,7 @@ const ROD_CONFIGS = {
     name: 'Good Rod',
     baseShinyRate: 1 / 8192,
     baseSpawnChance: 0.75,
-    cooldownMs: 15000,
+    cooldownMs: 20000,
     pullWaitMs: 10000,
     enablesShiny: true,
     enablesLegendary: false,
@@ -1532,7 +1532,7 @@ const ROD_CONFIGS = {
     name: 'Super Rod',
     baseShinyRate: 1 / 4096,
     baseSpawnChance: 0.8,
-    cooldownMs: 15000,
+    cooldownMs: 20000,
     pullWaitMs: 6000,
     enablesShiny: true,
     enablesLegendary: true,
@@ -1542,7 +1542,7 @@ const ROD_CONFIGS = {
     name: 'Golden Rod',
     baseShinyRate: 1 / 4096,
     baseSpawnChance: 0.8,
-    cooldownMs: 15000,
+    cooldownMs: 20000,
     pullWaitMs: 6000,
     enablesShiny: true,
     enablesLegendary: true,
@@ -6429,7 +6429,7 @@ function buildChallengerListEmbed(user, userId) {
     .setColor(0x5865f2)
     .setTitle(`📨 ${user.username}'s Battle Invitations`)
     .setDescription(
-      `Challengers invite you to battle while you catch, fish or battle. Any challenger can invite you at any time.\n\n` +
+      `Each catch, fishing, or battle action has a 1-in-250 chance to trigger a challenger invitation.\n\n` +
       `Type \`${PREFIX}ch <name/id>\` to start the battle.\n\n` +
       `All challenges have a *chance* to drop a special battle-exclusive ${EMOJIS.golden} Pokémon and their trainer battle icon.\n\n` +
       sections.join('\n\n') +
@@ -8778,6 +8778,7 @@ function getDailyRewards(streak) {
   if (streak % 30 === 0) boxes['Shiny Box'] = 1;
   return {
     coins: 3000 + 200 * (Math.min(streak, 50) - 1),
+    voteCoins: Math.min(5, 1 + Math.floor(streak / 10)),
     greatballs: 10 + 2 * Math.floor(streak / 5),
     ultraballs: 5 + Math.floor(streak / 5),
     rareCandies: streak % 14 === 0 ? 10 : 0,
@@ -10993,8 +10994,8 @@ client.on('messageCreate', async (message) => {
           .setTitle('📖 Umbreon Help — General & Catching')
           .setDescription(
             `Default prefix: \`${PREFIX}\`\n\n` +
-            `• \`${PREFIX}p\` / \`${PREFIX}pokemon\` — Spawn a wild Pokémon (7s cooldown)\n` +
-            `• \`${PREFIX}fish\` / \`${PREFIX}f\` — Fish for Water-type Pokémon using your rod (15s cooldown)\n` +
+            `• \`${PREFIX}p\` / \`${PREFIX}pokemon\` — Spawn a wild Pokémon (10s cooldown)\n` +
+            `• \`${PREFIX}fish\` / \`${PREFIX}f\` — Fish for Water-type Pokémon using your rod (20s cooldown)\n` +
             `• \`${PREFIX}repel [amount]\` — Use Repels to change wild land encounter rarity weights for 30 encounters each\n` +
             `• \`${PREFIX}dailycatchers\` / \`${PREFIX}dc\` — View today's top 10 Pokémon catchers\n` +
             `• \`${PREFIX}counters\` / \`${PREFIX}co\` — View Legendary and Shiny encounter counters for .p and .f\n` +
@@ -13733,7 +13734,7 @@ client.on('messageCreate', async (message) => {
       const cooldownExempt = isAdmin || hasCooldownExemption(userId);
       if (!cooldownExempt && catchCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'p', catchCooldowns)) {
-          return message.reply('⏳ Catching cooldown is active (7s). A Cooldown Machine can skip it after 3.5s.');
+          return message.reply('⏳ Catching cooldown is active (10s). A Cooldown Machine can skip it after 5s.');
         }
       }
       if (!cooldownExempt) {
@@ -13743,7 +13744,7 @@ client.on('messageCreate', async (message) => {
           userId,
           message.author.username,
           message.channel,
-          7000,
+          10000,
           'p'
         );
       }
@@ -14825,6 +14826,7 @@ client.on('messageCreate', async (message) => {
           cl_daily_claimed: 1,
         });
         incrementUser(userId, {
+          vote_coins: rewards.voteCoins,
           ultraballs: rewards.ultraballs,
           greatballs: rewards.greatballs,
           rare_candies: rewards.rareCandies,
@@ -14852,6 +14854,7 @@ client.on('messageCreate', async (message) => {
       }
       const { streak, rewards: claimed } = dailyClaim;
       const bonusItems = [
+        `${EMOJIS.votecoin} ${claimed.voteCoins} Vote Coin${claimed.voteCoins === 1 ? '' : 's'}`,
         `${EMOJIS.greatball} ${claimed.greatballs} Greatballs`,
         `${EMOJIS.ultraball} ${claimed.ultraballs} Ultraballs`,
       ];
