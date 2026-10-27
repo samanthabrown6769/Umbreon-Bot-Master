@@ -415,6 +415,17 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   const levitating = (tf.magnetRise > 0 || tf.telekinesis > 0) && ctx.field.gravity <= 0;
   const eff = (type === 'ground' && levitating) ? 0 : typeEffOf(ctx, type, defTypes);
   if (AB.absorb(AH, ctx, A, B, move, type, eff, L)) return;
+  if (slug(move.name) === 'spectral-thief' && eff > 0) {
+    const stolen = Object.entries(tf.stages)
+      .filter(([, stage]) => stage > 0);
+    if (stolen.length) {
+      for (const [key, stage] of stolen) {
+        changeStage(ctx, m, A.side, key, stage, L);
+        tf.stages[key] = 0;
+      }
+      L(`${m.name} stole ${t.name}'s positive stat changes!`);
+    }
+  }
   const { atk, def, physical } = damageStats(m, t, move, ctx.field);
   let calcMove = { ...move, type };
   calcMove.power = effectivePower(move, f.stages);
@@ -552,6 +563,7 @@ const DAMAGE_SELF_BOOSTS = {
   'ancient-power': [10, { atk: 1, def: 1, spa: 1, spdef: 1, spe: 1 }],
   'silver-wind': [10, { atk: 1, def: 1, spa: 1, spdef: 1, spe: 1 }],
   'ominous-wind': [10, { atk: 1, def: 1, spa: 1, spdef: 1, spe: 1 }],
+  'aura-wheel': [100, { spe: 1 }], 'psyshield-bash': [100, { def: 1 }],
   'close-combat': [100, { def: -1, spdef: -1 }], superpower: [100, { atk: -1, def: -1 }],
   'draco-meteor': [100, { spa: -2 }], overheat: [100, { spa: -2 }], 'leaf-storm': [100, { spa: -2 }],
   'psycho-boost': [100, { spa: -2 }], 'fleur-cannon': [100, { spa: -2 }], 'make-it-rain': [100, { spa: -1 }],

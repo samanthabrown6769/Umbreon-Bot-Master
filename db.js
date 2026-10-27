@@ -3390,18 +3390,27 @@ function advanceEggCatchProgress(userId, amount = 1) {
   if (!Number.isSafeInteger(amount) || amount <= 0) {
     throw new TypeError('Egg catch progress amount must be a positive safe integer.');
   }
+  const hatchBoost = db.prepare(`
+    SELECT 1
+    FROM catches
+    WHERE user_id = ?
+      AND (in_team = 1 OR id = (SELECT buddy_catch_id FROM users WHERE id = ?))
+      AND lower(replace(ability, ' ', '-')) IN ('flame-body', 'magma-armor')
+    LIMIT 1
+  `).get(userId, userId);
+  const progressAmount = hatchBoost ? amount * 2 : amount;
   const heldEgg = db.prepare(`
     UPDATE users
     SET held_egg_progress = MIN(held_egg_target, held_egg_progress + ?)
     WHERE id = ? AND held_egg_target > 0 AND held_egg_progress < held_egg_target
     RETURNING held_egg_progress AS progress, held_egg_target AS target
-  `).get(amount, userId);
+  `).get(progressAmount, userId);
   const progressedIncubators = db.prepare(`
     UPDATE egg_incubators
     SET progress = MIN(target, progress + ?)
     WHERE user_id = ? AND progress < target
     RETURNING incubator_type, slot, progress, target
-  `).all(amount, userId);
+  `).all(progressAmount, userId);
   const newlyReady = [];
   if (heldEgg && heldEgg.progress >= heldEgg.target) {
     newlyReady.push({ type: 'held' });

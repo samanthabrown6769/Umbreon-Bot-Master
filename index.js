@@ -1256,6 +1256,37 @@ async function fetchPokemonAbilities(formId) {
   return abilities;
 }
 
+function getLeadOverworldAbility(userId) {
+  const ability = getUserBuddy(userId)?.ability;
+  return String(ability || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+async function resolveLeadOverworldAbility(userId) {
+  const buddy = getUserBuddy(userId);
+  const storedAbility = getLeadOverworldAbility(userId);
+  if (storedAbility) return storedAbility;
+  if (!buddy) return '';
+  try {
+    const abilities = await fetchPokemonAbilities(buddy.form_id || buddy.pokemon_id);
+    return String((abilities.find((entry) => !entry.hidden) || abilities[0]).name)
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  } catch (error) {
+    console.error(`Failed to resolve overworld ability for buddy ${buddy.id}:`, error);
+    return '';
+  }
+}
+
+function getOverworldEncounterMultiplier(ability) {
+  if (['illuminate', 'arena-trap', 'no-guard'].includes(ability)) return 2;
+  if (ability === 'swarm') return 1.5;
+  if (['stench', 'quick-feet', 'white-smoke'].includes(ability)) return 0.5;
+  return 1;
+}
+
+function getFishingAbilityMultiplier(ability) {
+  return ['suction-cups', 'sticky-hold'].includes(ability) ? 2 : 1;
+}
+
 // Fills in `ability` for battle mons: the stored ability, else the first regular ability from PokéAPI (best effort).
 async function attachBattleAbilities(...groups) {
   const mons = groups.flat().filter(Boolean);
@@ -2065,7 +2096,9 @@ function factionLogoPrefix(pokemon) {
 }
 
 function heldItemEncounterHint(pokemon) {
-  return '';
+  if (!pokemon?.friskReveal || !pokemon.heldItem) return '';
+  const emoji = pokemon.heldItemEmoji || HELD_ITEM_EMOJI;
+  return `🔍 **Frisk:** This wild Pokémon is holding ${emoji} **${pokemon.heldItem}**.\n`;
 }
 
 // Held-item emoji goes between the rarity icon and the Pokémon name.
@@ -2160,6 +2193,7 @@ function rollWildHeldItem(target, userId = null, researchPokemonEncounter = fals
     ? speciesItems[Math.floor(Math.random() * speciesItems.length)]
     : null;
   const heldItemChance = WILD_HELD_ITEM_SPAWN_CHANCE
+    * (target.overworldAbility === 'compound-eyes' ? 1.2 : 1)
     * (target.researchToolBoosts?.fluffyTail ? 1.3 : 1)
     * (target.researchToolBoosts?.pokeDoll && eligibleItem?.requiresRelicExchange ? 1.3 : 1);
   if (eligibleItem && Math.random() < heldItemChance) return eligibleItem;
@@ -5504,9 +5538,15 @@ async function askForBall(
 ) {
   guaranteedCatch = guaranteedCatch
     && (allowAnyUserCatch || !GUARANTEED_CATCH_EXCLUDED_USER_IDS.has(userId));
+  const overworldAbility = target.overworldAbility
+    || await resolveLeadOverworldAbility(userId);
   target = {
     ...target,
     name: target.name.replace(/\btotem\b/gi, '').replace(/\s+/g, ' ').trim(),
+    overworldAbility,
+    friskReveal: mode === 'catch'
+      && counterSource === 'pokemon'
+      && String(overworldAbility).toLowerCase() === 'frisk',
   };
   if (mode === 'catch' && counterSource === 'pokemon') {
     const researchTools = applyResearchTools(userId);
@@ -7050,6 +7090,9 @@ function makeLeagueButtons(moves, disabled = false) {
 
 async function runLeagueChallenge(message, userId, challengeIndex, challenges = KANTO_LEAGUE) {
   const challenge = challenges[challengeIndex];
+  if (!challenge || !Array.isArray(challenge.team) || !challenge.team.length) {
+    return message.reply('❌ That battle is unavailable right now. Please try again later.');
+  }
   if (challenge.factionNpc && !getUserFaction(userId)) {
     return message.reply(`Join a faction with \`${PREFIX}faction\` before challenging faction NPCs.`);
   }
@@ -7306,6 +7349,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
 
       const won = opponentIndex >= opponents.length;
       const lost = partyIndex < 0;
+      finished = won || lost;
       if (won) {
         const isRematch = challenge.special || challenge.evStat
           || challengeIndex < getLeagueProgress(userId).cleared_challenges;
@@ -7513,7 +7557,6 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
         log.push('💀 **You were defeated.** Train your team and challenge again.');
         resultSummary = '💀 **Defeat.** No rewards were earned.';
       }
-      finished = won || lost;
       if (finished) {
         trackClanActivity(userId, 'battle');
         rollActivityPromoDrops(interaction.user, interaction.guild, interaction.channel, 'battle');
@@ -13428,7 +13471,10 @@ client.on('messageCreate', async (message) => {
           'f'
         );
       }
-      if (!isAdmin && Math.random() >= rod.baseSpawnChance * (1 + getPatreonPerks(userId).fishingBoost)) {
+      const fishingChance = rod.baseSpawnChance
+        * (1 + getPatreonPerks(userId).fishingBoost)
+        * getFishingAbilityMultiplier(await resolveLeadOverworldAbility(userId));
+      if (!isAdmin && Math.random() >= Math.min(1, fishingChance)) {
         return message.reply(`🎣 You cast your line with the **${rod.name}**, but nothing bit.`);
       }
       const roleChanceBoost = await getRoleEncounterBoost(userId);
@@ -17010,9 +17056,15 @@ client.on('messageCreate', async (message) => {
           } else {
             foundText = '\n🔍 You searched the ground but found nothing.';
           }
-        } else if (!catchHandler && Math.random() < EXPLORE_ENCOUNTER_CHANCE) {
+        } else if (!catchHandler
+            && Math.random() < Math.min(
+              1,
+              EXPLORE_ENCOUNTER_CHANCE
+                * getOverworldEncounterMultiplier(await resolveLeadOverworldAbility(userId))
+            )) {
           wild = rollExploreEncounter(userId, mapKey);
-          const heldItem = rollWildHeldItem(wild);
+          wild.overworldAbility = await resolveLeadOverworldAbility(userId);
+          const heldItem = rollWildHeldItem(wild, userId);
           if (heldItem) {
             wild.heldItem = heldItem.name;
             wild.heldItemEmoji = heldItem.emoji;
