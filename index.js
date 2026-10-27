@@ -9456,7 +9456,7 @@ async function announceMarketListings(message, listings) {
 
 const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
 const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
-const COMMAND_CADENCE_WINDOW_MS = 3 * 60 * 1000;
+const COMMAND_CADENCE_WINDOW_MS = 5 * 60 * 1000;
 const COMMAND_CADENCE_ALERT_OWNER_ID = (process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
   .split(',')[0]
   .trim();
