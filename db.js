@@ -8042,6 +8042,36 @@ function leaveClan(userId) {
   }).immediate();
 }
 
+function kickClanMember(userId, targetUserId) {
+  if (typeof targetUserId !== 'string' || !targetUserId) {
+    throw new TypeError('targetUserId must be a non-empty user ID.');
+  }
+  return db.transaction(() => {
+    const clan = getPlayerClan(userId);
+    if (!clan) return { error: 'not_member' };
+    const isLeader = clan.leader_id === userId;
+    const coLeaderIds = getClanCoLeaderIds(clan);
+    if (!isLeader && !coLeaderIds.includes(userId)) {
+      return { error: 'not_owner' };
+    }
+    if (targetUserId === userId) return { error: 'self' };
+    const target = db.prepare(
+      'SELECT user_id FROM clan_members WHERE user_id = ? AND clan_id = ?'
+    ).get(targetUserId, clan.id);
+    if (!target) return { error: 'not_member_target' };
+    if (targetUserId === clan.leader_id) return { error: 'leader' };
+    if (coLeaderIds.includes(targetUserId)) {
+      if (!isLeader) return { error: 'co_owner' };
+      saveClanCoLeaderIds(clan.id, coLeaderIds.filter((id) => id !== targetUserId));
+    }
+
+    db.prepare('DELETE FROM clan_members WHERE user_id = ? AND clan_id = ?')
+      .run(targetUserId, clan.id);
+    updateUser(targetUserId, { clan: 'None' });
+    return { clan };
+  }).immediate();
+}
+
 function disbandClan(userId) {
   return db.transaction(() => {
     const clan = getPlayerClan(userId);
@@ -9540,6 +9570,7 @@ module.exports = {
   createClan,
   joinClan,
   leaveClan,
+  kickClanMember,
   disbandClan,
   banUser,
   unbanUser,

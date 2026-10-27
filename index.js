@@ -301,6 +301,7 @@ const {
   createClan,
   joinClan,
   leaveClan,
+  kickClanMember,
   disbandClan,
   banUser,
   unbanUser,
@@ -14311,6 +14312,32 @@ client.on('messageCreate', async (message) => {
           return message.reply('Clan leaders cannot leave. Disband the clan if you want to dissolve it.');
         }
         return message.reply(`👋 You left **${result.clan.name}**.`);
+      }
+
+      if (subcommand === 'kick') {
+        const target = message.mentions.users.first();
+        const rawTargetId = args.find((argument) => /^\d{17,20}$/.test(argument)) || null;
+        const targetId = target?.id || rawTargetId;
+        if (args.length !== 2 || !targetId || targetId === userId || target?.bot) {
+          return message.reply(`Usage: \`${PREFIX}clan kick [@user|userid]\` (choose another player).`);
+        }
+        const result = kickClanMember(userId, targetId);
+        const targetMention = `<@${targetId}>`;
+        if (result.error === 'not_member') return message.reply('You are not in a clan.');
+        if (result.error === 'not_owner') {
+          return message.reply('❌ Only the clan leader or a co-owner can kick clan members.');
+        }
+        if (result.error === 'self') return message.reply('You cannot kick yourself from the clan.');
+        if (result.error === 'not_member_target') {
+          return message.reply(`${targetMention} is not a member of your clan.`);
+        }
+        if (result.error === 'leader') {
+          return message.reply('❌ The clan leader cannot be kicked.');
+        }
+        if (result.error === 'co_owner') {
+          return message.reply('❌ Only the clan leader can kick a co-owner.');
+        }
+        return message.reply(`👢 ${targetMention} was kicked from **${result.clan.name}**.`);
       }
 
       if (subcommand === 'disband') {
