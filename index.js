@@ -1015,7 +1015,11 @@ const FACTION_NPC_BATTLES = FACTION_NPC_BATTLE_DEFINITIONS.map(({
 });
 NPC_SPECIAL_BATTLES.push(...FACTION_NPC_BATTLES);
 
-const CHALLENGER_STRENGTH_MULTIPLIER = 3;
+const CHALLENGER_STAT_MULTIPLIERS = Object.freeze({
+  hp: 1.5,
+  attack: 2,
+  defense: 1.5,
+});
 const CHALLENGER_INVITE_CHANCE = 0.06;
 const CHALLENGER_TIERS = {
   basic: { label: 'Basic', questCategory: 'basic_challenger', coins: [5000, 10000], weight: 70 },
@@ -1046,7 +1050,7 @@ const CHALLENGER_DEFINITIONS = [
   iconEmoji: definition.emoji,
   special: true,
   invited: true,
-  strengthMultiplier: CHALLENGER_STRENGTH_MULTIPLIER,
+  statMultipliers: CHALLENGER_STAT_MULTIPLIERS,
   pokemonNames: definition.pokemon,
   team: definition.pokemon.map((pokemonName) => {
     const form = resolvePokemonForm(pokemonName);
@@ -6263,7 +6267,11 @@ function getEquippedBattleMovesBase(pokemon, speciesId, formId = null) {
 }
 
 const GAUNTLET_POKEMON_IDS = [229, 248, 373, 609, 448];
-const CHAMBER_STRENGTH_MULTIPLIER = 3;
+const CHAMBER_STAT_MULTIPLIERS = Object.freeze({
+  hp: 1.5,
+  attack: 2,
+  defense: 1.5,
+});
 const CHAMBER_TRAINERS = [
   { name: 'Guitarist Nicki', emoji: '<:chamberguitaristnicki:1564687292403290354>' },
   { name: 'Waitress Nicki', emoji: '<:chamberwaitressnicki:1564687293816504572>' },
@@ -6395,7 +6403,7 @@ async function maybeSendChallengerInvite(message, userId) {
         .setTitle(`${challenger.iconEmoji} ${challenger.name} wants to battle!`)
         .setDescription(
           `A **${tier.label} challenger** has invited you to a battle! Their Pokémon are ` +
-          `**${CHALLENGER_STRENGTH_MULTIPLIER}× stronger** than normal opponents.\n\n` +
+          `stronger than normal opponents (**1.5× HP**, **2× Attack**, **1.5× Defense**).\n\n` +
           `Start it with \`${PREFIX}ch ${challenger.challengerKey}\` or see all invites with \`${PREFIX}ch\`.\n` +
           `The invite is gone once you win or lose, so make it count!`
         )],
@@ -6421,7 +6429,7 @@ function buildChallengerListEmbed(user, userId) {
     .setTitle(`📨 ${user.username}'s Battle Invitations`)
     .setDescription(
       `Challengers invite you to battle while you catch, fish or battle. Any challenger can invite you at any time.\n\n` +
-      `Challengers are **${CHALLENGER_STRENGTH_MULTIPLIER}× stronger** than normal opponents, and an invite disappears once you win or lose.\n\n` +
+      `Challengers have **1.5× HP**, **2× Attack**, and **1.5× Defense** compared with normal opponents, and an invite disappears once you win or lose.\n\n` +
       `Type \`${PREFIX}ch <name/id>\` to start the battle.\n\n` +
       `All challenges have a *chance* to drop a special battle-exclusive ${EMOJIS.golden} Pokémon and their trainer battle icon.\n\n` +
       sections.join('\n\n') +
@@ -6864,8 +6872,8 @@ async function runMegaChamberGauntlet(message, userId, config) {
       defense: form.base_def,
       speed: form.base_spd,
     }, level);
-    for (const stat of Object.keys(stats)) {
-      stats[stat] = Math.floor(stats[stat] * CHAMBER_STRENGTH_MULTIPLIER);
+    for (const [stat, multiplier] of Object.entries(CHAMBER_STAT_MULTIPLIERS)) {
+      stats[stat] = Math.floor(stats[stat] * multiplier);
     }
     const moves = buildEnemyMoves(getSpeciesLearnset(form.species_id, form.id)
       .map((name) => getPokemonMove(name))
@@ -7223,9 +7231,13 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       defense: form.base_def,
       speed: form.base_spd,
     }, level);
-    if (challenge.factionNpc || challenge.invited) {
+    if (challenge.factionNpc) {
       for (const stat of Object.keys(stats)) {
         stats[stat] = Math.floor(stats[stat] * challenge.strengthMultiplier);
+      }
+    } else if (challenge.invited) {
+      for (const [stat, multiplier] of Object.entries(challenge.statMultipliers)) {
+        stats[stat] = Math.floor(stats[stat] * multiplier);
       }
     }
     const moves = buildEnemyMoves(getSpeciesLearnset(form.species_id, form.id)
