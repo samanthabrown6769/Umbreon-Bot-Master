@@ -6215,8 +6215,12 @@ const CHAMBER_ICON_ENTRIES = [...CHAMBER_TRAINERS, ...CHAMBER_MASTERS].map((trai
   reward: 0,
 }));
 NPC_SPECIAL_BATTLES.push(...CHAMBER_ICON_ENTRIES);
-const getChamberIconIndex = (trainerName) =>
-  NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.findIndex((entry) => entry.chamberIcon && entry.name === trainerName);
+const getChamberIconIndex = (trainerName) => {
+  const specialIndex = NPC_SPECIAL_BATTLES.findIndex(
+    (entry) => entry.chamberIcon && entry.name === trainerName
+  );
+  return specialIndex === -1 ? null : NPC_CAMPAIGN.length + specialIndex;
+};
 
 const LEAGUE_REGIONS = [
   { name: 'Kanto', gen: 'I' },
@@ -6947,7 +6951,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
           incrementUser(userId, { cl_battles: 1 });
           for (const defeated of opponents) {
             const iconIndex = getChamberIconIndex(defeated.trainerName);
-            if (iconIndex < NPC_CAMPAIGN.length || Math.random() >= CHAMBER_ICON_DROP_CHANCE
+            if (iconIndex === null || Math.random() >= CHAMBER_ICON_DROP_CHANCE
                 || !unlockBattleIcon(userId, iconIndex)) continue;
             log.push(`🆕 **Icon unlocked!** ${getNpcTrainerName(iconIndex)}'s battle icon dropped! View it with \`${PREFIX}battle icons\`.`);
             announceQuestCompletions(userId, message.channel, advanceQuestProgress(userId, {
