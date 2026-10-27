@@ -9456,9 +9456,68 @@ async function announceMarketListings(message, listings) {
 
 const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
 const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
+const COMMAND_CADENCE_ALERT_OWNER_ID = '1514082847609061541';
 const lastCommandAt = new Map();
+const commandCadenceByUser = new Map();
 let globalWindowStart = 0;
 let globalWindowCount = 0;
+
+function recordCommandCadence(message) {
+  const userId = message.author.id;
+  const now = message.createdTimestamp || Date.now();
+  const state = commandCadenceByUser.get(userId) || {
+    lastMessageAt: 0,
+    recentMessages: [],
+  };
+  const commandName = message.content.startsWith(PREFIX)
+    ? message.content.slice(PREFIX.length).trim().split(/\s+/)[0]?.toLowerCase() || null
+    : null;
+  state.recentMessages.push({ at: now, commandName });
+  if (state.recentMessages.length > 6) state.recentMessages.shift();
+  state.lastMessageAt = now;
+  commandCadenceByUser.set(userId, state);
+  if (commandCadenceByUser.size > 5000) {
+    for (const [id, entry] of commandCadenceByUser) {
+      if (now - entry.lastMessageAt > 60 * 60 * 1000) commandCadenceByUser.delete(id);
+    }
+    while (commandCadenceByUser.size > 5000) {
+      commandCadenceByUser.delete(commandCadenceByUser.keys().next().value);
+    }
+  }
+
+  const recent = state.recentMessages;
+  if (recent.length < 6 || recent.some((entry) => !entry.commandName)) return null;
+  const intervals = recent.slice(1).map((entry, index) => entry.at - recent[index].at);
+  if (intervals.some((interval) => interval <= 0 || interval !== intervals[0])) return null;
+
+  const names = recent.map((entry) => entry.commandName);
+  const repeatedCommand = names.every((name) => name === names[0]);
+  const repeatedSequence = names[0] === names[2] && names[2] === names[4]
+    && names[1] === names[3] && names[3] === names[5]
+    && names[0] !== names[1];
+  if (!repeatedCommand && !repeatedSequence) return null;
+
+  return {
+    pattern: repeatedCommand ? `.${names[0]} repeated 6 times` : `.${names[0]} → .${names[1]} repeated 3 times`,
+    startedAt: recent[0].at,
+    detectedAt: recent[recent.length - 1].at,
+    intervalMs: intervals[0],
+  };
+}
+
+async function notifyOwnerOfCommandCadence(userId, activity) {
+  const owner = await client.users.fetch(COMMAND_CADENCE_ALERT_OWNER_ID);
+  await owner.send({
+    content:
+      `Possible automated command pattern detected\n` +
+      `User ID: ${userId}\n` +
+      `Pattern: ${activity.pattern}\n` +
+      `Interval: exactly ${activity.intervalMs} ms across five consecutive intervals\n` +
+      `Observed: <t:${Math.floor(activity.startedAt / 1000)}:F> – <t:${Math.floor(activity.detectedAt / 1000)}:F>\n` +
+      'This is a behavioral signal only; it does not identify software on the user’s device.',
+    allowedMentions: { parse: [] },
+  });
+}
 
 function isCommandThrottled(userId) {
   const now = Date.now();
@@ -9497,8 +9556,16 @@ setInterval(() => {
 }, 30000).unref();
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.content.startsWith(PREFIX)) {
-    if (!message.author.bot) trackAutoSpawnMessage(message);
+  if (message.author.bot) return;
+  const automatedActivityAlert = recordCommandCadence(message);
+  if (automatedActivityAlert) {
+    void notifyOwnerOfCommandCadence(message.author.id, automatedActivityAlert)
+      .catch((error) => {
+        console.error(`Failed to DM automated activity alert for user ${message.author.id}:`, error);
+      });
+  }
+  if (!message.content.startsWith(PREFIX)) {
+    trackAutoSpawnMessage(message);
     return;
   }
   if (isUserBanned(message.author.id)) return;
