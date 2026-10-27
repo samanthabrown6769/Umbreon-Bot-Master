@@ -16183,11 +16183,16 @@ client.on('messageCreate', async (message) => {
         console.error(`Failed to load ability data for buddy catch ${buddy.id}:`, error);
       }
       const standardAbilities = buddyAbilities.filter((ability) => !ability.hidden);
+      const hiddenAbility = buddyAbilities.find((ability) => ability.hidden);
       const currentAbility = buddy.ability || standardAbilities[0]?.name;
-      const abilityText = currentAbility
-        ? `**Ability**\n` +
-          `Current: **${currentAbility}**\n\n`
-        : '**Ability**\nUnable to load ability data right now.\n\n';
+      const abilityText = buddyAbilities.length
+        ? `**Abilities**\n` +
+          `Standard: **${standardAbilities[0]?.name || 'None'}**\n` +
+          `Secondary: **${standardAbilities[1]?.name || 'None'}**\n` +
+          `Hidden: **${hiddenAbility?.name || 'None'}**\n` +
+          `Current: **${currentAbility || 'Unknown'}**\n\n`
+        : `**Ability**\nCurrent: **${currentAbility || 'Unknown'}**\n` +
+          'Standard, secondary, and hidden ability data could not be loaded.\n\n';
       const embed = new EmbedBuilder()
         .setColor(0x3498db)
         .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
@@ -16295,7 +16300,7 @@ client.on('messageCreate', async (message) => {
             }
             if (!choices.length) {
               await interaction.editReply(
-                `**Primary:** ${normal[0]?.name || 'None'}\n` +
+                `**Standard:** ${normal[0]?.name || 'None'}\n` +
                 `**Secondary:** ${normal[1]?.name || 'None'}\n` +
                 `**Hidden:** ${currentAbilities.find((ability) => ability.hidden)?.name || 'None'}\n\n` +
                 'No ability change is available. A Capsule requires another Standard Ability; a Patch requires an unused Hidden Ability.'
@@ -16305,22 +16310,23 @@ client.on('messageCreate', async (message) => {
             const itemByValue = new Map();
             const menu = new StringSelectMenuBuilder()
               .setCustomId(`buddy-ability-select:${activeBuddy.id}`)
-              .setPlaceholder('Choose an Ability item and target ability');
+              .setPlaceholder('Choose an ability and matching item');
             for (const [index, choice] of choices.entries()) {
               const value = `${index}`;
               itemByValue.set(value, choice);
               menu.addOptions(new StringSelectMenuOptionBuilder()
-                .setLabel(choice.name)
-                .setDescription(`${choice.description} (${choice.itemName})`)
+                .setLabel(`${choice.name} — ${choice.itemName}`)
+                .setDescription(choice.description)
                 .setValue(value)
                 .setEmoji(choice.emoji));
             }
             const abilityMessage = await interaction.editReply({
               content:
                 `Current ability: **${activeAbility || 'Unknown'}**\n` +
-                `Primary: **${normal[0]?.name || 'None'}** • ` +
+                `Standard: **${normal[0]?.name || 'None'}** • ` +
                 `Secondary: **${normal[1]?.name || 'None'}** • ` +
-                `Hidden: **${currentAbilities.find((ability) => ability.hidden)?.name || 'None'}**`,
+                `Hidden: **${currentAbilities.find((ability) => ability.hidden)?.name || 'None'}**\n` +
+                'Use an Ability Capsule to switch Standard abilities, or an Ability Patch to switch to the Hidden ability.',
               components: [new ActionRowBuilder().addComponents(menu)],
             });
             const abilityCollector = abilityMessage.createMessageComponentCollector({
