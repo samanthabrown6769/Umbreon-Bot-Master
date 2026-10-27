@@ -17361,6 +17361,8 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'team') {
       const action = args[0]?.toLowerCase();
+      const teamPokemonLabel = (pokemon) =>
+        `${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}**`.trim();
       if (action === 'swap') {
         const slotA = Number(args[1]);
         const slotB = Number(args[2]);
@@ -17370,10 +17372,10 @@ client.on('messageCreate', async (message) => {
         }
         const swapped = swapTeamSlots(userId, slotA, slotB);
         if (swapped.error) return message.reply('Both of those team slots are empty.');
-        const label = (mon) => (mon ? mon.name : 'empty slot');
+        const label = (mon) => (mon ? teamPokemonLabel(mon) : 'empty slot');
         return message.reply(
           `🔁 Swapped team positions **${slotA}** and **${slotB}**: ` +
-          `**${label(swapped.first)}** is now in slot ${slotB} and **${label(swapped.second)}** is now in slot ${slotA}.`
+          `${label(swapped.first)} is now in slot ${slotB} and ${label(swapped.second)} is now in slot ${slotA}.`
         );
       }
       if (action === 'fav' || action === 'favorite') {
@@ -17402,7 +17404,7 @@ client.on('messageCreate', async (message) => {
         if (result.error === 'missing') return message.reply('You can only use a favorited team if you own all of the Pokémon on that team.');
         return message.reply(
           `✅ Equipped favorited team **${result.saved.team_name}**!\n` +
-          result.team.map((mon, index) => `${index + 1}. **${mon.name}** (Lv. ${mon.level})`).join('\n')
+          result.team.map((mon, index) => `${index + 1}. ${teamPokemonLabel(mon)} (Lv. ${mon.level})`).join('\n')
         );
       }
       if (action === 'delete') {
@@ -17422,10 +17424,12 @@ client.on('messageCreate', async (message) => {
           const ids = JSON.parse(preset.pokemon_ids || '[]');
           if (!ids.length) return '*Empty team*';
           const mons = ids
-            .map((id) => db.prepare('SELECT name, level FROM catches WHERE id = ? AND user_id = ?').get(id, userId))
+            .map((id) => db.prepare(
+              'SELECT name, is_shiny, is_golden, level FROM catches WHERE id = ? AND user_id = ?'
+            ).get(id, userId))
             .filter(Boolean);
           if (!mons.length) return '*Pokémon missing from box*';
-          return mons.map((mon) => `${mon.name} \`Lv. ${mon.level}\``).join('\n');
+          return mons.map((mon) => `${teamPokemonLabel(mon)} \`Lv. ${mon.level}\``).join('\n');
         };
         const embed = new EmbedBuilder()
           .setColor(0x0099ff)
@@ -17553,12 +17557,12 @@ client.on('messageCreate', async (message) => {
             `❌ Exchange a full relic set with \`${PREFIX}res exchange relics\` before giving this item.`
           );
         }
-        return message.reply(`✅ Gave **1x ${giveLabel}** to **${targetMon.name}**.`);
+        return message.reply(`✅ Gave **1x ${giveLabel}** to ${teamPokemonLabel(targetMon)}.`);
       }
       if (action === 'add' || action === 'remove') {
         if (action === 'add' && args.length === 1) {
           const available = db.prepare(`
-            SELECT id, name, is_shiny, level
+            SELECT id, name, is_shiny, is_golden, level
             FROM catches
             WHERE user_id = ? AND in_team = 0
             ORDER BY id DESC
@@ -17566,7 +17570,7 @@ client.on('messageCreate', async (message) => {
           `).all(userId);
           if (!available.length) return message.reply('You have no Pokémon outside your active team.');
           const choices = available.map((pokemon) =>
-            `• ${pokemon.name} (Lv. ${pokemon.level})`
+            `• ${teamPokemonLabel(pokemon)} (Lv. ${pokemon.level})`
           ).join('\n');
           return message.reply(
             `Choose a Pokémon and slot with \`${PREFIX}team add [shiny|golden] <name|Pokédex number> <slot 1-3>\`:\n${choices}`
@@ -17582,8 +17586,8 @@ client.on('messageCreate', async (message) => {
           }
           return message.reply(
             `✅ Slot **${slot}** is now ` +
-            `**${result.pokemon.name}**.` +
-            `${result.displaced ? ` Replaced **${result.displaced.name}**.` : ''}`
+            `${teamPokemonLabel(result.pokemon)}.` +
+            `${result.displaced ? ` Replaced ${teamPokemonLabel(result.displaced)}.` : ''}`
           );
         }
         if (action === 'remove' && args[1]?.toLowerCase() === 'slot') {
@@ -17596,7 +17600,7 @@ client.on('messageCreate', async (message) => {
           }
           const pokemon = removeTeamSlot(userId, slot);
           if (!pokemon) return message.reply(`There is no Pokémon in team slot ${slot}.`);
-          return message.reply(`➖ Removed **${pokemon.name}** from slot ${slot}.`);
+          return message.reply(`➖ Removed ${teamPokemonLabel(pokemon)} from slot ${slot}.`);
         }
         if (action === 'remove' && args.length >= 2) {
           const rawQuery = args.slice(1).join(' ');
@@ -17608,7 +17612,7 @@ client.on('messageCreate', async (message) => {
             const slot = Number(query);
             const pokemon = removeTeamSlot(userId, slot);
             if (!pokemon) return message.reply(`There is no Pokémon in team slot ${slot}.`);
-            return message.reply(`➖ Removed **${pokemon.name}** from slot ${slot}.`);
+            return message.reply(`➖ Removed ${teamPokemonLabel(pokemon)} from slot ${slot}.`);
           }
           const matchingTeam = findUserPokemonMatches(userId, query)
             .filter((pokemon) => pokemon.in_team);
@@ -17619,7 +17623,7 @@ client.on('messageCreate', async (message) => {
           if (result.error === 'not_in_team') {
             return message.reply(`No Pokémon matching **${query}** is on your active team.`);
           }
-          return message.reply(`➖ Removed **${result.pokemon.name}** from your active team.`);
+          return message.reply(`➖ Removed ${teamPokemonLabel(result.pokemon)} from your active team.`);
         }
         if (action === 'add') {
           const query = args.slice(1).join(' ');
@@ -17637,7 +17641,7 @@ client.on('messageCreate', async (message) => {
           }
           return message.reply(
             `✅ Added to your active team: ` +
-            `**${result.pokemon.name}**.`
+            `${teamPokemonLabel(result.pokemon)}.`
           );
         }
         return message.reply(
@@ -17989,7 +17993,7 @@ client.on('messageCreate', async (message) => {
               `\n\nBattle with \`${PREFIX}battle npc <number/name>\`. Filter with \`${PREFIX}battle npc list <region>\`.`
             )
             .setFooter({
-              text: `Page ${page} / ${totalPages} • ${progress.cleared_challenges} / ${NPC_CAMPAIGN.length} campaign trainers cleared • Volo is always available`,
+              text: `Page ${page} / ${totalPages} • ${progress.cleared_challenges} / ${NPC_CAMPAIGN.length} campaign trainers cleared`,
             });
           const buildButtons = () => new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('npc_prev').setLabel('Back').setStyle(ButtonStyle.Primary).setDisabled(page === 1),
@@ -18018,6 +18022,17 @@ client.on('messageCreate', async (message) => {
 
         let npcIndex;
         if (/^\d+$/.test(requested)) {
+          const challenger = CHALLENGER_DEFINITION_LIST.find(
+            (entry) => entry.challengerId === Number(requested)
+          );
+          if (challenger) {
+            if (!getChallengerInvites(userId).includes(challenger.challengerKey)) {
+              return message.reply(
+                `${challenger.iconEmoji} **${challenger.name}** hasn't invited you. Keep catching, fishing and battling!`
+              );
+            }
+            return startLeagueChallengeWithCooldown(message, userId, 0, [challenger]);
+          }
           npcIndex = Number(requested) - 1;
         } else {
           const codeMatches = NPC_CAMPAIGN
