@@ -9456,6 +9456,7 @@ async function announceMarketListings(message, listings) {
 
 const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
 const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
+const COMMAND_CADENCE_WINDOW_MS = 3 * 60 * 1000;
 const COMMAND_CADENCE_ALERT_OWNER_ID = (process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
   .split(',')[0]
   .trim();
@@ -9466,11 +9467,13 @@ let globalWindowCount = 0;
 
 function recordCommandCadence(message) {
   const userId = message.author.id;
+  const serverId = message.guild?.id || 'direct-message';
+  const cadenceKey = `${userId}:${serverId}`;
   const now = message.createdTimestamp || Date.now();
   const commandInput = message.content.startsWith(PREFIX)
     ? message.content.slice(PREFIX.length).trim().split(/\s+/)
     : [];
-  const state = commandCadenceByUser.get(userId) || {
+  const state = commandCadenceByUser.get(cadenceKey) || {
     lastMessageAt: 0,
     recentMessages: [],
   };
@@ -9478,7 +9481,7 @@ function recordCommandCadence(message) {
   state.recentMessages.push({ at: now, commandText });
   if (state.recentMessages.length > 6) state.recentMessages.shift();
   state.lastMessageAt = now;
-  commandCadenceByUser.set(userId, state);
+  commandCadenceByUser.set(cadenceKey, state);
   if (commandCadenceByUser.size > 5000) {
     for (const [id, entry] of commandCadenceByUser) {
       if (now - entry.lastMessageAt > 60 * 60 * 1000) commandCadenceByUser.delete(id);
@@ -9490,6 +9493,7 @@ function recordCommandCadence(message) {
 
   const recent = state.recentMessages;
   if (recent.length < 6 || recent.some((entry) => !entry.commandText)) return null;
+  if (recent[recent.length - 1].at - recent[0].at > COMMAND_CADENCE_WINDOW_MS) return null;
   const intervals = recent.slice(1).map((entry, index) => entry.at - recent[index].at);
   if (intervals.some((interval) => interval <= 0)) return null;
   const sortedIntervals = [...intervals].sort((a, b) => a - b);
@@ -9509,6 +9513,8 @@ function recordCommandCadence(message) {
     pattern: repeatedCommand
       ? `${commands[0]} repeated 6 times`
       : `${commands[0]} → ${commands[1]} repeated 3 times`,
+    username: message.author.username,
+    server: message.guild ? `${message.guild.name} (${message.guild.id})` : 'Direct Message',
     startedAt: recent[0].at,
     detectedAt: recent[recent.length - 1].at,
     intervalMs: medianInterval,
@@ -9521,7 +9527,9 @@ async function notifyOwnerOfCommandCadence(userId, activity) {
   await owner.send({
     content:
       `Possible automated command pattern detected\n` +
+      `Username: ${activity.username}\n` +
       `User ID: ${userId}\n` +
+      `Server: ${activity.server}\n` +
       `Pattern: ${activity.pattern}\n` +
       `Interval: about ${activity.intervalMs} ms (within ±${Math.round(activity.intervalToleranceMs)} ms) across five consecutive intervals\n` +
       `Observed: <t:${Math.floor(activity.startedAt / 1000)}:F> – <t:${Math.floor(activity.detectedAt / 1000)}:F>\n` +
