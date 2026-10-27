@@ -9470,16 +9470,12 @@ function recordCommandCadence(message) {
   const commandInput = message.content.startsWith(PREFIX)
     ? message.content.slice(PREFIX.length).trim().split(/\s+/)
     : [];
-  if (commandInput[0]?.toLowerCase() === 'b' && commandInput[1]?.toLowerCase() === 'ev') {
-    commandCadenceByUser.delete(userId);
-    return null;
-  }
   const state = commandCadenceByUser.get(userId) || {
     lastMessageAt: 0,
     recentMessages: [],
   };
-  const commandName = commandInput[0]?.toLowerCase() || null;
-  state.recentMessages.push({ at: now, commandName });
+  const commandText = commandInput.length ? `${PREFIX}${commandInput.join(' ')}` : null;
+  state.recentMessages.push({ at: now, commandText });
   if (state.recentMessages.length > 6) state.recentMessages.shift();
   state.lastMessageAt = now;
   commandCadenceByUser.set(userId, state);
@@ -9493,7 +9489,7 @@ function recordCommandCadence(message) {
   }
 
   const recent = state.recentMessages;
-  if (recent.length < 6 || recent.some((entry) => !entry.commandName)) return null;
+  if (recent.length < 6 || recent.some((entry) => !entry.commandText)) return null;
   const intervals = recent.slice(1).map((entry, index) => entry.at - recent[index].at);
   if (intervals.some((interval) => interval <= 0)) return null;
   const sortedIntervals = [...intervals].sort((a, b) => a - b);
@@ -9501,15 +9497,18 @@ function recordCommandCadence(message) {
   const intervalToleranceMs = Math.max(150, medianInterval * 0.15);
   if (intervals.some((interval) => Math.abs(interval - medianInterval) > intervalToleranceMs)) return null;
 
-  const names = recent.map((entry) => entry.commandName);
-  const repeatedCommand = names.every((name) => name === names[0]);
-  const repeatedSequence = names[0] === names[2] && names[2] === names[4]
-    && names[1] === names[3] && names[3] === names[5]
-    && names[0] !== names[1];
+  const commands = recent.map((entry) => entry.commandText);
+  const commandKeys = commands.map((command) => command.toLowerCase());
+  const repeatedCommand = commandKeys.every((command) => command === commandKeys[0]);
+  const repeatedSequence = commandKeys[0] === commandKeys[2] && commandKeys[2] === commandKeys[4]
+    && commandKeys[1] === commandKeys[3] && commandKeys[3] === commandKeys[5]
+    && commandKeys[0] !== commandKeys[1];
   if (!repeatedCommand && !repeatedSequence) return null;
 
   return {
-    pattern: repeatedCommand ? `.${names[0]} repeated 6 times` : `.${names[0]} → .${names[1]} repeated 3 times`,
+    pattern: repeatedCommand
+      ? `${commands[0]} repeated 6 times`
+      : `${commands[0]} → ${commands[1]} repeated 3 times`,
     startedAt: recent[0].at,
     detectedAt: recent[recent.length - 1].at,
     intervalMs: medianInterval,
