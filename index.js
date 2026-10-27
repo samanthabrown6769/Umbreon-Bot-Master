@@ -16183,34 +16183,6 @@ client.on('messageCreate', async (message) => {
       }
       const standardAbilities = buddyAbilities.filter((ability) => !ability.hidden);
       const currentAbility = buddy.ability || standardAbilities[0]?.name;
-      const abilityText = `**Ability**\nCurrent: **${currentAbility || 'Unknown'}**\n\n`;
-      const embed = new EmbedBuilder()
-        .setColor(0x3498db)
-        .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
-        .setDescription(
-          `**Level:** ${level}\n` +
-          `**Held Item:** ${buddy.held_item || 'None'}\n` +
-          `**Friendship:** 💖 ${buddy.friendship ?? 0}/255\n` +
-          (evoRoute.length ? `**Evolves:** ${evoRoute.join(' • ')}\n` : '') + '\n' +
-          abilityText +
-          `**Type**\n${typeLabel}\n\n` +
-          `**${expProgress}**\n${buddyExpBar}\n\n` +
-          `**Pokémon IVs**\n` +
-          `\`ATK\` ${ivValue(buddy.atk_iv)}  \`DEF\` ${ivValue(buddy.def_iv)}\n` +
-          `\`SPA\` ${ivValue(buddy.spa_iv)}  \`SPD\` ${ivValue(buddy.spdef_iv)}\n` +
-          `\`HP\` ${ivValue(buddy.hp_iv)}  \`SPE\` ${ivValue(buddy.spd_iv)}\n\n` +
-          `**Pokémon EVs [${EV_STATS.reduce((sum, stat) => sum + (buddy[`ev_${stat}`] || 0), 0)}/${EV_TOTAL_LIMIT}]**\n` +
-          `\`ATK\` ${buddy.ev_atk || 0}  \`DEF\` ${buddy.ev_def || 0}  \`HP\` ${buddy.ev_hp || 0}  ` +
-          `\`SPA\` ${buddy.ev_spa || 0}  \`SPD\` ${buddy.ev_spdef || 0}  \`SPE\` ${buddy.ev_spe || 0}\n\n` +
-          `**Pokémon Stats**\n` +
-          `⚔️ \`Atk\` **${buddy.atk}**  🛡️ \`Def\` **${buddy.def}**\n` +
-          `✨ \`SpA\` **${buddy.spa}**  🛡️ \`SpD\` **${buddy.spdef}**\n` +
-          `❤️ \`HP\` **${buddy.max_hp}**  ⚡ \`Spe\` **${buddy.spd}**`
-        )
-        .setFooter({
-          text: `${buddy.display_name || buddy.name} Level: ${level} • Total EXP: ${buddy.experience.toLocaleString()}` +
-            (expShareEnabled ? ' • Exp. Share enabled' : ''),
-        });
       const buddyImage = buddy.is_golden
         ? getGoldenSpriteUrl(buddy.species_id, buddy.slug)
         : getPokemonShowdownSprite(
@@ -16218,7 +16190,38 @@ client.on('messageCreate', async (message) => {
           Boolean(buddy.is_shiny),
           null
         ) || (buddy.is_shiny ? (buddy.shiny_sprite || buddy.sprite) : buddy.sprite);
-      if (buddyImage) embed.setImage(buddyImage);
+      const buildBuddyEmbed = (ability) => {
+        const buddyEmbed = new EmbedBuilder()
+          .setColor(0x3498db)
+          .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
+          .setDescription(
+            `**Level:** ${level}\n` +
+            `**Held Item:** ${buddy.held_item || 'None'}\n` +
+            `**Friendship:** 💖 ${buddy.friendship ?? 0}/255\n` +
+            (evoRoute.length ? `**Evolves:** ${evoRoute.join(' • ')}\n` : '') + '\n' +
+            `**Ability**\nCurrent: **${ability || 'Unknown'}**\n\n` +
+            `**Type**\n${typeLabel}\n\n` +
+            `**${expProgress}**\n${buddyExpBar}\n\n` +
+            `**Pokémon IVs**\n` +
+            `\`ATK\` ${ivValue(buddy.atk_iv)}  \`DEF\` ${ivValue(buddy.def_iv)}\n` +
+            `\`SPA\` ${ivValue(buddy.spa_iv)}  \`SPD\` ${ivValue(buddy.spdef_iv)}\n` +
+            `\`HP\` ${ivValue(buddy.hp_iv)}  \`SPE\` ${ivValue(buddy.spd_iv)}\n\n` +
+            `**Pokémon EVs [${EV_STATS.reduce((sum, stat) => sum + (buddy[`ev_${stat}`] || 0), 0)}/${EV_TOTAL_LIMIT}]**\n` +
+            `\`ATK\` ${buddy.ev_atk || 0}  \`DEF\` ${buddy.ev_def || 0}  \`HP\` ${buddy.ev_hp || 0}  ` +
+            `\`SPA\` ${buddy.ev_spa || 0}  \`SPD\` ${buddy.ev_spdef || 0}  \`SPE\` ${buddy.ev_spe || 0}\n\n` +
+            `**Pokémon Stats**\n` +
+            `⚔️ \`Atk\` **${buddy.atk}**  🛡️ \`Def\` **${buddy.def}**\n` +
+            `✨ \`SpA\` **${buddy.spa}**  🛡️ \`SpD\` **${buddy.spdef}**\n` +
+            `❤️ \`HP\` **${buddy.max_hp}**  ⚡ \`Spe\` **${buddy.spd}**`
+          )
+          .setFooter({
+            text: `${buddy.display_name || buddy.name} Level: ${level} • Total EXP: ${buddy.experience.toLocaleString()}` +
+              (expShareEnabled ? ' • Exp. Share enabled' : ''),
+          });
+        if (buddyImage) buddyEmbed.setImage(buddyImage);
+        return buddyEmbed;
+      };
+      let embed = buildBuddyEmbed(currentAbility);
       const movesButtonRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('buddy:view-moves')
@@ -16239,6 +16242,7 @@ client.on('messageCreate', async (message) => {
         componentType: ComponentType.Button,
         time: 120_000,
       });
+      let buddyAbilityCollector = null;
       collector.on('collect', async (interaction) => {
         if (interaction.user.id !== userId) {
           await interaction.reply({
@@ -16248,10 +16252,18 @@ client.on('messageCreate', async (message) => {
           return;
         }
         try {
-          await interaction.deferReply({ ephemeral: true });
           const activeBuddy = getUserBuddy(userId);
           if (!activeBuddy || activeBuddy.id !== buddy.id) {
-            await interaction.editReply('Your buddy has changed. Run `.buddy` again to view its information.');
+            await interaction.update({
+              content: 'Your buddy has changed. Run `.buddy` again to view its information.',
+              embeds: [],
+              components: [],
+            });
+            return;
+          }
+          if (interaction.customId === 'buddy:back') {
+            buddyAbilityCollector?.stop('back');
+            await interaction.update({ embeds: [embed], components: [movesButtonRow] });
             return;
           }
           if (interaction.customId === 'buddy:view-ability') {
@@ -16260,10 +16272,22 @@ client.on('messageCreate', async (message) => {
               currentAbilities = await fetchPokemonAbilities(activeBuddy.form_id || activeBuddy.pokemon_id);
             } catch (error) {
               console.error(`Failed to load ability options for buddy catch ${activeBuddy.id}:`, error);
-              await interaction.editReply('❌ Ability data could not be loaded right now. Please try again later.');
+              await interaction.update({
+                embeds: [new EmbedBuilder()
+                  .setColor(0xe74c3c)
+                  .setTitle(`${activeBuddy.display_name || activeBuddy.name} — Abilities`)
+                  .setDescription('❌ Ability data could not be loaded right now. Please try again later.')],
+                components: [new ActionRowBuilder().addComponents(
+                  new ButtonBuilder()
+                    .setCustomId('buddy:back')
+                    .setLabel('Back to Buddy')
+                    .setStyle(ButtonStyle.Secondary)
+                )],
+              });
               return;
             }
             const normal = currentAbilities.filter((ability) => !ability.hidden);
+            const hiddenAbility = currentAbilities.find((ability) => ability.hidden);
             const activeAbility = activeBuddy.ability || normal[0]?.name;
             const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
             const choices = [];
@@ -16289,42 +16313,64 @@ client.on('messageCreate', async (message) => {
                 });
               }
             }
-            if (!choices.length) {
-              await interaction.editReply(
-                `**Standard:** ${normal[0]?.name || 'None'}\n` +
-                `**Secondary:** ${normal[1]?.name || 'None'}\n` +
-                `**Hidden:** ${currentAbilities.find((ability) => ability.hidden)?.name || 'None'}\n\n` +
-                'No ability change is available. A Capsule requires another Standard Ability; a Patch requires an unused Hidden Ability.'
-              );
-              return;
-            }
-            const itemByValue = new Map();
-            const menu = new StringSelectMenuBuilder()
-              .setCustomId(`buddy-ability-select:${activeBuddy.id}`)
-              .setPlaceholder('Choose an ability and matching item');
-            for (const [index, choice] of choices.entries()) {
-              const value = `${index}`;
-              itemByValue.set(value, choice);
-              menu.addOptions(new StringSelectMenuOptionBuilder()
-                .setLabel(`${choice.name} — ${choice.itemName}`)
-                .setDescription(choice.description)
-                .setValue(value)
-                .setEmoji(choice.emoji));
-            }
-            const abilityMessage = await interaction.editReply({
-              content:
-                `Current ability: **${activeAbility || 'Unknown'}**\n` +
-                `Standard: **${normal[0]?.name || 'None'}** • ` +
-                `Secondary: **${normal[1]?.name || 'None'}** • ` +
-                `Hidden: **${currentAbilities.find((ability) => ability.hidden)?.name || 'None'}**\n` +
-                'Use an Ability Capsule to switch Standard abilities, or an Ability Patch to switch to the Hidden ability.',
-              components: [new ActionRowBuilder().addComponents(menu)],
+            const buildAbilityPage = (current, notice = '') => {
+              const abilityPage = new EmbedBuilder()
+                .setColor(0x3498db)
+                .setTitle(`${activeBuddy.display_name || activeBuddy.name} — Abilities`)
+                .setDescription(
+                  `**Current:** ${current || 'Unknown'}\n` +
+                  `**Standard:** ${normal[0]?.name || 'None'}\n` +
+                  `**Secondary:** ${normal[1]?.name || 'None'}\n` +
+                  `**Hidden:** ${hiddenAbility?.name || 'None'}\n\n` +
+                  (notice ? `${notice}\n\n` : '') +
+                  (choices.length
+                    ? `Select an ability below. ${EMOJIS.abilityCapsule} Capsule switches between standard abilities; ` +
+                      `${EMOJIS.abilityPatch} Patch switches to the hidden ability.`
+                    : 'No ability change is available. A Capsule requires another standard ability; a Patch requires an unused hidden ability.')
+                );
+              if (buddyImage) abilityPage.setImage(buddyImage);
+              return abilityPage;
+            };
+            const itemByValue = new Map(choices.map((choice, index) => [`${index}`, choice]));
+            const abilityComponents = choices.length
+              ? [
+                new ActionRowBuilder().addComponents(
+                  new StringSelectMenuBuilder()
+                    .setCustomId(`buddy-ability-select:${activeBuddy.id}`)
+                    .setPlaceholder('Choose an ability and matching item')
+                    .addOptions(choices.map((choice, index) =>
+                      new StringSelectMenuOptionBuilder()
+                        .setLabel(`${choice.name} — ${choice.itemName}`)
+                        .setDescription(choice.description)
+                        .setValue(`${index}`)
+                        .setEmoji(choice.emoji)
+                    ))
+                ),
+                new ActionRowBuilder().addComponents(
+                  new ButtonBuilder()
+                    .setCustomId('buddy:back')
+                    .setLabel('Back to Buddy')
+                    .setStyle(ButtonStyle.Secondary)
+                ),
+              ]
+              : [new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                  .setCustomId('buddy:back')
+                  .setLabel('Back to Buddy')
+                  .setStyle(ButtonStyle.Secondary)
+              )];
+            buddyAbilityCollector?.stop('replaced');
+            await interaction.update({
+              embeds: [buildAbilityPage(activeAbility)],
+              components: abilityComponents,
             });
-            const abilityCollector = abilityMessage.createMessageComponentCollector({
+            if (!choices.length) return;
+
+            buddyAbilityCollector = buddyMessage.createMessageComponentCollector({
               componentType: ComponentType.StringSelect,
               time: 60_000,
             });
-            abilityCollector.on('collect', async (selection) => {
+            buddyAbilityCollector.on('collect', async (selection) => {
               if (selection.user.id !== userId) {
                 await selection.reply({
                   content: 'Only the trainer who opened this ability menu can use it.',
@@ -16334,33 +16380,57 @@ client.on('messageCreate', async (message) => {
               }
               const choice = itemByValue.get(selection.values[0]);
               if (!choice) {
-                abilityCollector.stop('invalid');
                 await selection.update({
                   content: '❌ That ability selection is invalid. Run `.buddy` again.',
+                  embeds: [],
                   components: [],
                 });
+                buddyAbilityCollector.stop('invalid');
+                return;
+              }
+              const latestBuddyBeforeChange = getUserBuddy(userId);
+              if (!latestBuddyBeforeChange || latestBuddyBeforeChange.id !== activeBuddy.id) {
+                await selection.update({
+                  content: 'Your buddy has changed. Run `.buddy` again to view its information.',
+                  embeds: [],
+                  components: [],
+                });
+                buddyAbilityCollector.stop('buddy_changed');
                 return;
               }
               const result = changePokemonAbility(userId, activeBuddy.id, choice.name, choice.itemName);
-              const response = result.error === 'item_not_owned'
+              const notice = result.error === 'item_not_owned'
                 ? `❌ You no longer have an ${choice.itemName}.`
                 : result.error === 'already_has_ability'
                   ? `**${activeBuddy.name}** already has **${choice.name}**.`
                   : result.error === 'pokemon_not_found'
                     ? 'This Pokémon is no longer in your storage.'
                     : `✅ **${activeBuddy.name}** now has **${result.ability}**. Used 1 ${choice.emoji} ${choice.itemName}.`;
-              await selection.update({ content: response, components: [] });
-              abilityCollector.stop('changed');
+              const latestBuddy = getUserBuddy(userId);
+              const latestCurrentAbility = latestBuddy?.id === activeBuddy.id
+                ? latestBuddy.ability || normal[0]?.name
+                : null;
+              if (!result.error && latestCurrentAbility) {
+                embed = buildBuddyEmbed(latestCurrentAbility);
+              }
+              await selection.update({
+                embeds: [buildAbilityPage(latestCurrentAbility, notice)],
+                components: [abilityComponents[1]],
+              });
+              buddyAbilityCollector.stop('changed');
             });
-            abilityCollector.on('end', (_collected, reason) => {
-              if (reason !== 'changed' && reason !== 'invalid') {
-                interaction.editReply({ components: [] }).catch((error) => {
-                  console.error(`Failed to remove expired ability selector for buddy ${activeBuddy.id}:`, error);
-                });
+            buddyAbilityCollector.on('end', async (_collected, reason) => {
+              if (reason === 'time') {
+                try {
+                  await buddyMessage.edit({ embeds: [embed], components: [movesButtonRow] });
+                } catch (error) {
+                  console.error(`Failed to close expired ability page for buddy ${activeBuddy.id}:`, error);
+                }
               }
             });
             return;
           }
+          await interaction.deferReply({ ephemeral: true });
           const learnsetData = getPokemonLearnset(activeBuddy.id, userId);
           if (!learnsetData) {
             await interaction.editReply('Your current buddy could not be found in your box.');
@@ -16401,12 +16471,12 @@ client.on('messageCreate', async (message) => {
             pager.on('end', () => interaction.editReply(buildPayload(true)).catch(() => {}));
           }
         } catch (error) {
-          console.error(`Failed to show buddy moves for user ${userId}:`, error);
+          console.error(`Failed to handle buddy button for user ${userId}:`, error);
           if (interaction.deferred || interaction.replied) {
-            await interaction.editReply('Could not load your buddy’s moves. Please try `.moves`.');
+            await interaction.editReply('Could not update your buddy’s information. Please run `.buddy` again.');
           } else {
             await interaction.reply({
-              content: 'Could not load your buddy’s moves. Please try `.moves`.',
+              content: 'Could not update your buddy’s information. Please run `.buddy` again.',
               ephemeral: true,
             });
           }
