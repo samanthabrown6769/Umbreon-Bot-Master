@@ -16183,14 +16183,10 @@ client.on('messageCreate', async (message) => {
         console.error(`Failed to load ability data for buddy catch ${buddy.id}:`, error);
       }
       const standardAbilities = buddyAbilities.filter((ability) => !ability.hidden);
-      const hiddenAbility = buddyAbilities.find((ability) => ability.hidden);
       const currentAbility = buddy.ability || standardAbilities[0]?.name;
-      const abilityText = buddyAbilities.length
+      const abilityText = currentAbility
         ? `**Ability**\n` +
-          `Primary: **${standardAbilities[0]?.name || 'None'}**\n` +
-          `Secondary: **${standardAbilities[1]?.name || 'None'}**\n` +
-          `Hidden: **${hiddenAbility?.name || 'None'}**\n` +
-          `Current: **${currentAbility || 'Unknown'}**\n\n`
+          `Current: **${currentAbility}**\n\n`
         : '**Ability**\nUnable to load ability data right now.\n\n';
       const embed = new EmbedBuilder()
         .setColor(0x3498db)
