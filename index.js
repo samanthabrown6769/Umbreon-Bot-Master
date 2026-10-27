@@ -11987,6 +11987,73 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
+      if (command === 'admin' && subtype === 'users') {
+        const users = db.prepare(`
+          SELECT id
+          FROM users
+          WHERE id IS NOT NULL AND TRIM(id) != ''
+          ORDER BY id
+        `).all();
+        if (!users.length) return message.reply('The bot has no registered users yet.');
+
+        const pageSize = 50;
+        const totalPages = Math.ceil(users.length / pageSize);
+        let page = 0;
+        const buildEmbed = () => new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`🤖 Bot Users (${users.length})`)
+          .setDescription(users
+            .slice(page * pageSize, (page + 1) * pageSize)
+            .map(({ id }) => `\`${id}\``)
+            .join('\n'))
+          .setFooter({ text: `Page ${page + 1} / ${totalPages}` });
+        const buildButtons = (disabled = false) => new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('admin-users-prev')
+            .setLabel('Back')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled || page === 0),
+          new ButtonBuilder()
+            .setCustomId('admin-users-next')
+            .setLabel('Next')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled || page >= totalPages - 1)
+        );
+        let listMessage;
+        try {
+          listMessage = await message.author.send({
+            embeds: [buildEmbed()],
+            components: totalPages > 1 ? [buildButtons()] : [],
+            allowedMentions: { parse: [] },
+          });
+        } catch (error) {
+          console.error(`Failed to DM user list to bot admin ${userId}:`, error);
+          return message.reply('❌ I could not DM you the user list. Please enable direct messages and try again.');
+        }
+        await message.reply(`✅ Sent the user list (${users.length} users) to your DMs.`);
+        if (totalPages > 1) {
+          const listCollector = listMessage.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 120_000,
+          });
+          listCollector.on('collect', async (interaction) => {
+            if (interaction.user.id !== userId) {
+              return interaction.reply({ content: 'Only the bot admin who requested this list can browse it.', ephemeral: true });
+            }
+            page = interaction.customId === 'admin-users-prev'
+              ? Math.max(0, page - 1)
+              : Math.min(totalPages - 1, page + 1);
+            return interaction.update({ embeds: [buildEmbed()], components: [buildButtons()] });
+          });
+          listCollector.on('end', () => {
+            listMessage.edit({ components: [buildButtons(true)] }).catch((error) => {
+              console.error(`Failed to disable expired user-list controls for bot admin ${userId}:`, error);
+            });
+          });
+        }
+        return;
+      }
+
       if (command === 'admin' && subtype === 'globalreward') {
         if (args.length !== 2 || action !== 'confirm') {
           return message.reply(`Usage: \`${PREFIX}admin globalreward confirm\`.`);
@@ -12049,6 +12116,8 @@ client.on('messageCreate', async (message) => {
             `• Edit the files in \`pokemon-database/\` (names, rarity, numbers, sprites) and restart the bot to apply`
           ),
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Market & Misc').setDescription(
+            `• \`${PREFIX}admin users\` — DM all Discord user IDs registered with the bot\n` +
+            `• \`${PREFIX}admin servers\` — DM the servers the bot is in\n` +
             `• \`${PREFIX}admin market listings\` — Create 10 random market listings\n` +
             `• \`${PREFIX}admin perks [@user|user ID]\` — Check someone's Patreon perks\n` +
             `• \`${PREFIX}admin market stock <Pokémon|number> <quantity> <price> [shiny]\`\n` +
