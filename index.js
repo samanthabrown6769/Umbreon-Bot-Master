@@ -162,6 +162,7 @@ const {
   getBattleTrainerStats,
   getBattleTrainerIconUnlock,
   getGlobalBattleTrainerIconUnlocks,
+  awardPokemonEvs,
   CB_CONFIG,
   getCatchbotData,
   upgradeCatchbot,
