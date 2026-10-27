@@ -6430,7 +6430,6 @@ function buildChallengerListEmbed(user, userId) {
     .setTitle(`📨 ${user.username}'s Battle Invitations`)
     .setDescription(
       `Challengers invite you to battle while you catch, fish or battle. Any challenger can invite you at any time.\n\n` +
-      `Challengers have **1.5× HP**, **2× Attack**, and **1.5× Defense** compared with normal opponents, and an invite disappears once you win or lose.\n\n` +
       `Type \`${PREFIX}ch <name/id>\` to start the battle.\n\n` +
       `All challenges have a *chance* to drop a special battle-exclusive ${EMOJIS.golden} Pokémon and their trainer battle icon.\n\n` +
       sections.join('\n\n') +
@@ -16183,16 +16182,8 @@ client.on('messageCreate', async (message) => {
         console.error(`Failed to load ability data for buddy catch ${buddy.id}:`, error);
       }
       const standardAbilities = buddyAbilities.filter((ability) => !ability.hidden);
-      const hiddenAbility = buddyAbilities.find((ability) => ability.hidden);
       const currentAbility = buddy.ability || standardAbilities[0]?.name;
-      const abilityText = buddyAbilities.length
-        ? `**Abilities**\n` +
-          `Standard: **${standardAbilities[0]?.name || 'None'}**\n` +
-          `Secondary: **${standardAbilities[1]?.name || 'None'}**\n` +
-          `Hidden: **${hiddenAbility?.name || 'None'}**\n` +
-          `Current: **${currentAbility || 'Unknown'}**\n\n`
-        : `**Ability**\nCurrent: **${currentAbility || 'Unknown'}**\n` +
-          'Standard, secondary, and hidden ability data could not be loaded.\n\n';
+      const abilityText = `**Ability**\nCurrent: **${currentAbility || 'Unknown'}**\n\n`;
       const embed = new EmbedBuilder()
         .setColor(0x3498db)
         .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
