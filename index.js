@@ -5591,7 +5591,7 @@ async function askForBall(
     name: target.name.replace(/\btotem\b/gi, '').replace(/\s+/g, ' ').trim(),
     overworldAbility,
     friskReveal: mode === 'catch'
-      && counterSource === 'pokemon'
+      && (counterSource === 'pokemon' || allowAnyUserCatch)
       && String(overworldAbility).toLowerCase() === 'frisk',
   };
   if (mode === 'catch' && counterSource === 'pokemon') {
@@ -13415,6 +13415,9 @@ client.on('messageCreate', async (message) => {
                 : 'No Pokémon were found in the catalog.'
             );
           }
+          if (['mega', 'shiny mega', 'gmax', 'shiny gmax'].includes(String(form.rarity).toLowerCase())) {
+            return message.reply('Mega and Gmax forms cannot be spawned with `.p admin`.');
+          }
           const heldItems = new Map([
             ...WILD_HELD_ITEM_GROUPS,
             ...RESEARCH_HOLDABLE_ITEM_NAMES.map((name) => ({
@@ -13455,6 +13458,9 @@ client.on('messageCreate', async (message) => {
           return message.reply(
             `No exact Pokémon or form named **${requestedName}** was found in the catalog.`
           );
+        }
+        if (['mega', 'shiny mega', 'gmax', 'shiny gmax'].includes(String(pokemon.rarity).toLowerCase())) {
+          return message.reply('Mega and Gmax forms cannot be spawned with `.p admin`.');
         }
         const shinyNumberRequested = /^\d+$/.test(requestedName) && (() => {
           const allForms = db.prepare('SELECT * FROM pokemon_forms ORDER BY species_id, id').all();
