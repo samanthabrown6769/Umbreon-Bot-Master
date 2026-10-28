@@ -4827,16 +4827,25 @@ function getResearchHeldItemError(userId, itemName, now = Date.now()) {
   return null;
 }
 
-function unholdEvolutionItem(userId, pokemonQuery) {
+function unholdEvolutionItem(userId, pokemonQuery, itemQuery = null) {
   assertUserId(userId);
+  let itemName = null;
+  if (itemQuery) {
+    itemName = findEvolutionItem(itemQuery) || findBattleHeldItem(itemQuery);
+    if (!itemName) return { error: 'unknown_item' };
+    if (EVOLUTION_ITEMS[itemName]?.kind !== 'held' && !BATTLE_HELD_ITEM_NAMES.has(itemName)) {
+      return { error: 'not_holdable', itemName };
+    }
+  }
   return db.transaction(() => {
     const owned = findOwnedPokemonRows(userId, pokemonQuery);
     if (!owned.length) return { error: 'pokemon_not_owned' };
-    const target = owned.find((row) =>
+    const holding = owned.filter((row) =>
       EVOLUTION_ITEMS[row.held_item]?.kind === 'held'
       || BATTLE_HELD_ITEM_NAMES.has(row.held_item)
     );
-    if (!target) return { error: 'nothing_held' };
+    const target = holding.find((row) => !itemName || row.held_item === itemName);
+    if (!target) return { error: itemName && holding.length ? 'different_item' : 'nothing_held', itemName };
     db.prepare('UPDATE catches SET held_item = NULL WHERE id = ? AND user_id = ?')
       .run(target.id, userId);
     syncDuplicateCatchState(userId, target.id);
@@ -5210,9 +5219,12 @@ function getUserTeam(userId) {
   }));
 }
 
-function getUserBuddy(userId) {
+function getUserBuddy(userId, catchId = null) {
   assertUserId(userId);
-  const buddyId = getUser(userId).buddy_catch_id;
+  if (catchId !== null && (!Number.isSafeInteger(catchId) || catchId <= 0)) {
+    throw new TypeError('Buddy catch ID must be a positive safe integer.');
+  }
+  const buddyId = catchId ?? getUser(userId).buddy_catch_id;
   if (!buddyId) return null;
   const buddy = db.prepare(`
     SELECT catches.*, pokemon_forms.types, pokemon_forms.slug,
@@ -5225,7 +5237,8 @@ function getUserBuddy(userId) {
     FROM catches
     LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
     WHERE catches.id = ? AND catches.user_id = ?
-  `).get(buddyId, userId);
+      AND (? = 0 OR catches.ever_buddy = 1)
+  `).get(buddyId, userId, catchId === null ? 0 : 1);
   if (!buddy) return null;
   buddy.spa = calculateStat(
     buddy.base_spa ?? 50, buddy.spa_iv, buddy.level, false, Boolean(buddy.is_shiny), buddy.ev_spa,

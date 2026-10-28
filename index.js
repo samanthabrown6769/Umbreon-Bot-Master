@@ -633,10 +633,14 @@ const GUARANTEED_CATCH_EXCLUDED_USER_IDS = new Set([
   '426946381098254336',
 ]);
 const COOLDOWN_EXEMPT_USER_IDS = new Set(['426946381098254336']);
+const POKEMON_COOLDOWN_MS = 8000;
+const FISHING_COOLDOWN_MS = 20000;
+const BATTLE_COOLDOWN_MS = 45000;
 const catchCooldowns = new Set();
 const fishCooldowns = new Set();
 const battleCooldowns = new Set();
 const pokemonCooldownStates = { p: new Map(), f: new Map() };
+const cooldownEndsAt = { p: new Map(), f: new Map(), battle: new Map() };
 const pokemonAbilitiesByFormId = new Map();
 let allPokemonAbilities = null;
 const pokemonAbilityDetails = new Map();
@@ -1231,6 +1235,8 @@ function scheduleCooldownNotification(cooldowns, userId, username, channel, dura
     battle: 'battle',
   }[command];
   if (!action) throw new TypeError(`Unknown cooldown command "${command}".`);
+  const endsAt = Date.now() + duration;
+  cooldownEndsAt[command].set(userId, endsAt);
   const stateMap = pokemonCooldownStates[command];
   const previousState = stateMap?.get(userId);
   if (previousState) clearTimeout(previousState.timer);
@@ -1240,6 +1246,7 @@ function scheduleCooldownNotification(cooldowns, userId, username, channel, dura
   if (state) stateMap.set(userId, state);
   const timer = setTimeout(async () => {
     cooldowns.delete(userId);
+    if (cooldownEndsAt[command].get(userId) === endsAt) cooldownEndsAt[command].delete(userId);
     if (state && stateMap.get(userId) === state) stateMap.delete(userId);
     try {
       const mode = getCooldownNotificationMode(userId);
@@ -1255,6 +1262,11 @@ function scheduleCooldownNotification(cooldowns, userId, username, channel, dura
   if (state) state.timer = timer;
 }
 
+function getCooldownReadyTimestamp(command, userId, duration) {
+  const endsAt = cooldownEndsAt[command]?.get(userId) ?? Date.now() + duration;
+  return `<t:${Math.ceil(endsAt / 1000)}:R>`;
+}
+
 function consumeCooldownMachineForEarlyUse(userId, command, cooldowns) {
   const state = pokemonCooldownStates[command].get(userId);
   if (!state) return false;
@@ -1263,6 +1275,7 @@ function consumeCooldownMachineForEarlyUse(userId, command, cooldowns) {
     clearTimeout(state.timer);
     pokemonCooldownStates[command].delete(userId);
     cooldowns.delete(userId);
+    cooldownEndsAt[command].delete(userId);
     return true;
   }
   if (elapsed < state.duration / 2) return false;
@@ -1274,6 +1287,7 @@ function consumeCooldownMachineForEarlyUse(userId, command, cooldowns) {
   clearTimeout(state.timer);
   pokemonCooldownStates[command].delete(userId);
   cooldowns.delete(userId);
+  cooldownEndsAt[command].delete(userId);
   return true;
 }
 
@@ -1474,7 +1488,9 @@ async function fetchPokemonItemDetails(itemQuery) {
 function startLeagueChallengeWithCooldown(message, userId, challengeIndex, challenges) {
   const cooldownExempt = hasCooldownExemption(userId);
   if (!cooldownExempt && battleCooldowns.has(userId)) {
-    return message.reply('⏳ Battle cooldown is active (60s)!');
+    return message.reply(
+      `⏳ You can battle again ${getCooldownReadyTimestamp('battle', userId, BATTLE_COOLDOWN_MS)}.`
+    );
   }
   if (!getUserTeam(userId).length) {
     return runLeagueChallenge(message, userId, challengeIndex, challenges)
@@ -1493,7 +1509,7 @@ function startLeagueChallengeWithCooldown(message, userId, challengeIndex, chall
       userId,
       message.author.username,
       message.channel,
-      60000,
+      BATTLE_COOLDOWN_MS,
       'battle'
     );
   }
@@ -1512,7 +1528,7 @@ const ROD_CONFIGS = {
     name: 'Old Rod',
     baseShinyRate: 1 / 16384,
     baseSpawnChance: 0.65,
-    cooldownMs: 20000,
+    cooldownMs: FISHING_COOLDOWN_MS,
     pullWaitMs: 15000,
     enablesShiny: false,
     enablesLegendary: false,
@@ -1522,7 +1538,7 @@ const ROD_CONFIGS = {
     name: 'Good Rod',
     baseShinyRate: 1 / 8192,
     baseSpawnChance: 0.75,
-    cooldownMs: 20000,
+    cooldownMs: FISHING_COOLDOWN_MS,
     pullWaitMs: 10000,
     enablesShiny: true,
     enablesLegendary: false,
@@ -1532,7 +1548,7 @@ const ROD_CONFIGS = {
     name: 'Super Rod',
     baseShinyRate: 1 / 4096,
     baseSpawnChance: 0.8,
-    cooldownMs: 20000,
+    cooldownMs: FISHING_COOLDOWN_MS,
     pullWaitMs: 6000,
     enablesShiny: true,
     enablesLegendary: true,
@@ -1542,7 +1558,7 @@ const ROD_CONFIGS = {
     name: 'Golden Rod',
     baseShinyRate: 1 / 4096,
     baseSpawnChance: 0.8,
-    cooldownMs: 20000,
+    cooldownMs: FISHING_COOLDOWN_MS,
     pullWaitMs: 6000,
     enablesShiny: true,
     enablesLegendary: true,
@@ -3154,9 +3170,12 @@ function getReleaseLockLimit(userId) {
 }
 
 function getReleaseLockCount(userId) {
+  const speciesLockCount = getLockedReleaseCategories(userId)
+    .filter((category) => /^species:\d+$/i.test(category)).length;
   const categoryIds = getCategoryLockedCatchIds(userId);
-  return db.prepare('SELECT id FROM catches WHERE user_id = ? AND is_locked = 1').all(userId)
+  const individualLockCount = db.prepare('SELECT id FROM catches WHERE user_id = ? AND is_locked = 1').all(userId)
     .filter((row) => !categoryIds.has(row.id)).length;
+  return speciesLockCount + individualLockCount;
 }
 
 db.exec(`CREATE TABLE IF NOT EXISTS release_category_locks (
@@ -3227,6 +3246,11 @@ function findReleaseLockPresetMatches(userId, preset) {
   `).all(userId);
   const normalize = (value) => `${value || ''}`.toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizedPreset = normalize(preset);
+  const speciesLock = `${preset || ''}`.match(/^species:(\d+)$/i);
+  if (speciesLock) {
+    const speciesId = Number(speciesLock[1]);
+    return catches.filter((pokemon) => pokemon.species_id === speciesId);
+  }
   const rarityAliases = new Map([
     ['common', 'common'],
     ['uncommon', 'uncommon'],
@@ -3330,9 +3354,19 @@ function findReleaseLockPresetMatches(userId, preset) {
 }
 
 function releaseCategoryEmoji(category) {
+  if (/^species:\d+$/i.test(category)) return '🔒 ';
   const key = `${category || ''}`.toLowerCase().replace(/[^a-z]/g, '');
   const emoji = { egg: EMOJIS.pokeEgg, eggs: EMOJIS.pokeEgg, megaline: EMOJIS.megabracelet, megalines: EMOJIS.megabracelet, event: EMOJIS.eventticket, events: EMOJIS.eventticket }[key];
   return emoji ? `${emoji} ` : '';
+}
+
+function getReleaseLockCategoryLabel(category) {
+  const speciesLock = `${category || ''}`.match(/^species:(\d+)$/i);
+  if (!speciesLock) return category;
+  return db.prepare(`
+    SELECT species_name FROM pokemon_forms
+    WHERE species_id = ? AND is_default = 1
+  `).get(Number(speciesLock[1]))?.species_name || `Pokémon #${speciesLock[1]}`;
 }
 
 function releaseCatchIds(userId, catchIds, { protectFavorites = false, allowManual = false } = {}) {
@@ -3693,10 +3727,15 @@ async function postWorldBossAnnouncementToChannel(guild, channel, boss) {
   ])) {
     throw new Error(`Bot cannot send messages and embeds in World Boss channel ${channel.id}.`);
   }
-  const pingRole = guild.id === WORLD_BOSS_GUILD_ID ? WORLD_BOSS_PING_ROLE_ID : null;
+  const pingRoles = guild.id === WORLD_BOSS_GUILD_ID
+    ? [
+      WORLD_BOSS_PING_ROLE_ID,
+      ...(/eternamax/i.test(boss.name) ? [ETERNAMAX_PING_ROLE_ID] : []),
+    ]
+    : [];
   const post = await channel.send({
-    content: pingRole ? `<@&${pingRole}>` : '',
-    allowedMentions: { roles: pingRole ? [pingRole] : [] },
+    content: pingRoles.map((roleId) => `<@&${roleId}>`).join(' '),
+    allowedMentions: { roles: pingRoles },
     embeds: [createWorldBossEmbed(boss, client.user)],
   });
   setWorldBossAnnouncementPost(boss.id, guild.id, channel.id, post.id);
@@ -8531,6 +8570,7 @@ async function getRoleEncounterBoost(userId) {
 }
 
 const WORLD_BOSS_PING_ROLE_ID = '1560108658010890380';
+const ETERNAMAX_PING_ROLE_ID = '1564955674289635368';
 
 // Highest tier first so the best role a member holds wins.
 const PATREON_TIER_ROLES = [
@@ -10877,7 +10917,8 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}team add [shiny|golden] <Pokémon name|Pokédex number> <slot 1-3>\`\n` +
             `• \`${PREFIX}team remove <slot 1-3>\`\n` +
             `• \`${PREFIX}team expshare on|off\` — Toggle Exp. Share\n` +
-            `• \`${PREFIX}team give <item> <slot|name>\` — Give an item to a team Pokémon`,
+            `• \`${PREFIX}team give <item> <slot|name>\` — Give an item to a team Pokémon\n` +
+            `• \`${PREFIX}team take <item> <Pokémon name|Pokédex number>\` — Take a held item back`,
         },
         battle: {
           title: '⚔️ Battle Commands',
@@ -10994,7 +11035,7 @@ client.on('messageCreate', async (message) => {
           .setTitle('📖 Umbreon Help — General & Catching')
           .setDescription(
             `Default prefix: \`${PREFIX}\`\n\n` +
-            `• \`${PREFIX}p\` / \`${PREFIX}pokemon\` — Spawn a wild Pokémon (10s cooldown)\n` +
+            `• \`${PREFIX}p\` / \`${PREFIX}pokemon\` — Spawn a wild Pokémon (8s cooldown)\n` +
             `• \`${PREFIX}fish\` / \`${PREFIX}f\` — Fish for Water-type Pokémon using your rod (20s cooldown)\n` +
             `• \`${PREFIX}repel [amount]\` — Use Repels to change wild land encounter rarity weights for 30 encounters each\n` +
             `• \`${PREFIX}dailycatchers\` / \`${PREFIX}dc\` — View today's top 10 Pokémon catchers\n` +
@@ -11009,6 +11050,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}team add [shiny|golden] <Pokédex number|name> <slot 1-3>\` / \`${PREFIX}team remove <slot 1-3>\` — Manage your three team slots\n` +
             `• \`${PREFIX}team expshare on|off\` — Toggle your purchased Exp. Share for the active team\n` +
             `• \`${PREFIX}team give <item> <slot|name>\` — Give an item to a Pokémon on your team\n` +
+            `• \`${PREFIX}team take <item> <Pokémon name|Pokédex number>\` — Return its held item to your inventory\n` +
             `  Filter with \`${PREFIX}box fav\`, \`${PREFIX}box shiny\`, \`${PREFIX}box <rarity>\`, or \`${PREFIX}box type <type>\`\n` +
             `  Favorite Pokédex numbers with \`${PREFIX}box fav <number|all>\`; use a region or \`${PREFIX}box @user\` to filter/view\n` +
             `• \`${PREFIX}dex\` / \`${PREFIX}d\` — Search the Pokédex by name or number; prefix with \`shiny\` for shiny entries\n` +
@@ -11021,7 +11063,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}collection\` / \`${PREFIX}coll\` — Browse public Global Collections; use \`${PREFIX}coll help\` for options\n` +
             `• \`${PREFIX}use rarecandy <amount|all>\` (alias \`rc\`) — Level up your buddy with Rare Candy\n` +
             `• \`${PREFIX}release <Pokémon name|Pokédex number>\` / \`${PREFIX}r\` — Release a Pokémon for PokéCoins; \`${PREFIX}release number <Pokédex number> [amount]\` releases multiples\n` +
-            `  Use \`${PREFIX}release duplicates\` (\`${PREFIX}r d\`) or \`${PREFIX}release type <rarity>mons\` for bulk releases; use \`${PREFIX}release lock|unlock <name|Pokédex number|mega-line|egg|rarity|event|starters>\`, \`${PREFIX}release view-locks\`, or \`${PREFIX}release clear-locks\`; see payouts with \`${PREFIX}release values\``
+            `  Use \`${PREFIX}release duplicates\` (\`${PREFIX}r d\`) or \`${PREFIX}release type <rarity>mons\` for bulk releases; use \`${PREFIX}release lock|unlock <species name|Pokédex number|mega-line|egg|rarity|event|starters>\`, \`${PREFIX}release view-locks\`, or \`${PREFIX}release clear-locks\`; see payouts with \`${PREFIX}release values\``
           )
           .setFooter({ text: 'Page 1/4 • Select a category below' }),
         economy: new EmbedBuilder()
@@ -13734,7 +13776,10 @@ client.on('messageCreate', async (message) => {
       const cooldownExempt = isAdmin || hasCooldownExemption(userId);
       if (!cooldownExempt && catchCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'p', catchCooldowns)) {
-          return message.reply('⏳ Catching cooldown is active (10s). A Cooldown Machine can skip it after 5s.');
+          return message.reply(
+            `⏳ You can catch again ${getCooldownReadyTimestamp('p', userId, POKEMON_COOLDOWN_MS)}. ` +
+            'A Cooldown Machine can skip it after half the cooldown.'
+          );
         }
       }
       if (!cooldownExempt) {
@@ -13744,7 +13789,7 @@ client.on('messageCreate', async (message) => {
           userId,
           message.author.username,
           message.channel,
-          10000,
+          POKEMON_COOLDOWN_MS,
           'p'
         );
       }
@@ -13782,8 +13827,8 @@ client.on('messageCreate', async (message) => {
       if (!cooldownExempt && fishCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'f', fishCooldowns)) {
           return message.reply(
-            `⏳ Fishing cooldown is active (**${rod.cooldownMs / 1000}s** for your ${rod.name}). ` +
-            `A Cooldown Machine can skip it after ${rod.cooldownMs / 2000}s.`
+            `⏳ You can fish again ${getCooldownReadyTimestamp('f', userId, rod.cooldownMs)} ` +
+            `(your ${rod.name}). A Cooldown Machine can skip it after half the cooldown.`
           );
         }
       }
@@ -15982,25 +16027,93 @@ client.on('messageCreate', async (message) => {
       if (action === 'info') {
         const query = args.slice(1).join(' ').trim();
         if (!query) return message.reply(`Usage: \`${PREFIX}bud info <Pokémon>\`.`);
-        const pokemon = findUserPokemonMatches(userId, query)[0];
-        if (!pokemon) return message.reply(`You do not own a Pokémon matching **${query}**.`);
+        const buddyMatch = findUserPokemonMatches(userId, query)
+          .find((pokemon) => pokemon.ever_buddy);
+        if (!buddyMatch) {
+          return message.reply(
+            `No buddy profile found for **${query}**. Set it as your buddy first with \`${PREFIX}bud set ${query}\`.`
+          );
+        }
+        const pokemon = getUserBuddy(userId, buddyMatch.id);
+        if (!pokemon) {
+          return message.reply(`The buddy profile for **${query}** is no longer available.`);
+        }
         let abilities;
         try {
-          abilities = await fetchPokemonAbilities(pokemon.pokemon_id);
+          abilities = await fetchPokemonAbilities(pokemon.form_id || pokemon.pokemon_id);
         } catch (error) {
           console.error(`Failed to load ability data for catch ${pokemon.id}:`, error);
           return message.reply('❌ Ability data could not be loaded right now. Please try again later.');
         }
         const standardAbilities = abilities.filter((ability) => !ability.hidden);
         const currentAbility = pokemon.ability || standardAbilities[0]?.name;
-        if (!currentAbility) {
-          return message.reply('❌ This Pokémon has no supported Standard Ability data.');
+        const levelStart = pokemon.level === 1 ? 0 : pokemon.level ** 2 * 75;
+        const nextLevelAt = experienceForNextLevel(pokemon.level);
+        const expProgress = pokemon.level >= 100
+          ? 'MAX LEVEL'
+          : `${(nextLevelAt - pokemon.experience).toLocaleString()} EXP to Level ${pokemon.level + 1}`;
+        const progress = pokemon.level >= 100
+          ? 1
+          : Math.max(0, Math.min(1, (pokemon.experience - levelStart) / (nextLevelAt - levelStart)));
+        const expBar = '🟦'.repeat(Math.round(progress * 10)) + '⬛'.repeat(10 - Math.round(progress * 10));
+        let types = [];
+        if (pokemon.types) {
+          try {
+            types = JSON.parse(pokemon.types);
+          } catch (error) {
+            console.error(`Could not parse types for buddy profile form ${pokemon.pokemon_id}:`, error);
+          }
         }
+        const typeLabel = types.length
+          ? types.map((type) => `${getTypeEmoji(type)} ${type[0].toUpperCase() + type.slice(1)}`).join(' / ')
+          : 'Unknown';
+        const itemEmoji = pokemon.held_item
+          ? FUN_ITEM_EMOJIS[pokemon.held_item]
+            || EVOLUTION_ITEMS[pokemon.held_item]?.emoji
+            || EMOJIS[pokemon.held_item.replace(/\s+/g, '').toLowerCase()]
+            || HELD_ITEM_EMOJI
+          : '';
+        const ivStars = (iv) => {
+          const filled = iv === 0 ? 0 : iv <= 15 ? 1 : iv <= 30 ? 2 : 3;
+          return '⭐'.repeat(filled) + '☆'.repeat(3 - filled) + (iv === 31 ? ' 🎉' : '');
+        };
+        const ivValue = (iv) => getPatreonPerks(userId).ivChecker
+          ? `${ivStars(iv)} **${iv}**`
+          : ivStars(iv);
+        const evolutionRoute = getEvolutionRoute(pokemon.id);
+        const profileImage = pokemon.is_golden
+          ? getGoldenSpriteUrl(pokemon.species_id, pokemon.slug)
+          : getPokemonShowdownSprite(pokemon.slug, Boolean(pokemon.is_shiny), null)
+            || (pokemon.is_shiny ? pokemon.shiny_sprite || pokemon.sprite : pokemon.sprite);
+        const profileEmbed = new EmbedBuilder()
+          .setColor(0x3498db)
+          .setTitle(`${getRarityEmojis(pokemon.rarity, pokemon.name, Boolean(pokemon.is_shiny), Boolean(pokemon.is_golden))} ${message.author.username}'s ${pokemon.display_name || pokemon.name}`)
+          .setDescription(
+            `**Level:** ${pokemon.level}\n` +
+            `**Held Item:** ${pokemon.held_item ? `${itemEmoji} **${pokemon.held_item}**` : 'None'}\n` +
+            `**Friendship:** 💖 ${pokemon.friendship ?? 0}/255\n` +
+            (evolutionRoute.length ? `**Evolves:** ${evolutionRoute.join(' • ')}\n` : '') + '\n' +
+            `**Ability**\nCurrent: **${currentAbility || 'Unknown'}**\n\n` +
+            `**Type**\n${typeLabel}\n\n` +
+            `**${expProgress}**\n${expBar}\n\n` +
+            `**Pokémon IVs**\n` +
+            `\`ATK\` ${ivValue(pokemon.atk_iv)}  \`DEF\` ${ivValue(pokemon.def_iv)}\n` +
+            `\`SPA\` ${ivValue(pokemon.spa_iv)}  \`SPD\` ${ivValue(pokemon.spdef_iv)}\n` +
+            `\`HP\` ${ivValue(pokemon.hp_iv)}  \`SPE\` ${ivValue(pokemon.spd_iv)}\n\n` +
+            `**Pokémon EVs [${EV_STATS.reduce((sum, stat) => sum + (pokemon[`ev_${stat}`] || 0), 0)}/${EV_TOTAL_LIMIT}]**\n` +
+            `\`ATK\` ${pokemon.ev_atk || 0}  \`DEF\` ${pokemon.ev_def || 0}  \`HP\` ${pokemon.ev_hp || 0}  ` +
+            `\`SPA\` ${pokemon.ev_spa || 0}  \`SPD\` ${pokemon.ev_spdef || 0}  \`SPE\` ${pokemon.ev_spe || 0}\n\n` +
+            `**Pokémon Stats**\n` +
+            `⚔️ \`Atk\` **${pokemon.atk}**  🛡️ \`Def\` **${pokemon.def}**\n` +
+            `✨ \`SpA\` **${pokemon.spa}**  🛡️ \`SpD\` **${pokemon.spdef}**\n` +
+            `❤️ \`HP\` **${pokemon.max_hp}**  ⚡ \`Spe\` **${pokemon.spd}**`
+          )
+          .setFooter({
+            text: `${pokemon.display_name || pokemon.name} Level: ${pokemon.level} • Total EXP: ${pokemon.experience.toLocaleString()}`,
+          });
+        if (profileImage) profileEmbed.setImage(profileImage);
         const infoMessage = await message.reply({
-          embeds: [new EmbedBuilder()
-            .setColor(0x5865f2)
-            .setTitle(`${pokemon.name} — Ability`)
-            .setDescription(`**Current ability:** ${currentAbility}\n\nSelect the Ability button to use an Ability Capsule or Ability Patch.`)],
+          embeds: [profileEmbed],
           components: [new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId(`ability-change:${pokemon.id}`)
@@ -16322,6 +16435,7 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           `${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ` +
           `**${buddy.display_name || buddy.name}** (#${buddy.dex_number}) is now your buddy! ` +
+          `Held item: **${buddy.held_item || 'None'}**. ` +
           'Catch Pokémon to earn buddy EXP.'
         );
       }
@@ -16430,7 +16544,12 @@ client.on('messageCreate', async (message) => {
           .setTitle(`${getRarityEmojis(buddy.rarity, buddy.name, Boolean(buddy.is_shiny), Boolean(buddy.is_golden))} ${message.author.username}'s ${buddy.display_name || buddy.name}`)
           .setDescription(
             `**Level:** ${level}\n` +
-            `**Held Item:** ${buddy.held_item || 'None'}\n` +
+            `**Held Item:** ${buddy.held_item
+              ? `${FUN_ITEM_EMOJIS[buddy.held_item]
+                || EVOLUTION_ITEMS[buddy.held_item]?.emoji
+                || EMOJIS[buddy.held_item.replace(/\s+/g, '').toLowerCase()]
+                || HELD_ITEM_EMOJI} **${buddy.held_item}**`
+              : 'None'}\n` +
             `**Friendship:** 💖 ${buddy.friendship ?? 0}/255\n` +
             (evoRoute.length ? `**Evolves:** ${evoRoute.join(' • ')}\n` : '') + '\n' +
             `**Ability**\nCurrent: **${ability || 'Unknown'}**\n\n` +
@@ -17775,6 +17894,44 @@ client.on('messageCreate', async (message) => {
           `${EMOJIS.expshare} Team EXP Share is now **${enabled ? 'ON' : 'OFF'}**. ` +
           `${enabled ? 'Your active team will each gain rarity-based EXP on successful catches.' : 'Catch EXP will go to your selected buddy, if you have one.'}`
         );
+      }
+      if (action === 'take') {
+        const itemTokenCount = Array.from({ length: Math.max(0, args.length - 2) }, (_, index) =>
+          args.length - 2 - index
+        ).find((count) => {
+          const itemQuery = args.slice(1, 1 + count).join(' ');
+          return findEvolutionItem(itemQuery) || findBattleHeldItem(itemQuery);
+        });
+        if (!itemTokenCount || args.length <= 1 + itemTokenCount) {
+          return message.reply(
+            `Usage: \`${PREFIX}team take <held item> <Pokémon name|Pokédex number>\`.`
+          );
+        }
+        const itemName = args.slice(1, 1 + itemTokenCount).join(' ');
+        const pokemonQuery = args.slice(1 + itemTokenCount).join(' ').trim()
+          .replace(/^dex\s+/i, '');
+        if (!pokemonQuery) {
+          return message.reply(
+            `Usage: \`${PREFIX}team take <held item> <Pokémon name|Pokédex number>\`.`
+          );
+        }
+        const result = unholdEvolutionItem(userId, pokemonQuery, itemName);
+        if (result.error === 'unknown_item') {
+          return message.reply(`❌ I don't recognize **${itemName}** as a held item.`);
+        }
+        if (result.error === 'not_holdable') {
+          return message.reply(`❌ **${itemName}** cannot be held by Pokémon.`);
+        }
+        if (result.error === 'pokemon_not_owned') {
+          return message.reply(`❌ You do not own a Pokémon matching **${pokemonQuery}**.`);
+        }
+        if (result.error === 'different_item') {
+          return message.reply(`❌ None of your matching **${pokemonQuery}** are holding **${itemName}**.`);
+        }
+        if (result.error === 'nothing_held') {
+          return message.reply(`❌ **${pokemonQuery}** is not holding a removable item.`);
+        }
+        return message.reply(`✅ Took **${result.itemName}** back from **${result.pokemonName}**.`);
       }
       if (action === 'give') {
         const itemTokenCount = Array.from({ length: Math.max(0, args.length - 2) }, (_, index) =>
@@ -19185,7 +19342,7 @@ client.on('messageCreate', async (message) => {
             `⭐ \`${PREFIX}box fav <Dex #|all>\` / \`${PREFIX}box unfav <Dex #|all>\` — manage favorites\n` +
             `🌎 \`${PREFIX}box kanto|johto|hoenn|sinnoh|unova|kalos|alola|galar|paldea\` — region\n` +
             `🏅 \`${PREFIX}box <rarity>\` • \`${PREFIX}box shiny\` • \`${PREFIX}box golden\` • \`${PREFIX}box type <type>\` • \`${PREFIX}box recent\`\n` +
-            `🔒 Lock/unlock Pokémon by name, Dex #, Mega line, Egg, rarity, event, or starters with \`${PREFIX}release lock|unlock <category>\`\n` +
+            `🔒 Lock/unlock Pokémon by species name, Dex #, Mega line, Egg, rarity, event, or starters with \`${PREFIX}release lock|unlock <category>\`\n` +
             `🔎 \`${PREFIX}box @user [filter]\` — view another trainer\'s box` +
             (activeFilter ? `\n\n**Filter:** ${activeFilter}` : '')
           )
@@ -20979,7 +21136,7 @@ client.on('messageCreate', async (message) => {
         const presetMatches = findReleaseLockPresetMatches(userId, query);
         const category = getReleaseCategory(query);
         if (presetMatches && category) {
-          const label = `${releaseCategoryEmoji(category)}\`${category}\``;
+          const label = `${releaseCategoryEmoji(category)}\`${getReleaseLockCategoryLabel(category)}\``;
           const alreadyLocked = getLockedReleaseCategories(userId).includes(category);
           if (locked) {
             db.prepare('INSERT OR IGNORE INTO release_category_locks (user_id, category) VALUES (?, ?)').run(userId, category);
@@ -20998,6 +21155,52 @@ client.on('messageCreate', async (message) => {
           return message.reply(
             `${locked ? '🔒 Locked' : '🔓 Unlocked'} the ${label} category. ` +
             `${locked ? 'It does not use your individual lock slots.' : ''}`.trim()
+          );
+        }
+        const speciesMatches = /^\d+$/.test(query) ? [] : findUserPokemonMatches(userId, query);
+        const speciesIds = [...new Set(speciesMatches
+          .map((pokemon) => pokemon.form_species || pokemon.pokemon_id)
+          .filter(Number.isSafeInteger))];
+        if (speciesMatches.length && speciesIds.length === 1) {
+          const speciesCategory = `species:${speciesIds[0]}`;
+          const speciesLabel = getReleaseLockCategoryLabel(speciesCategory);
+          const alreadyLocked = getLockedReleaseCategories(userId).includes(speciesCategory);
+          if (locked === alreadyLocked) {
+            return message.reply(`The **${speciesLabel}** species lock is already ${locked ? 'locked' : 'unlocked'}.`);
+          }
+          const speciesCatchRows = findReleaseLockPresetMatches(userId, speciesCategory) || [];
+          const speciesCatchIds = speciesCatchRows.map((pokemon) => pokemon.id);
+          if (locked) {
+            const categoryIds = getCategoryLockedCatchIds(userId);
+            const individualLocksBeingGrouped = speciesCatchRows
+              .filter((pokemon) => pokemon.is_locked && !categoryIds.has(pokemon.id)).length;
+            const resultingLockCount = getReleaseLockCount(userId) - individualLocksBeingGrouped + 1;
+            const lockLimit = getReleaseLockLimit(userId);
+            if (resultingLockCount > lockLimit) {
+              return message.reply(
+                `🔒 Locking **${speciesLabel}** would use **1** release-lock slot ` +
+                `(${getReleaseLockCount(userId)}/${lockLimit} in use). Unlock some Pokémon first.`
+              );
+            }
+            db.prepare(
+              'INSERT OR IGNORE INTO release_category_locks (user_id, category) VALUES (?, ?)'
+            ).run(userId, speciesCategory);
+            syncReleaseCategoryLocks(userId);
+          } else {
+            db.prepare(
+              'DELETE FROM release_category_locks WHERE user_id = ? AND category = ?'
+            ).run(userId, speciesCategory);
+            const stillCategoryLocked = getCategoryLockedCatchIds(userId);
+            const idsToUnlock = speciesCatchIds.filter((catchId) => !stillCategoryLocked.has(catchId));
+            if (idsToUnlock.length) {
+              db.prepare(
+                `UPDATE catches SET is_locked = 0 WHERE user_id = ? AND id IN (${idsToUnlock.map(() => '?').join(', ')})`
+              ).run(userId, ...idsToUnlock);
+            }
+          }
+          return message.reply(
+            `${locked ? '🔒 Locked' : '🔓 Unlocked'} all **${speciesLabel}** Pokémon. ` +
+            `${locked ? 'This species lock uses 1 release-lock slot, regardless of how many you own.' : ''}`.trim()
           );
         }
         if (locked) {
@@ -21054,7 +21257,9 @@ client.on('messageCreate', async (message) => {
         `).all(userId);
         if (!locked.length && !lockedCategories.length) return message.reply('🔓 You do not have any locked Pokémon.');
         const categoryIds = getCategoryLockedCatchIds(userId);
-        const entries = lockedCategories.map((category) => `${releaseCategoryEmoji(category)}\`${category}\``);
+        const entries = lockedCategories.map((category) =>
+          `${releaseCategoryEmoji(category)}\`${getReleaseLockCategoryLabel(category)}\``
+        );
         const individual = locked.filter((pokemon) => !categoryIds.has(pokemon.id));
         for (const pokemon of individual) {
           const prefix = pokemon.is_golden ? 'Golden ' : pokemon.is_shiny ? 'Shiny ' : '';
@@ -21448,7 +21653,9 @@ client.on('messageCreate', async (message) => {
         const lockCount = getReleaseLockCount(userId);
         const lockLimit = getReleaseLockLimit(userId);
         const lockedCategoryLabels = getLockedReleaseCategories(userId)
-          .map((category) => `${releaseCategoryEmoji(category)}\`${category}\``);
+          .map((category) =>
+            `${releaseCategoryEmoji(category)}\`${getReleaseLockCategoryLabel(category)}\``
+          );
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setAuthor({
@@ -21456,10 +21663,11 @@ client.on('messageCreate', async (message) => {
             iconURL: message.author.displayAvatarURL(),
           })
           .setDescription(
-            `\`${PREFIX}release lock|unlock <name|Dex #>\` — lock/unlock a Pokémon from being released.\n` +
+            `\`${PREFIX}release lock|unlock <species name>\` — lock/unlock all copies of a species using one lock slot.\n` +
+            `\`${PREFIX}release lock|unlock <Dex #>\` — lock/unlock matching individual Pokémon.\n` +
             `\`${PREFIX}release lock|unlock <rarity>\` — lock/unlock a rarity category.\n` +
             `\`${PREFIX}release lock|unlock mega-line\` — lock/unlock pre-evolutions of Mega Pokémon.\n` +
-            `Category locks (rarity, \`egg\`, \`event\`, \`starters\`, \`mega-line\`) show as one label and do not use lock slots.\n` +
+            `Preset category locks use no slots; a species lock groups every copy into one slot.\n` +
             `⭐ Favorites are automatically protected from release.\n` +
             `🔒 You can lock up to **${lockLimit} Pokémon** (${BASE_RELEASE_LOCK_LIMIT} standard` +
             `${getPatreonPerks(userId).releaseLocks ? ` + ${getPatreonPerks(userId).releaseLocks} Patreon` : ''}).\n` +
