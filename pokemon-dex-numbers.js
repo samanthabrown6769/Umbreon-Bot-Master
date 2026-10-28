@@ -14,6 +14,7 @@ const FORM_DEX_STARTS = {
   shinyFormes: 11000,
 };
 const GOLDEN_DEX_START = 9001;
+const NO_SHINY_SLUGS = new Set(['topaz-teddiursa', 'topaz-ursaring']);
 const SHINY_BASE_SPECIES_END = 999;
 const GOLDEN_SCREENSHOT_DEX_END = 9999;
 const pokemonCatalog = require('./data/pokemon-catalog.json');
@@ -549,6 +550,10 @@ function getPokemonDexNumbers(pokemonForms) {
     else if (current && !pokemon.is_default && DEX_NUMBER_OVERRIDES_BY_SLUG.has(pokemon.slug)) {
       current.shinyDexNumber = current.dexNumber + 1;
     }
+  }
+  // Forms that have no shiny variant and therefore no shiny Dex number.
+  for (const pokemon of pokemonForms) {
+    if (NO_SHINY_SLUGS.has(pokemon.slug)) delete numbers.get(pokemon.id)?.shinyDexNumber;
   }
   return numbers;
 }

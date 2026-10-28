@@ -387,7 +387,9 @@ const RESEARCH_SHARD_BY_SPECIES = new Map(
   RESEARCH_SHOP_ITEMS.filter((item) => item.unlocks)
     .flatMap((item) => item.unlocks.map((species) => [species.toLowerCase(), item]))
 );
-const halloweenEvent = require('./events/halloween-2026');
+const { EVENTS: ALL_EVENTS, getCurrentEvent } = require('./events');
+// Despite the legacy name, this is the current (or next upcoming) event; it is swapped by activateEvent().
+let halloweenEvent = getCurrentEvent();
 const { parseAmount } = require('./amounts');
 const { parseTradeMonInput } = require('./trade-parser');
 const {
@@ -479,46 +481,86 @@ const SPECIAL_SPAWN_RESERVED_SPECIES = Object.freeze([
 ]);
 const { createTopggWebhookServer } = require('./vote-webhook');
 
-registerEvent(halloweenEvent);
-
-const eventSpawnFormIds = Array.from(new Set(
-  halloweenEvent.pokemon.flatMap((eventPokemon) =>
-    eventPokemon.matchNames.flatMap((matchName) => {
-      const normalizedName = matchName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      return findPokemonForms(matchName, 50)
-        .filter((pokemon) =>
-          !pokemon.is_default
-          && pokemon.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedName
-        )
-        .map((pokemon) => pokemon.id);
-    })
-  )
-));
+for (const event of ALL_EVENTS) registerEvent(event);
 
 const EVENT_SPAWN_ODDS = 100;
-const eventSpawnEntries = halloweenEvent.pokemon.map((eventPokemon) => {
-  const names = eventPokemon.matchNames.map((name) => name.toLowerCase().replace(/[^a-z0-9]/g, ''));
-  const ids = Array.from(new Set(eventPokemon.matchNames.flatMap((matchName) =>
-    findPokemonForms(matchName, 50)
-      .filter((pokemon) => names.includes(pokemon.name.toLowerCase().replace(/[^a-z0-9]/g, '')))
-      .map((pokemon) => pokemon.id)
-  )));
-  return { ids, shiny: Boolean(eventPokemon.shiny), fish: Boolean(eventPokemon.fish) };
-}).filter((entry) => entry.ids.length);
+let eventSpawnFormIds = [];
+let eventSpawnEntries = [];
+let EVENT_FISH_SPECIES = new Set();
+let EVENT_NON_FISH_SPECIES = Object.freeze([]);
+let EVENT_FISH_SPAWN_FORM_IDS = Object.freeze([]);
 
-// Event Pokémon only appear while fishing when the event entry sets `fish: true`.
 const eventSpeciesName = (id) => db.prepare('SELECT species_name FROM pokemon_forms WHERE id = ?').get(id)?.species_name;
-const EVENT_FISH_SPECIES = new Set(
-  eventSpawnEntries.filter((entry) => entry.fish).flatMap((entry) => entry.ids.map(eventSpeciesName))
-);
-const EVENT_NON_FISH_SPECIES = Object.freeze(Array.from(new Set(
-  eventSpawnEntries.filter((entry) => !entry.fish)
-    .flatMap((entry) => entry.ids.map(eventSpeciesName))
-    .filter((name) => name && !EVENT_FISH_SPECIES.has(name))
-)));
-const EVENT_FISH_SPAWN_FORM_IDS = Object.freeze(Array.from(new Set(
-  eventSpawnEntries.filter((entry) => entry.fish).flatMap((entry) => entry.ids)
-)));
+
+// Rebuilds every spawn structure that depends on the current event's checklist.
+function buildEventSpawnData(event) {
+  eventSpawnFormIds = Array.from(new Set(
+    event.pokemon.flatMap((eventPokemon) =>
+      eventPokemon.matchNames.flatMap((matchName) => {
+        const normalizedName = matchName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return findPokemonForms(matchName, 50)
+          .filter((pokemon) =>
+            !pokemon.is_default
+            && pokemon.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedName
+          )
+          .map((pokemon) => pokemon.id);
+      })
+    )
+  ));
+  eventSpawnEntries = event.pokemon.map((eventPokemon) => {
+    const names = eventPokemon.matchNames.map((name) => name.toLowerCase().replace(/[^a-z0-9]/g, ''));
+    const ids = Array.from(new Set(eventPokemon.matchNames.flatMap((matchName) =>
+      findPokemonForms(matchName, 50)
+        .filter((pokemon) => names.includes(pokemon.name.toLowerCase().replace(/[^a-z0-9]/g, '')))
+        .map((pokemon) => pokemon.id)
+    )));
+    return { ids, shiny: Boolean(eventPokemon.shiny), fish: Boolean(eventPokemon.fish) };
+  }).filter((entry) => entry.ids.length);
+
+  // Event Pokémon only appear while fishing when the event entry sets `fish: true`.
+  EVENT_FISH_SPECIES = new Set(
+    eventSpawnEntries.filter((entry) => entry.fish).flatMap((entry) => entry.ids.map(eventSpeciesName))
+  );
+  EVENT_NON_FISH_SPECIES = Object.freeze(Array.from(new Set(
+    eventSpawnEntries.filter((entry) => !entry.fish)
+      .flatMap((entry) => entry.ids.map(eventSpeciesName))
+      .filter((name) => name && !EVENT_FISH_SPECIES.has(name))
+  )));
+  EVENT_FISH_SPAWN_FORM_IDS = Object.freeze(Array.from(new Set(
+    eventSpawnEntries.filter((entry) => entry.fish).flatMap((entry) => entry.ids)
+  )));
+}
+
+db.exec(`CREATE TABLE IF NOT EXISTS active_event_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  event_id TEXT NOT NULL
+)`);
+
+// Switches to the event that should currently be running. Tickets and claims are per event,
+// so they are cleared the first time a different event becomes current.
+function refreshCurrentEvent() {
+  const next = getCurrentEvent();
+  const stored = db.prepare('SELECT event_id FROM active_event_state WHERE id = 1').get()?.event_id
+    || ALL_EVENTS[0].id;
+  if (stored !== next.id) {
+    db.transaction(() => {
+      db.prepare('UPDATE users SET event_ticket = 0, event_reg_claimed = 0, event_gold_claimed = 0').run();
+      db.prepare(
+        'INSERT INTO active_event_state (id, event_id) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET event_id = excluded.event_id'
+      ).run(next.id);
+    })();
+    console.log(`Event switched from ${stored} to ${next.id}.`);
+  } else {
+    db.prepare(
+      'INSERT OR IGNORE INTO active_event_state (id, event_id) VALUES (1, ?)'
+    ).run(next.id);
+  }
+  if (next !== halloweenEvent || !eventSpawnEntries.length) {
+    halloweenEvent = next;
+    buildEventSpawnData(next);
+  }
+}
+refreshCurrentEvent();
 
 const client = new Client({
   intents: [
@@ -628,6 +670,7 @@ async function sendEggReadyNotification(userId, newlyReady, channel) {
 const NON_STREAK_RARITIES = new Set([
   'mega', 'm', 'shiny mega', 'sm',
   'gmax', 'g', 'shiny gmax', 'sg',
+  'gem',
 ]);
 const GUARANTEED_CATCH_EXCLUDED_USER_IDS = new Set([
   '1514082847609061541',
@@ -3325,7 +3368,7 @@ function findReleaseLockPresetMatches(userId, preset) {
       const names = JSON.parse(eventPokemon.match_names);
       for (const name of names) eventNames.add(normalize(name));
     }
-    for (const reward of Object.values(halloweenEvent.rewards || {})) {
+    for (const reward of ALL_EVENTS.flatMap((event) => Object.values(event.rewards || {}))) {
       if (reward.displayName) eventNames.add(normalize(reward.displayName.replace(/^(shiny|golden)\s+/i, '')));
       if (reward.pokemonSlug) {
         for (const form of db.prepare('SELECT name, species_name, slug FROM pokemon_forms WHERE slug = ?').all(reward.pokemonSlug)) {
@@ -7204,8 +7247,11 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
   if (!challenge || !Array.isArray(challenge.team) || !challenge.team.length) {
     return message.reply('❌ That battle is unavailable right now. Please try again later.');
   }
-  if (challenge.eventOnly === halloweenEvent.id && !isEventOpen(halloweenEvent)) {
-    return message.reply(`🎃 **${challenge.name}** is only available during the ${halloweenEvent.name} event.`);
+  const challengeEvent = challenge.eventOnly
+    ? ALL_EVENTS.find((event) => event.id === challenge.eventOnly)
+    : null;
+  if (challengeEvent && !isEventOpen(challengeEvent)) {
+    return message.reply(`🎃 **${challenge.name}** is only available during the ${challengeEvent.name} event.`);
   }
   if (challenge.factionNpc && !getUserFaction(userId)) {
     return message.reply(`Join a faction with \`${PREFIX}faction\` before challenging faction NPCs.`);
@@ -8156,7 +8202,10 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
         if (caughtCount >= fullChecklistCount && !currentUser.event_gold_claimed) {
           return 'full';
         }
-        if (caughtCount >= halloweenEvent.checklistTargets.regular && !currentUser.event_reg_claimed) {
+        if (halloweenEvent.checklistTargets.regular
+            && halloweenEvent.rewards.regular
+            && caughtCount >= halloweenEvent.checklistTargets.regular
+            && !currentUser.event_reg_claimed) {
           return 'regular';
         }
         return null;
@@ -8234,15 +8283,20 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
       const caught = eventCatchCounts.get(pokemon.key) || 0;
       return `${icon} ${pokemon.name}${pokemon.tag ? ` ${pokemon.tag}` : ''} — **${caught}** caught`;
     };
+    const regularReward = halloweenEvent.rewards.regular;
     const description =
-      `Catch **${halloweenEvent.checklistTargets.regular} of ${fullChecklistCount}** ` +
-      'for the regular reward; complete all for the exclusive reward.\n\n' +
+      (regularReward && halloweenEvent.checklistTargets.regular
+        ? `Catch **${halloweenEvent.checklistTargets.regular} of ${fullChecklistCount}** ` +
+          'for the regular reward; complete all for the exclusive reward.\n\n'
+        : `Complete all **${fullChecklistCount}** for the exclusive reward.\n\n`) +
       `${halloweenEvent.emojis.event} Event progress: **${Math.min(eventProgress.size, fullChecklistCount)}/${fullChecklistCount}**\n\n` +
       `${halloweenEvent.emojis.shinyCategory} **Shinies (${shinies.filter((pokemon) => eventProgress.has(pokemon.key)).length}/${shinies.length})**\n` +
       `${shinies.map(formatChecklist).join('\n')}\n\n` +
       `${halloweenEvent.emojis.exclusiveCategory} **Event exclusives (${exclusives.filter((pokemon) => eventProgress.has(pokemon.key)).length}/${exclusives.length})**\n` +
       `${exclusives.map(formatChecklist).join('\n')}\n\n` +
-      `${halloweenEvent.emojis.regularReward} **Shiny ${halloweenEvent.rewards.regular.announcementName}:** ${user.event_reg_claimed ? 'Claimed' : 'Unclaimed'}\n` +
+      (regularReward
+        ? `${halloweenEvent.emojis.regularReward} **${regularReward.announcementName}:** ${user.event_reg_claimed ? 'Claimed' : 'Unclaimed'}\n`
+        : '') +
       `${halloweenEvent.emojis.fullReward} **${halloweenEvent.rewards.full.announcementName}:** ${user.event_gold_claimed ? 'Claimed' : 'Unclaimed'}\n` +
       `${halloweenEvent.emojis.endDate} Ends <t:${Math.floor(Date.parse(halloweenEvent.endsAt) / 1000)}:F> (${halloweenEvent.timezoneLabel})`;
     const embed = new EmbedBuilder()
@@ -15564,8 +15618,9 @@ client.on('messageCreate', async (message) => {
           .sort((left, right) => left.evolution_stage - right.evolution_stage)
           .map((form) => `${form.species_id === pokemon.species_id ? '🔹 ' : ''}${form.name}`)
           .join(' → ');
+        const hasShinyVariant = numbers?.shinyDexNumber !== undefined || pokemon.is_default;
         const variantIds = [
-          `${EMOJIS.shiny} variant: \`${PREFIX}dex ${shinyDexNumber}\``,
+          ...(hasShinyVariant ? [`${EMOJIS.shiny} variant: \`${PREFIX}dex ${shinyDexNumber}\``] : []),
           ...(goldenDexNumber
             ? [`${EMOJIS.golden} variant: \`${PREFIX}dex ${goldenDexNumber}\``]
             : []),
@@ -23990,6 +24045,7 @@ client.once('clientReady', () => {
   setInterval(expireTokenOrders, 60 * 1000);
   safely('patreon-payout', runPatreonMonthlyPayout)();
   setInterval(safely('patreon-payout', runPatreonMonthlyPayout), 5 * 60 * 1000);
+  setInterval(safely('event-rollover', refreshCurrentEvent), 60 * 1000);
   startAutospawnScheduler();
   startLotteryScheduler();
   const activeBoss = getActiveWorldBoss();

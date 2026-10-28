@@ -3733,7 +3733,7 @@
     "base_def": 120,
     "base_spd": 120,
     "base_stat_total": 720,
-    "types": "[\"normal\"]",
+    "types": "[\"ghost\"]",
     "is_water": 0,
     "sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/493.png",
     "shiny_sprite": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/493.png",

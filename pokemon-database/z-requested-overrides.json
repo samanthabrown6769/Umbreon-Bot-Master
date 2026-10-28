@@ -181,5 +181,31 @@
     "slug": "raging-bolt",
     "animated_sprite": "https://assets.pokestats.gg/pokeapi/v1/pokemon/other/showdown/1021.gif",
     "shiny_animated_sprite": "https://assets.pokestats.gg/pokeapi/v1/pokemon/other/showdown/shiny/1021.gif"
+  },
+  {
+    "slug": "topaz-teddiursa",
+    "name": "Topaz Teddiursa",
+    "rarity": "Gem",
+    "dex_number": 10216,
+    "sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793187293/Topaz_Gem_Teddiursa_v2.gif",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793187293/Topaz_Gem_Teddiursa_v2.gif"
+  },
+  {
+    "slug": "topaz-ursaring",
+    "name": "Topaz Ursaring",
+    "rarity": "Gem",
+    "dex_number": 10217,
+    "sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793187293/Topaz_Gem_Ursaring.gif",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793187293/Topaz_Gem_Ursaring.gif"
+  },
+  {
+    "slug": "greninja-ash",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793187526/greninja-ash.gif",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793187650/greninja-ash_shiny.gif"
+  },
+  {
+    "slug": "arceus-ghost",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/arceus-ghost.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/arceus-ghost.gif"
   }
 ]

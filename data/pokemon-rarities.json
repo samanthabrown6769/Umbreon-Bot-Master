@@ -9910,5 +9910,17 @@
     "shiny_dex_number": 7157,
     "name": "Galarian Darmanitan Standard",
     "rarity": "Rare"
+  },
+  {
+    "id": 20108,
+    "dex_number": 10216,
+    "name": "Topaz Teddiursa",
+    "rarity": "Gem"
+  },
+  {
+    "id": 20109,
+    "dex_number": 10217,
+    "name": "Topaz Ursaring",
+    "rarity": "Gem"
   }
 ]

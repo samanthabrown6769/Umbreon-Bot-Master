@@ -112,5 +112,7 @@
   { "id": 20104, "slug": "sawsbuck-autumn", "species_slug": "sawsbuck" },
   { "id": 20105, "slug": "cherrim-sunshine", "species_slug": "cherrim" },
   { "id": 20106, "slug": "spiky-eared-pichu", "species_slug": "pichu" },
-  { "id": 20107, "slug": "darmanitan-galar-standard", "species_slug": "darmanitan-standard" }
+  { "id": 20107, "slug": "darmanitan-galar-standard", "species_slug": "darmanitan-standard" },
+  { "id": 20108, "slug": "topaz-teddiursa", "species_slug": "teddiursa", "rarity": "Gem" },
+  { "id": 20109, "slug": "topaz-ursaring", "species_slug": "ursaring", "rarity": "Gem" }
 ]
