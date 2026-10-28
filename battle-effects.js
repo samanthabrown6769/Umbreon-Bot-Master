@@ -479,6 +479,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   }
   const targetHpBefore = t.hp;
   t.hp -= dmg;
+  if (dmg > 0) tf.lastHit = { dmg: Math.min(dmg, targetHpBefore), physical };
   let survivedText = '';
   if (t.hp <= 0 && tf.protect === 'endure') { t.hp = 1; survivedText = ` ${t.name} endured the hit!`; }
   else if (t.hp <= 0 && AB.survivesLethal(m, t, targetHpBefore)) {
@@ -845,9 +846,63 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   if (eff.flag === 'charge' || key === 'charge') { /* Sp. Def boost handled via boost block */ }
 }
 
+const SELF_KO_MOVES = new Set(['explosion', 'self-destruct', 'misty-explosion']);
+const DELAYED_MOVES = new Set(['future-sight', 'doom-desire']);
+const COUNTER_MOVES = { counter: { physical: true, mult: 2 }, 'mirror-coat': { physical: false, mult: 2 }, 'metal-burst': { physical: null, mult: 1.5 } };
+
+function useCounterMove(ctx, A, B, move, L) {
+  const m = A.mon; const t = B.mon;
+  const rule = COUNTER_MOVES[slug(move.name)];
+  const hit = fx(m).lastHit;
+  if (!hit || (rule.physical !== null && hit.physical !== rule.physical)) {
+    L(`${m.name} used **${move.name}**, but it failed!`);
+    return;
+  }
+  const dmg = Math.max(1, Math.floor(hit.dmg * rule.mult));
+  t.hp -= dmg;
+  fx(t).lastHit = { dmg, physical: rule.physical !== false };
+  L(`${m.name} used **${move.name}** and returned **${dmg}** damage!`);
+}
+
+function useDelayedMove(ctx, A, B, move, L) {
+  const slot = ctx.field.sides[B.side];
+  if (slot.futureAttack) { L(`${A.mon.name} used **${move.name}**, but it failed!`); return; }
+  slot.futureAttack = { turns: 3, attacker: A.mon, move: { ...move }, name: move.name };
+  L(DELAYED_MOVES.has(slug(move.name)) && slug(move.name) === 'doom-desire'
+    ? `${A.mon.name} chose Doom Desire as its destiny!`
+    : `${A.mon.name} foresaw an attack!`);
+}
+
+function resolveDelayedAttacks(ctx, L) {
+  for (const side of ['player', 'enemy']) {
+    const slot = ctx.field.sides[side];
+    const pending = slot.futureAttack;
+    if (!pending) continue;
+    pending.turns -= 1;
+    if (pending.turns > 0) continue;
+    slot.futureAttack = null;
+    const target = side === 'player' ? ctx.player : ctx.enemy;
+    if (!target || target.hp <= 0) continue;
+    const { attacker, move } = pending;
+    const type = String(move.type || '').toLowerCase();
+    const eff = typeEffOf(ctx, type, [...target.types]);
+    const { atk, def } = damageStats(attacker, target, move, ctx.field);
+    const dmg = eff === 0 ? 0 : Math.max(1, ctx.calc({ ...move, type }, atk, def, [...target.types]));
+    target.hp -= dmg;
+    L(`${target.name} took the **${pending.name}** attack for **${dmg}** damage${eff > 1 ? ' — super effective!' : eff === 0 ? ' — no effect.' : eff < 1 ? ' — not very effective.' : ''}`);
+  }
+}
+
 function performMove(ctx, A, B, move, L, depth = 0) {
+  const key = slug(move.name);
+  if (COUNTER_MOVES[key]) { useCounterMove(ctx, A, B, move, L); return; }
+  if (DELAYED_MOVES.has(key)) { useDelayedMove(ctx, A, B, move, L); return; }
   if (move.power > 0 && move.category !== 'status') applyDamageMove(ctx, A, B, move, L, depth);
   else applyStatusMove(ctx, A, B, move, L, depth);
+  if (SELF_KO_MOVES.has(key) && A.mon.hp > 0) {
+    A.mon.hp = 0;
+    L(`${A.mon.name} fainted from the explosion!`);
+  }
 }
 
 const BATON_PASSED_FLAGS = ['aquaRing', 'ingrain', 'focus', 'sub', 'magnetRise', 'healBlock', 'embargo', 'perish', 'cursed'];
@@ -945,6 +1000,7 @@ function endOfTurn(ctx) {
   const L = (text) => ctx.log.push(`↳ ${text}`);
   const { field } = ctx;
   const mons = [{ mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' }];
+  resolveDelayedAttacks(ctx, L);
   for (const { mon, side } of mons) {
     if (!mon || mon.hp <= 0) continue;
     const f = fx(mon);
@@ -1013,6 +1069,7 @@ function runTurn(ctx, playerMove, enemyMove) {
   const P = { mon: ctx.player, side: 'player', move: playerMove };
   const E = { mon: ctx.enemy, side: 'enemy', move: enemyMove };
   let playerActed = false;
+  fx(P.mon).lastHit = null; fx(E.mon).lastHit = null;
   const quashed = (a) => fx(a.mon).quashed;
   AB.updateWeatherSuppression(ctx);
   P.quickClawFirst = P.mon.held_item === 'Quick Claw' && Math.random() < 0.2;
