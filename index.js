@@ -253,6 +253,7 @@ const {
   getUserItems,
   findUserPokemonMatches,
   setUserPokemonLockByQuery,
+  findOwnedPokemonRows,
   addUserItem,
   findUserItemName,
   findQuestItem,
@@ -3171,7 +3172,7 @@ function getReleaseLockLimit(userId) {
 
 function getReleaseLockCount(userId) {
   const speciesLockCount = getLockedReleaseCategories(userId)
-    .filter((category) => /^species:\d+$/i.test(category)).length;
+    .filter((category) => /^(species:\d+|exact:\d+:(base|shiny|golden))$/i.test(category)).length;
   const categoryIds = getCategoryLockedCatchIds(userId);
   const individualLockCount = db.prepare('SELECT id FROM catches WHERE user_id = ? AND is_locked = 1').all(userId)
     .filter((row) => !categoryIds.has(row.id)).length;
@@ -3246,6 +3247,17 @@ function findReleaseLockPresetMatches(userId, preset) {
   `).all(userId);
   const normalize = (value) => `${value || ''}`.toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizedPreset = normalize(preset);
+  const exactLock = `${preset || ''}`.match(/^exact:(\d+):(base|shiny|golden)$/i);
+  if (exactLock) {
+    const formId = Number(exactLock[1]);
+    const variant = exactLock[2].toLowerCase();
+    return catches.filter((pokemon) =>
+      pokemon.pokemon_id === formId
+      && (variant === 'golden' ? pokemon.is_golden
+        : variant === 'shiny' ? pokemon.is_shiny && !pokemon.is_golden
+          : !pokemon.is_shiny && !pokemon.is_golden)
+    );
+  }
   const speciesLock = `${preset || ''}`.match(/^species:(\d+)$/i);
   if (speciesLock) {
     const speciesId = Number(speciesLock[1]);
@@ -3354,13 +3366,19 @@ function findReleaseLockPresetMatches(userId, preset) {
 }
 
 function releaseCategoryEmoji(category) {
-  if (/^species:\d+$/i.test(category)) return '🔒 ';
+  if (/^(species:\d+|exact:\d+:(base|shiny|golden))$/i.test(category)) return '🔒 ';
   const key = `${category || ''}`.toLowerCase().replace(/[^a-z]/g, '');
   const emoji = { egg: EMOJIS.pokeEgg, eggs: EMOJIS.pokeEgg, megaline: EMOJIS.megabracelet, megalines: EMOJIS.megabracelet, event: EMOJIS.eventticket, events: EMOJIS.eventticket }[key];
   return emoji ? `${emoji} ` : '';
 }
 
 function getReleaseLockCategoryLabel(category) {
+  const exactLock = `${category || ''}`.match(/^exact:(\d+):(base|shiny|golden)$/i);
+  if (exactLock) {
+    const form = db.prepare('SELECT name FROM pokemon_forms WHERE id = ?').get(Number(exactLock[1]));
+    const prefix = { shiny: 'Shiny ', golden: 'Golden ', base: '' }[exactLock[2].toLowerCase()];
+    return `${prefix}${form?.name || `Pokémon #${exactLock[1]}`}`;
+  }
   const speciesLock = `${category || ''}`.match(/^species:(\d+)$/i);
   if (!speciesLock) return category;
   return db.prepare(`
@@ -21157,81 +21175,57 @@ client.on('messageCreate', async (message) => {
             `${locked ? 'It does not use your individual lock slots.' : ''}`.trim()
           );
         }
-        const speciesMatches = /^\d+$/.test(query) ? [] : findUserPokemonMatches(userId, query);
-        const speciesIds = [...new Set(speciesMatches
-          .map((pokemon) => pokemon.form_species || pokemon.pokemon_id)
-          .filter(Number.isSafeInteger))];
-        if (speciesMatches.length && speciesIds.length === 1) {
-          const speciesCategory = `species:${speciesIds[0]}`;
-          const speciesLabel = getReleaseLockCategoryLabel(speciesCategory);
-          const alreadyLocked = getLockedReleaseCategories(userId).includes(speciesCategory);
-          if (locked === alreadyLocked) {
-            return message.reply(`The **${speciesLabel}** species lock is already ${locked ? 'locked' : 'unlocked'}.`);
-          }
-          const speciesCatchRows = findReleaseLockPresetMatches(userId, speciesCategory) || [];
-          const speciesCatchIds = speciesCatchRows.map((pokemon) => pokemon.id);
-          if (locked) {
-            const categoryIds = getCategoryLockedCatchIds(userId);
-            const individualLocksBeingGrouped = speciesCatchRows
-              .filter((pokemon) => pokemon.is_locked && !categoryIds.has(pokemon.id)).length;
-            const resultingLockCount = getReleaseLockCount(userId) - individualLocksBeingGrouped + 1;
-            const lockLimit = getReleaseLockLimit(userId);
-            if (resultingLockCount > lockLimit) {
-              return message.reply(
-                `🔒 Locking **${speciesLabel}** would use **1** release-lock slot ` +
-                `(${getReleaseLockCount(userId)}/${lockLimit} in use). Unlock some Pokémon first.`
-              );
-            }
-            db.prepare(
-              'INSERT OR IGNORE INTO release_category_locks (user_id, category) VALUES (?, ?)'
-            ).run(userId, speciesCategory);
-            syncReleaseCategoryLocks(userId);
-          } else {
-            db.prepare(
-              'DELETE FROM release_category_locks WHERE user_id = ? AND category = ?'
-            ).run(userId, speciesCategory);
-            const stillCategoryLocked = getCategoryLockedCatchIds(userId);
-            const idsToUnlock = speciesCatchIds.filter((catchId) => !stillCategoryLocked.has(catchId));
-            if (idsToUnlock.length) {
-              db.prepare(
-                `UPDATE catches SET is_locked = 0 WHERE user_id = ? AND id IN (${idsToUnlock.map(() => '?').join(', ')})`
-              ).run(userId, ...idsToUnlock);
-            }
-          }
-          return message.reply(
-            `${locked ? '🔒 Locked' : '🔓 Unlocked'} all **${speciesLabel}** Pokémon. ` +
-            `${locked ? 'This species lock uses 1 release-lock slot, regardless of how many you own.' : ''}`.trim()
-          );
+        // Strict match: base names/numbers never include shiny or golden copies.
+        const strictMatches = findOwnedPokemonRows(userId, query);
+        if (!strictMatches.length) {
+          return message.reply(`No Pokémon matching **${query}** found in your storage.`);
+        }
+        // One lock slot per exact form + variant, covering every duplicate of it.
+        const exactCategories = [...new Set(strictMatches.map((pokemon) =>
+          `exact:${pokemon.pokemon_id}:${pokemon.is_golden ? 'golden' : pokemon.is_shiny ? 'shiny' : 'base'}`
+        ))];
+        const matchName = exactCategories.map(getReleaseLockCategoryLabel).join(', ');
+        const lockedCategories = getLockedReleaseCategories(userId);
+        const targetCategories = exactCategories.filter((category) => lockedCategories.includes(category) !== locked);
+        if (!targetCategories.length && (locked || !strictMatches.some((pokemon) => pokemon.is_locked))) {
+          return message.reply(`**${matchName}** is already ${locked ? 'locked' : 'unlocked'}.`);
         }
         if (locked) {
-          const matches = findUserPokemonMatches(userId, query);
-          const locksToAdd = matches.filter((pokemon) => !pokemon.is_locked).length;
-          const lockCount = getReleaseLockCount(userId);
+          const targetIds = new Set(targetCategories.flatMap((category) =>
+            (findReleaseLockPresetMatches(userId, category) || []).map((pokemon) => pokemon.id)));
+          const categoryIds = getCategoryLockedCatchIds(userId);
+          const groupedIndividuals = strictMatches
+            .filter((pokemon) => targetIds.has(pokemon.id) && pokemon.is_locked && !categoryIds.has(pokemon.id)).length;
+          const lockCount = getReleaseLockCount(userId) - groupedIndividuals + targetCategories.length;
           const lockLimit = getReleaseLockLimit(userId);
-          if (lockCount + locksToAdd > lockLimit) {
+          if (lockCount > lockLimit) {
             return message.reply(
-              `🔒 You can have up to **${lockLimit}** release-locked Pokémon ` +
-              `(${lockCount}/${lockLimit} in use). Unlock some Pokémon before locking these.`
+              `🔒 You can have up to **${lockLimit}** release locks ` +
+              `(${getReleaseLockCount(userId)}/${lockLimit} in use). Unlock some Pokémon before locking this.`
             );
           }
-        }
-        const result = setUserPokemonLockByQuery(userId, query, locked);
-        if (result.error === 'not_found') return message.reply(`No Pokémon matching **${query}** found in your storage.`);
-        if (/^\d+$/.test(query)) {
-          if (!result.changedCount) {
-            return message.reply(`Dex #${query} is already ${locked ? 'locked' : 'unlocked'} from release.`);
-          }
+          const insert = db.prepare('INSERT OR IGNORE INTO release_category_locks (user_id, category) VALUES (?, ?)');
+          for (const category of targetCategories) insert.run(userId, category);
+          syncReleaseCategoryLocks(userId);
           return message.reply(
-            `${locked ? '🔒 Locked' : '🔓 Unlocked'} Dex **#${query}** from release.`
+            `🔒 Locked all **${matchName}** from release. This uses ${targetCategories.length} lock slot${targetCategories.length === 1 ? '' : 's'}, regardless of how many you own.`
           );
         }
-        if (!result.changedCount) {
-          return message.reply(`All **${result.name}** matching **${query}** are already ${locked ? 'locked' : 'unlocked'}.`);
+        const idsToUnlock = new Set([
+          ...strictMatches.map((pokemon) => pokemon.id),
+          ...targetCategories.flatMap((category) =>
+            (findReleaseLockPresetMatches(userId, category) || []).map((pokemon) => pokemon.id)),
+        ]);
+        const remove = db.prepare('DELETE FROM release_category_locks WHERE user_id = ? AND category = ?');
+        for (const category of targetCategories) remove.run(userId, category);
+        const stillLocked = getCategoryLockedCatchIds(userId);
+        const unlockIds = [...idsToUnlock].filter((id) => !stillLocked.has(id));
+        if (unlockIds.length) {
+          db.prepare(
+            `UPDATE catches SET is_locked = 0 WHERE user_id = ? AND id IN (${unlockIds.map(() => '?').join(', ')})`
+          ).run(userId, ...unlockIds);
         }
-        return message.reply(
-          `${locked ? '🔒 Locked' : '🔓 Unlocked'} **${result.changedCount} ${result.name}** ` +
-          `matching **${query}**${result.matchedCount > result.changedCount ? ` (${result.matchedCount - result.changedCount} already in that state)` : ''}.`
-        );
+        return message.reply(`🔓 Unlocked all **${matchName}** from release.`);
       }
 
       if (subcommand === 'values') {

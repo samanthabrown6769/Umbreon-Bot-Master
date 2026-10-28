@@ -9620,6 +9620,7 @@ module.exports = {
   getUserItems,
   findUserPokemonMatches,
   setUserPokemonLockByQuery,
+  findOwnedPokemonRows,
   ROTOM_ITEMS,
   addUserItem,
   findUserItemName,
