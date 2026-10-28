@@ -2732,6 +2732,20 @@ db.transaction(() => {
 
 const MAX_QUEST_SLOTS = 5;
 
+// Active quests created from templates that previously paid 0 coins keep that value; backfill them.
+db.transaction(() => {
+  const update = db.prepare(`
+    UPDATE active_quests SET reward_coins = ?
+    WHERE reward_coins = 0 AND refresh_at = 0
+      AND quest_type = ? AND target_type = ? AND target = ?
+  `);
+  for (const template of QUEST_TEMPLATES) {
+    if (template.reward_coins > 0) {
+      update.run(template.reward_coins, template.quest_type, template.target_type, template.target);
+    }
+  }
+}).immediate();
+
 function getUserQuestSlots(userId) {
   const patreonSlots = (PATREON_TIER_PERKS[getUser(userId).patreon_tier] || NO_PATREON_PERKS).questSlots;
   const clanSlots = getClanPerkMultipliers(getPlayerClan(userId)).questSlotBonus;
