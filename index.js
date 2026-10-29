@@ -137,6 +137,9 @@ const {
   syncDuplicateCatchState,
   syncNewCatchState,
   rebaseTransferredPokemon,
+  sendPokemonGift,
+  getUserGifts,
+  claimPokemonGifts,
   getPokemonFormBySlug,
   getPokemonLearnset,
   getSpeciesLearnset,
@@ -288,6 +291,7 @@ const {
   getAllRareSpawnAnnouncementChannels,
   setRareSpawnAnnouncementChannel,
   getMarketAnnouncementChannel,
+  getAllMarketAnnouncementChannels,
   setMarketAnnouncementChannel,
   getChannelCatchRateBoost,
   getBoostedChannels,
@@ -616,8 +620,8 @@ const PREFIX = '.';
 const TOPGG_WEBHOOK_AUTH = process.env.TOPGG_WEBHOOK_AUTH?.trim();
 const pendingEggReadyNotifications = new Map();
 
-function advanceEggCatchProgress(userId, amount = 1, channel) {
-  const newlyReady = advanceEggCatchProgressInDb(userId, amount);
+function advanceEggCatchProgress(userId, amount = 1, channel, abilityBoost) {
+  const newlyReady = advanceEggCatchProgressInDb(userId, amount, abilityBoost);
   if (!newlyReady.length) return newlyReady;
 
   let pending = pendingEggReadyNotifications.get(userId);
@@ -1288,24 +1292,42 @@ function scheduleCooldownNotification(cooldowns, userId, username, channel, dura
     ? { startedAt: Date.now(), duration, timer: null }
     : null;
   if (state) stateMap.set(userId, state);
-  const timer = setTimeout(async () => {
+  const finish = () => {
     cooldowns.delete(userId);
     if (cooldownEndsAt[command].get(userId) === endsAt) cooldownEndsAt[command].delete(userId);
     if (state && stateMap.get(userId) === state) stateMap.delete(userId);
+  };
+  const notify = async (usesMachine) => {
     try {
       const mode = getCooldownNotificationMode(userId);
       await channel.send({
-        content: `✅ ${mode === 'ping' ? `<@${userId}>` : `**${username}**`}, your ${action} cooldown is over. ` +
-          `You can use \`${PREFIX}${command}\` again.`,
+        content: `✅ ${mode === 'ping' ? `<@${userId}>` : `**${username}**`}, ` +
+          (usesMachine
+            ? `your ${EMOJIS.cooldownMachine} Cooldown Machine is ready for ${action}. ` +
+              `You can use \`${PREFIX}${command}\` again now (uses 1 charge).`
+            : `your ${action} cooldown is over. You can use \`${PREFIX}${command}\` again.`),
         allowedMentions: mode === 'ping' ? { users: [userId] } : { parse: [] },
       });
     } catch (error) {
       console.error(`Failed to send ${command} cooldown notification for user ${userId}:`, error);
     }
+  };
+  // With Cooldown Machine charges loaded for this command, remind at half the cooldown.
+  const chargeField = { p: 'cooldown_machine_catch_charges', f: 'cooldown_machine_fish_charges' }[command];
+  const halved = Boolean(state && chargeField && getUser(userId)[chargeField] > 0);
+  if (halved) {
+    state.timer = setTimeout(() => {
+      void notify(true);
+      state.timer = setTimeout(finish, duration - Math.floor(duration / 2));
+    }, Math.floor(duration / 2));
+    return;
+  }
+  const timer = setTimeout(() => {
+    finish();
+    void notify(false);
   }, duration);
   if (state) state.timer = timer;
 }
-
 function getCooldownReadyTimestamp(command, userId, duration) {
   const endsAt = cooldownEndsAt[command]?.get(userId) ?? Date.now() + duration;
   return `<t:${Math.ceil(endsAt / 1000)}:R>`;
@@ -1381,6 +1403,28 @@ async function resolveLeadOverworldAbility(userId) {
     console.error(`Failed to resolve overworld ability for buddy ${buddy.id}:`, error);
     return '';
   }
+}
+
+const EGG_BOOST_ABILITIES = new Set(['magma-armor', 'flame-body']);
+
+// True when the buddy or any team member has Magma Armor or Flame Body.
+async function hasEggBoostAbility(userId) {
+  const holders = [getUserBuddy(userId), ...getUserTeam(userId)].filter(Boolean);
+  for (const mon of holders) {
+    let ability = String(mon.ability || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    if (!ability) {
+      try {
+        const abilities = await fetchPokemonAbilities(mon.form_id || mon.pokemon_id);
+        ability = String((abilities.find((entry) => !entry.hidden) || abilities[0]).name)
+          .toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      } catch (error) {
+        console.error(`Failed to resolve egg-boost ability for catch ${mon.id}:`, error);
+        continue;
+      }
+    }
+    if (EGG_BOOST_ABILITIES.has(ability)) return true;
+  }
+  return false;
 }
 
 function getOverworldEncounterMultiplier(ability) {
@@ -2192,7 +2236,7 @@ function formatBallDexRow(caughtBalls) {
   const owned = caughtBalls || new Set();
   const icons = BALLDEX_BALLS.map((ball) => (owned.has(ball.key) ? ball.unlocked : ball.locked)).join('');
   const count = BALLDEX_BALLS.filter((ball) => owned.has(ball.key)).length;
-  return { icons, count };
+  return { icons: count === BALLDEX_BALLS.length ? `${icons} :tada:` : icons, count };
 }
 
 function getBallDexIconsForCatch(userId, pokemonFormId) {
@@ -3881,6 +3925,9 @@ function createWorldBossAttackResult(attack, rewards = null) {
         .map(({ userId, itemName }) =>
           `• <@${userId}> ${BOXES[itemName]?.emoji || '📦'} **${itemName}**!`
         ),
+      ...(rewards.extraDrops || [])
+        .filter(({ name }) => ['Loaded Dice', 'Choice Cloak', 'Metronome'].includes(name))
+        .map(({ userId, name }) => `• <@${userId}> **${name}**!`),
     ];
     const dropText = specialDrops.join('\n');
     const drops = specialDrops.length
@@ -5995,14 +6042,15 @@ async function askForBall(
         target.name
       )
       : [];
-    advanceEggCatchProgress(userId, 1, message.channel);
+    const eggAbilityBoost = await hasEggBoostAbility(userId);
+    advanceEggCatchProgress(userId, 1, message.channel, eggAbilityBoost);
     // Onyx clan perk: eggs hatch 2x faster (extra progress on every catch).
     if (getClanPerkMultipliers(getPlayerClan(userId)).eggHatchBonus > 0) {
-      advanceEggCatchProgress(userId, 1, message.channel);
+      advanceEggCatchProgress(userId, 1, message.channel, eggAbilityBoost);
     }
     const eggPerks = getPatreonPerks(userId);
     if (eggPerks.eggHatchSpeed > 0 && Math.random() < eggPerks.eggHatchSpeed) {
-      advanceEggCatchProgress(userId, 1, message.channel);
+      advanceEggCatchProgress(userId, 1, message.channel, eggAbilityBoost);
     }
     if (eggPerks.autoEquipEggs) {
       const eggUser = getUser(userId);
@@ -7530,9 +7578,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       if (won) {
         const isRematch = challenge.special || challenge.evStat
           || challengeIndex < getLeagueProgress(userId).cleared_challenges;
-        const luckIncenseMultiplier = partyData.some((pokemon) =>
-          attackingPokemon.has(pokemon.id) && pokemon.held_item === 'Luck Incense'
-        ) ? 2 : 1;
+        const luckIncenseMultiplier = partyData.some((pokemon) => pokemon.held_item === 'Luck Incense') ? 2 : 1;
         let rematchCoins = 0;
         let rematchItem = null;
         let voloCoins = 0;
@@ -7836,7 +7882,7 @@ function createBuddyMovesEmbed(buddy, learnsetData, equippedMoves, page = 0, mov
 
 const activeTradeLocks = new Set();
 
-function findTradeCatch(ownerId, spec) {
+function resolveTradeSpec(spec) {
   let isShiny = Boolean(spec.isShiny);
   let isGolden = Boolean(spec.isGolden);
   let form;
@@ -7857,13 +7903,42 @@ function findTradeCatch(ownerId, spec) {
     form = resolvePokemonForm(spec.query);
   }
   if (!form) return null;
+  return { form, isShiny, isGolden };
+}
+
+function findTradeCatch(ownerId, spec) {
+  const resolved = resolveTradeSpec(spec);
+  if (!resolved) return null;
   return db.prepare(`
     SELECT * FROM catches
     WHERE user_id = ? AND in_team = 0 AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
     ORDER BY id LIMIT 1
-  `).get(ownerId, form.id, isShiny ? 1 : 0, isGolden ? 1 : 0) || null;
+  `).get(ownerId, resolved.form.id, resolved.isShiny ? 1 : 0, resolved.isGolden ? 1 : 0) || null;
 }
 
+// Box (non-team, unlocked) copies of one variant; the buddy is offered last.
+function getTradeableCatchRows(ownerId, entry, limit = Number.MAX_SAFE_INTEGER) {
+  return db.prepare(`
+    SELECT id, name, caught_ball FROM catches
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+      AND in_team = 0 AND is_locked = 0
+    ORDER BY (id = COALESCE((SELECT buddy_catch_id FROM users WHERE id = ?), -1)), id
+    LIMIT ?
+  `).all(ownerId, entry.formId, entry.isShiny ? 1 : 0, entry.isGolden ? 1 : 0, ownerId, limit);
+}
+
+// Splits "<name|dex> [amount|all]" tokens into a trade spec and amount.
+function parseTradePokemonTokens(tokens) {
+  let amount = 1;
+  let nameTokens = tokens;
+  const last = tokens[tokens.length - 1]?.toLowerCase();
+  if (tokens.length >= 2 && (last === 'all' || /^\d[\d,]*$/.test(last))) {
+    amount = last === 'all' ? 'all' : parseAmount(last);
+    nameTokens = tokens.slice(0, -1);
+  }
+  const spec = parseTradeMonInput(nameTokens.join(' ').replace(/^(shiny|golden)\s+/i, '$1'));
+  return { spec, amount };
+}
 function sendTradeHelp(message) {
   return message.reply({
     embeds: [new EmbedBuilder()
@@ -7995,9 +8070,352 @@ async function handleNameTrade(message, userId, targetUser, yourArg, theirArg) {
   });
 }
 
+const MULTI_TRADE_MAX_SPECIES = 10;
+
+function getTradeBalances(userId) {
+  const row = db.prepare('SELECT coins, patreon_tokens FROM users WHERE id = ?').get(userId);
+  return { coins: row?.coins || 0, tokens: row?.patreon_tokens || 0 };
+}
+
+function buildMultiTradeEmbed(session, title = '🤝 Trade between {a} & {b} 🤝') {
+  const lines = [];
+  const fields = [];
+  for (const side of session.sides) {
+    const balances = getTradeBalances(side.user.id);
+    lines.push(
+      `${EMOJIS.pokecoin} <@${side.user.id}> (bal: ${balances.coins.toLocaleString()}) offers: **${side.coins.toLocaleString()} PokeCoins**`,
+      `${EMOJIS.patreonToken} (bal: ${balances.tokens.toLocaleString()}) offers: **${side.tokens.toLocaleString()} Patreon tokens**`
+    );
+    const entries = [...side.pokemon.values()];
+    fields.push({
+      name: `${side.accepted ? '✅' : '❌'} ${side.user.username}'s Pokemon${side.accepted ? ' (ACCEPTED)' : ''}`,
+      value: entries.length
+        ? entries.map((entry, index) =>
+          `${index + 1}. ${BALL_CONFIG[entry.ball]?.emoji || EMOJIS.pokeball} ` +
+          `${entry.isShiny ? `${EMOJIS.shiny} ` : ''}${entry.isGolden ? `${EMOJIS.golden} ` : ''}` +
+          `${getPokemonSpriteEmoji({ name: entry.name, isShiny: entry.isShiny, isGolden: entry.isGolden })} ` +
+          `${entry.name} x${entry.amount}`).join('\n')
+        : 'None',
+      inline: true,
+    });
+  }
+  return new EmbedBuilder()
+    .setTitle(title.replace('{a}', session.sides[0].user.username).replace('{b}', session.sides[1].user.username))
+    .setDescription(lines.join('\n'))
+    .addFields(fields)
+    .setColor(0x3498db)
+    .setFooter({
+      text: `-p add <pokemon|dex> [amount] • -p multi <up to ${MULTI_TRADE_MAX_SPECIES} species> • -coins add <n> • -tokens add <n> • -trade accept|cancel`,
+    });
+}
+
+function parseMultiTradeCommand(content) {
+  const match = content.trim().match(/^--?(p|pokemon|coins?|tokens?|trade)\s+(\S+)\s*(.*)$/i);
+  if (!match) return null;
+  const kind = match[1].toLowerCase();
+  return {
+    kind: kind.startsWith('coin') ? 'coins' : kind.startsWith('token') ? 'tokens' : kind === 'trade' ? 'trade' : 'pokemon',
+    action: match[2].toLowerCase(),
+    rest: match[3].trim(),
+  };
+}
+
+function applyMultiTradeCommand(session, side, command) {
+  if (command.kind === 'trade') {
+    if (['accept', 'confirm'].includes(command.action)) {
+      side.accepted = true;
+      return { ok: true };
+    }
+    if (['cancel', 'decline'].includes(command.action)) return { cancel: true };
+    return { error: 'Use `-trade accept` or `-trade cancel`.' };
+  }
+
+  if (command.kind === 'coins' || command.kind === 'tokens') {
+    const field = command.kind;
+    if (!['add', 'remove'].includes(command.action)) return { error: `Use \`-${field} add <amount>\`.` };
+    const amount = command.action === 'remove' && /^all$/i.test(command.rest) ? side[field] : parseAmount(command.rest);
+    if (!Number.isSafeInteger(amount) || amount <= 0) return { error: 'Enter a valid positive amount.' };
+    const next = command.action === 'add' ? side[field] + amount : Math.max(0, side[field] - amount);
+    if (next > getTradeBalances(side.user.id)[field]) {
+      return { error: `You don't have enough ${field === 'coins' ? 'PokeCoins' : 'Patreon tokens'}.` };
+    }
+    side[field] = next;
+    return { ok: true };
+  }
+
+  const tokens = command.rest.split(/\s+/).filter(Boolean);
+  if (command.action === 'remove') {
+    const spec = parseTradeMonInput(tokens.join(' '));
+    const resolved = spec && resolveTradeSpec(spec);
+    if (!resolved) return { error: 'Pokémon not found.' };
+    const key = `${resolved.form.id}:${resolved.isShiny ? 1 : 0}:${resolved.isGolden ? 1 : 0}`;
+    if (!side.pokemon.delete(key)) return { error: 'That Pokémon is not in your offer.' };
+    return { ok: true };
+  }
+  if (!['add', 'multi', 'multi_add'].includes(command.action) || !tokens.length) {
+    return { error: 'Use `-p add <pokemon|dex> [amount]` or `-p multi <pokemon|dex ...>`.' };
+  }
+
+  const requests = command.action === 'add'
+    ? [parseTradePokemonTokens(tokens)]
+    : tokens.map((token) => ({ spec: parseTradeMonInput(token), amount: 1 }));
+  const staged = new Map(side.pokemon);
+  for (const request of requests) {
+    const resolved = request.spec && resolveTradeSpec(request.spec);
+    if (!resolved) return { error: 'Pokémon not found. Check the name or Pokédex number.' };
+    const entry = {
+      formId: resolved.form.id,
+      isShiny: resolved.isShiny,
+      isGolden: resolved.isGolden,
+    };
+    const available = getTradeableCatchRows(side.user.id, entry);
+    if (!available.length) {
+      return { error: `You don't have a tradeable **${request.spec.query || resolved.form.name}** (team and locked Pokémon can't be traded).` };
+    }
+    const amount = request.amount === 'all' ? available.length : request.amount;
+    if (!Number.isSafeInteger(amount) || amount <= 0) return { error: 'Enter a valid amount.' };
+    if (amount > available.length) {
+      return { error: `You only have ${available.length} tradeable **${available[0].name}**.` };
+    }
+    staged.set(`${entry.formId}:${entry.isShiny ? 1 : 0}:${entry.isGolden ? 1 : 0}`, {
+      ...entry, name: available[0].name, ball: available[0].caught_ball, amount,
+    });
+  }
+  if (staged.size > MULTI_TRADE_MAX_SPECIES) {
+    return { error: `A trade can include at most ${MULTI_TRADE_MAX_SPECIES} Pokémon species.` };
+  }
+  side.pokemon = staged;
+  return { ok: true };
+}
+
+// Re-validates and executes the whole trade atomically; returns an error string on failure.
+function executeMultiTrade(session) {
+  return db.transaction(() => {
+    const moves = [];
+    for (let index = 0; index < 2; index += 1) {
+      const side = session.sides[index];
+      const balances = getTradeBalances(side.user.id);
+      if (side.coins > balances.coins || side.tokens > balances.tokens) {
+        return `${side.user.username} no longer has enough PokeCoins or Patreon tokens.`;
+      }
+      const buddyId = db.prepare('SELECT buddy_catch_id FROM users WHERE id = ?').get(side.user.id)?.buddy_catch_id;
+      for (const entry of side.pokemon.values()) {
+        const rows = getTradeableCatchRows(side.user.id, entry, entry.amount);
+        if (rows.length < entry.amount) return `${side.user.username} no longer has ${entry.amount}x ${entry.name}.`;
+        moves.push({ from: side.user.id, to: session.sides[1 - index].user.id, ids: rows.map((row) => row.id), buddyId });
+      }
+    }
+    for (const move of moves) {
+      for (const id of move.ids) {
+        db.prepare('UPDATE catches SET user_id = ? WHERE id = ?').run(move.to, id);
+        db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(id);
+        rebaseTransferredPokemon(move.to, id);
+        syncNewCatchState(move.to, id);
+      }
+    }
+    for (let index = 0; index < 2; index += 1) {
+      const side = session.sides[index];
+      const other = session.sides[1 - index].user.id;
+      if (side.coins || side.tokens) {
+        incrementUser(side.user.id, { coins: -side.coins, patreon_tokens: -side.tokens });
+        incrementUser(other, { coins: side.coins, patreon_tokens: side.tokens });
+      }
+    }
+    return null;
+  }).immediate();
+}
+
+async function handleMultiTrade(message, userId, args) {
+  const targetUser = message.mentions.users.first();
+  if (!targetUser || targetUser.id === userId || targetUser.bot) {
+    return message.reply(`Please mention a valid player: \`${PREFIX}trade @User -m\`.`);
+  }
+  if (activeTradeLocks.has(userId) || activeTradeLocks.has(targetUser.id)) {
+    return message.reply('⏳ One of the trainers is already in an active trade.');
+  }
+  activeTradeLocks.add(userId);
+  activeTradeLocks.add(targetUser.id);
+  const release = () => {
+    activeTradeLocks.delete(userId);
+    activeTradeLocks.delete(targetUser.id);
+  };
+
+  try {
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('mtrade_accept').setLabel('Accept').setStyle(ButtonStyle.Success).setEmoji('✅'),
+      new ButtonBuilder().setCustomId('mtrade_decline').setLabel('Decline').setStyle(ButtonStyle.Danger).setEmoji('❌')
+    );
+    const prompt = await message.channel.send({
+      content: `<@${targetUser.id}>`,
+      embeds: [makeEmbed(
+        '🤝 Multi-Trade Request',
+        `<@${userId}> has initiated a multi-trade with <@${targetUser.id}>!\n\n` +
+        `<@${targetUser.id}>, click ✅ to accept or ❌ to decline within 15 seconds.`
+      )],
+      components: [row],
+      allowedMentions: { users: [targetUser.id] },
+    });
+
+    let accepted = false;
+    try {
+      const interaction = await prompt.awaitMessageComponent({
+        componentType: ComponentType.Button,
+        time: 15000,
+        filter: (candidate) => {
+          if (candidate.user.id === targetUser.id) return true;
+          candidate.reply({ content: 'Only the invited trainer can respond.', ephemeral: true }).catch(() => {});
+          return false;
+        },
+      });
+      accepted = interaction.customId === 'mtrade_accept';
+      await interaction.update({
+        content: accepted ? '' : `❌ <@${targetUser.id}> declined the trade.`,
+        embeds: accepted ? prompt.embeds : [],
+        components: [],
+      });
+    } catch (error) {
+      if (error.code !== 'InteractionCollectorError') throw error;
+      await prompt.edit({ content: '⏰ Trade request expired.', embeds: [], components: [] }).catch(() => {});
+    }
+    if (!accepted) return release();
+
+    const session = {
+      sides: [userId, targetUser.id].map((id, index) => ({
+        user: index === 0 ? message.author : targetUser,
+        pokemon: new Map(), coins: 0, tokens: 0, accepted: false,
+      })),
+    };
+    await message.channel.send({ embeds: [buildMultiTradeEmbed(session)] });
+
+    const collector = message.channel.createMessageCollector({
+      filter: (candidate) => !candidate.author.bot
+        && (candidate.author.id === userId || candidate.author.id === targetUser.id)
+        && /^--?(p|pokemon|coins?|tokens?|trade)\s/i.test(candidate.content.trim()),
+      idle: 120000,
+    });
+    collector.on('collect', async (incoming) => {
+      try {
+        const command = parseMultiTradeCommand(incoming.content);
+        if (!command) return;
+        const side = session.sides.find((entry) => entry.user.id === incoming.author.id);
+        const result = applyMultiTradeCommand(session, side, command);
+        if (result.cancel) {
+          collector.stop('cancelled');
+          await incoming.channel.send(`❌ <@${side.user.id}> cancelled the trade.`);
+          return;
+        }
+        if (result.error) {
+          await incoming.reply(`❌ ${result.error}`);
+          return;
+        }
+        // Any change to an offer withdraws both acceptances.
+        if (command.kind !== 'trade') session.sides.forEach((entry) => { entry.accepted = false; });
+        if (!session.sides.every((entry) => entry.accepted)) {
+          await incoming.channel.send({ embeds: [buildMultiTradeEmbed(session)] });
+          return;
+        }
+        const failure = executeMultiTrade(session);
+        collector.stop(failure ? 'failed' : 'completed');
+        if (failure) {
+          await incoming.channel.send(`❌ Trade cancelled: ${failure}`);
+          return;
+        }
+        const complete = new EmbedBuilder().setColor(0x2ecc71);
+        const gave = session.sides.map((side) => {
+          const mons = [...side.pokemon.values()].map((entry) => `${entry.name} x${entry.amount}`).join(', ') || 'no Pokémon';
+          return `**${side.user.username}** gave: ${mons}\n${side.coins.toLocaleString()} PokeCoins / ${side.tokens.toLocaleString()} Patreon tokens`;
+        });
+        complete.setTitle(`— TRADE COMPLETE`).setDescription(gave.join('\n\n'));
+        await incoming.channel.send({ embeds: [complete] });
+      } catch (error) {
+        console.error('Multi-trade error:', error);
+      }
+    });
+    collector.on('end', (_collected, reason) => {
+      release();
+      if (reason === 'idle') {
+        message.channel.send('⏰ The trade timed out due to inactivity.').catch(() => {});
+      }
+    });
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+function getGiftTarget(message, token) {
+  const mentioned = message.mentions.users.first();
+  if (mentioned) return mentioned.id;
+  return /^\d{15,25}$/.test(token || '') ? token : null;
+}
+
+async function handleGift(message, userId, args) {
+  const sub = args[0]?.toLowerCase();
+  if (sub === 'claim') {
+    const senderId = getGiftTarget(message, args[1]);
+    const gifts = claimPokemonGifts(userId, senderId);
+    if (!gifts.length) return message.reply('🎁 You have no gifts to claim.');
+    const bySender = new Map();
+    for (const gift of gifts) {
+      bySender.set(gift.sender_id, [...(bySender.get(gift.sender_id) || []), gift]);
+    }
+    return message.reply({
+      embeds: [makeEmbed(
+        '🎁 Gifts Claimed',
+        [...bySender.entries()].map(([sender, list]) =>
+          `From <@${sender}>:\n${list.map((gift) =>
+            `• ${gift.is_shiny ? `${EMOJIS.shiny} ` : ''}${gift.is_golden ? `${EMOJIS.golden} ` : ''}**${gift.name}**`).join('\n')}`
+        ).join('\n\n'),
+        0x2ecc71
+      )],
+      allowedMentions: { parse: [] },
+    });
+  }
+  if (sub === 'list') {
+    const gifts = getUserGifts(userId);
+    return message.reply(gifts.length
+      ? `🎁 You have **${gifts.length}** gift(s) waiting. Use \`${PREFIX}gift claim\` to claim them.`
+      : '🎁 You have no gifts waiting.');
+  }
+
+  const targetId = getGiftTarget(message, args[0]);
+  if (!targetId || targetId === userId || args.length < 2) {
+    return message.reply(`Usage: \`${PREFIX}gift <@user|userID> <Pokémon name|Pokédex number> [amount]\` or \`${PREFIX}gift claim\`.`);
+  }
+  const targetUser = await client.users.fetch(targetId).catch(() => null);
+  if (!targetUser || targetUser.bot) return message.reply('❌ I could not find that user.');
+
+  const { spec, amount } = parseTradePokemonTokens(args.slice(1));
+  const resolved = spec && resolveTradeSpec(spec);
+  if (!resolved) return message.reply('❌ Pokémon not found. Check the name or Pokédex number.');
+  const available = getTradeableCatchRows(userId, {
+    formId: resolved.form.id, isShiny: resolved.isShiny, isGolden: resolved.isGolden,
+  });
+  if (!available.length) {
+    return message.reply('❌ You have no giftable copy of that Pokémon (team and locked Pokémon cannot be gifted).');
+  }
+  const wanted = amount === 'all' ? available.length : amount;
+  if (!Number.isSafeInteger(wanted) || wanted <= 0) return message.reply('❌ Enter a valid amount.');
+  if (wanted > available.length) {
+    return message.reply(`❌ You only have **${available.length}** giftable ${available[0].name}.`);
+  }
+  let sent = 0;
+  for (const mon of available.slice(0, wanted)) {
+    if (!sendPokemonGift(userId, targetId, mon.id).error) sent += 1;
+  }
+  if (!sent) return message.reply('❌ That Pokémon can no longer be gifted.');
+  const mon = available[0];
+  return message.reply({
+    content: `🎁 Sent **${sent > 1 ? `${sent}x ` : ''}${mon.name}** to <@${targetId}>'s gift inventory! They can use \`${PREFIX}gift claim\`.`,
+    allowedMentions: { parse: [] },
+  });
+}
 async function handleTrade(message, userId, args) {
   const targetUser = message.mentions.users.first();
   if (!args.length || args[0].toLowerCase() === 'help') return sendTradeHelp(message);
+  if (args.some((argument) => argument.toLowerCase() === '-m')) {
+    return handleMultiTrade(message, userId, args);
+  }
   if (targetUser && args.length >= 3) {
     if (targetUser.id === userId || targetUser.bot) {
       return message.reply("❌ Please mention a different, real trainer to trade with.");
@@ -9362,7 +9780,9 @@ async function triggerAutoSpawn(channel, guildConfig, state, { legendaryOrShiny 
       collector.stop('caught');
       try {
         saveCatch(interaction.user.id, target, target.isShiny, true);
-        advanceEggCatchProgress(interaction.user.id, 1, interaction.channel);
+        advanceEggCatchProgress(
+          interaction.user.id, 1, interaction.channel, await hasEggBoostAbility(interaction.user.id)
+        );
         trackClanActivity(interaction.user.id, 'catch');
         announceRareSpawn(interaction.guild, interaction.user, target).catch(() => {});
         const owned = db.prepare(
@@ -9525,25 +9945,14 @@ function startLotteryScheduler() {
   timer.unref?.();
 }
 
+// Market listings are global: announce them in every server's configured listing channel.
 async function announceMarketListings(message, listings) {
-  if (!message.guild) return { configured: false, failures: 0 };
-  const channelId = getMarketAnnouncementChannel(message.guild.id);
-  if (!channelId) return { configured: false, failures: 0 };
-
-  let channel;
-  try {
-    channel = await message.guild.channels.fetch(channelId);
-    if (!channel || channel.type !== ChannelType.GuildText) {
-      throw new Error(`Configured market listing channel ${channelId} is not a text channel.`);
-    }
-  } catch (error) {
-    console.error(`Failed to resolve market announcement channel ${channelId}:`, error);
-    return { configured: true, failures: 1 };
-  }
+  const configuredChannels = getAllMarketAnnouncementChannels();
+  if (!configuredChannels.length || !listings.length) return { configured: false, failures: 0 };
 
   const pageSize = 10;
   const pageCount = Math.ceil(listings.length / pageSize);
-  let failures = 0;
+  const embeds = [];
   for (let offset = 0; offset < listings.length; offset += pageSize) {
     const page = listings.slice(offset, offset + pageSize);
     const pageNumber = Math.floor(offset / pageSize) + 1;
@@ -9557,16 +9966,24 @@ async function announceMarketListings(message, listings) {
       ).join('\n\n'));
     const sprite = getMarketPokemonSprite(page[0]);
     if (sprite) embed.setThumbnail(sprite);
+    embeds.push(embed);
+  }
+
+  let failures = 0;
+  for (const { guild_id: guildId, channel_id: channelId } of configuredChannels) {
     try {
-      await channel.send({ embeds: [embed] });
+      const channel = await client.channels.fetch(channelId);
+      if (!channel || channel.type !== ChannelType.GuildText) {
+        throw new Error(`Configured market listing channel ${channelId} is not a text channel.`);
+      }
+      for (const embed of embeds) await channel.send({ embeds: [embed] });
     } catch (error) {
-      failures += 1;
-      console.error(`Failed to announce market listings page ${pageNumber} for guild ${message.guild.id}:`, error);
+      if (guildId === message.guild?.id) failures += 1;
+      console.error(`Failed to announce market listings in channel ${channelId} for guild ${guildId}:`, error);
     }
   }
   return { configured: true, failures };
 }
-
 const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
 const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
 const COMMAND_CADENCE_WINDOW_MS = 5 * 60 * 1000;
@@ -11030,6 +11447,9 @@ client.on('messageCreate', async (message) => {
           description:
             `• \`${PREFIX}trade @user <your Pokémon name|Pokédex number> <their Pokémon name|Pokédex number>\` — Propose both sides of a trade\n` +
             `• \`${PREFIX}trade @user <your Pokémon name|Pokédex number>\` — Offer one Pokémon and let the recipient reply with theirs\n` +
+            `• \`${PREFIX}trade @user -m\` — Start a multi-trade (Pokémon, PokeCoins and Patreon tokens)\n` +
+            `• \`${PREFIX}gift <@user|userID> <Pokémon name|Pokédex number> [amount]\` — Send a Pokémon to their gift inventory\n` +
+            `• \`${PREFIX}gift claim\` — Claim gifts sent to you\n` +
             `• \`${PREFIX}swap <Pokémon name|Pokédex number>\` — PokeSwap one Pokémon\n` +
             `• \`${PREFIX}swap shiny|golden <Pokémon name|Pokédex number>\` — PokeSwap a specific variant\n` +
             `• \`${PREFIX}swap info\` — View your current PokeSwap multiplier\n` +
@@ -11157,7 +11577,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}clan info ranks\` — View rank requirements and perks\n` +
             `• \`${PREFIX}clan purchase <rank>\` — Individually purchase unlocked clan perks with your catches and coins\n` +
             `• \`${PREFIX}clan upgrade <rank>\` — Clan leaders/co-owners unlock the next rank using catches and treasury coins\n` +
-            `• \`${PREFIX}channel add boost\` — eligible Patreon supporters add a personal +5% rate boost in this channel (up to 10 channels)\n` +
+            `• \`${PREFIX}channel add boost\` — eligible Patreon supporters boost this channel for everyone with a +5% rate boost (up to 10 channels)\n` +
             `• \`${PREFIX}evoitems\` — View your evolution stones/items and what they evolve\n` +
             `• \`${PREFIX}evolve <Pokémon> [item]\` / \`${PREFIX}use <item> <Pokémon>\` — Evolve with an item, level, or high friendship (catch Pokémon with a buddy to raise it)\n` +
             `• \`${PREFIX}hold <item> <Pokémon>\` / \`${PREFIX}unhold <Pokémon>\` — Hold an evolution item\n` +
@@ -11189,7 +11609,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}team\` — View your battle roster and stats\n` +
             `• \`${PREFIX}team expshare on|off\` — Toggle your purchased Exp. Share for the active team\n` +
             `            • \`${PREFIX}battle npc <number/name>\` / \`${PREFIX}b npc\` — Battle NPC trainers starting with Brock (\`${PREFIX}battle npc 1\`); Volo is always available with \`${PREFIX}battle npc volo\` (30s cooldown)\n` +
-                        `• \`${PREFIX}npc list [region]\` / \`${PREFIX}battle npc list [region]\` — Browse all NPCs (paginated); cleared campaign NPCs can be rematched for icon drops (1/1K)\n` +
+                        `• \`${PREFIX}npc list [region]\` / \`${PREFIX}battle npc list [region]\` — Browse all NPCs (paginated); cleared campaign NPCs can be rematched for icon drops (1/500)\n` +
                         `• \`${PREFIX}faction npc list\` — List all faction NPCs and their teams\n` +
             `• \`${PREFIX}battle icons [@user]\` / \`${PREFIX}battle set-icon <name|number>\` — View and set unlocked NPC battle icons\n` +
             `• \`${PREFIX}league\` — Check progress across Kanto, Johto, Hoenn, Sinnoh, Unova, Kalos, Alola, Galar, and Paldea\n` +
@@ -11759,7 +12179,7 @@ client.on('messageCreate', async (message) => {
           .setDescription(channelList)
           .addFields({
             name: 'Boost',
-            value: '+5% catch, shiny, and Legendary rates for your encounters in each listed channel.',
+            value: '+5% catch, shiny, and Legendary rates for everyone in each listed channel.',
           })
           .setFooter({
             text: `${boostedChannels.length} / ${UNLIMITED_CHANNEL_BOOSTER_IDS.has(userId) ? '∞' : '10'} channels boosted`,
@@ -11807,7 +12227,7 @@ client.on('messageCreate', async (message) => {
           );
         }
         return message.reply(
-          `✅ Added a personal **+5% catch, shiny, and Legendary rate boost** for your encounters in <#${message.channelId}>.`
+          `✅ Added a **+5% catch, shiny, and Legendary rate boost** for **everyone** in <#${message.channelId}>.`
         );
       }
       if (args.length === 2 && action === 'remove' && setting === 'boost') {
@@ -12221,7 +12641,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}giveaway set [#channel]\` — Giveaway channel (Manage Server)\n` +
             `• \`${PREFIX}lottery channel [#channel]\` — Lottery results channel (Manage Channels)\n` +
             `• \`${PREFIX}autospawn set [#channel]\` / \`${PREFIX}autospawn disable\` — Autospawn channel (Manage Channels)\n` +
-            `• \`${PREFIX}channel add boost\` — eligible Patreon supporters add a personal +5% rate boost (up to 10 channels)\n` +
+            `• \`${PREFIX}channel add boost\` — eligible Patreon supporters boost a channel for everyone with a +5% rate boost (up to 10 channels)\n` +
             `• \`${PREFIX}channel remove all\` — remove all of your personal channel boosts\n` +
             `• \`${PREFIX}channel boost\` — list your boosted channels across all servers`
           ),
@@ -13521,7 +13941,7 @@ client.on('messageCreate', async (message) => {
         let respond = (payload) => message.reply(payload);
         const previousTeam = isWorldBossPlayerRegistered(userId, boss.id)
           ? null
-          : getLastWorldBossTeam(userId, boss.id);
+          : getLastWorldBossTeam(userId, boss.name);
         const sameTeam = previousTeam
           && previousTeam.length === currentTeam.length
           && previousTeam.every((mon, index) => mon.id === currentTeam[index].id);
@@ -13548,7 +13968,7 @@ client.on('messageCreate', async (message) => {
               .catch(() => {});
           }
           if (choice.customId === 'wbregister:previous') {
-            const latestPrevious = getLastWorldBossTeam(userId, boss.id);
+            const latestPrevious = getLastWorldBossTeam(userId, boss.name);
             if (!latestPrevious) {
               return choice.update({
                 content: '❌ Your previous World Boss team is no longer available. Run the command again.',
@@ -13566,6 +13986,7 @@ client.on('messageCreate', async (message) => {
         if (registration.error === 'invalid_team') {
           return respond('❌ Your selected team is no longer valid. Set your team and try again.');
         }
+        if (registration.registered) saveLastWorldBossTeam(userId, boss.name, team);
         scheduleWorldBossRegistrationClose(boss);
         await updateWorldBossAnnouncement(boss, createWorldBossEmbed(boss, message.client.user));
         const registrationText = registration.registered
@@ -13638,7 +14059,7 @@ client.on('messageCreate', async (message) => {
             `❌ Your registered team is unavailable. Set your active team and use \`${PREFIX}wb update\` before fighting.`
           );
         }
-        saveLastWorldBossTeam(userId, boss.id, team);
+        saveLastWorldBossTeam(userId, boss.name, team);
         const faintedTeam = activeWorldBossFainted.get(boss.id)?.get(userId) || new Set();
         const teamStates = activeWorldBossTeamStates.get(boss.id)?.get(userId);
         const revived = isWorldBossTeamFainted(team, faintedTeam, teamStates);
@@ -16457,8 +16878,14 @@ client.on('messageCreate', async (message) => {
           const lines = buddies.slice(start, start + pageSize).map((mon, index) => {
             const displayName = mon.id === currentId ? currentBuddy?.display_name || mon.name : mon.name;
             const name = mon.id === currentId ? `**${displayName}**` : mon.name;
+            const heldItem = mon.held_item
+              ? ` • ${FUN_ITEM_EMOJIS[mon.held_item]
+                || EVOLUTION_ITEMS[mon.held_item]?.emoji
+                || EMOJIS[mon.held_item.replace(/\s+/g, '').toLowerCase()]
+                || HELD_ITEM_EMOJI} ${mon.held_item}`
+              : '';
             return `\`${String(start + index + 1).padStart(2, '0')}\` ${name} • Lvl. ${mon.level} • ` +
-              `${(mon.experience || 0).toLocaleString()} XP • ${mon.iv_percent.toFixed(1)}% IV`;
+              `${(mon.experience || 0).toLocaleString()} XP • ${mon.iv_percent.toFixed(1)}% IV${heldItem}`;
           });
           return new EmbedBuilder()
             .setColor(0x0099ff)
@@ -18415,7 +18842,7 @@ client.on('messageCreate', async (message) => {
           .setColor(0x3498db)
           .setDescription(
             `Hello **${message.author.username}**! Unlock new icons randomly from battling NPCs!\n` +
-            `Campaign, special, and faction NPCs have a **1/1K** chance of dropping their icon when defeated. Unlock them all!\n` +
+            `Campaign, special, and faction NPCs have a **1/500** chance of dropping their icon when defeated. Unlock them all!\n` +
             `• 🆕 View other trainers' icons by using \`${PREFIX}b icons {user id or @user}\`\n\n` +
             `${isSelf ? 'You have' : `**${targetUser.username}** has`} unlocked **${unlocked.length}** battle icons! ` +
             `${DEFAULT_TRAINER_ICONS.brendan.emoji} ${DEFAULT_TRAINER_ICONS.may.emoji} are default icons.\n` +
@@ -19362,6 +19789,9 @@ client.on('messageCreate', async (message) => {
         if (rarityFirst) {
           if (Boolean(left.is_golden) !== Boolean(right.is_golden)) {
             return left.is_golden ? -1 : 1;
+          }
+          if (left.is_golden && right.is_golden) {
+            return left.dex_number - right.dex_number || left.pokemon_id - right.pokemon_id;
           }
           const leftRarity = getDisplayRarity(left.rarity, left.name, Boolean(left.is_shiny));
           const rightRarity = getDisplayRarity(right.rarity, right.name, Boolean(right.is_shiny));
@@ -23895,16 +24325,25 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'trade' || command === 'tr') return await handleTrade(message, userId, args);
+    if (command === 'gift') return await handleGift(message, userId, args);
 
     if (command === 'give') {
-      const recipient = message.mentions.users.first();
-      const rest = args.filter((arg) => !/^<@!?\d+>$/.test(arg));
+      let recipient = message.mentions.users.first();
+      let rest = args.filter((arg) => !/^<@!?\d+>$/.test(arg));
+      if (!recipient) {
+        const idArg = rest.find((arg) => /^\d{17,20}$/.test(arg));
+        if (idArg) {
+          recipient = await client.users.fetch(idArg).catch(() => null);
+          if (!recipient) return message.reply('❌ I could not find a user with that ID.');
+          rest = rest.filter((arg) => arg !== idArg);
+        }
+      }
       const usage =
         `• To give ${EMOJIS.pokecoin} PokéCoins: \`${PREFIX}give @user coins {amt}\` (or \`${PREFIX}give @user {amt}\`)\n` +
         `• To give 🟠 Patreon tokens: \`${PREFIX}give @user tokens {amt}\`\n` +
         `• To give a fun item (Candy, Lollipop, Chocolate Bar, ...): \`${PREFIX}give @user <item> {amt}\``;
       if (!recipient) {
-        return message.reply(`❌ **You must mention a user to give something to!**\n${usage}`);
+        return message.reply(`❌ **You must mention a user or provide a user ID to give something to!**\n${usage}`);
       }
       if (recipient.id === userId) return message.reply('❌ You cannot give things to yourself!');
       if (recipient.bot) return message.reply('❌ You cannot give things to bots!');

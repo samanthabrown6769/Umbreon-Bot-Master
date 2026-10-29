@@ -114,6 +114,9 @@ const MAX_MOVES_BY_TYPE = Object.freeze({
   fairy: 'max-starfall',
 });
 
+// Gigantamax forms that also learn Max Moves of types beyond their own.
+const EXTRA_MAX_MOVE_TYPES_BY_FORM = Object.freeze({ 'melmetal-gmax': ['fighting', 'electric'] });
+
 // Urshifu's G-Max moves are style-exclusive: One Blow for Single Strike, Rapid Flow for Rapid Strike.
 const STYLE_EXCLUSIVE_MOVES = { 'g-max-one-blow': 'single-strike', 'g-max-rapid-flow': 'rapid-strike' };
 
@@ -138,7 +141,8 @@ function getGigantamaxMoves(speciesId, formId = null) {
     throw new Error(`Invalid type data for Gigantamax form "${form.slug}".`);
   }
   const gmaxMove = GMAX_MOVES_BY_FORM[form.slug.toLowerCase()];
-  const maxMoves = types.map((type) => MAX_MOVES_BY_TYPE[type.toLowerCase()])
+  const maxMoves = [...types, ...(EXTRA_MAX_MOVE_TYPES_BY_FORM[form.slug.toLowerCase()] || [])]
+    .map((type) => MAX_MOVES_BY_TYPE[type.toLowerCase()])
     .filter(Boolean)
     .flatMap((move) => [move, `${move}-special`]);
   return [...new Set([gmaxMove, ...maxMoves].filter(Boolean))];
@@ -163,7 +167,8 @@ function getGigantamaxMoveLearners(moveName) {
     if (!Array.isArray(types) || types.some((type) => typeof type !== 'string')) {
       throw new Error(`Invalid type data for Gigantamax form "${form.slug}".`);
     }
-    return types.some((type) => type.toLowerCase() === maxType);
+    return [...types, ...(EXTRA_MAX_MOVE_TYPES_BY_FORM[form.slug.toLowerCase()] || [])]
+      .some((type) => type.toLowerCase() === maxType);
   }).map((form) => form.name);
 }
 
@@ -3096,6 +3101,8 @@ const DUPLICATE_CATCH_STATE_FIELDS = [
   'moves',
   'sketched_moves',
   'friendship',
+  'held_item',
+  'ability',
 ];
 
 function syncDuplicateCatchState(userId, catchId) {
@@ -3135,6 +3142,28 @@ function syncDuplicateCatchState(userId, catchId) {
   );
   return true;
 }
+
+// Startup self-heal: every copy of a species shares the buddy/team/most advanced copy's state.
+function backfillDuplicateState() {
+  db.transaction(() => {
+    const groups = db.prepare(`
+      SELECT user_id, pokemon_id, is_shiny, is_golden FROM catches
+      GROUP BY user_id, pokemon_id, is_shiny, is_golden
+      HAVING COUNT(*) > 1
+    `).all();
+    for (const group of groups) {
+      const source = db.prepare(`
+        SELECT id FROM catches
+        WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+        ORDER BY (id = COALESCE((SELECT buddy_catch_id FROM users WHERE id = catches.user_id), -1)) DESC,
+          in_team DESC, level DESC, experience DESC, id DESC
+        LIMIT 1
+      `).get(group.user_id, group.pokemon_id, group.is_shiny, group.is_golden);
+      if (source) syncDuplicateCatchState(group.user_id, source.id);
+    }
+  }).immediate();
+}
+backfillDuplicateState();
 
 function syncNewCatchState(userId, catchId) {
   assertUserId(userId);
@@ -3448,12 +3477,13 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
   }).immediate();
 }
 
-function advanceEggCatchProgress(userId, amount = 1) {
+// abilityBoost: true/false when the caller already resolved the ability; undefined falls back to stored abilities.
+function advanceEggCatchProgress(userId, amount = 1, abilityBoost) {
   assertUserId(userId);
   if (!Number.isSafeInteger(amount) || amount <= 0) {
     throw new TypeError('Egg catch progress amount must be a positive safe integer.');
   }
-  const hatchBoost = db.prepare(`
+  const hatchBoost = abilityBoost !== undefined ? abilityBoost : db.prepare(`
     SELECT 1
     FROM catches
     WHERE user_id = ?
@@ -3705,7 +3735,8 @@ function getSpeciesLearnset(speciesId, formId = null) {
   const formMoves = formId !== null ? pokemonMovesData.form_learnsets?.[String(formId)] : null;
   if (formMoves) return formMoves;
   if (!Number.isSafeInteger(speciesId) || speciesId <= 0) return [];
-  return pokemonMovesData.learnsets[String(speciesId)] || [];
+  // G-Max moves are exclusive to Gigantamax forms, so never inherit them from the species list.
+  return (pokemonMovesData.learnsets[String(speciesId)] || []).filter((move) => !move.startsWith('g-max-'));
 }
 
 function setBuddyMoves(userId, moveNames) {
@@ -4694,7 +4725,8 @@ function findOwnedPokemonRows(userId, query) {
     FROM catches
     JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
     WHERE catches.user_id = ?
-    ORDER BY catches.id DESC
+    ORDER BY (catches.id = COALESCE((SELECT buddy_catch_id FROM users WHERE id = catches.user_id), -1)) DESC,
+      catches.in_team DESC, catches.id DESC
   `).all(userId);
   if (numericDex !== null) {
     const dexNumbers = getPokemonDexNumbersForForms();
@@ -5105,16 +5137,17 @@ function equipSavedTeam(userId, teamName) {
 // Stored in saved_teams with is_defending = 2 so favorites/defending lists ignore it.
 const LAST_WORLD_BOSS_TEAM_NAME = '__last_world_boss__';
 
-function getLastWorldBossTeamName(bossId) {
-  if (!Number.isSafeInteger(bossId) || bossId <= 0) {
-    throw new TypeError('bossId must be a positive safe integer.');
+// Keyed by boss name so the last team is remembered across separate spawns of the same boss.
+function getLastWorldBossTeamName(bossName) {
+  if (typeof bossName !== 'string' || !bossName.trim()) {
+    throw new TypeError('bossName must be a non-empty string.');
   }
-  return `${LAST_WORLD_BOSS_TEAM_NAME}:${bossId}`;
+  return `${LAST_WORLD_BOSS_TEAM_NAME}:${bossName.trim().toLowerCase()}`;
 }
 
-function saveLastWorldBossTeam(userId, bossId, team) {
+function saveLastWorldBossTeam(userId, bossName, team) {
   assertUserId(userId);
-  const teamName = getLastWorldBossTeamName(bossId);
+  const teamName = getLastWorldBossTeamName(bossName);
   if (!team.length) return false;
   db.prepare(`
     INSERT INTO saved_teams (user_id, team_name, is_defending, pokemon_ids)
@@ -5125,9 +5158,9 @@ function saveLastWorldBossTeam(userId, bossId, team) {
 }
 
 // Returns the Pokémon still owned from the last World Boss team, or null if none remain.
-function getLastWorldBossTeam(userId, bossId) {
+function getLastWorldBossTeam(userId, bossName) {
   assertUserId(userId);
-  const teamName = getLastWorldBossTeamName(bossId);
+  const teamName = getLastWorldBossTeamName(bossName);
   const saved = db.prepare(
     'SELECT pokemon_ids FROM saved_teams WHERE user_id = ? AND team_name = ?'
   ).get(userId, teamName);
@@ -5138,10 +5171,10 @@ function getLastWorldBossTeam(userId, bossId) {
   return owned.length ? owned : null;
 }
 
-function equipLastWorldBossTeam(userId, bossId) {
+function equipLastWorldBossTeam(userId, bossName) {
   assertUserId(userId);
   return db.transaction(() => {
-    const team = getLastWorldBossTeam(userId, bossId);
+    const team = getLastWorldBossTeam(userId, bossName);
     if (!team) return null;
     db.prepare('UPDATE catches SET in_team = 0, team_slot = NULL WHERE user_id = ?').run(userId);
     team.forEach((mon, index) => {
@@ -6464,7 +6497,7 @@ function distributeWorldBossRewards(bossId) {
       const isSpawnerBoosted = !isMvp && boss.spawned_by === entry.user_id;
       const dropChance = Math.min(1, (isMvp ? 0.12 : isSpawnerBoosted ? 0.12 : 0.03) * (isSpawnerBoosted ? 1.8 : 1));
       let gotPokemon = false;
-      if (Math.random() < dropChance * 0.4) {
+      if (Math.random() < Math.min(1, dropChance * 0.8)) {
         gotPokemon = true;
         saveCatch(entry.user_id, {
           ...template,
@@ -6476,7 +6509,7 @@ function distributeWorldBossRewards(bossId) {
       }
       const boxRolls = isSpawnerBoosted ? 5 : 1;
       for (let roll = 0; roll < boxRolls; roll += 1) {
-        if (Math.random() < dropChance) {
+        if (Math.random() < Math.min(1, dropChance * 2)) {
           const boxNames = Object.keys(BOXES);
           const boxName = boxNames[Math.floor(Math.random() * boxNames.length)];
           addUserItem(entry.user_id, boxName);
@@ -6549,10 +6582,10 @@ function rollWorldBossExtraDrops(isMvp) {
   if (Math.random() < (isMvp ? 0.25 : 0.1)) {
     drops.push({ name: pick(WORLD_BOSS_REPEL_DROPS), amount: 1 + Math.floor(Math.random() * 2) });
   }
-  if (Math.random() < (isMvp ? 0.15 : 0.08)) {
+  if (Math.random() < (isMvp ? 0.35 : 0.2)) {
     drops.push({ name: 'Egg', amount: 1 });
   }
-  if (Math.random() < (isMvp ? 0.08 : 0.04)) {
+  if (Math.random() < (isMvp ? 0.25 : 0.12)) {
     drops.push({ name: pick(['Full Restore', 'Max Revive', 'Max Potion']), amount: 1 });
   }
   return drops;
@@ -6588,6 +6621,91 @@ function claimWorldBossReward(userId) {
     return {
       record, items: merged, bossesFought: user.world_bosses_fought, pokemonDrop: !!record.pokemon_drop,
     };
+  }).immediate();
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pokemon_gifts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id TEXT NOT NULL,
+    recipient_id TEXT NOT NULL,
+    pokemon_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    rarity TEXT,
+    is_shiny INTEGER NOT NULL DEFAULT 0,
+    is_golden INTEGER NOT NULL DEFAULT 0,
+    caught_ball TEXT,
+    hp_iv INTEGER NOT NULL DEFAULT 0,
+    atk_iv INTEGER NOT NULL DEFAULT 0,
+    def_iv INTEGER NOT NULL DEFAULT 0,
+    spa_iv INTEGER NOT NULL DEFAULT 0,
+    spdef_iv INTEGER NOT NULL DEFAULT 0,
+    spd_iv INTEGER NOT NULL DEFAULT 0,
+    sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS pokemon_gifts_recipient_idx ON pokemon_gifts(recipient_id, sender_id);
+`);
+
+// Moves a Pokémon out of the sender's box into the recipient's gift inventory.
+function sendPokemonGift(senderId, recipientId, catchId) {
+  assertUserId(senderId);
+  assertUserId(recipientId);
+  if (!Number.isSafeInteger(catchId) || catchId <= 0) {
+    throw new TypeError('catchId must be a positive safe integer.');
+  }
+  return db.transaction(() => {
+    const mon = db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?').get(catchId, senderId);
+    if (!mon) return { error: 'not_found' };
+    if (mon.in_team) return { error: 'in_team' };
+    if (mon.is_locked) return { error: 'locked' };
+    const inserted = db.prepare(`
+      INSERT INTO pokemon_gifts (
+        sender_id, recipient_id, pokemon_id, name, rarity, is_shiny, is_golden, caught_ball,
+        hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      senderId, recipientId, mon.pokemon_id, mon.name, mon.rarity, mon.is_shiny, mon.is_golden,
+      mon.caught_ball ?? null, mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spa_iv, mon.spdef_iv, mon.spd_iv
+    );
+    db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(catchId);
+    saveCatchStateSnapshot(senderId, catchId);
+    db.prepare('DELETE FROM catches WHERE id = ? AND user_id = ?').run(catchId, senderId);
+    return { giftId: Number(inserted.lastInsertRowid), pokemon: mon };
+  }).immediate();
+}
+
+function getUserGifts(recipientId, senderId = null) {
+  assertUserId(recipientId);
+  return db.prepare(`
+    SELECT * FROM pokemon_gifts
+    WHERE recipient_id = ? AND (? IS NULL OR sender_id = ?)
+    ORDER BY id
+  `).all(recipientId, senderId, senderId);
+}
+
+// Claims pending gifts (optionally only those from one sender) into the recipient's box.
+function claimPokemonGifts(recipientId, senderId = null) {
+  assertUserId(recipientId);
+  return db.transaction(() => {
+    const gifts = getUserGifts(recipientId, senderId);
+    for (const gift of gifts) {
+      const newCatchId = saveCatch(recipientId, {
+        id: gift.pokemon_id,
+        name: gift.name,
+        rarity: gift.rarity,
+        hp_iv: gift.hp_iv,
+        atk_iv: gift.atk_iv,
+        def_iv: gift.def_iv,
+        spa_iv: gift.spa_iv,
+        spdef_iv: gift.spdef_iv,
+        spd_iv: gift.spd_iv,
+      }, Boolean(gift.is_shiny), false, Boolean(gift.is_golden), gift.caught_ball);
+      rebaseTransferredPokemon(recipientId, newCatchId);
+      syncNewCatchState(recipientId, newCatchId);
+      db.prepare('DELETE FROM pokemon_gifts WHERE id = ?').run(gift.id);
+    }
+    return gifts;
   }).immediate();
 }
 
@@ -8302,6 +8420,10 @@ function getMarketAnnouncementChannel(guildId) {
   ).get(guildId)?.channel_id || null;
 }
 
+function getAllMarketAnnouncementChannels() {
+  return db.prepare('SELECT guild_id, channel_id FROM market_announcement_channels').all();
+}
+
 function getUserRegisteredCollections(userId) {
   assertUserId(userId);
   return db.prepare(
@@ -8682,8 +8804,9 @@ function getChannelCatchRateBoost(userId, guildId, channelId) {
   const personalBoost = db.prepare(`
     SELECT 5 AS boost
     FROM channel_catch_rate_boosts
-    WHERE user_id = ? AND guild_id = ? AND channel_id = ?
-  `).get(userId, guildId, channelId)?.boost || 0;
+    WHERE guild_id = ? AND channel_id = ?
+    LIMIT 1
+  `).get(guildId, channelId)?.boost || 0;
   return personalBoost + (GUILD_CHANNEL_CATCH_RATE_BOOSTS.get(guildId) || 0);
 }
 
@@ -8715,8 +8838,8 @@ function addChannelCatchRateBoost(userId, guildId, channelId, limit = 10) {
   return db.transaction(() => {
     const exists = db.prepare(`
       SELECT 1 FROM channel_catch_rate_boosts
-      WHERE user_id = ? AND guild_id = ? AND channel_id = ?
-    `).get(userId, guildId, channelId);
+      WHERE guild_id = ? AND channel_id = ?
+    `).get(guildId, channelId);
     if (exists) return 'already';
     const count = db.prepare(`
       SELECT COUNT(*) AS count FROM channel_catch_rate_boosts
@@ -9567,6 +9690,7 @@ module.exports = {
   getWorldBossAnnouncementChannel,
   setWorldBossAnnouncementChannel,
   getMarketAnnouncementChannel,
+  getAllMarketAnnouncementChannels,
   setMarketAnnouncementChannel,
   getWorldBossAnnouncementPost,
   getWorldBossAnnouncementPosts,
@@ -9612,6 +9736,9 @@ module.exports = {
   syncDuplicateCatchState,
   syncNewCatchState,
   rebaseTransferredPokemon,
+  sendPokemonGift,
+  getUserGifts,
+  claimPokemonGifts,
   reconcileDuplicateCatchStates,
   registerCollection,
   deleteCollection,
