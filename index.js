@@ -8349,33 +8349,36 @@ function getGiftTarget(message, token) {
   return /^\d{15,25}$/.test(token || '') ? token : null;
 }
 
+function summarizeGifts(gifts) {
+  const totals = new Map();
+  for (const gift of gifts) {
+    const label = `${gift.is_shiny ? `${EMOJIS.shiny} ` : ''}${gift.is_golden ? `${EMOJIS.golden} ` : ''}${gift.name}`;
+    totals.set(label, (totals.get(label) || 0) + 1);
+  }
+  return [...totals.entries()].map(([label, count]) => `• **${label}** x${count}`).join('\n');
+}
+
 async function handleGift(message, userId, args) {
   const sub = args[0]?.toLowerCase();
   if (sub === 'claim') {
     const senderId = getGiftTarget(message, args[1]);
     const gifts = claimPokemonGifts(userId, senderId);
     if (!gifts.length) return message.reply('🎁 You have no gifts to claim.');
-    const bySender = new Map();
-    for (const gift of gifts) {
-      bySender.set(gift.sender_id, [...(bySender.get(gift.sender_id) || []), gift]);
-    }
     return message.reply({
-      embeds: [makeEmbed(
-        '🎁 Gifts Claimed',
-        [...bySender.entries()].map(([sender, list]) =>
-          `From <@${sender}>:\n${list.map((gift) =>
-            `• ${gift.is_shiny ? `${EMOJIS.shiny} ` : ''}${gift.is_golden ? `${EMOJIS.golden} ` : ''}**${gift.name}**`).join('\n')}`
-        ).join('\n\n'),
-        0x2ecc71
-      )],
+      embeds: [makeEmbed('🎁 Gifts Claimed', summarizeGifts(gifts), 0x2ecc71)],
       allowedMentions: { parse: [] },
     });
   }
   if (sub === 'list') {
     const gifts = getUserGifts(userId);
-    return message.reply(gifts.length
-      ? `🎁 You have **${gifts.length}** gift(s) waiting. Use \`${PREFIX}gift claim\` to claim them.`
-      : '🎁 You have no gifts waiting.');
+    if (!gifts.length) return message.reply('🎁 You have no gifts waiting.');
+    return message.reply({
+      embeds: [makeEmbed(
+        '🎁 Gifts Waiting',
+        `${summarizeGifts(gifts)}\n\nUse \`${PREFIX}gift claim\` to claim them.`
+      )],
+      allowedMentions: { parse: [] },
+    });
   }
 
   const targetId = getGiftTarget(message, args[0]);
