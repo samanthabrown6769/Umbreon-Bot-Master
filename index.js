@@ -1645,7 +1645,7 @@ const ROD_CONFIGS = {
   'golden rod': {
     name: 'Golden Rod',
     baseShinyRate: 1 / 4096,
-    baseSpawnChance: 0.8,
+    baseSpawnChance: 1,
     cooldownMs: FISHING_COOLDOWN_MS,
     pullWaitMs: 6000,
     enablesShiny: true,
@@ -14353,7 +14353,7 @@ client.on('messageCreate', async (message) => {
       });
       const goldenFishingChance =
         (1 / FISH_EXCLUSIVE_GOLDEN_DENOMINATOR) * (1 + getPatreonPerks(userId).goldenBoost);
-      if (Math.random() < goldenFishingChance) {
+      if (rod.name === 'Golden Rod' && Math.random() < goldenFishingChance) {
         const speciesName = FISH_EXCLUSIVE_GOLDENS[
           Math.floor(Math.random() * FISH_EXCLUSIVE_GOLDENS.length)
         ];
@@ -20655,7 +20655,7 @@ client.on('messageCreate', async (message) => {
             ? 'Automatically equipped as your starter rod.'
             : rod.name === 'Golden Rod'
               ? `Buy with 100 ${EMOJIS.votecoin} Vote Coins. Requires both Good and Super Rods. ` +
-                'Its 2× Golden-variant bonus is inactive because the game has no Golden Pokémon variants.'
+                'Fishing-exclusive Golden Pokémon can only be encountered with this rod.'
               : `Buy with ${rod.name === 'Good Rod' ? '100' : '2,500'} ${EMOJIS.fishingtoken} Fishing Tokens via \`${PREFIX}shop buy ${rod.name === 'Good Rod' ? 5 : 6}\`.`)
         )
         .setThumbnail(rod.img);
