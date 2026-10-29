@@ -19794,7 +19794,7 @@ client.on('messageCreate', async (message) => {
             return left.is_golden ? -1 : 1;
           }
           if (left.is_golden && right.is_golden) {
-            return left.dex_number - right.dex_number || left.pokemon_id - right.pokemon_id;
+            return right.dex_number - left.dex_number || right.pokemon_id - left.pokemon_id;
           }
           const leftRarity = getDisplayRarity(left.rarity, left.name, Boolean(left.is_shiny));
           const rightRarity = getDisplayRarity(right.rarity, right.name, Boolean(right.is_shiny));
