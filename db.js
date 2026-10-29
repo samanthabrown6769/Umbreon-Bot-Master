@@ -5239,7 +5239,10 @@ function getUserBuddyHistory(userId, sortBy = 'ivs') {
 function getUserTeam(userId) {
   assertUserId(userId);
   return db.prepare(
-    `SELECT catches.*, pokemon_forms.name AS form_name, pokemon_forms.slug AS form_slug,
+    `SELECT catches.*,
+      (SELECT value FROM bot_settings
+        WHERE key = 'buddy_nickname:' || catches.user_id || ':' || catches.id) AS nickname,
+      pokemon_forms.name AS form_name, pokemon_forms.slug AS form_slug,
       pokemon_forms.base_spa, pokemon_forms.base_spdef, pokemon_forms.types
     FROM catches
     LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
@@ -6191,7 +6194,7 @@ function recordRarityCatch(userId, rarity) {
 
 const WORLD_BOSS_OVERRIDES = {
   10190: { name: 'Eternatus-Eternamax', rarity: 'Legendary' },
-  10196: { name: 'Gigantamax Charizard', rarity: 'Super Rare' },
+  10196: { name: 'Charizard Gmax', rarity: 'Super Rare' },
   10202: { name: 'Gigantamax Gengar', rarity: 'Super Rare' },
 };
 const worldBossForms = db.prepare(`

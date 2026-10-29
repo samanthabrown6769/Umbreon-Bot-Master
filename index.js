@@ -18278,8 +18278,11 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'team') {
       const action = args[0]?.toLowerCase();
-      const teamPokemonLabel = (pokemon) =>
-        `${getPokemonSpriteEmoji(pokemon)} **${pokemon.name}**`.trim();
+      const teamPokemonLabel = (pokemon) => {
+        const variant = pokemon.is_shiny ? 'Shiny ' : pokemon.is_golden ? 'Golden ' : '';
+        const displayName = pokemon.nickname || pokemon.name;
+        return `${getPokemonSpriteEmoji(pokemon)} **${variant}${displayName}**`.trim();
+      };
       if (action === 'swap') {
         const slotA = Number(args[1]);
         const slotB = Number(args[2]);
@@ -18342,7 +18345,10 @@ client.on('messageCreate', async (message) => {
           if (!ids.length) return '*Empty team*';
           const mons = ids
             .map((id) => db.prepare(
-              'SELECT name, is_shiny, is_golden, level FROM catches WHERE id = ? AND user_id = ?'
+              `SELECT catches.name, catches.is_shiny, catches.is_golden, catches.level,
+                (SELECT value FROM bot_settings
+                  WHERE key = 'buddy_nickname:' || catches.user_id || ':' || catches.id) AS nickname
+              FROM catches WHERE catches.id = ? AND catches.user_id = ?`
             ).get(id, userId))
             .filter(Boolean);
           if (!mons.length) return '*Pokémon missing from box*';
@@ -18633,7 +18639,7 @@ client.on('messageCreate', async (message) => {
         }
         const nextLevelAt = experienceForNextLevel(pokemon.level);
         return (
-          `[${pokemon.team_slot ?? index + 1}] ${BALL_CONFIG[pokemon.caught_ball]?.emoji || EMOJIS.pokeball} **${sprite ? `${sprite} ` : ''}${pokemon.name}**\n` +
+          `[${pokemon.team_slot ?? index + 1}] ${BALL_CONFIG[pokemon.caught_ball]?.emoji || EMOJIS.pokeball} **${sprite ? `${sprite} ` : ''}${pokemon.is_shiny ? 'Shiny ' : pokemon.is_golden ? 'Golden ' : ''}${pokemon.nickname || pokemon.name}**\n` +
           `\`Lvl\` **${pokemon.level}**\n` +
           `\`EXP\` ${pokemon.level >= 100 ? 'MAX' : `${(pokemon.experience || 0).toLocaleString()} / ${nextLevelAt.toLocaleString()}`}\n` +
           `\`Type\` ${types.map((type) => getTypeEmoji(type)).join(' ') || 'Unknown'}\n` +
