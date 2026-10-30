@@ -4161,6 +4161,11 @@ function createWorldBossForfeitRow(bossId) {
       .setEmoji(EMOJIS.fullrestore)
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
+      .setCustomId(`worldboss:maxpotion:${bossId}`)
+      .setLabel('Max Potion')
+      .setEmoji('<:maxpotions:1563198663788986458>')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
       .setCustomId(`worldboss:revive:${bossId}`)
       .setLabel('Max Revive')
       .setEmoji(EMOJIS.maxrevive)
@@ -4509,6 +4514,46 @@ async function startWorldBossBattle(message, boss, userId, team) {
         await interaction.reply({
           content: `🎁 Claim your pending World Boss reward with \`${PREFIX}wb claim\` before joining another raid.`,
           ephemeral: true,
+        });
+        return;
+      }
+      if (action === 'maxpotion') {
+        if (!playerState || playerState.hp <= 0) {
+          await interaction.reply({
+            content: 'Max Potion can only be used on your active, conscious Pokémon.',
+            ephemeral: true,
+          });
+          return;
+        }
+        if (playerState.hp >= playerState.pokemon.max_hp) {
+          await interaction.reply({
+            content: `**${playerState.pokemon.name}** is already at full health.`,
+            ephemeral: true,
+          });
+          return;
+        }
+        if (!takeUserItem(playerId, 'Max Potion')) {
+          await interaction.reply({
+            content: '<:maxpotions:1563198663788986458> You have no **Max Potion**.',
+            ephemeral: true,
+          });
+          return;
+        }
+        playerState.hp = playerState.pokemon.max_hp;
+        if (playerState.battle) playerState.battle.mon.hp = playerState.hp;
+        await interaction.update({
+          embeds: [createWorldBossPanelEmbed(currentBoss, {
+            state: playerState,
+            team: playerTeam,
+            faintedIds: faintedTeam,
+            user: interaction.user,
+            log: [`<:maxpotions:1563198663788986458> **${playerState.pokemon.name}** was fully healed!`],
+          })],
+          components: [
+            ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
+            ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
+            ...createWorldBossForfeitRow(boss.id),
+          ],
         });
         return;
       }
