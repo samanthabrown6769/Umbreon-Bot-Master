@@ -4638,11 +4638,11 @@ function takeUserItem(userId, itemName, amount = 1) {
 
 const PLAYER_BONUSES = Object.freeze({
   swap: { label: '+25% Golden/Shiny Swap rates', emoji: '🎟️' },
-  shiny: { label: '+25% Checklist Shiny rate', emoji: '<:eonticket:1372993547959144538>', short: 'Checklist Shiny' },
-  wb: { label: '+25% World Boss drop rate', emoji: '<:world_boss:1248144585688092702>', short: 'World Boss drop rate' },
-  dxp: { label: 'Double EXP Bonus', emoji: '<:exp:697271917354418246>', short: 'Double EXP' },
-  fish: { label: 'Golden Fishing spawns', emoji: '<:golden_rod:1090954386894766160>', short: 'Golden Fishing' },
-  hatch: { label: '2x Egg Hatch rate', emoji: '<:poke_egg:1372992365664403558>', short: 'Egg Hatch rate' },
+  shiny: { label: '+25% Checklist Shiny rate', emoji: '<:eventticket:1558834590855077938>', short: 'Checklist Shiny' },
+  wb: { label: '+25% World Boss drop rate', emoji: '<:worldboss:1560318495084908646>', short: 'World Boss drop rate' },
+  dxp: { label: 'Double EXP Bonus', emoji: '<:dxpticket:1560320022029541446>', short: 'Double EXP' },
+  fish: { label: 'Golden Fishing spawns', emoji: '<:goldenrod:1558856912655876246>', short: 'Golden Fishing' },
+  hatch: { label: '2x Egg Hatch rate', emoji: '<:poke_egg:1560319652402561124>', short: 'Egg Hatch rate' },
   icon: { label: '+25% Trainer Icon rates', emoji: '⚔️', short: 'Trainer Icon rates' },
 });
 const PLAYER_BONUS_ALIASES = Object.freeze({
