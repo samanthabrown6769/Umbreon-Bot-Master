@@ -323,7 +323,8 @@ function chooseEnemyMove(enemy, player, field) {
 }
 
 function onSwitchIn(ctx, mon, side, L) {
-  fx(mon);
+  fx(mon).choiceMove = null;
+  fx(mon).choiceMoveSlug = null;
   const s = ctx.field.sides[side];
   if (s.healingWish) {
     s.healingWish = false;
@@ -433,7 +434,8 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   let calcMove = { ...move, type };
   calcMove.power = effectivePower(move, f.stages);
   let dmg = eff === 0 ? 0 : ctx.calc(calcMove, atk, def, defTypes);
-  const hitCount = ctx.worldBoss ? 1 : AB.multiHitCount(m, getMultiHitCount(move.name, m.held_item));
+  const rolledHits = getMultiHitCount(move.name, m.held_item);
+  const hitCount = ctx.worldBoss ? 1 : m.held_item === 'Loaded Dice' ? rolledHits : AB.multiHitCount(m, rolledHits);
   if (dmg > 0) dmg *= hitCount;
   const heldItemMultiplier = getHeldItemDamageMultiplier(
     m.held_item, type, eff, move.category, Boolean(ctx.worldBoss)

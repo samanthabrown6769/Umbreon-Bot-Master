@@ -137,7 +137,7 @@ const CHOICE_SPEED_ITEMS = new Set(['Choice Cloak', 'Choice Scarf']);
 const MULTI_HIT_MOVE_NAMES = new Set([
   'armthrust', 'barrage', 'bonerush', 'bulletseed', 'cometpunch', 'doubleslap',
   'furyattack', 'furyswipes', 'iciclespear', 'pinmissile', 'rockblast', 'spikecannon',
-  'tailslap', 'watershuriken',
+  'tailslap', 'watershuriken', 'scaleshot',
 ]);
 // Power items add 8 EVs in their stat to every EV training reward.
 const POWER_ITEM_EVS = Object.freeze({

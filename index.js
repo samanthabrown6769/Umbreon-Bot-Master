@@ -4019,8 +4019,8 @@ function createWorldBossAttackResult(attack, rewards = null) {
           `• <@${userId}> ${BOXES[itemName]?.emoji || '📦'} **${itemName}**!`
         ),
       ...(rewards.extraDrops || [])
-        .filter(({ name }) => ['Loaded Dice', 'Choice Cloak', 'Metronome'].includes(name))
-        .map(({ userId, name }) => `• <@${userId}> **${name}**!`),
+        .filter(({ name }) => ['Loaded Dice', 'Choice Cloak', 'Metronome', 'Max Potion', 'Full Restore', 'Max Revive'].includes(name))
+        .map(({ userId, name, amount }) => `• <@${userId}> ${getItemEmoji(name)} **${amount > 1 ? `${amount}x ` : ''}${name}**!`),
     ];
     const dropText = specialDrops.join('\n');
     const drops = specialDrops.length
@@ -4833,6 +4833,13 @@ async function startWorldBossBattle(message, boss, userId, team) {
           || playerState.moves.find((move) => battleFx.slug(move.name) === battleMonFx.choiceMoveSlug)
         : null;
       const chosenMove = lockedChoiceMove || selectedMove;
+      if (lockedChoiceMove && selectedMove && battleFx.slug(selectedMove.name) !== battleFx.slug(lockedChoiceMove.name)) {
+        await interaction.followUp({
+          content: `🔒 **${bs.mon.name}** is locked into **${lockedChoiceMove.name}** by its ${bs.mon.held_item}.`,
+          ephemeral: true,
+        });
+        return;
+      }
       let attack;
       let acted = true;
       const turnLog = [];
@@ -5627,6 +5634,30 @@ const WORLD_BOSS_BAG_ITEMS = [
   ['Aux Power', 'Aux Power', EMOJIS.auxpower],
   ['Aux Powerguard', 'Aux Power Guard', EMOJIS.auxpowerguard],
 ];
+function getItemEmoji(name) {
+  const baseEmojis = {
+    'Rare Candy': EMOJIS.rarecandy,
+    ...EXP_CANDY_EMOJIS,
+    Repel: EMOJIS.repel,
+    'Super Repel': EMOJIS.superRepel,
+    'Max Repel': EMOJIS.maxRepel,
+    'Swap Ticket': '🎟️',
+    Masterball: EMOJIS.masterball,
+    Ultraball: EMOJIS.ultraball,
+    Lootbox: LOOTBOX_EMOJI,
+    Egg: EMOJIS.pokeEgg,
+    'Poké Lure': EMOJIS.pokeLure,
+    "Misty's Lure": EMOJIS.mistysLure,
+  };
+  const bagEmoji = WORLD_BOSS_BAG_ITEMS.find(([itemName]) => itemName === name)?.[2];
+  return baseEmojis[name]
+    || bagEmoji
+    || FUN_ITEM_EMOJIS[name]
+    || EVOLUTION_ITEMS[name]?.emoji
+    || BOXES[name]?.emoji
+    || EMOJIS[String(name).replace(/\s+/g, '').toLowerCase()]
+    || '📦';
+}
 const FUN_BAG_ITEMS = [
   ['Candy', 'Candy'],
   ['Lollipop', 'Lollipop'],
@@ -5676,7 +5707,7 @@ function formatQuestRewards(quest) {
       ? EMOJIS.pokeLure
       : normalizedName === 'mistyslure'
         ? EMOJIS.mistysLure
-        : itemEmojis[name] || EVOLUTION_ITEMS[name]?.emoji || '📦';
+        : itemEmojis[name] || getItemEmoji(name);
     rewards.push(`${amount}x ${emoji} ${name}`);
   }
   rewards.push(`${EMOJIS.pokecoin} ${quest.reward_coins.toLocaleString()}`);
@@ -6858,6 +6889,15 @@ function completeBatonSwitch(from, to) {
   battleFx.giveBatonState(to, battleFx.takeBatonState(from));
 }
 
+// A Pokémon holding a Choice item can only use the first move it executed.
+function getSelectableMoves(mon) {
+  const moves = mon?.moves || [];
+  if (!mon || !CHOICE_ITEMS.has(mon.held_item)) return moves;
+  const lockedSlug = battleFx.fx(mon).choiceMoveSlug;
+  const locked = lockedSlug ? moves.filter((move) => battleFx.slug(move.name) === lockedSlug) : [];
+  return locked.length ? locked : moves;
+}
+
 function buildSparParty(userId, defending = false) {
   const team = (defending && getDefendingTeam(userId)) || getUserTeam(userId);
   return team.map((pokemon) => {
@@ -6894,7 +6934,7 @@ async function runPlayerSpar(message, userId, opponentUser) {
   let resultSummary = '';
   const field = createBattleField();
   const log = [`🤝 **${message.author.username}** challenged **${opponentUser.username}**'s team!`];
-  const currentMoves = () => party[partyIndex]?.moves || [];
+  const currentMoves = () => getSelectableMoves(party[partyIndex]);
   const battleEmbed = () => {
     const player = party[partyIndex];
     const enemy = opponents[opponentIndex];
@@ -7150,7 +7190,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
   let resultSummary = '';
   const field = createBattleField();
   const log = [`🏟️ **Challenging the ${config.icon} ${config.name} Chamber!**`];
-  const currentMoves = () => party[partyIndex]?.moves || [];
+  const currentMoves = () => getSelectableMoves(party[partyIndex]);
   const battleComponents = () => [
     isBatonPending(party, partyIndex) ? null : makeMegaChamberButtons(currentMoves()),
     makeBattleSwitchButtons(party, partyIndex, 'chamber'),
@@ -7522,7 +7562,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
   const attackingPokemon = new Set();
   const log = [`⚔️ **${challenge.name}** challenged you!`];
   const field = createBattleField();
-  const currentMoves = () => partyData[partyIndex]?.moves || [];
+  const currentMoves = () => getSelectableMoves(partyData[partyIndex]);
   const battleComponents = () => [
     isBatonPending(partyData, partyIndex) ? null : makeLeagueButtons(currentMoves()),
     makeBattleSwitchButtons(partyData, partyIndex, 'league'),
@@ -13998,18 +14038,7 @@ client.on('messageCreate', async (message) => {
         if (!claim) return message.reply('❌ You have no World Boss rewards to claim.');
         const { record, items, bossesFought, pokemonDrop } = claim;
         const itemCount = items.reduce((sum, item) => sum + item.amount, 0);
-        const itemEmoji = (name) => ({
-          'Rare Candy': EMOJIS.rarecandy,
-          ...EXP_CANDY_EMOJIS,
-          Repel: EMOJIS.repel,
-          'Super Repel': EMOJIS.superRepel,
-          'Max Repel': EMOJIS.maxRepel,
-          'Swap Ticket': '🎟️',
-          Masterball: EMOJIS.masterball,
-          Ultraball: EMOJIS.ultraball,
-          Lootbox: LOOTBOX_EMOJI,
-          Egg: EMOJIS.pokeEgg,
-        }[name] || EVOLUTION_ITEMS[name]?.emoji || BOXES[name]?.emoji || '📦');
+        const itemEmoji = getItemEmoji;
         const bossTemplate = WORLD_BOSS_POOL.find((entry) => entry.name === record.boss_name);
         return message.reply({
           embeds: [new EmbedBuilder()
