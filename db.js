@@ -8124,7 +8124,7 @@ function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.n
       COALESCE(SUM(cm.hatches), 0) AS hatches,
       COALESCE(SUM(cm.swaps), 0) AS swaps,
       COALESCE(SUM(cm.catchbot), 0) AS catchbot,
-      COALESCE(SUM(activity.catches), 0) AS period_catches
+      COALESCE(SUM(activity.catches + activity.fishes), 0) AS period_catches
     FROM clans
     LEFT JOIN clan_members cm ON cm.clan_id = clans.id
     LEFT JOIN clan_activity_periods activity
@@ -8138,7 +8138,7 @@ function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.n
   const valueForCategory = {
     monthly: (row) => row.period_catches,
     yearly: (row) => row.period_catches,
-    catches: (row) => row.catches,
+    catches: (row) => row.catches + row.fishes,
     hatches: (row) => row.hatches,
     swaps: (row) => row.swaps,
     catchbot: (row) => row.catchbot,
