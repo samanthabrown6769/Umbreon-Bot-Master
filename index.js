@@ -3700,17 +3700,22 @@ function getPokemonFormDexNumber(pokemon) {
 
 function findBossCoinTemplate(query) {
   const normalize = (text) => text.toLowerCase().replace(/gigantamax|gmax/g, '').replace(/[^a-z0-9]/g, '');
-  const wantsShiny = /^shiny\b/i.test(query.trim());
-  const wanted = normalize(query.replace(/^\s*shiny\b/i, ''));
+  const wanted = normalize(query);
   if (!wanted) return null;
-  const pool = WORLD_BOSS_POOL.filter((entry) =>
-    entry.isShiny === wantsShiny && !/eternamax|eternatus/i.test(entry.name)
-  );
-  const names = (entry) => normalize(entry.name.replace(/^Shiny\s+/i, ''));
+  const pool = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny);
+  const names = (entry) => normalize(entry.name);
   return pool.find((entry) => names(entry) === wanted)
     || pool.find((entry) => names(entry).includes(wanted))
     || null;
 }
+
+// 90% normal, 10% shiny; falls back to the normal boss when no shiny version exists.
+function rollBossCoinVariant(template) {
+  if (Math.random() >= 0.1) return template;
+  return WORLD_BOSS_POOL.find((entry) => entry.isShiny && entry.name.replace(/^Shiny\s+/i, '') === template.name) || template;
+}
+
+const ETERNATUS_BOSS_COOLDOWN_HOURS = 2;
 
 async function spawnWorldBossForUser(message, userId, requestedName = '') {
   if (!message.guild) return message.reply('Use this in a server.');
@@ -3723,13 +3728,24 @@ async function spawnWorldBossForUser(message, userId, requestedName = '') {
     template = findBossCoinTemplate(requestedName);
     if (!template) {
       return message.reply(
-        `❌ No World Boss matches **${requestedName}**. Use \`${PREFIX}use boss coin <Pokémon>\` or \`${PREFIX}use boss coin shiny <Pokémon>\`, ` +
-        `or \`${PREFIX}use boss coin\` for a random boss.`
+        `❌ No World Boss matches **${requestedName}**. Use \`${PREFIX}use boss coin <Pokémon>\` or \`${PREFIX}use boss coin\` for a random boss.`
       );
     }
   } else {
     const spawnPool = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny && !/eternamax|eternatus/i.test(entry.name));
     template = spawnPool[Math.floor(Math.random() * spawnPool.length)];
+  }
+  template = rollBossCoinVariant(template);
+  if (/eternamax|eternatus/i.test(template.name)) {
+    const recent = db.prepare(`
+      SELECT spawned_at FROM world_boss
+      WHERE (name LIKE '%eternamax%' OR name LIKE '%eternatus%') AND spawned_at > datetime('now', ?)
+      ORDER BY id DESC LIMIT 1
+    `).get(`-${ETERNATUS_BOSS_COOLDOWN_HOURS} hours`);
+    if (recent) {
+      const readyAt = Math.floor((new Date(`${recent.spawned_at.replace(' ', 'T')}Z`).getTime() + ETERNATUS_BOSS_COOLDOWN_HOURS * 3600000) / 1000);
+      return message.reply(`❌ **${template.name}** was spawned recently and can't be spawned again until <t:${readyAt}:R>.`);
+    }
   }
   const hasWorldBossSpawnPrivilege = WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has(userId);
   const spent = db.transaction(() => {
