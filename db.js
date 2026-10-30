@@ -1152,6 +1152,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS boss_damage_leaderboard_idx ON boss_damage(damage DESC);
 `);
 
+db.transaction(() => {
+  db.exec(`
+    INSERT INTO user_items (user_id, item_name, amount)
+    SELECT user_id, 'Link Cable', amount FROM user_items WHERE item_name = 'Linking Cord'
+    ON CONFLICT(user_id, item_name) DO UPDATE SET amount = amount + excluded.amount;
+    DELETE FROM user_items WHERE item_name = 'Linking Cord';
+    UPDATE catches SET held_item = 'Link Cable' WHERE held_item = 'Linking Cord';
+  `);
+})();
+
 const collectionTableSql = db.prepare(
   "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'global_collections'"
 ).get()?.sql || '';
@@ -4564,8 +4574,9 @@ function isSupportedUserItemName(itemName) {
 function findUserItemName(query) {
   if (typeof query !== 'string' || !query.trim()) return null;
   const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const evolutionItem = findEvolutionItem(query);
+  if (evolutionItem) return evolutionItem;
   return [
-    ...Object.keys(EVOLUTION_ITEMS),
     ...Object.keys(BOXES),
     ...Object.keys(VOTE_BOXES),
     ...getPromoItemNames(),
@@ -6497,10 +6508,11 @@ function distributeWorldBossRewards(bossId) {
         awardCoinsWithBoost(entry.user_id, 12000);
         received.push({ name: 'Ultraball', amount: 5 }, { name: 'Lootbox', amount: 1 });
       }
-      const isSpawnerBoosted = !isMvp && boss.spawned_by === entry.user_id;
+      const isSpawner = boss.spawned_by === entry.user_id;
+      const isSpawnerBoosted = !isMvp && isSpawner;
       const dropChance = Math.min(1, (isMvp ? 0.12 : isSpawnerBoosted ? 0.12 : 0.03) * (isSpawnerBoosted ? 1.8 : 1));
       let gotPokemon = false;
-      if (Math.random() < Math.min(1, dropChance * 0.8)) {
+      if (Math.random() < Math.min(1, dropChance * 0.8 * (isSpawner && isMvp ? 1.25 : 1))) {
         gotPokemon = true;
         saveCatch(entry.user_id, {
           ...template,
@@ -7853,7 +7865,7 @@ function purchaseClanRank(userId, rank) {
       return { error: 'wrong_order', nextRank: nextRank?.name || null };
     }
     const totalCatches = db.prepare(
-      'SELECT COALESCE(SUM(catches), 0) AS total FROM clan_members WHERE clan_id = ?'
+      'SELECT COALESCE(SUM(catches + fishes), 0) AS total FROM clan_members WHERE clan_id = ?'
     ).get(clan.id).total;
     if (totalCatches < selected.catches) {
       return { error: 'catch_requirement', required: selected.catches, total: totalCatches };
@@ -7900,13 +7912,14 @@ function purchaseClanPerks(userId, rank) {
       'SELECT COUNT(*) AS count FROM clan_members WHERE clan_id = ?'
     ).get(clan.id).count;
     const requiredCatches = Math.floor(selected.perkCatches / memberCount);
-    if (clan.catches < requiredCatches) {
+    const clanCatchTotal = clan.catches + clan.fishes;
+    if (clanCatchTotal < requiredCatches) {
       return {
         error: 'catch_requirement',
         rank: selected.name,
         required: requiredCatches,
-        total: clan.catches,
-        remaining: requiredCatches - clan.catches,
+        total: clanCatchTotal,
+        remaining: requiredCatches - clanCatchTotal,
         memberCount,
       };
     }

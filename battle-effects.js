@@ -126,8 +126,11 @@ const EFFECTS = {
   'magnetic-flux': { nothing: 'But it failed!' }, 'aromatic-mist': { nothing: 'But it failed!' },
   'dragon-cheer': { nothing: 'But it failed!' }, coaching: { nothing: 'But it failed!' },
   'corrosive-gas': { nothing: 'But it had no effect here.' }, 'chilly-reception': { weather: 'hail' },
+  'simple-beam': { foe: true, abilityTarget: 'Simple' }, 'worry-seed': { foe: true, abilityTarget: 'Insomnia' },
+  entrainment: { foe: true, abilityTarget: 'copy' }, 'gastro-acid': { foe: true, abilityTarget: null },
+  'role-play': { foe: true, abilityUser: 'copy', sure: true }, 'skill-swap': { foe: true, abilitySwap: true, sure: true },
 };
-for (const name of ['gastro-acid', 'simple-beam', 'worry-seed', 'entrainment', 'role-play', 'skill-swap', 'doodle', 'trick', 'switcheroo',
+for (const name of [ 'doodle', 'trick', 'switcheroo',
   'recycle', 'bestow', 'teatime', 'rototiller', 'decorate', 'grudge', 'spite', 'block', 'spider-web', 'topsy-turvy-x', 'psychic-noise-x']) {
   if (!EFFECTS[name]) EFFECTS[name] = { nothing: 'But it had no effect here.' };
 }
@@ -586,6 +589,12 @@ function applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L) {
   for (const [key, delta] of Object.entries(drop[1])) changeStage(ctx, t, B.side, key, delta, L, true);
 }
 
+const UNCHANGEABLE_ABILITIES = new Set([
+  'wonder-guard', 'multitype', 'stance-change', 'schooling', 'comatose', 'shields-down', 'disguise', 'rks-system',
+  'battle-bond', 'power-construct', 'zen-mode', 'ice-face', 'gulp-missile', 'as-one-glastrier', 'as-one-spectrier',
+  'zero-to-hero', 'commander', 'hunger-switch', 'terashift', 'tera-shift',
+]);
+
 function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   const m = A.mon; const t = B.mon; const f = fx(m); const tf = fx(t);
   const key = slug(move.name);
@@ -618,6 +627,34 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     if (ctx.field.terrain === 'psychic' && isGrounded(t, ctx.field) && getPriority(move) > 0) { L(`${t.name} is protected by the Psychic Terrain!`); return; }
   }
   if (eff.nothing) { L(eff.nothing); return; }
+  if (eff.abilityTarget !== undefined || eff.abilityUser || eff.abilitySwap) {
+    const locked = (mon) => UNCHANGEABLE_ABILITIES.has(AB.abilitySlug(mon.ability));
+    const copying = eff.abilityTarget === 'copy' || eff.abilityUser === 'copy';
+    if (!t.ability || locked(t) || ((eff.abilityUser || eff.abilitySwap || copying) && (!m.ability || locked(m)))
+        || (eff.abilityTarget === 'copy' && AB.abilitySlug(m.ability) === AB.abilitySlug(t.ability))
+        || (typeof eff.abilityTarget === 'string' && eff.abilityTarget !== 'copy'
+          && AB.abilitySlug(t.ability) === AB.abilitySlug(eff.abilityTarget))) {
+      L('But it failed!');
+      return;
+    }
+    if (eff.abilitySwap) {
+      [m.ability, t.ability] = [t.ability, m.ability];
+      L(`${m.name} swapped abilities with ${t.name}!`);
+    } else if (eff.abilityUser) {
+      m.ability = t.ability;
+      L(`${m.name} copied ${t.name}'s **${t.ability}**!`);
+    } else if (eff.abilityTarget === 'copy') {
+      t.ability = m.ability;
+      L(`${t.name}'s ability became **${t.ability}**!`);
+    } else if (eff.abilityTarget === null) {
+      L(`${t.name}'s **${t.ability}** was suppressed!`);
+      t.ability = null;
+    } else {
+      t.ability = eff.abilityTarget;
+      L(`${t.name}'s ability became **${t.ability}**!`);
+    }
+    return;
+  }
   if (eff.baton) {
     const allies = (ctx.party?.[A.side] || []).filter((ally) => ally !== m && ally.hp > 0);
     if (!allies.length) { L('But it failed!'); return; }

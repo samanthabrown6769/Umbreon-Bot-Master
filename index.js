@@ -1525,6 +1525,9 @@ async function fetchPokemonItemDetails(itemQuery) {
     masterball: 'master-ball',
     premierball: 'premier-ball',
     diveball: 'dive-ball',
+    linkcable: 'linking-cord',
+    linkingcord: 'linking-cord',
+    linkingcable: 'linking-cord',
   };
   const slug = knownBallSlugs[normalizedQuery]
     || itemQuery.normalize('NFD')
@@ -3693,6 +3696,61 @@ function getPokemonFormDexNumber(pokemon) {
   `).all();
   const numbers = getPokemonDexNumbers(forms).get(pokemon.id);
   return numbers?.dexNumber ?? pokemon.species_id;
+}
+
+function findBossCoinTemplate(query) {
+  const normalize = (text) => text.toLowerCase().replace(/gigantamax|gmax/g, '').replace(/[^a-z0-9]/g, '');
+  const wantsShiny = /^shiny\b/i.test(query.trim());
+  const wanted = normalize(query.replace(/^\s*shiny\b/i, ''));
+  if (!wanted) return null;
+  const pool = WORLD_BOSS_POOL.filter((entry) =>
+    entry.isShiny === wantsShiny && !/eternamax|eternatus/i.test(entry.name)
+  );
+  const names = (entry) => normalize(entry.name.replace(/^Shiny\s+/i, ''));
+  return pool.find((entry) => names(entry) === wanted)
+    || pool.find((entry) => names(entry).includes(wanted))
+    || null;
+}
+
+async function spawnWorldBossForUser(message, userId, requestedName = '') {
+  if (!message.guild) return message.reply('Use this in a server.');
+  const activeBoss = getActiveWorldBoss();
+  if (activeBoss) {
+    return message.reply(`❌ **${activeBoss.name}** is already active. Wait until it's defeated or replaced before spawning another.`);
+  }
+  let template;
+  if (requestedName.trim()) {
+    template = findBossCoinTemplate(requestedName);
+    if (!template) {
+      return message.reply(
+        `❌ No World Boss matches **${requestedName}**. Use \`${PREFIX}use boss coin <Pokémon>\` or \`${PREFIX}use boss coin shiny <Pokémon>\`, ` +
+        `or \`${PREFIX}use boss coin\` for a random boss.`
+      );
+    }
+  } else {
+    const spawnPool = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny && !/eternamax|eternatus/i.test(entry.name));
+    template = spawnPool[Math.floor(Math.random() * spawnPool.length)];
+  }
+  const hasWorldBossSpawnPrivilege = WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has(userId);
+  const spent = db.transaction(() => {
+    if (getActiveWorldBoss()) return null;
+    if (!hasWorldBossSpawnPrivilege && !takeUserItem(userId, 'Boss Coin', 1)) return null;
+    return spawnWorldBoss(template, userId, message.author.username);
+  }).immediate();
+  if (!spent) {
+    return message.reply(
+      `❌ You need a ${EMOJIS.bosscoin} **Boss Coin** to spawn a World Boss. Buy one with \`${PREFIX}shop buy 50\`.`
+    );
+  }
+  scheduleWorldBossRegistrationClose(spent);
+  const announced = await announceWorldBossEverywhere(spent, message);
+  return message.reply(
+    `${hasWorldBossSpawnPrivilege
+      ? `✅ **${message.author.username}** spawned`
+      : `${EMOJIS.bosscoin} **${message.author.username}** spent a Boss Coin and spawned`} **${spent.name}**! ` +
+    (announced.length ? `Announced in ${announced.map((channel) => `<#${channel.id}>`).join(', ')}. ` : '') +
+    `Register with \`${PREFIX}wb register\` during the next 2 minutes; registered trainers can fight afterward.`
+  );
 }
 
 function createWorldBossEmbed(boss, clientUser) {
@@ -13894,33 +13952,7 @@ client.on('messageCreate', async (message) => {
         });
       }
       if (subCommand === 'spawn') {
-        if (!message.guild) return message.reply('Use this in a server.');
-        const activeBoss = getActiveWorldBoss();
-        if (activeBoss) {
-          return message.reply(`❌ **${activeBoss.name}** is already active. Wait until it's defeated or replaced before spawning another.`);
-        }
-        const spawnPool = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny && !/eternamax|eternatus/i.test(entry.name));
-        const template = spawnPool[Math.floor(Math.random() * spawnPool.length)];
-        const hasWorldBossSpawnPrivilege = WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has(userId);
-        const spent = db.transaction(() => {
-          if (getActiveWorldBoss()) return null;
-          if (!hasWorldBossSpawnPrivilege && !takeUserItem(userId, 'Boss Coin', 1)) return null;
-          return spawnWorldBoss(template, userId, message.author.username);
-        }).immediate();
-        if (!spent) {
-          return message.reply(
-            `❌ You need a ${EMOJIS.bosscoin} **Boss Coin** to spawn a World Boss. Buy one with \`${PREFIX}shop buy 50\`.`
-          );
-        }
-        scheduleWorldBossRegistrationClose(spent);
-        const announced = await announceWorldBossEverywhere(spent, message);
-        return message.reply(
-          `${hasWorldBossSpawnPrivilege
-            ? `✅ **${message.author.username}** spawned`
-            : `${EMOJIS.bosscoin} **${message.author.username}** spent a Boss Coin and spawned`} **${spent.name}**! ` +
-          (announced.length ? `Announced in ${announced.map((channel) => `<#${channel.id}>`).join(', ')}. ` : '') +
-          `Register with \`${PREFIX}wb register\` during the next 2 minutes; registered trainers can fight afterward.`
-        );
+        return spawnWorldBossForUser(message, userId, args.slice(1).join(' '));
       }
       const boss = getActiveWorldBoss();
       if (!boss) {
@@ -15153,7 +15185,7 @@ client.on('messageCreate', async (message) => {
       const members = getClanMembers(clan.id);
       const rankInfo = getClanRankInfo(clan);
       const nextRankInfo = getNextClanRankInfo(clan);
-      const totalCatches = members.reduce((sum, member) => sum + member.catches, 0);
+      const totalCatches = members.reduce((sum, member) => sum + member.catches + member.fishes, 0);
       const totalFishes = members.reduce((sum, member) => sum + member.fishes, 0);
       const totalHatches = members.reduce((sum, member) => sum + member.hatches, 0);
       const totalSwaps = members.reduce((sum, member) => sum + member.swaps, 0);
@@ -19310,10 +19342,10 @@ client.on('messageCreate', async (message) => {
           );
         } else if (page === 5) {
           const evolutionEntries = Object.entries(EVOLUTION_ITEMS);
-          const evoLine = ([name, item]) => `${item.emoji} **${(ownedItems.get(name) || 0).toLocaleString()}x** ${name.replace('Linking Cord', 'Link Cable')}`;
+          const evoLine = ([name, item]) => `${item.emoji} **${(ownedItems.get(name) || 0).toLocaleString()}x** ${name}`;
           const questNames = new Set([
             'Auspicious Armor', 'Deep Sea Scale', 'Deep Sea Tooth', 'Dubious Disc', 'Galarica Cuff', 'Galarica Wreath',
-            'Linking Cord', 'Malicious Armor', 'Prism Scale', 'Protector', 'Reaper Cloth', 'Sachet', 'Upgrade', 'Whipped Dream',
+            'Link Cable', 'Malicious Armor', 'Prism Scale', 'Protector', 'Reaper Cloth', 'Sachet', 'Upgrade', 'Whipped Dream',
           ]);
           const byName = (a, b) => a[0].localeCompare(b[0]);
           const questEntries = evolutionEntries.filter(([name]) => questNames.has(name)).sort(byName);
@@ -19395,6 +19427,12 @@ client.on('messageCreate', async (message) => {
         bagMessage.edit({ components: [buildBagButtons(currentPage, true)] }).catch(() => {});
       });
       return;
+    }
+
+    if (command === 'use' && /^boss\s*coins?$/i.test(args.slice(0, 2).join(' '))
+        || command === 'use' && /^bosscoins?$/i.test(args[0] || '')) {
+      const nameArgs = /^bosscoins?$/i.test(args[0]) ? args.slice(1) : args.slice(2);
+      return spawnWorldBossForUser(message, userId, nameArgs.join(' '));
     }
 
     if (command === 'use' && ['pokelure', 'pokelures', 'poke-lure', 'pl', 'mistyslure', 'mistys-lure', 'ml'].includes(

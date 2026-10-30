@@ -72,7 +72,7 @@ const EVOLUTION_ITEMS = {
   'Prism Scale': { kind: 'held', emoji: '<:prismscale:1559927159055720449>', evolutions: [[349, 350]] },
   Sachet: { kind: 'held', emoji: '<:sachet:1559927154597302272>', evolutions: [[682, 683]] },
   'Whipped Dream': { kind: 'held', emoji: '<:whippeddream:1559927150688346132>', evolutions: [[684, 685]] },
-  'Linking Cord': {
+  'Link Cable': {
     kind: 'held', emoji: '<:linkcable:1559927162377601065>',
     evolutions: [[64, 65], [67, 68], [75, 76], [93, 94]],
   },
@@ -83,8 +83,11 @@ const itemsByKey = new Map(
   Object.keys(EVOLUTION_ITEMS).map((name) => [normalizeItemName(name), name])
 );
 
+const ITEM_ALIASES = { linkingcord: 'Link Cable', linkingcable: 'Link Cable', linkcord: 'Link Cable' };
+
 function findEvolutionItem(query) {
-  return itemsByKey.get(normalizeItemName(query)) || null;
+  const key = normalizeItemName(query);
+  return itemsByKey.get(key) || itemsByKey.get(normalizeItemName(ITEM_ALIASES[key] || '')) || null;
 }
 
 module.exports = { EVOLUTION_ITEMS, findEvolutionItem, normalizeItemName };
