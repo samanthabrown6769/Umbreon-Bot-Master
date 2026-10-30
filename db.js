@@ -5123,6 +5123,19 @@ function clearDefendingTeam(userId) {
   return db.prepare('DELETE FROM saved_teams WHERE user_id = ? AND is_defending = 1').run(userId);
 }
 
+// Pokémon still owned from the saved defending team, or null when none is set/usable.
+function getDefendingTeam(userId) {
+  assertUserId(userId);
+  const saved = db.prepare(
+    'SELECT pokemon_ids FROM saved_teams WHERE user_id = ? AND is_defending = 1'
+  ).get(userId);
+  if (!saved) return null;
+  const owned = JSON.parse(saved.pokemon_ids || '[]').slice(0, 3)
+    .map((id) => db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?').get(id, userId))
+    .filter(Boolean);
+  return owned.length ? owned : null;
+}
+
 function equipSavedTeam(userId, teamName) {
   assertUserId(userId);
   return db.transaction(() => {
@@ -5894,6 +5907,32 @@ const SPECIAL_SPAWN_RESERVED_SPECIES = Object.freeze([
   'Lunala',
 ]);
 
+const STARTER_SPECIES_NAMES = Object.freeze([
+  'Bulbasaur', 'Charmander', 'Squirtle',
+  'Chikorita', 'Cyndaquil', 'Totodile',
+  'Treecko', 'Torchic', 'Mudkip',
+  'Turtwig', 'Chimchar', 'Piplup',
+  'Snivy', 'Tepig', 'Oshawott',
+  'Chespin', 'Fennekin', 'Froakie',
+  'Rowlet', 'Litten', 'Popplio',
+  'Grookey', 'Scorbunny', 'Sobble',
+  'Sprigatito', 'Fuecoco', 'Quaxly',
+]);
+// Starter evolution lines are this many times likelier than other Pokémon of the same rarity to spawn.
+const STARTER_SPAWN_WEIGHT = 4;
+let starterChainIds = null;
+function getStarterChainIds() {
+  if (!starterChainIds) {
+    starterChainIds = new Set(db.prepare(`
+      SELECT DISTINCT evolution_chain_id FROM pokemon_forms
+      WHERE is_default = 1 AND lower(species_name) IN (${STARTER_SPECIES_NAMES.map(() => '?').join(', ')})
+    `).all(...STARTER_SPECIES_NAMES.map((name) => name.toLowerCase()))
+      .map((row) => row.evolution_chain_id)
+      .filter((chainId) => chainId !== null));
+  }
+  return starterChainIds;
+}
+
 function getRandomPokemon(
   rarity = null,
   waterOnly = false,
@@ -5924,7 +5963,7 @@ function getRandomPokemon(
     ? `AND lower(species_name) NOT IN (${excludedSpeciesNames.map(() => '?').join(', ')})`
     : '';
   const select = db.prepare(`
-    SELECT * FROM pokemon_forms
+    SELECT id, evolution_chain_id FROM pokemon_forms
     WHERE (? IS NULL OR rarity = ?)
       AND (? = 0 OR is_water = 1)
       AND (? = 0 OR lower(rarity) NOT IN ('mega', 'shiny mega'))
@@ -5940,9 +5979,9 @@ function getRandomPokemon(
       ${formFilter}
       ${exactFilter}
       ${excludedSpeciesFilter}
-    ORDER BY RANDOM()
-    LIMIT 1
   `);
+  const getForm = db.prepare('SELECT * FROM pokemon_forms WHERE id = ?');
+  const starters = getStarterChainIds();
 
   const attempts = [
     [rarity, waterOnly],
@@ -5951,7 +5990,7 @@ function getRandomPokemon(
     [null, false],
   ];
   for (const [rarityFilter, waterFilter] of attempts) {
-    const pokemon = select.get(
+    const candidates = select.all(
       rarityFilter,
       rarityFilter,
       waterFilter ? 1 : 0,
@@ -5961,6 +6000,15 @@ function getRandomPokemon(
       ...(exactFormIds || []),
       ...excludedSpeciesNames.map((name) => name.toLowerCase())
     );
+    if (!candidates.length) continue;
+    const weightOf = (candidate) => (starters.has(candidate.evolution_chain_id) ? STARTER_SPAWN_WEIGHT : 1);
+    let roll = Math.random() * candidates.reduce((total, candidate) => total + weightOf(candidate), 0);
+    let chosen = candidates[candidates.length - 1];
+    for (const candidate of candidates) {
+      roll -= weightOf(candidate);
+      if (roll < 0) { chosen = candidate; break; }
+    }
+    const pokemon = getForm.get(chosen.id);
     if (pokemon) {
       return {
         id: pokemon.id,
@@ -6467,6 +6515,8 @@ function applyWorldBossDamage(userId, bossId, damage, timestamp = Date.now()) {
   }).immediate();
 }
 
+const ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS = new Set(['412568898177728512']);
+
 function distributeWorldBossRewards(bossId) {
   if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
   return db.transaction(() => {
@@ -6512,7 +6562,10 @@ function distributeWorldBossRewards(bossId) {
       const isSpawnerBoosted = !isMvp && isSpawner;
       const dropChance = Math.min(1, (isMvp ? 0.12 : isSpawnerBoosted ? 0.12 : 0.03) * (isSpawnerBoosted ? 1.8 : 1));
       let gotPokemon = false;
-      if (Math.random() < Math.min(1, dropChance * 0.8 * (isSpawner && isMvp ? 1.25 : 1))) {
+      const rolledPokemonDrop = Math.random() < Math.min(1, dropChance * 0.8 * (isSpawner && isMvp ? 1.25 : 1));
+      const isExcludedEternatusDrop = ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS.has(entry.user_id)
+        && /eternatus/i.test(template.catchName);
+      if (rolledPokemonDrop && !isExcludedEternatusDrop) {
         gotPokemon = true;
         saveCatch(entry.user_id, {
           ...template,
@@ -6672,7 +6725,6 @@ function sendPokemonGift(senderId, recipientId, catchId) {
     const mon = db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?').get(catchId, senderId);
     if (!mon) return { error: 'not_found' };
     if (mon.in_team) return { error: 'in_team' };
-    if (mon.is_locked) return { error: 'locked' };
     const inserted = db.prepare(`
       INSERT INTO pokemon_gifts (
         sender_id, recipient_id, pokemon_id, name, rarity, is_shiny, is_golden, caught_ball,
@@ -9554,6 +9606,7 @@ module.exports = {
   saveCurrentTeam,
   deleteSavedTeam,
   clearDefendingTeam,
+  getDefendingTeam,
   equipSavedTeam,
   saveLastWorldBossTeam,
   getLastWorldBossTeam,

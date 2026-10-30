@@ -57,13 +57,13 @@ const EFFECTS = {
   'scary-face': D({ spe: -2 }), 'string-shot': D({ spe: -2 }), smokescreen: D({ acc: -1 }), 'sand-attack': D({ acc: -1 }),
   flash: D({ acc: -1 }), kinesis: D({ acc: -1 }), 'sweet-scent': D({ eva: -2 }), 'feather-dance': D({ atk: -2 }), charm: D({ atk: -2 }),
   'baby-doll-eyes': D({ atk: -1 }), 'fake-tears': D({ spdef: -2 }), 'metal-sound': D({ spdef: -2 }, { sound: true }),
-  'cotton-spore': D({ spe: -2 }, { powder: true }), 'eerie-impulse': D({ spa: -2 }), captivate: D({ spa: -2 }),
+  'cotton-spore': D({ spe: -2 }, { powder: true }), 'eerie-impulse': D({ spa: -2 }), captivate: D({ spa: -2 }, { oppositeGender: true }),
   'noble-roar': D({ atk: -1, spa: -1 }, { sound: true }), tickle: D({ atk: -1, def: -1 }), confide: D({ spa: -1 }, { sound: true }),
   'play-nice': D({ atk: -1 }), 'tearful-look': D({ atk: -1, spa: -1 }), 'parting-shot': D({ atk: -1, spa: -1 }, { sound: true }),
   'tar-shot': D({ spe: -1 }), 'spicy-extract': { foe: true, sure: true, stages: { atk: 2, def: -2 } },
   memento: D({ atk: -2, spa: -2 }, { selfFaint: true }), 'strength-sap': D({ atk: -1 }, { sapHeal: true }),
   'venom-drench': D({ atk: -1, spa: -1, spe: -1 }, { needsPoison: true }), 'toxic-thread': D({ spe: -1 }, { status: 'psn' }),
-  octolock: { foe: true, flag: 'octolock', text: 'is locked in an octopus grip!' },
+  octolock: { foe: true, onFoe: true, flag: 'octolock', text: 'is locked in an octopus grip!' },
   // Statuses
   'sleep-powder': ST('slp', { powder: true }), spore: ST('slp', { powder: true }), hypnosis: ST('slp'), sing: ST('slp', { sound: true }),
   'lovely-kiss': ST('slp'), 'grass-whistle': ST('slp', { sound: true }), 'dark-void': ST('slp'),
@@ -124,7 +124,7 @@ const EFFECTS = {
   'follow-me': { nothing: 'But it failed!' }, 'rage-powder': { nothing: 'But it failed!' }, spotlight: { nothing: 'But it failed!' },
   'shed-tail': { nothing: 'But it failed!' }, 'play-rough': undefined,
   'magnetic-flux': { nothing: 'But it failed!' }, 'aromatic-mist': { nothing: 'But it failed!' },
-  'dragon-cheer': { nothing: 'But it failed!' }, coaching: { nothing: 'But it failed!' },
+  'dragon-cheer': { flag: 'focus', text: 'is getting pumped!' }, coaching: { nothing: 'But it failed!' },
   'corrosive-gas': { nothing: 'But it had no effect here.' }, 'chilly-reception': { weather: 'hail' },
   'simple-beam': { foe: true, abilityTarget: 'Simple' }, 'worry-seed': { foe: true, abilityTarget: 'Insomnia' },
   entrainment: { foe: true, abilityTarget: 'copy' }, 'gastro-acid': { foe: true, abilityTarget: null },
@@ -696,8 +696,12 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   }
   if (eff.boostFoe) for (const [k, v] of Object.entries(eff.boostFoe)) changeStage(ctx, t, B.side, k, v, L);
   if (eff.drop) {
+    const userGender = eff.oppositeGender ? battleGender(m) : null;
+    const targetGender = eff.oppositeGender ? battleGender(t) : null;
     if (eff.needsPoison && !(tf.status === 'psn' || tf.status === 'tox')) { L('But it failed!'); }
-    else {
+    else if (eff.oppositeGender && (userGender === 'genderless' || targetGender === 'genderless' || userGender === targetGender)) {
+      L('But it failed!');
+    } else {
       const before = t.hp;
       const attackBefore = baseStat(t, 'atk') * stageMult(tf.stages.atk);
       for (const [k, v] of Object.entries(eff.drop)) changeStage(ctx, t, B.side, k, v, L, true);

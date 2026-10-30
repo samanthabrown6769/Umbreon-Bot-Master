@@ -128,6 +128,7 @@ const {
   saveCurrentTeam,
   deleteSavedTeam,
   clearDefendingTeam,
+  getDefendingTeam,
   equipSavedTeam,
   saveLastWorldBossTeam,
   getLastWorldBossTeam,
@@ -3553,6 +3554,24 @@ function createReleaseAnnouncement(userId, username, outcome, extra = '') {
   };
 }
 
+const BASE_EXPERIENCE = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'data', 'base-experience.json'), 'utf8')
+);
+const HIGH_BASE_EXP_THRESHOLD = 300;
+const HIGH_BASE_EXP_MULTIPLIER = 10;
+
+// Extra EXP for each defeated Pokémon whose base experience yield is over 300.
+function getDefeatExperienceBonus(defeated) {
+  let bonus = 0;
+  for (const mon of defeated) {
+    const baseExp = BASE_EXPERIENCE[mon.baseExpSlug] ?? 0;
+    if (baseExp > HIGH_BASE_EXP_THRESHOLD) {
+      bonus += (baseExp - HIGH_BASE_EXP_THRESHOLD) * HIGH_BASE_EXP_MULTIPLIER;
+    }
+  }
+  return bonus;
+}
+
 function getCatchExperienceReward(displayRarity) {
   return {
     Common: 100,
@@ -4271,7 +4290,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
     pokemon.held_item, moveType, effectiveness, move.category, true
   );
   const stages = battleMon ? battleFx.fx(battleMon).stages : null;
-  const isCritical = Math.random() < 0.15;
+  const isCritical = Math.random() < (battleMon && battleFx.fx(battleMon).focus ? 0.5 : 0.15);
   const baseDamage = Math.max(
     1,
     Math.floor(
@@ -4948,6 +4967,11 @@ async function startWorldBossBattle(message, boss, userId, team) {
             getSpeciesLearnset(bossForm.species_id, bossForm.id)
               .map((name) => getPokemonMove(name))
               .filter(Boolean)
+              // The boss must never wipe, copy, reverse or swap the raider's stat stages (Haze, Psych Up...).
+              .filter((move) => {
+                const effect = battleFx.EFFECTS[battleFx.slug(move.name)];
+                return !(effect && (effect.haze || effect.topsy || effect.psychUp || effect.swap));
+              })
               .map((move) => (move.name === 'Max Ooze' && hyperBeam ? hyperBeam : move))
               .map((move) => [move.name, move])
           ).values()]);
@@ -6834,8 +6858,9 @@ function completeBatonSwitch(from, to) {
   battleFx.giveBatonState(to, battleFx.takeBatonState(from));
 }
 
-function buildSparParty(userId) {
-  return getUserTeam(userId).map((pokemon) => {
+function buildSparParty(userId, defending = false) {
+  const team = (defending && getDefendingTeam(userId)) || getUserTeam(userId);
+  return team.map((pokemon) => {
     const form = db.prepare('SELECT * FROM pokemon_forms WHERE id = ?').get(pokemon.pokemon_id);
     if (!form) return null;
     const moves = getEquippedBattleMoves(pokemon, form.species_id, form.id);
@@ -6845,6 +6870,7 @@ function buildSparParty(userId) {
       types: getBattleTypes(pokemon, form),
       moves,
       hp: pokemon.max_hp,
+      baseExpSlug: form.slug,
       spriteUrl: getPokemonShowdownSprite(form.slug),
     };
   }).filter(Boolean);
@@ -6854,7 +6880,7 @@ function buildSparParty(userId) {
 async function runPlayerSpar(message, userId, opponentUser) {
   const party = buildSparParty(userId);
   if (!party.length) return message.reply('❌ Set up a team with at least one Pokémon that has battle moves first.');
-  const opponents = buildSparParty(opponentUser.id);
+  const opponents = buildSparParty(opponentUser.id, true);
   if (!opponents.length) {
     return message.reply(`❌ **${opponentUser.username}** has no battle-ready team Pokémon.`);
   }
@@ -6994,7 +7020,7 @@ async function runPlayerSpar(message, userId, opponentUser) {
       finished = won || lost;
       if (won) {
         log.push(`🎉 **VICTORY!** You defeated ${opponentUser.username}'s team!`);
-        const experience = 200 + Math.floor(Math.random() * 1801);
+        const experience = 200 + Math.floor(Math.random() * 1801) + getDefeatExperienceBonus(opponents);
         const experienceResult = awardCatchExperience(userId, experience);
         if (experienceResult.awarded) {
           log.push(`✨ Your Buddy and eligible Exp. Share Pokémon earned **${experience.toLocaleString()} EXP**.`);
@@ -7481,6 +7507,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       max_hp: stats.hp,
       moves,
       abilityFormId: form.id,
+      baseExpSlug: form.slug,
     };
   });
   if (challenge.invited && !removeChallengerInvite(userId, challenge.challengerKey)) {
@@ -7742,7 +7769,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
             addUserItem(userId, npcCandy.name, npcCandy.amount);
             log.push(`🍬 You also found **${npcCandy.amount}x ${npcCandy.name}**!`);
           }
-          const npcExperience = 200 + Math.floor(Math.random() * 1801);
+          const npcExperience = 200 + Math.floor(Math.random() * 1801) + getDefeatExperienceBonus(opponents);
           const npcExperienceResult = awardCatchExperience(userId, npcExperience);
           const normalizedChallengeName = challenge.name.toLowerCase();
           const battleCategories = [];
@@ -7995,7 +8022,7 @@ function getTradeableCatchRows(ownerId, entry, limit = Number.MAX_SAFE_INTEGER) 
   return db.prepare(`
     SELECT id, name, caught_ball FROM catches
     WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
-      AND in_team = 0 AND is_locked = 0
+      AND in_team = 0
     ORDER BY (id = COALESCE((SELECT buddy_catch_id FROM users WHERE id = ?), -1)), id
     LIMIT ?
   `).all(ownerId, entry.formId, entry.isShiny ? 1 : 0, entry.isGolden ? 1 : 0, ownerId, limit);
@@ -8244,7 +8271,7 @@ function applyMultiTradeCommand(session, side, command) {
     };
     const available = getTradeableCatchRows(side.user.id, entry);
     if (!available.length) {
-      return { error: `You don't have a tradeable **${request.spec.query || resolved.form.name}** (team and locked Pokémon can't be traded).` };
+      return { error: `You don't have a tradeable **${request.spec.query || resolved.form.name}** (team Pokémon can't be traded).` };
     }
     const amount = request.amount === 'all' ? available.length : request.amount;
     if (!Number.isSafeInteger(amount) || amount <= 0) return { error: 'Enter a valid amount.' };
@@ -8469,7 +8496,7 @@ async function handleGift(message, userId, args) {
     formId: resolved.form.id, isShiny: resolved.isShiny, isGolden: resolved.isGolden,
   });
   if (!available.length) {
-    return message.reply('❌ You have no giftable copy of that Pokémon (team and locked Pokémon cannot be gifted).');
+    return message.reply('❌ You have no giftable copy of that Pokémon (team Pokémon cannot be gifted).');
   }
   const wanted = amount === 'all' ? available.length : amount;
   if (!Number.isSafeInteger(wanted) || wanted <= 0) return message.reply('❌ Enter a valid amount.');
@@ -9152,12 +9179,40 @@ const PATREON_TIER_ROLES = [
 
 const patreonTierSyncedAt = new Map();
 
+function buildPatreonWelcomeEmbed(tier, perks) {
+  const lines = [];
+  if (perks.catchBoost) lines.push(`+${perks.catchBoost}% catch rate`);
+  if (perks.shinyCharms) lines.push(`${perks.shinyCharms}x Shiny Charm`);
+  if (perks.amuletCoins) lines.push(`${perks.amuletCoins}x Amulet Coins`);
+  if (perks.shinyRatePct) lines.push(`+${perks.shinyRatePct}% shiny rate`);
+  if (perks.goldenBoost) lines.push(`+${Math.round(perks.goldenBoost * 100)}% golden chance`);
+  if (perks.dailyCoins) lines.push(`${perks.dailyCoins.toLocaleString()} PokéCoins daily`);
+  if (perks.dailyTokens) lines.push(`${perks.dailyTokens.toLocaleString()} Patreon Tokens daily`);
+  if (perks.questSlots > 3) lines.push(`${perks.questSlots} quest slots`);
+  if (perks.releaseLocks) lines.push(`${perks.releaseLocks} release locks`);
+  if (perks.marketListingSlots) lines.push(`${perks.marketListingSlots} extra market listings`);
+  if (perks.monthly) lines.push('Monthly rewards (sent at the end of each month)');
+  const embed = new EmbedBuilder().setColor(0xf1c40f).setTitle('💛 Thank you for supporting Umbreon Bot!')
+    .setDescription(
+      `Your **${tier.name}** Patreon tier has been synced. Here's what you get:\n\n` +
+      lines.map((line) => `• ${line}`).join('\n') +
+      `\n\nSee \`${PREFIX}perks\` for the full list.`
+    );
+  return embed;
+}
+
 function syncPatreonTier(userId, roles) {
   const tier = PATREON_TIER_ROLES.find(({ roleId }) => roles.has(roleId));
   const key = tier?.key ?? null;
   const user = getUser(userId);
-  if ((user.patreon_tier ?? null) !== key || user.has_patreon !== Number(Boolean(key))) {
+  const changed = (user.patreon_tier ?? null) !== key;
+  if (changed || user.has_patreon !== Number(Boolean(key))) {
     updateUser(userId, { patreon_tier: key, has_patreon: Number(Boolean(key)) });
+  }
+  if (changed && tier) {
+    client.users.fetch(userId)
+      .then((discordUser) => discordUser.send({ embeds: [buildPatreonWelcomeEmbed(tier, getPatreonPerks(userId))] }))
+      .catch(() => {});
   }
   patreonTierSyncedAt.set(userId, Date.now());
   return tier;
@@ -9249,6 +9304,7 @@ async function runPatreonMonthlyPayout() {
   if (patreonMonthlyRunning || !isLastDayOfMonth(pacific) || pacific.hour < 22) return;
   patreonMonthlyRunning = true;
   const monthKey = `${pacific.year}-${String(pacific.month).padStart(2, '0')}`;
+  let grantedCount = 0;
   try {
     for (const userId of getPatreonUserIds()) {
       try {
@@ -9257,6 +9313,7 @@ async function runPatreonMonthlyPayout() {
         if (!tier.key) continue;
         const result = grantPatreonMonthly(userId, monthKey);
         if (!result.reward) continue;
+        grantedCount += 1;
         const discordUser = await client.users.fetch(userId).catch(() => null);
         await discordUser?.send({
           embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle('💰 Your Monthly Patreon Rewards')
@@ -9271,6 +9328,13 @@ async function runPatreonMonthlyPayout() {
     }
   } finally {
     patreonMonthlyRunning = false;
+  }
+  if (!grantedCount) return;
+  try {
+    const channel = await client.channels.fetch('1565508561105199214');
+    await channel.send(`💰 Monthly Patreon rewards for **${monthKey}** have been sent out to all supporters! Thank you for supporting the bot! 💛`);
+  } catch (error) {
+    console.error('Failed to announce monthly Patreon rewards:', error);
   }
 }
 
@@ -16026,7 +16090,10 @@ client.on('messageCreate', async (message) => {
       `).all(
         selectedPokemon.evolution_chain_id || -1,
         selectedPokemon.species_id
-      ).filter((form) => !goldenEntry || !/mega|gmax/i.test(form.rarity));
+      ).filter((form) => !goldenEntry || (
+        !/mega|gmax/i.test(form.rarity)
+        && isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))
+      ));
       const formById = new Map(relatedForms.map((form) => [form.id, form]));
       let currentPokemon = selectedPokemon;
       const formsPerPage = 20;
@@ -22482,12 +22549,11 @@ client.on('messageCreate', async (message) => {
           const offeredMatch = findUserPokemonMatches(userId, pokemonName)
             .find((pokemon) =>
               !pokemon.in_team
-              && !pokemon.is_locked
               && Boolean(pokemon.is_shiny) === isShiny
               && Boolean(pokemon.is_golden) === isGolden
             );
           const offered = offeredMatch
-            ? db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ? AND in_team = 0 AND is_locked = 0')
+            ? db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ? AND in_team = 0')
               .get(offeredMatch.id, userId)
             : null;
           if (!offered) return { error: 'pokemon_not_found' };
@@ -22571,6 +22637,14 @@ client.on('messageCreate', async (message) => {
         }).immediate();
 
         if (result.error === 'pokemon_not_found') {
+          const ownedVariant = findUserPokemonMatches(userId, pokemonName).filter((pokemon) =>
+            Boolean(pokemon.is_shiny) === (variant === 'shiny') && Boolean(pokemon.is_golden) === (variant === 'golden'));
+          if (ownedVariant.length) {
+            return message.reply(
+              `❌ You own **${ownedVariant.length}** ${variant === 'regular' ? '' : `${variant} `}**${pokemonName}**, ` +
+              'but all of them are on your team. Remove one from your team first.'
+            );
+          }
           return message.reply(
             `❌ Could not find a non-team ${variant === 'regular' ? '' : `${variant} `}` +
             `**${pokemonName}** in your box. Specify its Pokémon name or Pokédex number.`
