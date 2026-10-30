@@ -259,6 +259,12 @@ const {
   setUserPokemonLockByQuery,
   findOwnedPokemonRows,
   addUserItem,
+  isPlayerBonusActive,
+  getPlayerBonusStatuses,
+  getRecentBonusActivations,
+  getEventVouchersUsed,
+  activateEventVoucherBonus,
+  PLAYER_BONUSES,
   findUserItemName,
   findQuestItem,
   takeUserItem,
@@ -1682,7 +1688,7 @@ const EMOJIS = {
   cooldownMachine: '<:cooldownmachine:1561042605129863238>',
   abilityPatch: '<:abilitypatch:1561042622997467386>',
   dxpticket: '<:dxpticket:1560320022029541446>',
-  eventvoucher: '<:eventvoucher:1560319754173161634>',
+  eventvoucher: '<:eventvoucher:1565709116670746754>',
   honey: '<:honey:1560319715002552450>',
   incubator: '<:incubator:1560319675307397180>',
   megabracelet: '<:megabracelet:1560318451556421772>',
@@ -3018,6 +3024,7 @@ function rollSpawn(
     const baseShinyChance = baseShinyRate
       * patreonShinyMultiplier
       * shinyBonusMultiplier
+      * (isEventShinyTargetActive && isPlayerBonusActive('shiny') ? 1.25 : 1)
       * eventTicketShinyMultiplier;
     const shinyChance = baseShinyChance
       * (catchbot
@@ -7918,7 +7925,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
               challengeIconIndex,
               NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.length
             );
-            const iconDropChance = NPC_ICON_DROP_CHANCE;
+            const iconDropChance = NPC_ICON_DROP_CHANCE * (isPlayerBonusActive('icon') ? 1.25 : 1);
             if (unlockedIconIndex === null
                 && Math.random() < iconDropChance
                 && unlockBattleIcon(userId, challengeIconIndex)) {
@@ -14538,7 +14545,8 @@ client.on('messageCreate', async (message) => {
         guildId: message.guildId,
       });
       const goldenFishingChance =
-        (1 / FISH_EXCLUSIVE_GOLDEN_DENOMINATOR) * (1 + getPatreonPerks(userId).goldenBoost);
+        (1 / FISH_EXCLUSIVE_GOLDEN_DENOMINATOR) * (1 + getPatreonPerks(userId).goldenBoost)
+        * (isPlayerBonusActive('fish') ? 1.25 : 1);
       if (rod.name === 'Golden Rod' && Math.random() < goldenFishingChance) {
         const speciesName = FISH_EXCLUSIVE_GOLDENS[
           Math.floor(Math.random() * FISH_EXCLUSIVE_GOLDENS.length)
@@ -15437,6 +15445,60 @@ client.on('messageCreate', async (message) => {
           )
           .setFooter({ text: 'Counts reset daily at 5 AM EST' })],
       });
+    }
+
+    if (command === 'bonus' || command === 'bonuses' || command === 'bo') {
+      const sub = args[0]?.toLowerCase();
+      if (sub === 'activate' || sub === 'a') {
+        const result = activateEventVoucherBonus(userId, message.author.username, args[1]);
+        if (result.error === 'unknown_bonus') {
+          return message.reply(`❌ Unknown bonus. Use \`${PREFIX}bo a {${Object.keys(PLAYER_BONUSES).join('/')}}\`.`);
+        }
+        if (result.error === 'not_enough') {
+          return message.reply(
+            `❌ You need ${result.cost}x ${EMOJIS.eventvoucher} Event voucher${result.cost === 1 ? '' : 's'} ` +
+            `(you have ${result.owned}x).`
+          );
+        }
+        const info = PLAYER_BONUSES[result.bonusKey];
+        const minutes = Math.round(result.duration / 60000);
+        return message.reply({
+          content: `${EMOJIS.eventvoucher} You used ${result.cost}x Event voucher${result.cost === 1 ? '' : 's'} and ` +
+            `activated ${result.powerful ? 'a **powerful** ' : ''}${info.emoji} **${info.short || info.label}** ` +
+            `for ${minutes >= 60 ? `${minutes / 60} hours` : `${minutes} minutes`}! ` +
+            `Active until <t:${Math.floor(result.expiresAt / 1000)}:R>.`,
+          allowedMentions: { parse: [] },
+        });
+      }
+
+      const now = Date.now();
+      const statusLines = getPlayerBonusStatuses(now).map((bonus) =>
+        `• ${bonus.emoji} ${bonus.label}: ${bonus.expiresAt
+          ? `✅ Active — ends <t:${Math.floor(bonus.expiresAt / 1000)}:R>`
+          : '❌ Expired'}`
+      );
+      const recent = getRecentBonusActivations(5).map((entry) => {
+        const info = PLAYER_BONUSES[entry.bonus_key];
+        const hours = entry.duration_ms / 3600000;
+        const length = hours >= 1 ? `${hours}h` : `${Math.round(entry.duration_ms / 60000)}m`;
+        return `• <@${entry.user_id}> activated ${entry.powerful ? 'a *powerful* ' : ''}` +
+          `${info?.emoji || ''} **${info?.short || entry.bonus_key}** (${length})! ` +
+          `<t:${Math.floor(entry.activated_at / 1000)}:R>`;
+      });
+      const embed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle('🌎 Global bonuses')
+        .setDescription(
+          `${EMOJIS.eventvoucher} 👤 **Player-activated Global Bonuses** \`${PREFIX}bonus activate\`\n` +
+          `${statusLines.join('\n')}\n` +
+          `• Activate a random 20-minute bonus for 1x ${EMOJIS.eventvoucher} Event voucher using \`${PREFIX}bo a\`.\n` +
+          `• Activate a specific, powerful 2-HR bonus for 5x ${EMOJIS.eventvoucher} Event vouchers using ` +
+          `\`${PREFIX}bo a {swap/dxp/hatch/fish/icon/wb/shiny}\`\n\n` +
+          `**Recent Player-activated bonuses**\n${recent.join('\n') || '• None yet.'}`
+        )
+        .setFooter({ text: `${getEventVouchersUsed().toLocaleString()} Event Vouchers have been used by players` })
+        .setTimestamp();
+      return message.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     }
 
     if (command === 'counters' || command === 'co') {
@@ -20589,6 +20651,23 @@ client.on('messageCreate', async (message) => {
             .setFooter({ text: `Item info: ${PREFIX}item info <item>` })],
         });
       }
+      if (query === 'event voucher' || query === 'eventvoucher' || query === 'voucher') {
+        const owned = getUserItems(userId).find((row) => row.item_name === 'Event Voucher')?.amount || 0;
+        return message.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x0099ff)
+            .setAuthor({ name: 'Event voucher — Item information' })
+            .setDescription(
+              `A voucher that activates a random global \`${PREFIX}bonus\`. This bonus applies to every player across all servers. ` +
+              'Bonuses stack: activating again extends the timer.\n\n' +
+              `**You currently own:** ${EMOJIS.eventvoucher} **${owned.toLocaleString()}x** Event voucher\n\n` +
+              `**Usage**\nTo use a voucher, type \`${PREFIX}bonus activate\` or \`${PREFIX}bo a\` (20 minutes, random bonus).\n` +
+              `Use 5x vouchers with \`${PREFIX}bo a {swap/dxp/hatch/fish/icon/wb/shiny}\` for a powerful 2-hour bonus of your choice.\n\n` +
+              `**Method to obtain**\n• Purchase from \`${PREFIX}patreon shop\` for 100x ${EMOJIS.patreonToken} each: \`${PREFIX}s buy 51\``
+            )
+            .setFooter({ text: `Item info: ${PREFIX}item info <item>` })],
+        });
+      }
       if (query === 'cooldown machine' || query === 'cooldownmachine') {
         const user = getUser(userId);
         const owned = getUserItems(userId).find((row) => row.item_name === 'Cooldown Machine')?.amount || 0;
@@ -20948,6 +21027,7 @@ client.on('messageCreate', async (message) => {
             `\`103\` ${EMOJIS.expcandyl} **Exp. Candy L** (10,000 EXP) — 2 ${EMOJIS.patreonToken}\n` +
             `\`104\` ${EMOJIS.expcandyxl} **Exp. Candy XL** (30,000 EXP) — 5 ${EMOJIS.patreonToken}\n` +
             `\`50\` ${EMOJIS.bosscoin} **Boss Coin** — 1,000 ${EMOJIS.patreonToken}\n` +
+            `\`51\` ${EMOJIS.eventvoucher} **Event voucher** — 100 ${EMOJIS.patreonToken}\n` +
             `\`101\` <:teammedallion:1562201734435045579> **Team Medallion** — 1,000 ${EMOJIS.patreonToken}\n\n` +
             `\`${PREFIX}item info <item>\` for item usage & info`,
         },
@@ -21181,6 +21261,7 @@ client.on('messageCreate', async (message) => {
         47: 'incense',
         44: 'pokeradar',
         50: 'bosscoin',
+        51: 'eventvoucher',
         73: 'abilitycapsule',
         74: 'abilitypatch',
         99: 'cooldownmachine',
@@ -21267,6 +21348,9 @@ client.on('messageCreate', async (message) => {
         honey: 'honey',
         'boss coin': 'bosscoin',
         bosscoin: 'bosscoin',
+        'event voucher': 'eventvoucher',
+        eventvoucher: 'eventvoucher',
+        voucher: 'eventvoucher',
         'team medallion': 'teammedallion',
         teammedallion: 'teammedallion',
         radar: 'pokeradar',
@@ -21463,6 +21547,26 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           `✅ Purchased **${amount}x ${EMOJIS.bosscoin} Boss Coin** for ` +
           `**${tokenPrice.toLocaleString()} ${EMOJIS.patreonToken} Patreon Tokens**. Use it with \`${PREFIX}worldboss spawn\`.`
+        );
+      }
+      if (item === 'eventvoucher') {
+        const tokenPrice = 100 * amount;
+        if (!Number.isSafeInteger(tokenPrice)) return message.reply('That purchase amount is too large.');
+        const bought = db.transaction(() => {
+          if (getUser(userId).patreon_tokens < tokenPrice) return false;
+          incrementUser(userId, { patreon_tokens: -tokenPrice });
+          addUserItem(userId, 'Event Voucher', amount);
+          return true;
+        }).immediate();
+        if (!bought) {
+          return message.reply(
+            `❌ That costs **${tokenPrice.toLocaleString()} ${EMOJIS.patreonToken} Patreon Tokens**. ` +
+            `You have **${getUser(userId).patreon_tokens.toLocaleString()}**.`
+          );
+        }
+        return message.reply(
+          `✅ Purchased **${amount}x ${EMOJIS.eventvoucher} Event voucher** for ` +
+          `**${tokenPrice.toLocaleString()} ${EMOJIS.patreonToken} Patreon Tokens**. Use it with \`${PREFIX}bonus activate\`.`
         );
       }
       if (item === 'patrarecandy') {
@@ -22642,8 +22746,9 @@ client.on('messageCreate', async (message) => {
           const multiplier = getSwapMultiplier(swapsToday);
           const shinyBonus = isShiny ? 1.35 * 1.25 : 1;
           const goldenBonus = isGolden ? 1.65 * 1.25 : 1;
-          const shinyChance = Math.min(1, multiplier * shinyBonus / 4000);
-          const goldenChance = Math.min(1, multiplier * goldenBonus * (1 + swapPerks.goldenBoost) / 10000);
+          const swapBonus = isPlayerBonusActive('swap') ? 1.25 : 1;
+          const shinyChance = Math.min(1, multiplier * shinyBonus * swapBonus / 4000);
+          const goldenChance = Math.min(1, multiplier * goldenBonus * swapBonus * (1 + swapPerks.goldenBoost) / 10000);
           const exclusiveShinyHits = SWAP_EXCLUSIVE_SHINIES.filter((exclusive) =>
             (!exclusive.patreonOnly || user.has_patreon)
             && Math.random() < shinyChance

@@ -3501,7 +3501,7 @@ function advanceEggCatchProgress(userId, amount = 1, abilityBoost) {
       AND lower(replace(ability, ' ', '-')) IN ('flame-body', 'magma-armor')
     LIMIT 1
   `).get(userId, userId);
-  const progressAmount = hatchBoost ? amount * 2 : amount;
+  const progressAmount = (hatchBoost ? amount * 2 : amount) * (isPlayerBonusActive('hatch') ? 2 : 1);
   const heldEgg = db.prepare(`
     UPDATE users
     SET held_egg_progress = MIN(held_egg_target, held_egg_progress + ?)
@@ -4551,7 +4551,7 @@ const SPECIAL_USER_ITEM_NAMES = Object.freeze([
   ...Object.keys(EXP_CANDY_VALUES),
   'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
   'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
-  'Team Medallion',
+  'Team Medallion', 'Event Voucher',
   'Aux Guard', 'Aux Power', 'Aux Powerguard', 'Team Boost', 'Catching Charm', 'Max Revive',
   'Pomeg Berry', 'Kelpsy Berry', 'Qualot Berry', 'Hondew Berry', 'Grepa Berry', 'Tamato Berry', 'Full Restore',
   ...RESEARCH_ITEM_NAMES,
@@ -4634,6 +4634,97 @@ function takeUserItem(userId, itemName, amount = 1) {
   return db.prepare(
     'UPDATE user_items SET amount = amount - ? WHERE user_id = ? AND item_name = ? AND amount >= ?'
   ).run(amount, userId, itemName, amount).changes > 0;
+}
+
+const PLAYER_BONUSES = Object.freeze({
+  swap: { label: '+25% Golden/Shiny Swap rates', emoji: '🎟️' },
+  shiny: { label: '+25% Checklist Shiny rate', emoji: '<:eonticket:1372993547959144538>', short: 'Checklist Shiny' },
+  wb: { label: '+25% World Boss drop rate', emoji: '<:world_boss:1248144585688092702>', short: 'World Boss drop rate' },
+  dxp: { label: 'Double EXP Bonus', emoji: '<:exp:697271917354418246>', short: 'Double EXP' },
+  fish: { label: 'Golden Fishing spawns', emoji: '<:golden_rod:1090954386894766160>', short: 'Golden Fishing' },
+  hatch: { label: '2x Egg Hatch rate', emoji: '<:poke_egg:1372992365664403558>', short: 'Egg Hatch rate' },
+  icon: { label: '+25% Trainer Icon rates', emoji: '⚔️', short: 'Trainer Icon rates' },
+});
+const PLAYER_BONUS_ALIASES = Object.freeze({
+  swap: 'swap', swaps: 'swap', shiny: 'shiny', checklist: 'shiny', cl: 'shiny',
+  wb: 'wb', boss: 'wb', worldboss: 'wb', dxp: 'dxp', exp: 'dxp', xp: 'dxp', doubleexp: 'dxp',
+  fish: 'fish', fishing: 'fish', golden: 'fish', hatch: 'hatch', egg: 'hatch', eggs: 'hatch',
+  icon: 'icon', icons: 'icon', trainer: 'icon',
+});
+const EVENT_VOUCHER_ITEM = 'Event Voucher';
+const VOUCHER_BONUS_MS = 20 * 60 * 1000;
+const POWERFUL_BONUS_VOUCHERS = 5;
+const POWERFUL_BONUS_MS = 2 * 60 * 60 * 1000;
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS player_bonuses (
+    bonus_key TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS player_bonus_activations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    username TEXT,
+    bonus_key TEXT NOT NULL,
+    powerful INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL,
+    activated_at INTEGER NOT NULL
+  );
+`);
+
+function isPlayerBonusActive(bonusKey, now = Date.now()) {
+  const row = db.prepare('SELECT expires_at FROM player_bonuses WHERE bonus_key = ?').get(bonusKey);
+  return Boolean(row && row.expires_at > now);
+}
+
+function getPlayerBonusStatuses(now = Date.now()) {
+  const rows = new Map(db.prepare('SELECT bonus_key, expires_at FROM player_bonuses').all()
+    .map((row) => [row.bonus_key, row.expires_at]));
+  return Object.entries(PLAYER_BONUSES).map(([key, info]) => ({
+    key,
+    ...info,
+    expiresAt: rows.get(key) > now ? rows.get(key) : null,
+  }));
+}
+
+function getRecentBonusActivations(limit = 5) {
+  return db.prepare(`
+    SELECT user_id, username, bonus_key, powerful, duration_ms, activated_at
+    FROM player_bonus_activations ORDER BY activated_at DESC, id DESC LIMIT ?
+  `).all(limit);
+}
+
+function getEventVouchersUsed() {
+  return db.prepare('SELECT COALESCE(SUM(vouchers_used), 0) AS total FROM users').get().total;
+}
+
+function activateEventVoucherBonus(userId, username, query) {
+  assertUserId(userId);
+  const requested = query ? PLAYER_BONUS_ALIASES[query.toLowerCase().replace(/[^a-z]/g, '')] : null;
+  if (query && !requested) return { error: 'unknown_bonus' };
+  const powerful = Boolean(requested);
+  const cost = powerful ? POWERFUL_BONUS_VOUCHERS : 1;
+  const duration = powerful ? POWERFUL_BONUS_MS : VOUCHER_BONUS_MS;
+  return db.transaction(() => {
+    if (!takeUserItem(userId, EVENT_VOUCHER_ITEM, cost)) {
+      return { error: 'not_enough', cost, owned: getUserItemAmount(userId, EVENT_VOUCHER_ITEM) };
+    }
+    const keys = Object.keys(PLAYER_BONUSES);
+    const bonusKey = requested || keys[Math.floor(Math.random() * keys.length)];
+    const now = Date.now();
+    const current = db.prepare('SELECT expires_at FROM player_bonuses WHERE bonus_key = ?').get(bonusKey);
+    const expiresAt = Math.max(now, current?.expires_at || 0) + duration;
+    db.prepare(`
+      INSERT INTO player_bonuses (bonus_key, expires_at) VALUES (?, ?)
+      ON CONFLICT(bonus_key) DO UPDATE SET expires_at = excluded.expires_at
+    `).run(bonusKey, expiresAt);
+    db.prepare(`
+      INSERT INTO player_bonus_activations (user_id, username, bonus_key, powerful, duration_ms, activated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(userId, username || null, bonusKey, powerful ? 1 : 0, duration, now);
+    db.prepare('UPDATE users SET vouchers_used = vouchers_used + ? WHERE id = ?').run(cost, userId);
+    return { bonusKey, powerful, cost, expiresAt, duration };
+  }).immediate();
 }
 
 function changePokemonAbility(userId, catchId, ability, itemName) {
@@ -5435,7 +5526,9 @@ function awardCatchExperience(userId, amount = 200) {
 
   return db.transaction(() => {
     const user = getUser(userId);
-    if (user.double_xp_charges > 0) {
+    if (isPlayerBonusActive('dxp')) {
+      amount *= 2;
+    } else if (user.double_xp_charges > 0) {
       amount *= 2;
       db.prepare('UPDATE users SET double_xp_charges = double_xp_charges - 1 WHERE id = ?').run(userId);
     }
@@ -6562,7 +6655,7 @@ function distributeWorldBossRewards(bossId) {
       const isSpawnerBoosted = !isMvp && isSpawner;
       const dropChance = Math.min(1, (isMvp ? 0.12 : isSpawnerBoosted ? 0.12 : 0.03) * (isSpawnerBoosted ? 1.8 : 1));
       let gotPokemon = false;
-      const rolledPokemonDrop = Math.random() < Math.min(1, dropChance * 0.8 * (isSpawner && isMvp ? 1.25 : 1));
+      const rolledPokemonDrop = Math.random() < Math.min(1, dropChance * 0.8 * (isSpawner && isMvp ? 1.25 : 1) * (isPlayerBonusActive('wb') ? 1.25 : 1));
       const isExcludedEternatusDrop = ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS.has(entry.user_id)
         && /eternatus/i.test(template.catchName);
       if (rolledPokemonDrop && !isExcludedEternatusDrop) {
@@ -9819,6 +9912,12 @@ module.exports = {
   findOwnedPokemonRows,
   ROTOM_ITEMS,
   addUserItem,
+  isPlayerBonusActive,
+  getPlayerBonusStatuses,
+  getRecentBonusActivations,
+  getEventVouchersUsed,
+  activateEventVoucherBonus,
+  PLAYER_BONUSES,
   findUserItemName,
   findQuestItem,
   takeUserItem,
