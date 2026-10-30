@@ -4723,7 +4723,7 @@ function activateEventVoucherBonus(userId, username, query) {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(userId, username || null, bonusKey, powerful ? 1 : 0, duration, now);
     db.prepare('UPDATE users SET vouchers_used = vouchers_used + ? WHERE id = ?').run(cost, userId);
-    return { bonusKey, powerful, cost, expiresAt, duration };
+    return { bonusKey, powerful, cost, expiresAt, duration, extended: (current?.expires_at || 0) > now };
   }).immediate();
 }
 

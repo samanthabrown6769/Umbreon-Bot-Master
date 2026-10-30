@@ -623,6 +623,17 @@ Message.prototype.createMessageComponentCollector = function createCooldownCompo
   });
 };
 
+const BONUS_ANNOUNCEMENT_CHANNEL_ID = '1565712507287371846';
+const BONUS_ANNOUNCEMENT_ROLE_ID = '1565712717833052180';
+const BONUS_EFFECT_TEXT = Object.freeze({
+  swap: '+25% increased Golden and Shiny swap rates.',
+  shiny: '+25% Checklist Pokémon shiny spawn rates.',
+  wb: '+25% World Boss Pokémon drop rate.',
+  dxp: 'Double EXP from catches.',
+  fish: '+25% Golden Fishing spawn rate.',
+  hatch: 'Double catch progress towards eggs (4x with Flame Body / Magma Armor).',
+  icon: '+25% Battle icon drop rate.',
+});
 const PREFIX = '.';
 const TOPGG_WEBHOOK_AUTH = process.env.TOPGG_WEBHOOK_AUTH?.trim();
 const pendingEggReadyNotifications = new Map();
@@ -15462,6 +15473,34 @@ client.on('messageCreate', async (message) => {
         }
         const info = PLAYER_BONUSES[result.bonusKey];
         const minutes = Math.round(result.duration / 60000);
+        const lengthText = minutes >= 60 ? `${minutes / 60} HRS` : `${minutes} MINS`;
+        const endsAt = `<t:${Math.floor(result.expiresAt / 1000)}:R>`;
+        const customEmoji = info.emoji.match(/^<a?:\w+:(\d+)>$/);
+        const announcement = new EmbedBuilder()
+          .setColor(result.powerful ? 0xff69b4 : 0xe74c3c)
+          .setDescription(
+            `${EMOJIS.eventvoucher} **${message.author.username}** activated ` +
+            `${result.powerful ? 'a *powerful* ' : ''}${info.emoji} **${info.short || info.label}**!\n` +
+            `• **Bonus effect:** ${BONUS_EFFECT_TEXT[result.bonusKey]}\n` +
+            (result.extended
+              ? `• ➕ The bonus (+${lengthText}) now ends ${endsAt}`
+              : `• 🆕 The bonus ends ${endsAt}`)
+          )
+          .setFooter({
+            text: `This player has now activated ${getUser(userId).vouchers_used.toLocaleString()} Event Vouchers`,
+          })
+          .setTimestamp();
+        if (customEmoji) announcement.setThumbnail(`https://cdn.discordapp.com/emojis/${customEmoji[1]}.png?size=128`);
+        try {
+          const channel = await client.channels.fetch(BONUS_ANNOUNCEMENT_CHANNEL_ID);
+          await channel.send({
+            content: `<@&${BONUS_ANNOUNCEMENT_ROLE_ID}>`,
+            embeds: [announcement],
+            allowedMentions: { roles: [BONUS_ANNOUNCEMENT_ROLE_ID] },
+          });
+        } catch (error) {
+          console.error('Failed to post bonus activation announcement:', error);
+        }
         return message.reply({
           content: `${EMOJIS.eventvoucher} You used ${result.cost}x Event voucher${result.cost === 1 ? '' : 's'} and ` +
             `activated ${result.powerful ? 'a **powerful** ' : ''}${info.emoji} **${info.short || info.label}** ` +
