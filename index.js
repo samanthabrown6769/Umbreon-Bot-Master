@@ -70,6 +70,7 @@ function startTopggWebhook() {
 
 const {
   ActionRowBuilder,
+  AuditLogEvent,
   AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -2062,6 +2063,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'hisuian zorua': {
     normal: '<:HisuianZorua:1562183797502513233>',
     shiny: '<:SHisuianZorua:1562192199188488294>',
+    golden: '<:GHisuianZorua:1566263100037013535>',
   },
   'giratina origin': {
     normal: '<:GiratinaOrigin:1562183799205396500>',
@@ -2069,7 +2071,47 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   },
   'flutter mane': { shiny: '<:SFlutterMane:1562183801189437650>' },
   rotom: { shiny: '<:SRotom:1562183812148895818>' },
-  pumpkaboo: { shiny: '<:SPumpkaboo:1562183813851914310>' },
+  pumpkaboo: { shiny: '<:SPumpkaboo:1562183813851914310>', golden: '<:GPumpkaboo:1566263123948609618>' },
+  gourgeist: { golden: '<:GGourgeist:1566263125471133797>' },
+  'mega medicham': { normal: '<:MegaMedicham:1566263055313010760>', shiny: '<:SMegaMedicham:1566263053748797500>' },
+  'medicham mega': { normal: '<:MegaMedicham:1566263055313010760>', shiny: '<:SMegaMedicham:1566263053748797500>' },
+  'mega altaria': { normal: '<:MegaAltaria:1566263058874245160>', shiny: '<:SMegaAltaria:1566263057057845268>' },
+  'altaria mega': { normal: '<:MegaAltaria:1566263058874245160>', shiny: '<:SMegaAltaria:1566263057057845268>' },
+  'mega mewtwo x': { normal: '<:MegaMewtwoX:1566263062464565248>', shiny: '<:SMegaMewtwoX:1566263060895760554>' },
+  'mewtwo mega x': { normal: '<:MegaMewtwoX:1566263062464565248>', shiny: '<:SMegaMewtwoX:1566263060895760554>' },
+  'mewtwo x mega': { normal: '<:MegaMewtwoX:1566263062464565248>', shiny: '<:SMegaMewtwoX:1566263060895760554>' },
+  'mega mewtwo y': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
+  'mewtwo mega y': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
+  'mewtwo y mega': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
+  'charizard gmax': { shiny: '<:SGMAXCharizard:1566263067334021150>' },
+  'gmax charizard': { shiny: '<:SGMAXCharizard:1566263067334021150>' },
+  'lapras gmax': { shiny: '<:SGMAXLapras:1566263068650897459>' },
+  'gmax lapras': { shiny: '<:SGMAXLapras:1566263068650897459>' },
+  'hatterene gmax': { shiny: '<:SGMAXHatterene:1566263070613839973>' },
+  'gmax hatterene': { shiny: '<:SGMAXHatterene:1566263070613839973>' },
+  registeel: { normal: '<:Registeel:1566263073562562682>', shiny: '<:SRegisteel:1566263072090492938>' },
+  regice: {
+    normal: '<:Regice:1566263077941420144>',
+    shiny: '<:SRegice:1566263076989308938>',
+    golden: '<:GRegice:1566263075554726070>',
+  },
+  regirock: { normal: '<:Regirock:1566263080999194637>', shiny: '<:SRegirock:1566263079442849854>' },
+  regigigas: {
+    normal: '<:Regigigas:1566263086153990204>',
+    shiny: '<:SRegigigas:1566263084363030548>',
+    golden: '<:GRegigigas:1566263082576121997>',
+  },
+  ivysaur: { golden: '<:GIvysaur:1566263087772991568>' },
+  venusaur: { golden: '<:GVenusaur:1566263089467498536>' },
+  weedle: { golden: '<:GWeedle:1566263091010871337>' },
+  porygon: { golden: '<:GPorygon:1566263092726202469>' },
+  lairon: { golden: '<:GLairon:1566263094328561775>' },
+  aggron: { golden: '<:GAggron:1566263096455200798>' },
+  swablu: { golden: '<:GSwablu:1566263098396901426>' },
+  zorua: { golden: '<:GZorua:1566263101387448370>' },
+  'hisuian zoroark': { golden: '<:GHisuianZoroark:1566263103757361312>' },
+  zoroark: { golden: '<:GZoroark:1566263106424799444>' },
+  goomy: { golden: '<:GGoomy:1566263107989282927>' },
   phantump: { shiny: '<:SPhantump:1562183815999262831>' },
   litwick: { shiny: '<:SLitwick:1562183817890893905>' },
   drifloon: { shiny: '<:SDrifloon:1562183820562931813>' },
@@ -5443,13 +5485,35 @@ async function announceEventChecklistCompletion(guild, user, rewardPokemon, prog
   }
 }
 
-async function announceRareSpawn(guild, user, pokemon) {
+const RARE_SPAWN_SOURCE_ADMIN_ID = '1514082847609061541';
+
+async function notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden) {
+  try {
+    const admin = await client.users.fetch(RARE_SPAWN_SOURCE_ADMIN_ID);
+    const prefix = isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
+    await admin.send(
+      `🔎 **${user.username}** (\`${user.id}\`) got **${prefix}${pokemon.name}** (${isGolden ? 'Golden' : pokemon.rarity})\n` +
+      `Source: \`${source || 'unknown'}\`\nServer: ${guild.name} (\`${guild.id}\`)`
+    );
+  } catch (error) {
+    console.error('Failed to DM rare spawn source to admin:', error.message);
+  }
+}
+
+async function notifyAdminIfRareGrant(guild, user, pokemon, source, isShiny, isGolden) {
+  const rarity = `${pokemon.rarity}`.toLowerCase();
+  if (!isShiny && !isGolden && rarity !== 'legendary' && rarity !== 'gmax') return;
+  await notifyAdminOfRareSpawn(guild, user, { ...pokemon, isShiny }, source, isGolden);
+}
+
+async function announceRareSpawn(guild, user, pokemon, source) {
   if (!guild || !pokemon) return;
   const eventPokemonKey = getEventPokemonKey(pokemon);
   const rarity = `${pokemon.rarity}`.toLowerCase();
   const isGmax = rarity === 'gmax';
   const isGolden = Boolean(pokemon.isGolden || pokemon.is_golden) || rarity === 'golden';
   if (!eventPokemonKey && rarity !== 'legendary' && !isGmax && !pokemon.isShiny && !isGolden) return;
+  notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden);
   try {
     logRareSpawn({
       userId: user.id,
@@ -6401,7 +6465,7 @@ async function askForBall(
       }
       await announceEventCatch(message.guild, catcher, target, eventCatch);
     }
-    await announceRareSpawn(message.guild, catcher, target);
+    await announceRareSpawn(message.guild, catcher, target, `${isFishing ? '.fish' : 'Spawn catch'} (${(message.content || 'catch button/message').slice(0, 100)})`);
     if (target.rarity === 'Legendary') {
       incrementUser(userId, { legendaries_caught: 1 });
     }
@@ -7273,7 +7337,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
       });
     }
   }
-  roster.push({ ...master, formQuery: { slug: `${config.key}-mega` } });
+  roster.push({ ...master, formQuery: { slug: config.megaSlug || `${config.key}-mega` } });
   const opponents = roster.map((trainer) => {
     const form = trainer.formQuery.slug
       ? db.prepare('SELECT * FROM pokemon_forms WHERE slug = ? LIMIT 1').get(trainer.formQuery.slug)
@@ -8095,7 +8159,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
                 name: timburrForm.name,
                 rarity: 'Golden',
                 isGolden: true,
-              }).catch(() => {});
+              }, 'Battle reward (NPC challenge)').catch(() => {});
             }
           }
           if (unlockedIconIndex !== null) {
@@ -8784,7 +8848,17 @@ async function handleGift(message, userId, args) {
   for (const { name, mons } of planned) {
     let sent = 0;
     for (const mon of mons) {
-      if (!sendPokemonGift(userId, targetId, mon.id).error) sent += 1;
+      if (!sendPokemonGift(userId, targetId, mon.id).error) {
+        sent += 1;
+        notifyAdminIfRareGrant(
+          message.guild,
+          targetUser,
+          mon,
+          `.gift from ${message.author.username} (\`${userId}\`)`,
+          Boolean(mon.is_shiny),
+          Boolean(mon.is_golden)
+        ).catch(() => {});
+      }
     }
     if (sent) sentLines.push(`${sent > 1 ? `${sent}x ` : ''}${name}`);
   }
@@ -10208,7 +10282,7 @@ async function triggerAutoSpawn(channel, guildConfig, state, { legendaryOrShiny 
           interaction.user.id, 1, interaction.channel, await hasEggBoostAbility(interaction.user.id)
         );
         trackClanActivity(interaction.user.id, 'catch');
-        announceRareSpawn(interaction.guild, interaction.user, target).catch(() => {});
+        announceRareSpawn(interaction.guild, interaction.user, target, 'Spawn catch button').catch(() => {});
         const owned = db.prepare(
           'SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = 0'
         ).get(interaction.user.id, target.id, target.isShiny ? 1 : 0).count;
@@ -11566,7 +11640,7 @@ client.on('messageCreate', async (message) => {
               : 'No Buddy or active Exp. Share team was available to receive hatch EXP.')
           );
         await message.reply({ embeds: [embed] });
-        for (const pokemon of hatchedPokemon) await announceRareSpawn(message.guild, message.author, pokemon);
+        for (const pokemon of hatchedPokemon) await announceRareSpawn(message.guild, message.author, pokemon, `Egg hatch (${(message.content || '').slice(0, 100)})`);
         return;
       }
       if (subcommand === 'hold') {
@@ -11637,7 +11711,10 @@ client.on('messageCreate', async (message) => {
           ...hatch.pokemon,
           isShiny: result.isShiny,
           isGolden: result.isGolden,
-        });
+        }, `Egg hatch (${(message.content || '').slice(0, 100)})`);
+        return;
+      }
+      if (subcommand || args.length) {
         return;
       }
       if (subcommand || args.length) {
@@ -11850,7 +11927,7 @@ client.on('messageCreate', async (message) => {
             await interaction.update({ embeds: [buildEggEmbed()], components: [buildEggButtons()] });
             await interaction.followUp({ embeds: [resultEmbed] });
             for (const pokemon of hatchedPokemon) {
-              await announceRareSpawn(message.guild, message.author, pokemon);
+              await announceRareSpawn(message.guild, message.author, pokemon, 'Egg hatch (egg menu button)');
             }
           }
         } catch (error) {
@@ -14275,6 +14352,7 @@ client.on('messageCreate', async (message) => {
               (invalidEntries.length > 20 ? `\n…and ${invalidEntries.length - 20} more.` : '')
             );
           }
+          const multiGrantedUser = await client.users.fetch(target.id).catch(() => ({ id: target.id, username: target.id }));
           for (const grant of grants) {
             const exactMatch = grant.exactMatch;
             const catalogPokemon = {
@@ -14288,6 +14366,14 @@ client.on('messageCreate', async (message) => {
             };
             if (grant.isGolden) saveGoldenCatch(target.id, catalogPokemon);
             else saveCatch(target.id, catalogPokemon, grant.isShiny);
+            await notifyAdminIfRareGrant(
+              message.guild,
+              multiGrantedUser,
+              catalogPokemon,
+              `Admin grant (multi) by ${message.author.username} (${message.content.slice(0, 100)})`,
+              grant.isShiny,
+              grant.isGolden
+            );
           }
           const variants = grants.reduce((counts, grant) => {
             const variant = grant.isGolden ? 'Golden' : grant.isShiny ? 'Shiny' : 'Regular';
@@ -14345,6 +14431,9 @@ client.on('messageCreate', async (message) => {
           if (isGolden) saveGoldenCatch(target.id, catalogPokemon);
           else saveCatch(target.id, catalogPokemon, isShiny);
         }
+        const grantSource = `Admin grant by ${message.author.username} (${message.content.slice(0, 100)})`;
+        const grantedUser = await client.users.fetch(target.id).catch(() => ({ id: target.id, username: target.id }));
+        await notifyAdminIfRareGrant(message.guild, grantedUser, catalogPokemon, grantSource, isShiny, isGolden);
         return message.reply(
           `🎉 Added **${amount}x** ${
             isGolden
@@ -16894,7 +16983,7 @@ client.on('messageCreate', async (message) => {
             await announceEventCatch(message.guild, message.author, pokemon, eventCatch);
           }
           for (const pokemon of legacyRewards) {
-            await announceRareSpawn(message.guild, message.author, pokemon);
+            await announceRareSpawn(message.guild, message.author, pokemon, `.cb claim (${(message.content || '').slice(0, 100)})`);
           }
           return;
         }
@@ -16983,7 +17072,7 @@ client.on('messageCreate', async (message) => {
             await announceEventCatch(message.guild, message.author, pokemon, eventCatch);
           }
           for (const pokemon of result.caughtPokemon) {
-            await announceRareSpawn(message.guild, message.author, pokemon);
+            await announceRareSpawn(message.guild, message.author, pokemon, `.cb claim (${(message.content || '').slice(0, 100)})`);
           }
         })().catch((error) => console.error('CatchBot claim announcements failed:', error));
         return;
@@ -19219,11 +19308,23 @@ client.on('messageCreate', async (message) => {
     if (command === 'mc' || command === 'megachamber') {
       const subcommand = args[0]?.toLowerCase();
       const chambers = getUserChambers(userId);
-      const resolveChamber = (query) => Object.values(CHAMBER_CONFIG).find((chamber) =>
+      const isChamberOpen = (chamber) => {
+        const now = Date.now();
+        const opensWith = chamber.eventId && ALL_EVENTS.find((entry) => entry.id === chamber.eventId);
+        if (opensWith && now < Date.parse(opensWith.startsAt)) return false;
+        const closesWith = chamber.closesWith && ALL_EVENTS.find((entry) => entry.id === chamber.closesWith);
+        if (closesWith && now >= Date.parse(closesWith.startsAt)) return false;
+        const closesAfter = chamber.closesAfterEvent && ALL_EVENTS.find((entry) => entry.id === chamber.closesAfterEvent);
+        return !(closesAfter && now >= Date.parse(closesAfter.endsAt));
+      };
+      const openChambers = Object.values(CHAMBER_CONFIG).filter(isChamberOpen);
+      const chamberChoices = `1-${openChambers.length}|${openChambers.map((chamber) => chamber.key).join('|')}`;
+      const resolveChamber = (query) => openChambers.find((chamber) =>
         String(chamber.id) === query
         || chamber.key === query?.toLowerCase()
         || chamber.monReq.toLowerCase() === query?.toLowerCase()
         || chamber.name.toLowerCase() === query?.toLowerCase()
+        || chamber.name.toLowerCase().replace(/^mega /, '') === query?.toLowerCase()
       );
 
       if (subcommand === 'sacrifice' || subcommand === 'sac') {
@@ -19231,7 +19332,7 @@ client.on('messageCreate', async (message) => {
         const amount = args[2] === undefined ? 1 : Number(args[2]);
         if (!config || !Number.isSafeInteger(amount) || amount < 1 || amount > 100 || args.length > 3) {
           return message.reply(
-            `Usage: \`${PREFIX}mc sacrifice <1-4|sableye|gengar|mawile|banette> [amount 1-100]\`.`
+            `Usage: \`${PREFIX}mc sacrifice <${chamberChoices}> [amount 1-100]\`.`
           );
         }
         const result = sacrificeForChamber(userId, config.key, amount);
@@ -19250,7 +19351,7 @@ client.on('messageCreate', async (message) => {
       if (subcommand === 'battle' || subcommand === 'start' || subcommand === 'b') {
         const config = resolveChamber(args[1]);
         if (!config || args.length > 2) {
-          return message.reply(`Usage: \`${PREFIX}mc battle <1-4|sableye|gengar|mawile|banette>\`.`);
+          return message.reply(`Usage: \`${PREFIX}mc battle <${chamberChoices}>\`.`);
         }
         const progress = chambers[config.key];
         const required = getChamberRequirement(config, userId);
@@ -19269,7 +19370,7 @@ client.on('messageCreate', async (message) => {
           `\`${PREFIX}mc battle <chamber>\`.`
         );
       }
-      const chamberText = Object.values(CHAMBER_CONFIG).map((config) => {
+      const chamberText = openChambers.map((config) => {
         const progress = chambers[config.key];
         const required = getChamberRequirement(config, userId);
         return (
@@ -23216,7 +23317,7 @@ client.on('messageCreate', async (message) => {
           id: result.reward.id,
           isShiny: result.receivedShiny,
           isGolden: result.receivedGolden,
-        });
+        }, `.swap (${(message.content || '').slice(0, 100)})`);
         return;
       }
     }
@@ -24645,7 +24746,7 @@ client.on('messageCreate', async (message) => {
         displayLines.push(`*...and ${lines.length - displayLines.length} more Pokémon.*`);
       }
       for (const pokemon of opened.results) {
-        await announceRareSpawn(message.guild, message.author, pokemon);
+        await announceRareSpawn(message.guild, message.author, pokemon, `Box/pack open (${(message.content || '').slice(0, 100)})`);
       }
       return message.reply({
         embeds: [makeEmbed(
@@ -25053,6 +25154,44 @@ client.on('messageCreate', async (message) => {
 client.on('error', (error) => console.error('[client] error:', error));
 client.on('shardError', (error) => console.error('[client] shard error:', error));
 
+const BLOCKED_GUILD_IDS = new Set(['1407148715885723678']);
+
+async function leaveIfBlockedGuild(guild) {
+  if (!guild || !BLOCKED_GUILD_IDS.has(guild.id)) return;
+  try {
+    await guild.leave();
+    console.log(`Left blocked server ${guild.id}`);
+  } catch (error) {
+    console.error(`Failed to leave blocked server ${guild.id}:`, error);
+  }
+}
+
+client.on('guildCreate', leaveIfBlockedGuild);
+
+client.on('guildCreate', async (guild) => {
+  try {
+    let adder = 'unknown (bot lacks View Audit Log permission)';
+    try {
+      const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.BotAdd, limit: 5 });
+      const entry = logs.entries.find((item) => item.target?.id === client.user.id);
+      if (entry?.executor) adder = `${entry.executor.username} (\`${entry.executor.id}\`)`;
+    } catch {}
+    const owner = await guild.fetchOwner().catch(() => null);
+    const admin = await client.users.fetch(RARE_SPAWN_SOURCE_ADMIN_ID);
+    await admin.send(
+      `📥 Bot joined **${guild.name}** (\`${guild.id}\`)${BLOCKED_GUILD_IDS.has(guild.id) ? ' — BLOCKED, leaving' : ''}\n` +
+      `Added by: ${adder}\nOwner: ${owner ? `${owner.user.username} (\`${owner.id}\`)` : 'unknown'}\n` +
+      `Members: ${guild.memberCount}`
+    );
+  } catch (error) {
+    console.error('Failed to report guild join:', error.message);
+  }
+});
+
+client.on('guildDelete', (guild) => {
+  console.log(`Removed from server ${guild.name || 'unknown'} (${guild.id})`);
+});
+
 const catchbotReminderTimers = new Map();
 function scheduleCatchbotReminder(userId, runningUntil) {
   const previousTimer = catchbotReminderTimers.get(userId);
@@ -25090,6 +25229,7 @@ function scheduleCatchbotReminder(userId, runningUntil) {
 
 client.once('clientReady', () => {
   console.log(`🚀 Pokémon bot online as ${client.user.tag}`);
+  for (const blockedId of BLOCKED_GUILD_IDS) leaveIfBlockedGuild(client.guilds.cache.get(blockedId));
   startTopggWebhook();
   const incenseEmoji = client.emojis.cache.find((emoji) => emoji.name === 'incense');
   if (incenseEmoji) EMOJIS.incense = incenseEmoji.toString();
