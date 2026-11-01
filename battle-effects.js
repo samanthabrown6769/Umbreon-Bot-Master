@@ -465,6 +465,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     const ts = ctx.field.sides[B.side];
     if (!crit && (ts.veil > 0 || (physical ? ts.reflect : ts.lightScreen) > 0)) mult *= 0.5;
     mult *= AB.damageMultiplier(ctx, A, B, move, { type, eff, physical, crit, typeBoost: typeAdjust.boost });
+    if (m.chamberDamageMult) mult *= m.chamberDamageMult;
     dmg = Math.max(1, Math.floor(dmg * mult));
   }
   f.charge = false; f.laser = false;

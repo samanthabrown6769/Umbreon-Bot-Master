@@ -1545,6 +1545,7 @@ ensureColumns('autospawn_channels', {
 db.exec('CREATE INDEX IF NOT EXISTS pokemon_forms_slug_idx ON pokemon_forms(slug)');
 ensureColumns('users', userDefinitions);
 ensureColumns('users', { id: 'TEXT' });
+ensureColumns('users', { unique_caught_base: 'INTEGER DEFAULT 0' });
 ensureColumns('user_rarity_streaks', {
   highest_streak: 'INTEGER NOT NULL DEFAULT 0',
 });
@@ -2213,6 +2214,10 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id)
   );
 `);
+ensureColumns('guild_incense_contributors', {
+  last_amount: 'INTEGER NOT NULL DEFAULT 0',
+  last_charges: 'INTEGER NOT NULL DEFAULT 0',
+});
 
 function getIncenseCharges(guildId) {
   return db.prepare('SELECT charges FROM guild_incense WHERE guild_id = ?').get(guildId)?.charges || 0;
@@ -2220,18 +2225,20 @@ function getIncenseCharges(guildId) {
 
 function recordIncenseContribution(guildId, userId, amount, charges) {
   db.prepare(`
-    INSERT INTO guild_incense_contributors (guild_id, user_id, amount, charges, last_used_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO guild_incense_contributors (guild_id, user_id, amount, charges, last_used_at, last_amount, last_charges)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(guild_id, user_id) DO UPDATE SET
       amount = amount + excluded.amount,
       charges = charges + excluded.charges,
-      last_used_at = excluded.last_used_at
-  `).run(guildId, userId, amount, charges, Date.now());
+      last_used_at = excluded.last_used_at,
+      last_amount = excluded.last_amount,
+      last_charges = excluded.last_charges
+  `).run(guildId, userId, amount, charges, Date.now(), amount, charges);
 }
 
 function getIncenseContributors(guildId) {
   const rows = db.prepare(
-    'SELECT user_id, amount, charges, last_used_at FROM guild_incense_contributors WHERE guild_id = ?'
+    'SELECT user_id, amount, charges, last_used_at, last_amount, last_charges FROM guild_incense_contributors WHERE guild_id = ?'
   ).all(guildId);
   return {
     recent: rows.reduce((latest, row) => (!latest || row.last_used_at > latest.last_used_at ? row : latest), null),
@@ -3741,7 +3748,21 @@ function recordSketchedMove(catchId, userId, moveSlug) {
 }
 
 // Forms with their own learnset (Gmax / Eternamax) are keyed by form id in form_learnsets.
+// "primal groudon" and "groudon primal" name the same form.
+function sortedNameWords(value) {
+  return `${value || ''}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).sort().join(' ');
+}
+
+// Moves a specific form can learn on top of its species learnset.
+const FORM_EXTRA_MOVES = Object.freeze({ 10078: ['fury-cutter'] });
+
 function getSpeciesLearnset(speciesId, formId = null) {
+  const extraMoves = FORM_EXTRA_MOVES[formId] || [];
+  const base = getBaseSpeciesLearnset(speciesId, formId);
+  return extraMoves.length ? [...new Set([...base, ...extraMoves])] : base;
+}
+
+function getBaseSpeciesLearnset(speciesId, formId = null) {
   const formMoves = formId !== null ? pokemonMovesData.form_learnsets?.[String(formId)] : null;
   if (formMoves) return formMoves;
   if (!Number.isSafeInteger(speciesId) || speciesId <= 0) return [];
@@ -4848,6 +4869,7 @@ function findOwnedPokemonRows(userId, query) {
   }
   const normalizeName = (value) => `${value || ''}`.toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizedNeedle = normalizeName(needle);
+  const needleWords = sortedNameWords(needle);
   return owned.filter((row) => {
     if (requestedVariant === 'golden' ? !row.is_golden : Boolean(row.is_golden)) return false;
     if (requestedVariant === 'shiny' ? !row.is_shiny : Boolean(row.is_shiny)) return false;
@@ -4856,7 +4878,8 @@ function findOwnedPokemonRows(userId, query) {
       row.form_name,
       row.form_slug,
       ...(row.form_default ? [row.form_species_name] : []),
-    ].some((name) => normalizeName(name) === normalizedNeedle);
+    ].some((name) => normalizeName(name) === normalizedNeedle
+      || (needleWords.includes(' ') && sortedNameWords(name) === needleWords));
   });
 }
 
@@ -4899,7 +4922,8 @@ function findUserPokemonMatches(userId, query) {
     pokemon.form_name,
     pokemon.form_species_name,
     pokemon.form_slug,
-  ].some((name) => normalizeName(name) === normalizedName));
+  ].some((name) => normalizeName(name) === normalizedName
+    || (normalizedQuery.includes(' ') && sortedNameWords(name) === sortedNameWords(normalizedQuery))));
 }
 
 function setUserPokemonLockByQuery(userId, query, locked) {
@@ -5160,6 +5184,32 @@ function findMoveInfo(query) {
   const compact = key.replace(/-/g, '');
   const match = Object.entries(moveInfoData).find(([slug]) => slug.replace(/-/g, '') === compact);
   return match ? match[1] : null;
+}
+
+// Admin tool: permanently adds a move to (or removes it from) a catch's learned moves.
+function adminSetPokemonMove(userId, catchId, moveName, learn) {
+  assertUserId(userId);
+  const slug = `${moveName}`.trim().toLowerCase().replace(/\s+/g, '-');
+  if (!pokemonMovesData.moves[slug]) return { error: 'unknown_move' };
+  return db.transaction(() => {
+    const row = db.prepare('SELECT moves, sketched_moves FROM catches WHERE id = ? AND user_id = ?')
+      .get(catchId, userId);
+    if (!row) return { error: 'not_found' };
+    const sketched = parseSketchedMoves(row.sketched_moves);
+    let equipped = parseSketchedMoves(row.moves);
+    if (learn) {
+      if (!sketched.includes(slug)) sketched.push(slug);
+      if (!equipped.includes(slug) && equipped.length < 4) equipped.push(slug);
+    } else {
+      const index = sketched.indexOf(slug);
+      if (index >= 0) sketched.splice(index, 1);
+      equipped = equipped.filter((name) => name !== slug);
+    }
+    db.prepare('UPDATE catches SET moves = ?, sketched_moves = ? WHERE id = ? AND user_id = ?')
+      .run(JSON.stringify(equipped), JSON.stringify(sketched), catchId, userId);
+    syncDuplicateCatchState(userId, catchId);
+    return { slug };
+  }).immediate();
 }
 
 function getPokemonMove(moveName) {
@@ -5996,7 +6046,7 @@ const SPECIAL_SPAWN_RESERVED_SPECIES = Object.freeze([
   'Volcanion',
   'Keldeo',
   'Genesect',
-  'Solgaleo',
+  'Regigigas',
   'Lunala',
 ]);
 
@@ -6608,7 +6658,13 @@ function applyWorldBossDamage(userId, bossId, damage, timestamp = Date.now()) {
   }).immediate();
 }
 
-const ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS = new Set(['412568898177728512']);
+const ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS = new Set([
+  '412568898177728512',
+  '983827397491179551',
+  '681156125395124360',
+  '434593153341980672',
+  '1258056251967930409',
+]);
 
 function distributeWorldBossRewards(bossId) {
   if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
@@ -8436,7 +8492,7 @@ function deleteClanByName(name) {
   }).immediate();
 }
 
-function trackClanActivity(userId, type) {
+function trackClanActivity(userId, type, amount = 1) {
   const columns = {
     catch: 'catches',
     fish: 'fishes',
@@ -8454,18 +8510,18 @@ function trackClanActivity(userId, type) {
       'SELECT clan_id FROM clan_members WHERE user_id = ?'
     ).get(userId);
     if (!member) return false;
-    db.prepare(`UPDATE clan_members SET ${column} = ${column} + 1 WHERE user_id = ?`)
-      .run(userId);
+    db.prepare(`UPDATE clan_members SET ${column} = ${column} + ? WHERE user_id = ?`)
+      .run(amount, userId);
     const now = Date.now();
     const insertPeriodActivity = db.prepare(`
       INSERT INTO clan_activity_periods (clan_id, user_id, period, period_start, ${column})
-      VALUES (?, ?, ?, ?, 1)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(clan_id, user_id, period, period_start)
-      DO UPDATE SET ${column} = ${column} + 1
+      DO UPDATE SET ${column} = ${column} + excluded.${column}
     `);
     for (const period of ['daily', 'weekly', 'monthly', 'yearly']) {
       const { start } = getClanPeriodBounds(period, now);
-      insertPeriodActivity.run(member.clan_id, userId, period, start);
+      insertPeriodActivity.run(member.clan_id, userId, period, start, amount);
     }
     return true;
   }).immediate();
@@ -9046,6 +9102,34 @@ function getPokemonFormBySlug(slug) {
   };
 }
 
+// Persistent balldex: survives swaps, releases and trades so a species keeps its ball progress.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS user_balldex (
+    user_id TEXT NOT NULL,
+    species_id INTEGER NOT NULL,
+    ball TEXT NOT NULL,
+    PRIMARY KEY (user_id, species_id, ball)
+  );
+  INSERT OR IGNORE INTO user_balldex (user_id, species_id, ball)
+    SELECT DISTINCT catches.user_id, forms.species_id, catches.caught_ball
+    FROM catches JOIN pokemon_forms AS forms ON forms.id = catches.pokemon_id
+    WHERE catches.caught_ball IS NOT NULL;
+  DROP TRIGGER IF EXISTS user_balldex_insert;
+  DROP TRIGGER IF EXISTS user_balldex_update;
+  CREATE TRIGGER user_balldex_insert AFTER INSERT ON catches
+  WHEN NEW.caught_ball IS NOT NULL
+  BEGIN
+    INSERT OR IGNORE INTO user_balldex (user_id, species_id, ball)
+    SELECT NEW.user_id, species_id, NEW.caught_ball FROM pokemon_forms WHERE id = NEW.pokemon_id;
+  END;
+  CREATE TRIGGER user_balldex_update AFTER UPDATE OF caught_ball, pokemon_id, user_id ON catches
+  WHEN NEW.caught_ball IS NOT NULL
+  BEGIN
+    INSERT OR IGNORE INTO user_balldex (user_id, species_id, ball)
+    SELECT NEW.user_id, species_id, NEW.caught_ball FROM pokemon_forms WHERE id = NEW.pokemon_id;
+  END;
+`);
+
 function getUserStatsSummary(userId) {
   const user = getUser(userId);
   const currentlyOwned = db.prepare(
@@ -9062,7 +9146,13 @@ function getUserStatsSummary(userId) {
     "SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND rarity = 'Legendary'"
   ).get(userId).count;
 
-  return { user, lifetimeCaught, uniqueInBox, shiniesCaught, legendariesCaught };
+  return {
+    user,
+    lifetimeCaught,
+    uniqueInBox: Math.max(uniqueInBox, user.unique_caught_base || 0),
+    shiniesCaught: Math.max(shiniesCaught, user.shiny_catches || 0),
+    legendariesCaught: Math.max(legendariesCaught, user.legendaries_caught || 0),
+  };
 }
 
 try {
@@ -9730,6 +9820,7 @@ module.exports = {
   getGigantamaxMoveLearners,
   restrictStyleExclusiveMoves,
   recordSketchedMove,
+  adminSetPokemonMove,
   setBuddyMoves,
   getBuddyMoveChangeCost,
   setBuddyMoveSlot,

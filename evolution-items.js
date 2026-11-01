@@ -74,7 +74,7 @@ const EVOLUTION_ITEMS = {
   'Whipped Dream': { kind: 'held', emoji: '<:whippeddream:1559927150688346132>', evolutions: [[684, 685]] },
   'Link Cable': {
     kind: 'held', emoji: '<:linkcable:1559927162377601065>',
-    evolutions: [[64, 65], [67, 68], [75, 76], [93, 94]],
+    evolutions: [[64, 65], [67, 68], [75, 76], [93, 94], [710, 711]],
   },
 };
 

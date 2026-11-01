@@ -150,6 +150,7 @@ const CUSTOM_SPRITES = {
   'raging-bolt': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/1021.webp',
 };
 const CUSTOM_SHINY_SPRITES = {
+  'venusaur-gmax': 'https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-viii/sword-shield/shiny/10195.webp',
   'iron-valiant': 'https://res.cloudinary.com/apffqia5/image/upload/v1792084062/shiny_iron_valiant.gif',
   'iron-moth': 'https://res.cloudinary.com/apffqia5/image/upload/v1792590814/shiny_iron_moth.webp',
   miraidon: 'https://res.cloudinary.com/apffqia5/image/upload/v1792590811/shiny_miraidon.webp',
