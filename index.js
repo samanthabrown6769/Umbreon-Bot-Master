@@ -680,11 +680,108 @@ function advanceEggCatchProgress(userId, amount = 1, channel, abilityBoost) {
     pendingEggReadyNotifications.set(userId, pending);
     queueMicrotask(() => {
       pendingEggReadyNotifications.delete(userId);
-      void sendEggReadyNotification(userId, pending.eggs, pending.channel);
+      void handleEggsReady(userId, pending.eggs, pending.channel);
     });
   }
   pending.eggs.push(...newlyReady);
   return newlyReady;
+}
+
+function canUseEggAutomation(userId) {
+  return Boolean(getPatreonPerks(userId).autoEquipEggs);
+}
+
+// Equips another Egg after a hatch (held slot first, then free incubator slots). Returns summary lines.
+function autoEquipEggs(userId, { incubators = true } = {}) {
+  const user = getUser(userId);
+  if (!user.egg_auto_equip || !canUseEggAutomation(userId)) return [];
+  const lines = [];
+  if (user.held_egg_target <= 0 && user.vote_eggs > 0) {
+    const target = getEggCatchTarget(userId);
+    if (!holdEgg(userId, target).error) lines.push(`Auto-equipped a new held Egg (**0/${target} catches**).`);
+  }
+  if (!incubators) return lines;
+  for (const [type, itemName, label] of [
+    ['incubator', 'Incubator', 'Incubator'],
+    ['super_incubator', 'Super Incubator', 'Super Incubator'],
+  ]) {
+    const used = getUserEggIncubators(userId).filter((entry) => entry.incubator_type === type).length;
+    const owned = getUserItems(userId).find((item) => item.item_name === itemName)?.amount || 0;
+    const amount = Math.min(EGG_INCUBATOR_LIMITS[type] - used, owned, getUser(userId).vote_eggs);
+    if (amount < 1) continue;
+    const targets = Array.from({ length: amount }, () => {
+      const catches = getEggCatchTarget(userId);
+      return type === 'super_incubator' ? Math.ceil(catches / 2) : catches;
+    });
+    const result = startEggIncubators(userId, type, targets);
+    if (!result.error) lines.push(`Auto-equipped **${result.started.length} ${label}${result.started.length === 1 ? '' : 's'}**.`);
+  }
+  return lines;
+}
+
+async function autoHatchReadyEggs(userId, channel) {
+  const user = getUser(userId);
+  const hatched = [];
+  const hatchedPokemon = [];
+  let experienceAwarded = false;
+  const discordUser = await client.users.fetch(userId);
+  const record = (label, hatch, result) => {
+    const experience = awardCatchExperience(userId, getCatchExperienceReward('Egg'));
+    rollActivityPromoDrops(discordUser, channel?.guild, channel, 'egg');
+    experienceAwarded = experienceAwarded || experience.awarded;
+    const variant = result.isGolden ? 'Golden ' : result.isShiny ? 'Shiny ' : '';
+    const variantEmoji = result.isGolden ? EMOJIS.golden : result.isShiny ? EMOJIS.shiny : '';
+    hatched.push(`${label}: ${variantEmoji}**${variant}${hatch.pokemon.name}**`);
+    hatchedPokemon.push({ ...hatch.pokemon, isShiny: result.isShiny, isGolden: result.isGolden });
+  };
+  if (user.held_egg_target > 0 && user.held_egg_progress >= user.held_egg_target) {
+    const hatch = rollEggHatch(user.held_egg_target, Boolean(user.has_patreon));
+    const result = hatchEgg(userId, hatch.pokemon, hatch);
+    if (!result.error) record('Held Egg', hatch, result);
+  }
+  for (const type of ['incubator', 'super_incubator']) {
+    const ready = getUserEggIncubators(userId)
+      .filter((entry) => entry.incubator_type === type && entry.progress >= entry.target);
+    for (const entry of ready) {
+      const hatch = rollEggHatch(entry.target, Boolean(user.has_patreon));
+      const result = hatchEggFromIncubator(userId, type, entry.slot, hatch.pokemon, hatch);
+      if (result.error) continue;
+      record(`${type === 'incubator' ? EMOJIS.incubator : EMOJIS.superIncubator} Slot ${entry.slot}`, hatch, result);
+    }
+  }
+  if (!hatched.length) return;
+  const equipLines = autoEquipEggs(userId);
+  const embed = new EmbedBuilder()
+    .setColor(0x8e44ad)
+    .setTitle(`${EMOJIS.pokeEgg} Auto-hatched ${hatched.length} Egg${hatched.length === 1 ? '' : 's'}!`)
+    .setDescription(
+      `${hatched.join('\n')}\n\n` +
+      `Eggs remaining: **${getUser(userId).vote_eggs.toLocaleString()}**` +
+      (experienceAwarded ? '\nEXP was awarded to your Buddy and eligible Exp. Share team members.' : '') +
+      (equipLines.length ? `\n${equipLines.join('\n')}` : '')
+    );
+  await channel.send({
+    content: `<@${userId}>`,
+    embeds: [embed],
+    allowedMentions: channel.guildId ? { users: [userId] } : { parse: [] },
+  });
+  if (channel.guild) {
+    for (const pokemon of hatchedPokemon) {
+      await announceRareSpawn(channel.guild, discordUser, pokemon, 'Egg auto-hatch');
+    }
+  }
+}
+
+async function handleEggsReady(userId, newlyReady, channel) {
+  try {
+    if (getUser(userId).egg_auto_hatch && canUseEggAutomation(userId) && channel?.isTextBased()) {
+      await autoHatchReadyEggs(userId, channel);
+      return;
+    }
+  } catch (error) {
+    console.error(`Auto-hatch failed for user ${userId}:`, error);
+  }
+  await sendEggReadyNotification(userId, newlyReady, channel);
 }
 
 async function sendEggReadyNotification(userId, newlyReady, channel) {
@@ -1947,6 +2044,23 @@ const CATCHBOT_GOLDEN_EXCLUSIVES = Object.freeze(
 );
 if (CATCHBOT_GOLDEN_EXCLUSIVES.length !== 2) {
   throw new Error('CatchBot Golden exclusives Aron and Swablu must exist in the Pokémon catalog.');
+}
+
+function getCatchbotSpeciesId(pokemon) {
+  const direct = pokemon.speciesId ?? pokemon.species_id;
+  if (Number.isInteger(direct)) return direct;
+  return db.prepare('SELECT species_id FROM pokemon_forms WHERE id = ?').get(pokemon.id)?.species_id ?? null;
+}
+
+// CatchBot only returns Generation 1–3 Pokémon (Pokédex #1–386).
+const CATCHBOT_MAX_SPECIES_ID = 386;
+function rollCatchbotSpawn(userId, options) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const pokemon = rollSpawn('land', userId, null, options);
+    const speciesId = getCatchbotSpeciesId(pokemon);
+    if (speciesId !== null && speciesId <= CATCHBOT_MAX_SPECIES_ID) return pokemon;
+  }
+  throw new Error('CatchBot could not roll a Generation 1–3 Pokémon.');
 }
 
 function rollCatchbotGoldenExclusive(luckPercent) {
@@ -4559,6 +4673,31 @@ function cancelWorldBossProgressUpdate(bossId) {
   worldBossProgressTimers.delete(bossId);
 }
 
+const completedWorldBossResults = new Map();
+
+// Shown on stale raid panels once their boss is over, instead of an "unavailable" message.
+function getFinishedWorldBossEmbed(bossId) {
+  const stored = completedWorldBossResults.get(bossId);
+  if (stored) return stored;
+  const row = db.prepare('SELECT * FROM world_boss WHERE id = ?').get(bossId);
+  return row ? createWorldBossEmbed({ ...row, current_hp: 0 }, client.user) : null;
+}
+
+async function closeFinishedWorldBossPanel(interaction, bossMessage, bossId) {
+  const embed = getFinishedWorldBossEmbed(bossId);
+  if (!embed) return false;
+  try {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ embeds: [embed], components: [] });
+    } else {
+      await interaction.update({ embeds: [embed], components: [] });
+    }
+  } catch {
+    await bossMessage.edit({ embeds: [embed], components: [] }).catch(() => {});
+  }
+  return true;
+}
+
 async function startWorldBossBattle(message, boss, userId, team) {
   const bossMessage = await message.reply({
     embeds: [createWorldBossEmbed(boss, message.client.user)],
@@ -4583,12 +4722,14 @@ async function startWorldBossBattle(message, boss, userId, team) {
     try {
       const currentBoss = getActiveWorldBoss();
       if (!currentBoss || currentBoss.id !== boss.id) {
-        await interaction.reply({
-          content: `This raid is no longer active. Check \`${PREFIX}wb\` for the current World Boss.`,
-          ephemeral: true,
-        });
         collector.stop('boss-inactive');
-        await bossMessage.edit({ components: [] });
+        if (!(await closeFinishedWorldBossPanel(interaction, bossMessage, boss.id))) {
+          await interaction.reply({
+            content: `This raid is no longer active. Check \`${PREFIX}wb\` for the current World Boss.`,
+            ephemeral: true,
+          });
+          await bossMessage.edit({ components: [] });
+        }
         return;
       }
       if (interaction.user.id !== userId) {
@@ -5120,9 +5261,11 @@ async function startWorldBossBattle(message, boss, userId, team) {
         return;
       }
       if (attack.error === 'inactive') {
-        await interaction.followUp({ content: 'This World Boss is no longer active.', ephemeral: true });
         collector.stop('boss-inactive');
-        await bossMessage.edit({ components: [] });
+        if (!(await closeFinishedWorldBossPanel(interaction, bossMessage, boss.id))) {
+          await interaction.followUp({ content: 'This World Boss is no longer active.', ephemeral: true });
+          await bossMessage.edit({ components: [] });
+        }
         return;
       }
 
@@ -5291,6 +5434,10 @@ async function startWorldBossBattle(message, boss, userId, team) {
             : '*No active team Pokémon.*',
         });
         const defeatedBossEmbed = createWorldBossEmbed(attack.boss, message.client.user);
+        completedWorldBossResults.set(boss.id, victoryEmbed);
+        if (completedWorldBossResults.size > 20) {
+          completedWorldBossResults.delete(completedWorldBossResults.keys().next().value);
+        }
         const closedPosts = [...raidPosts];
         await Promise.all([
           updateWorldBossAnnouncement(attack.boss, [defeatedBossEmbed]),
@@ -6370,7 +6517,7 @@ async function askForBall(
     if (!eggProgressCapped && eggPerks.eggHatchSpeed > 0 && Math.random() < eggPerks.eggHatchSpeed) {
       advanceEggCatchProgress(userId, 1, message.channel, eggAbilityBoost);
     }
-    if (eggPerks.autoEquipEggs) {
+    if (eggPerks.autoEquipEggs && getUser(userId).egg_auto_equip) {
       const eggUser = getUser(userId);
       if (eggUser.held_egg_target <= 0 && eggUser.vote_eggs > 0) {
         holdEgg(userId, getEggCatchTarget(userId));
@@ -9203,6 +9350,16 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
   return message.reply({ embeds: [embed], components: eventLinkRow ? [eventLinkRow] : [] });
 }
 
+async function getUsernameById(id) {
+  const cached = client.users.cache.get(id);
+  if (cached) return cached.username;
+  try {
+    return (await client.users.fetch(id)).username;
+  } catch {
+    return `Unknown user (${id})`;
+  }
+}
+
 async function resolveCommandUser(message, args) {
   if (args.length > 1) return { error: 'usage' };
   const mentionedUser = message.mentions.users.first();
@@ -9635,17 +9792,19 @@ function monthlyRewardLines(r) {
   return lines;
 }
 
-const PACIFIC_PARTS = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/Los_Angeles', year: 'numeric', month: 'numeric', day: 'numeric',
-  hour: 'numeric', hourCycle: 'h23',
-});
+const PATREON_PAYOUT_UTC_OFFSET_HOURS = -5; // fixed EST: 10 PM EST = 03:00 UTC, no daylight saving
 function getPacificParts(ms) {
-  const parts = Object.fromEntries(PACIFIC_PARTS.formatToParts(new Date(ms)).map((p) => [p.type, Number(p.value)]));
-  return { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour };
+  const shifted = new Date(ms + PATREON_PAYOUT_UTC_OFFSET_HOURS * 3_600_000);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+  };
 }
 const isLastDayOfMonth = ({ year, month, day }) => day === new Date(Date.UTC(year, month, 0)).getUTCDate();
 
-// Next last-day-of-month 10 PM Pacific Time (PST/PDT), as a UTC timestamp.
+// Next last-day-of-month 10 PM EST (03:00 UTC the following day), as a UTC timestamp.
 function getNextPatreonMonthlyTime(from = Date.now()) {
   const start = from - (from % 3_600_000);
   for (let ms = start; ms < start + 62 * 86_400_000; ms += 3_600_000) {
@@ -11624,6 +11783,7 @@ client.on('messageCreate', async (message) => {
           hatched.push(`${emoji} Slot ${incubator.slot}: ${variantEmoji}**${variant}${hatch.pokemon.name}**`);
         }
         if (!hatched.length) return message.reply('❌ Those Eggs are not ready to hatch yet.');
+        const equipLines = autoEquipEggs(userId);
         const remaining = getUserEggIncubators(userId)
           .filter((incubator) => incubator.incubator_type === type).length;
         const stillIncubating = incubators.length - hatched.length;
@@ -11637,7 +11797,8 @@ client.on('messageCreate', async (message) => {
             (stillIncubating > 0 ? `**${stillIncubating}** other Egg${stillIncubating === 1 ? ' remains' : 's remain'} in incubator slots.\n` : '') +
             (experienceAwarded
               ? 'EXP was awarded to your Buddy and eligible Exp. Share team members.'
-              : 'No Buddy or active Exp. Share team was available to receive hatch EXP.')
+              : 'No Buddy or active Exp. Share team was available to receive hatch EXP.') +
+            (equipLines.length ? `\n${equipLines.join('\n')}` : '')
           );
         await message.reply({ embeds: [embed] });
         for (const pokemon of hatchedPokemon) await announceRareSpawn(message.guild, message.author, pokemon, `Egg hatch (${(message.content || '').slice(0, 100)})`);
@@ -11687,13 +11848,15 @@ client.on('messageCreate', async (message) => {
         const hatchExperience = getCatchExperienceReward('Egg');
         awardCatchExperience(userId, hatchExperience);
         rollActivityPromoDrops(message.author, message.guild, message.channel, 'egg');
+        const equipLines = autoEquipEggs(userId);
         const variant = result.isGolden ? 'Golden ' : result.isShiny ? 'Shiny ' : '';
         const embed = new EmbedBuilder()
           .setColor(result.isGolden ? 0xf1c40f : result.isShiny ? 0xff66cc : 0x8e44ad)
           .setAuthor({ name: `${message.author.username}'s Egg hatched!`, iconURL: message.author.displayAvatarURL() })
           .setDescription(
             `${EMOJIS.pokeEgg} Your Egg hatched into ${result.isGolden ? EMOJIS.golden : result.isShiny ? EMOJIS.shiny : ''} ` +
-            `**${variant}${hatch.pokemon.name}**!`
+            `**${variant}${hatch.pokemon.name}**!` +
+            (equipLines.length ? `\n${equipLines.join('\n')}` : '')
           )
           .setFooter({ text: `${getUser(userId).vote_eggs.toLocaleString()} Eggs left` });
         const hatchSprite = result.isGolden
@@ -11712,9 +11875,6 @@ client.on('messageCreate', async (message) => {
           isShiny: result.isShiny,
           isGolden: result.isGolden,
         }, `Egg hatch (${(message.content || '').slice(0, 100)})`);
-        return;
-      }
-      if (subcommand || args.length) {
         return;
       }
       if (subcommand || args.length) {
@@ -11760,20 +11920,33 @@ client.on('messageCreate', async (message) => {
           )
           .setThumbnail('https://cdn.discordapp.com/emojis/1560319652402561124.webp?size=96');
       };
-      const buildEggButtons = (disabled = false) => new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('egg:hold-all')
-          .setLabel('Hold All')
-          .setEmoji(EMOJIS.pokeEgg)
-          .setStyle(ButtonStyle.Success)
-          .setDisabled(disabled),
-        new ButtonBuilder()
-          .setCustomId('egg:hatch-all')
-          .setLabel('Hatch All')
-          .setEmoji(EMOJIS.pokeEgg)
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(disabled)
-      );
+      const buildEggButtons = (disabled = false) => {
+        const toggles = getUser(userId);
+        return new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('egg:hold-all')
+            .setLabel('Hold All')
+            .setEmoji(EMOJIS.pokeEgg)
+            .setStyle(ButtonStyle.Success)
+            .setDisabled(disabled),
+          new ButtonBuilder()
+            .setCustomId('egg:hatch-all')
+            .setLabel('Hatch All')
+            .setEmoji(EMOJIS.pokeEgg)
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(disabled),
+          new ButtonBuilder()
+            .setCustomId('egg:auto-equip')
+            .setLabel(`Auto Equip: ${toggles.egg_auto_equip ? 'ON' : 'OFF'}`)
+            .setStyle(toggles.egg_auto_equip ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setDisabled(disabled),
+          new ButtonBuilder()
+            .setCustomId('egg:auto-hatch')
+            .setLabel(`Auto Hatch: ${toggles.egg_auto_hatch ? 'ON' : 'OFF'}`)
+            .setStyle(toggles.egg_auto_hatch ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setDisabled(disabled)
+        );
+      };
       const eggPanel = await message.reply({
         embeds: [buildEggEmbed()],
         components: [buildEggButtons()],
@@ -11796,6 +11969,29 @@ client.on('messageCreate', async (message) => {
           }
           processingEggAction = true;
           ownsProcessingLock = true;
+          if (interaction.customId === 'egg:auto-equip' || interaction.customId === 'egg:auto-hatch') {
+            if (!canUseEggAutomation(userId)) {
+              await interaction.reply({
+                content: '🔒 Auto Equip and Auto Hatch are available to **Rare Patreon and above**. See `' + PREFIX + 'perks`.',
+                ephemeral: true,
+              });
+              return;
+            }
+            const column = interaction.customId === 'egg:auto-equip' ? 'egg_auto_equip' : 'egg_auto_hatch';
+            const enabled = getUser(userId)[column] ? 0 : 1;
+            updateUser(userId, { [column]: enabled });
+            const summary = enabled && column === 'egg_auto_equip' ? autoEquipEggs(userId) : [];
+            await interaction.update({ embeds: [buildEggEmbed()], components: [buildEggButtons()] });
+            await interaction.followUp({
+              content: `${EMOJIS.pokeEgg} **${column === 'egg_auto_equip' ? 'Auto Equip' : 'Auto Hatch'}** is now **${enabled ? 'ON' : 'OFF'}**.` +
+                (column === 'egg_auto_hatch' && enabled
+                  ? ' Eggs will hatch automatically when ready and the result is posted in the channel you catch in.'
+                  : '') +
+                (summary.length ? `\n${summary.join('\n')}` : ''),
+              ephemeral: true,
+            });
+            return;
+          }
           if (interaction.customId === 'egg:hold-all') {
             const summary = [];
             const currentUser = getUser(userId);
@@ -11899,6 +12095,7 @@ client.on('messageCreate', async (message) => {
               }
             }
 
+            const equipLines = hatched.length ? autoEquipEggs(userId) : [];
             const latestUser = getUser(userId);
             const pending = [];
             if (latestUser.held_egg_target > 0 && latestUser.held_egg_progress < latestUser.held_egg_target) {
@@ -11918,7 +12115,8 @@ client.on('messageCreate', async (message) => {
                 (experienceAwarded
                   ? 'EXP was awarded to your Buddy and eligible Exp. Share team members.'
                   : 'No Buddy or active Exp. Share team was available to receive hatch EXP.') +
-                (pending.length ? `\n\n**Still incubating**\n${pending.join('\n')}` : '')
+                (pending.length ? `\n\n**Still incubating**\n${pending.join('\n')}` : '') +
+                (equipLines.length ? `\n\n${equipLines.join('\n')}` : '')
               : `No Eggs are ready to hatch.${pending.length ? `\n\n${pending.join('\n')}` : ''}`;
             const resultEmbed = new EmbedBuilder()
               .setColor(0x8e44ad)
@@ -15229,7 +15427,7 @@ client.on('messageCreate', async (message) => {
           content: `${target}`,
           embeds: [makeEmbed(
             `Invitation to ${playerClan.name}`,
-            `<@${userId}> invited you to join **${playerClan.name}** ` +
+            `${message.author.username} invited you to join **${playerClan.name}** ` +
             `(${CLAN_RANK_EMOJIS[playerClan.clan_rank] || CLAN_RANK_EMOJIS.starter} ` +
             `${playerClan.clan_rank}, ${memberCount}/${rankInfo.memberLimit} members).\n\n` +
             'This invitation expires in 60 seconds.',
@@ -15368,7 +15566,7 @@ client.on('messageCreate', async (message) => {
         const target = message.mentions.users.first() || null;
         const rawTargetId = args.find((argument) => /^\d{17,20}$/.test(argument)) || null;
         const targetId = target?.id || rawTargetId;
-        const targetMention = targetId ? `<@${targetId}>` : null;
+        const targetMention = targetId ? `**${await getUsernameById(targetId)}**` : null;
         if ((!remove && !targetId)
             || (addRoleSyntax && args.length !== 3)
             || (remove && (args.length > 3 || (args.length === 3 && !targetId)))) {
@@ -15671,7 +15869,7 @@ client.on('messageCreate', async (message) => {
           return message.reply(`Usage: \`${PREFIX}clan kick [@user|userid]\` (choose another player).`);
         }
         const result = kickClanMember(userId, targetId);
-        const targetMention = `<@${targetId}>`;
+        const targetMention = `**${await getUsernameById(targetId)}**`;
         if (result.error === 'not_member') return message.reply('You are not in a clan.');
         if (result.error === 'not_owner') {
           return message.reply('❌ Only the clan leader or a co-owner can kick clan members.');
@@ -15771,8 +15969,8 @@ client.on('messageCreate', async (message) => {
           ? `https://cdn.discordapp.com/emojis/${rankEmojiId}.${rankEmoji.startsWith('<a:') ? 'gif' : 'png'}`
           : `https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/72x72/${[...rankEmoji].map((char) => char.codePointAt(0).toString(16)).filter((code) => code !== 'fe0f').join('-')}.png`)
         .setDescription(
-          `👑 Owned by: <@${clan.leader_id}>\n` +
-          `🔱 Co-owned by: ${getClanCoLeaderIds(clan).map((id) => `<@${id}>`).join(', ') || '*None*'}\n` +
+          `👑 Owned by: ${await getUsernameById(clan.leader_id)}\n` +
+          `🔱 Co-owned by: ${(await Promise.all(getClanCoLeaderIds(clan).map(getUsernameById))).join(', ') || '*None*'}\n` +
           `👥 Members: ${members.length} / ${rankInfo.memberLimit}\n` +
           `🌎 Global Rank: ${globalRank || 'Unranked'} of ${clanLeaderboard.length} clans\n\n` +
           `${rankEmoji} Rank: ${clan.clan_rank[0].toUpperCase()}${clan.clan_rank.slice(1)}\n` +
@@ -15869,14 +16067,14 @@ client.on('messageCreate', async (message) => {
           ? `✅ Active — ends <t:${Math.floor(bonus.expiresAt / 1000)}:R>`
           : '❌ Expired'}`
       );
-      const recent = getRecentBonusActivations(5).map((entry) => {
+      const recent = (await Promise.all(getRecentBonusActivations(5).map(async (entry) => {
         const info = PLAYER_BONUSES[entry.bonus_key];
         const hours = entry.duration_ms / 3600000;
         const length = hours >= 1 ? `${hours}h` : `${Math.round(entry.duration_ms / 60000)}m`;
-        return `• <@${entry.user_id}> activated ${entry.powerful ? 'a *powerful* ' : ''}` +
+        return `• ${await getUsernameById(entry.user_id)} activated ${entry.powerful ? 'a *powerful* ' : ''}` +
           `${info?.emoji || ''} **${info?.short || entry.bonus_key}** (${length})! ` +
           `<t:${Math.floor(entry.activated_at / 1000)}:R>`;
-      });
+      })));
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle('🌎 Global bonuses')
@@ -16082,7 +16280,7 @@ client.on('messageCreate', async (message) => {
       return message.reply({
         embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle('💰 Monthly Patreon Rewards')
           .setDescription(
-            `Your monthly rewards are sent to you automatically on the **last day of every month at 10 PM Pacific Time** ` +
+            `Your monthly rewards are sent to you automatically on the **last day of every month at 10 PM EST** ` +
             `(next: <t:${Math.floor(getNextPatreonMonthlyTime() / 1000)}:F>).\n\n` +
             monthlyRewardLines(tierPerks.monthly).join('\n')
           )],
@@ -16923,7 +17121,7 @@ client.on('messageCreate', async (message) => {
           const legacyRewards = Array.from(
             { length: 4 },
             () => rollCatchbotGoldenExclusive(legacyLuckPercent)
-              || rollSpawn('land', userId, null, {
+              || rollCatchbotSpawn(userId, {
                 catchbot: true,
                 catchbotLuckPercent: legacyLuckPercent,
                 roleChanceBoost,
@@ -16999,7 +17197,7 @@ client.on('messageCreate', async (message) => {
           const caughtPokemon = [];
           const rarityCounts = {};
           for (let index = 0; index < totalPokemon; index += 1) {
-            const spawnedPokemon = rollSpawn('land', userId, null, {
+            const spawnedPokemon = rollCatchbotSpawn(userId, {
               catchbot: true,
               catchbotLuckPercent: run.luckPercent,
               roleChanceBoost,
@@ -23980,7 +24178,7 @@ client.on('messageCreate', async (message) => {
                 `Sold for ${EMOJIS.pokecoin} **${sale.sale_price.toLocaleString()}** • ` +
                 `${sale.tax_rate}% tax: ${EMOJIS.pokecoin} **${sale.tax_amount.toLocaleString()}** • ` +
                 `Credited: ${EMOJIS.pokecoin} **${sale.payout_amount.toLocaleString()}**\n` +
-                `Sold: ${sale.sold_at} • Buyer: <@${sale.buyer_id}>`
+                `Sold: ${sale.sold_at}`
               ).join('\n\n')
             )
             .addFields(

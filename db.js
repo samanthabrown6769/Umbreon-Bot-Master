@@ -629,6 +629,8 @@ const userDefinitions = {
   vote_eggs: 'INTEGER NOT NULL DEFAULT 0',
   held_egg_progress: 'INTEGER NOT NULL DEFAULT 0',
   held_egg_target: 'INTEGER NOT NULL DEFAULT 0',
+  egg_auto_equip: 'INTEGER NOT NULL DEFAULT 0',
+  egg_auto_hatch: 'INTEGER NOT NULL DEFAULT 0',
   swaps_done: 'INTEGER NOT NULL DEFAULT 0',
   fishes_caught: 'INTEGER NOT NULL DEFAULT 0',
   quests_completed: 'INTEGER NOT NULL DEFAULT 0',
