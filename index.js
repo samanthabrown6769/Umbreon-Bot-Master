@@ -5756,7 +5756,7 @@ async function announceRareSpawn(guild, user, pokemon, source) {
         iconURL: client.user.displayAvatarURL(),
       })
       .setTitle(
-        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : `<@${user.id}>`} has found a ` +
+        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} has found a ` +
         `${rarityEmoji} ${shinyPrefix}${pokemon.name}!`
       )
       .setFooter({
@@ -5793,7 +5793,7 @@ async function announceBattleIconDrop(guild, user, iconIndex) {
         iconURL: client.user.displayAvatarURL(),
       })
       .setTitle(
-        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : `<@${user.id}>`} has unlocked ` +
+        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} has unlocked ` +
         `${emoji} ${trainerName}'s battle icon!`.replace('  ', ' ')
       )
       .setFooter({ text: `Battle icon drop • Today at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}` })
