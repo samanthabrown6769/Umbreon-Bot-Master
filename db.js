@@ -6957,6 +6957,12 @@ function sendPokemonGift(senderId, recipientId, catchId) {
     const mon = db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?').get(catchId, senderId);
     if (!mon) return { error: 'not_found' };
     if (mon.in_team) return { error: 'in_team' };
+    const savedTeams = db.prepare(
+      'SELECT pokemon_ids FROM saved_teams WHERE user_id = ?'
+    ).all(senderId);
+    if (savedTeams.some((team) => JSON.parse(team.pokemon_ids || '[]').includes(catchId))) {
+      return { error: 'in_saved_team' };
+    }
     const inserted = db.prepare(`
       INSERT INTO pokemon_gifts (
         sender_id, recipient_id, pokemon_id, name, rarity, is_shiny, is_golden, caught_ball,

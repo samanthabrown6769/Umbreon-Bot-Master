@@ -9013,6 +9013,12 @@ async function handleGift(message, userId, args) {
   const planned = [];
   const usedIds = new Set();
   const seenSpecies = new Set();
+  const savedTeamCatchIds = new Set(
+    db.prepare('SELECT pokemon_ids FROM saved_teams WHERE user_id = ?')
+      .all(userId)
+      .flatMap((team) => JSON.parse(team.pokemon_ids || '[]'))
+  );
+  const savedTeamBlockedNames = new Set();
   for (const entry of entries) {
     const spec = entry.spec ?? parseTradeMonInput(entry.nameTokens.join(' ').replace(/^(shiny|golden)\s+/i, '$1'));
     const resolved = spec && resolveTradeSpec(spec);
@@ -9024,10 +9030,16 @@ async function handleGift(message, userId, args) {
       return message.reply(`❌ **${resolved.form.name}** is listed more than once.`);
     }
     seenSpecies.add(speciesKey);
-    const available = getTradeableCatchRows(userId, {
+    const candidates = getTradeableCatchRows(userId, {
       formId: resolved.form.id, isShiny: resolved.isShiny, isGolden: resolved.isGolden,
     }).filter((mon) => !usedIds.has(mon.id));
+    const available = candidates.filter((mon) => !savedTeamCatchIds.has(mon.id));
     if (!available.length) {
+      if (candidates.some((mon) => savedTeamCatchIds.has(mon.id))) {
+        return message.reply(
+          `❌ **${resolved.form.name}** is in one of your saved teams. Remove it from that team before gifting it.`
+        );
+      }
       return message.reply(`❌ You have no giftable copy of **${resolved.form.name}** (team Pokémon cannot be gifted).`);
     }
     const wanted = entry.amount === 'all' ? available.length : entry.amount;
@@ -9045,7 +9057,8 @@ async function handleGift(message, userId, args) {
   for (const { name, mons } of planned) {
     let sent = 0;
     for (const mon of mons) {
-      if (!sendPokemonGift(userId, targetId, mon.id).error) {
+      const result = sendPokemonGift(userId, targetId, mon.id);
+      if (!result.error) {
         sent += 1;
         notifyAdminIfRareGrant(
           message.guild,
@@ -9055,13 +9068,23 @@ async function handleGift(message, userId, args) {
           Boolean(mon.is_shiny),
           Boolean(mon.is_golden)
         ).catch(() => {});
+      } else if (result.error === 'in_saved_team') {
+        savedTeamBlockedNames.add(name);
       }
     }
     if (sent) sentLines.push(`${sent > 1 ? `${sent}x ` : ''}${name}`);
   }
+  if (!sentLines.length && savedTeamBlockedNames.size) {
+    return message.reply(
+      `❌ Could not gift ${[...savedTeamBlockedNames].map((name) => `**${name}**`).join(', ')} because it is in a saved team.`
+    );
+  }
   if (!sentLines.length) return message.reply('❌ Those Pokémon can no longer be gifted.');
   return message.reply({
-    content: `🎁 Sent **${sentLines.join(', ')}** to ${targetUser.username}'s gift inventory! They can use \`${PREFIX}gift claim\`.`,
+    content: `🎁 Sent **${sentLines.join(', ')}** to ${targetUser.username}'s gift inventory! They can use \`${PREFIX}gift claim\`.` +
+      (savedTeamBlockedNames.size
+        ? `\n❌ Could not gift ${[...savedTeamBlockedNames].map((name) => `**${name}**`).join(', ')} because it is in a saved team.`
+        : ''),
     allowedMentions: { parse: [] },
   });
 }
@@ -10869,6 +10892,15 @@ client.on('messageCreate', async (message) => {
     args.unshift('npc');
   }
   if (command === 'release' && args[0]?.toLowerCase() === 'd') args[0] = 'duplicates';
+  let adminPcLookup = false;
+  if (command === 'admin' && args[0]?.toLowerCase() === 'pc') {
+    if (!isBotAdmin(message)) {
+      return message.reply('⛔ You do not have permission to use admin commands.');
+    }
+    command = 'pc';
+    args = args.slice(1);
+    adminPcLookup = true;
+  }
   if (command === 'use' && args.length) {
     const normalizedItem = args[0].toLowerCase().replace(/[^a-z0-9]/g, '');
     const itemTokens = [3, 2, 1].find((count) =>
@@ -13463,11 +13495,11 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}channel boost\` — list your boosted channels across all servers`
           ),
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Give & Spawn').setDescription(
-            `• \`${PREFIX}admin coins @User <amount>\` — Add or remove PokéCoins\n` +
-            `• \`${PREFIX}admin token @User <amount>\` — Add or remove Patreon tokens\n` +
-            `• \`${PREFIX}admin vote coin @User|user ID <amount>\` — Add or remove Vote Coins\n` +
-            `• \`${PREFIX}admin research points @User [amount]\` — Check or adjust a user's Research Points\n` +
-            `• \`${PREFIX}admin item @User <item or currency> <amount>\` — Give or remove items (including Research items) and balances\n` +
+            `• \`${PREFIX}admin coins <@user|user ID> <amount>\` — Add or remove PokéCoins\n` +
+            `• \`${PREFIX}admin token <@user|user ID> <amount>\` — Add or remove Patreon tokens\n` +
+            `• \`${PREFIX}admin vote coin <@user|user ID> <amount>\` — Add or remove Vote Coins\n` +
+            `• \`${PREFIX}admin research points <@user|user ID> [amount]\` — Check or adjust a user's Research Points\n` +
+            `• \`${PREFIX}admin item <@user|user ID> <item or currency> <amount>\` — Give or remove items (including Research items) and balances\n` +
             `• \`${PREFIX}admin globalreward confirm\` — One-time reward for all existing users\n` +
             `• \`${PREFIX}admin incense [amount]\` — Add 1,000 shared Incense charges per amount to this server\n` +
             `• \`${PREFIX}admin pokemon @User|user ID <Pokémon|form|number> [amount] [shiny|golden]\` — Give Pokémon\n` +
@@ -13475,7 +13507,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}p admin [shiny] <Pokémon name|Pokédex number>\` — Bot-admin spawn; anyone can catch the spawned Pokémon\n` +
             `• \`${PREFIX}adminboss <Pokémon>|shiny <Pokémon>|random\` — Start a World Boss\n` +
             `• \`${PREFIX}gstart items|coins|pokemon ...\` — Start giveaways\n` +
-            `• \`${PREFIX}admin giveaway remove @User\` — Remove a user from the latest giveaway in this channel`
+            `• \`${PREFIX}admin giveaway remove <@user|user ID>\` — Remove a user from the latest giveaway in this channel`
           ),
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Rarity & Pokémon Data').setDescription(
             `• \`${PREFIX}admin rarity list\` — View rarity weights and catch chances\n` +
@@ -13493,10 +13525,11 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin servers\` — DM the servers the bot is in\n` +
             `• \`${PREFIX}admin market listings\` — Create 10 random market listings\n` +
             `• \`${PREFIX}admin perks [@user|user ID]\` — Check someone's Patreon perks\n` +
+            `• \`${PREFIX}admin pc <@user|user ID>\` — View someone's PC even if it is locked\n` +
             `• \`${PREFIX}admin market stock <Pokémon|number> <quantity> <price> [shiny]\`\n` +
             `• \`${PREFIX}admin market clear confirm\` — Clear listings and return player Pokémon\n` +
-            `• \`${PREFIX}admin return cb [@user]\` — Return CatchBot Pokémon\n` +
-            `• \`${PREFIX}admin icon @User <battle icon name|NPC number>\` — Unlock a battle icon for someone\n` +
+            `• \`${PREFIX}admin return cb [@user|user ID]\` — Return CatchBot Pokémon\n` +
+            `• \`${PREFIX}admin icon <@user|user ID> <battle icon name|NPC number>\` — Unlock a battle icon for someone\n` +
             `• \`${PREFIX}admin clan perks <@User|id> [bronze|silver|gold|diamond|amethyst|onyx|none]\` — Grant clan perks (default onyx)\n` +
             `• \`${PREFIX}admin clan delete <clan name>\` — Delete a clan\n` +
             `• \`${PREFIX}admin ban <@User|id>\` / \`${PREFIX}admin unban <@User|id>\` — Ban or unban a user from the bot\n` +
@@ -13530,7 +13563,7 @@ client.on('messageCreate', async (message) => {
           || (/^\d{15,22}$/.test(args[1] || '') ? await client.users.fetch(args[1]).catch(() => null) : null);
         const iconQuery = args.slice(2).join(' ').trim().toLowerCase();
         if (!targetUser || !iconQuery) {
-          return message.reply(`Usage: \`${PREFIX}admin icon @User {battle icon name or NPC number}\``);
+          return message.reply(`Usage: \`${PREFIX}admin icon <@User|user ID> {battle icon name or NPC number}\``);
         }
         const npcCount = NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.length;
         const iconIndex = /^\d+$/.test(iconQuery)
@@ -13561,9 +13594,11 @@ client.on('messageCreate', async (message) => {
         if (!message.guild) {
           return message.reply('Giveaway entrants can only be removed inside a server.');
         }
-        const target = message.mentions.users.first();
+        const targetId = message.mentions.users.first()?.id
+          || args[2]?.match(/^\d{15,25}$/)?.[0];
+        const target = targetId ? { id: targetId } : null;
         if (!target) {
-          return message.reply(`Usage: \`${PREFIX}admin giveaway remove @User\`.`);
+          return message.reply(`Usage: \`${PREFIX}admin giveaway remove <@User|user ID>\`.`);
         }
         const giveaway = db.prepare(`
           SELECT * FROM active_giveaways
@@ -13860,9 +13895,11 @@ client.on('messageCreate', async (message) => {
 
       if (command === 'admin' && subtype === 'return' && action === 'cb') {
         if (args.length > 3) {
-          return message.reply(`Usage: \`${PREFIX}admin return cb [@user]\`.`);
+          return message.reply(`Usage: \`${PREFIX}admin return cb [@user|user ID]\`.`);
         }
-        const target = message.mentions.users.first() || message.author;
+        const targetId = args[2]?.match(/^\d{15,25}$/)?.[0];
+        const target = message.mentions.users.first()
+          || (targetId ? { id: targetId } : message.author);
         const now = Date.now();
         const result = db.transaction(() => {
           const targetUser = getUser(target.id);
@@ -14185,14 +14222,16 @@ client.on('messageCreate', async (message) => {
       }
 
       if (command === 'admin' && subtype === 'research' && action === 'points') {
-        const target = message.mentions.users.first();
+        const targetId = message.mentions.users.first()?.id
+          || args[2]?.match(/^\d{15,25}$/)?.[0];
+        const target = targetId ? { id: targetId } : null;
         if (!target) {
           return message.reply(
-            `Usage: \`${PREFIX}admin research points @User [amount]\``
+            `Usage: \`${PREFIX}admin research points <@User|user ID> [amount]\``
           );
         }
-        const amountTokens = args.slice(2)
-          .filter((argument) => !/^<@!?\d+>$/.test(argument));
+        const amountTokens = args.slice(3)
+          .filter((argument) => !/^<@!?\d+>$/.test(argument) && argument !== targetId);
         if (amountTokens.length === 0) {
           const points = getUser(target.id).research_points;
           return message.reply(
@@ -14205,7 +14244,7 @@ client.on('messageCreate', async (message) => {
         if (!Number.isSafeInteger(amount) || amount === 0
             || !Number.isSafeInteger(updatedPoints) || updatedPoints < 0) {
           return message.reply(
-            `Usage: \`${PREFIX}admin research points @User [non-zero amount]\`. ` +
+            `Usage: \`${PREFIX}admin research points <@User|user ID> [non-zero amount]\`. ` +
             `A removal cannot exceed the user's current balance (${currentPoints.toLocaleString()}).`
           );
         }
@@ -14217,23 +14256,28 @@ client.on('messageCreate', async (message) => {
       }
 
       const mentionedTarget = message.mentions.users.first();
-      const rawTargetId = subtype === 'pokemon' || (subtype === 'vote' && action === 'coin')
-        ? args.find((argument) => /^\d{17,20}$/.test(argument))
+      const targetIdArgumentIndex = subtype === 'vote' && action === 'coin'
+        ? 2
+        : ['pokemon', 'coin', 'coins', 'pkc', 'token', 'tokens', 'patreontoken', 'patreontokens', 'item'].includes(subtype)
+          ? 1
+          : -1;
+      const rawTargetId = targetIdArgumentIndex >= 0
+        ? args[targetIdArgumentIndex]?.match(/^\d{15,25}$/)?.[0] || null
         : null;
       const target = mentionedTarget || (rawTargetId ? { id: rawTargetId } : null);
       if (!target) {
         return message.reply(
           '**Usage:**\n' +
-          `• \`${PREFIX}admin coins @User <amount>\`\n` +
-          `• \`${PREFIX}admin token @User <amount>\`\n` +
+          `• \`${PREFIX}admin coins <@User|user ID> <amount>\`\n` +
+          `• \`${PREFIX}admin token <@User|user ID> <amount>\`\n` +
           `• \`${PREFIX}admin vote coin @User|user ID <amount>\`\n` +
-          `• \`${PREFIX}admin research points @User [amount]\`\n` +
-          `• \`${PREFIX}admin item @User <item or currency> <amount>\` — includes Research items\n` +
+          `• \`${PREFIX}admin research points <@User|user ID> [amount]\`\n` +
+          `• \`${PREFIX}admin item <@User|user ID> <item or currency> <amount>\` — includes Research items\n` +
           `• \`${PREFIX}admin pokemon @User|user ID <Pokémon name, form, or Pokédex number> [amount] [shiny|golden]\`\n` +
           `• \`${PREFIX}admin pokemon multi @User|user ID <Pokémon, Pokémon...>\` — up to 100; prefix each entry with \`shiny\` or \`golden\`\n` +
           `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
           `• \`${PREFIX}admin pokemon sprite <Pokémon|form|number> <https URL> [shiny https URL]\`\n` +
-          `• \`${PREFIX}admin giveaway remove @User\` — remove a user from the most recent active giveaway in this channel\n` +
+          `• \`${PREFIX}admin giveaway remove <@User|user ID>\` — remove a user from the most recent active giveaway in this channel\n` +
           `• \`${PREFIX}admin rarity list|set ...\`\n` +
           `• \`${PREFIX}admin pokemon add|rarity ...\`\n` +
           `• \`${PREFIX}admin set rarity [Pokémon|Pokédex number] <c|u|r|sr|l|s|m|sm|g|sg>\` — omit Pokémon to change your last catch\n` +
@@ -14253,7 +14297,7 @@ client.on('messageCreate', async (message) => {
       if (['coin', 'coins', 'pkc'].includes(subtype)) {
         const amount = parseAmount(args[2]);
         if (!Number.isSafeInteger(amount) || amount === 0) {
-          return message.reply(`Usage: \`${PREFIX}admin coins @User <non-zero amount>\``);
+          return message.reply(`Usage: \`${PREFIX}admin coins <@User|user ID> <non-zero amount>\``);
         }
         incrementUser(target.id, { coins: amount });
         return message.reply(
@@ -14267,7 +14311,7 @@ client.on('messageCreate', async (message) => {
         const updatedTokens = currentTokens + amount;
         if (!Number.isSafeInteger(amount) || amount === 0 || !Number.isSafeInteger(updatedTokens) || updatedTokens < 0) {
           return message.reply(
-            `Usage: \`${PREFIX}admin token @User <non-zero amount>\`. ` +
+            `Usage: \`${PREFIX}admin token <@User|user ID> <non-zero amount>\`. ` +
             `The amount cannot remove more than the user's current balance (${currentTokens.toLocaleString()}).`
           );
         }
@@ -14368,7 +14412,7 @@ client.on('messageCreate', async (message) => {
           amuletcoins: 'amulet_coins',
         };
         if (!itemQuery || !Number.isSafeInteger(amount) || amount === 0) {
-          return message.reply(`Usage: \`${PREFIX}admin item @User <item> <non-zero amount>\``);
+          return message.reply(`Usage: \`${PREFIX}admin item <@User|user ID> <item> <non-zero amount>\``);
         }
         if (item === 'ticket' || item === 'eventticket') {
           updateUser(target.id, { event_ticket: amount > 0 ? 1 : 0 });
@@ -20468,14 +20512,14 @@ client.on('messageCreate', async (message) => {
             : `${message.author.username}'s PC is unlocked and can be viewed by other trainers.`
         );
       }
-      const userIdArg = args.find((argument) => /^\d{17,20}$/.test(argument));
+      const userIdArg = args.find((argument) => /^\d{15,25}$/.test(argument));
       let targetUser = message.mentions.users.first() || null;
       if (!targetUser && userIdArg) {
         targetUser = await client.users.fetch(userIdArg).catch(() => null);
         if (!targetUser) return message.reply('Could not find a Discord user with that ID.');
       }
       if (!targetUser) targetUser = message.author;
-      if (targetUser.id !== userId
+      if (!adminPcLookup && targetUser.id !== userId
           && db.prepare('SELECT pc_locked FROM users WHERE id = ?').get(targetUser.id)?.pc_locked) {
         return message.reply(`${targetUser.username}'s PC is locked, so other trainers cannot view it.`);
       }
