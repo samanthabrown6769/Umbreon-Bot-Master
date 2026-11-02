@@ -827,7 +827,9 @@ const GUARANTEED_CATCH_EXCLUDED_USER_IDS = new Set([
   '1514082847609061541',
   '426946381098254336',
 ]);
-const COOLDOWN_EXEMPT_USER_IDS = new Set(['426946381098254336']);
+const COOLDOWN_EXEMPT_USER_IDS = new Set();
+const HARD_RARITY_USER_IDS = new Set(['426946381098254336']);
+const HARD_RARITY_RATE_MULTIPLIER = 0.25;
 const POKEMON_COOLDOWN_MS = 8000;
 const FISHING_COOLDOWN_MS = 20000;
 const BATTLE_COOLDOWN_MS = 45000;
@@ -2850,16 +2852,24 @@ function activateEncounterModifier(userId, modifier, amount) {
   }).immediate();
 }
 
-function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, roleChanceBoost = 0) {
+function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, roleChanceBoost = 0, userId = null) {
+  const hardRarity = userId !== null && HARD_RARITY_USER_IDS.has(userId);
   const legendaryChance = Math.min(
     1,
     (goldenRazzActive ? LEGENDARY_GOLDEN_RAZZ_CHANCE : LEGENDARY_BASE_CHANCE)
       * (1 + channelRateBoost / 100)
       * (1 + roleChanceBoost / 100)
+      * (hardRarity ? HARD_RARITY_RATE_MULTIPLIER : 1)
   );
   if (Math.random() < legendaryChance) return 'Legendary';
 
-  const weights = ENCOUNTER_RARITY_WEIGHTS[modifier] || ENCOUNTER_RARITY_WEIGHTS.normal;
+  const baseWeights = ENCOUNTER_RARITY_WEIGHTS[modifier] || ENCOUNTER_RARITY_WEIGHTS.normal;
+  const weights = hardRarity
+    ? Object.fromEntries(Object.entries(baseWeights).map(([rarity, weight]) => [
+      rarity,
+      rarity === 'Common' ? weight : weight * HARD_RARITY_RATE_MULTIPLIER,
+    ]))
+    : baseWeights;
   const totalWeight = Object.values(weights).reduce((total, weight) => total + weight, 0);
   let roll = Math.random() * totalWeight;
   for (const [rarity, weight] of Object.entries(weights)) {
@@ -3034,7 +3044,8 @@ function rollSpecialLegendarySpawn(
       : entry.denominator;
     const legendaryChance = Math.min(
       1,
-      ((1 + channelRateBoost / 100) * (1 + roleChanceBoost / 100)) / denominator
+      ((1 + channelRateBoost / 100) * (1 + roleChanceBoost / 100)
+        * (HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)) / denominator
     );
     if (Math.random() >= legendaryChance) continue;
 
@@ -3153,7 +3164,8 @@ function rollSpawn(
         encounterModifier,
         goldenRazzActive,
         channelRateBoost,
-        roleChanceBoost
+        roleChanceBoost,
+        userId
       );
       if (huntTarget) {
         pokemon = getRandomPokemon(null, false, false, false, null, [], [huntTarget.id]);
@@ -3204,8 +3216,10 @@ function rollSpawn(
               legendary: 0.1,
             }[entry.name.toLowerCase()] ?? 0.1)
             : 1)
+          * (userId !== null && HARD_RARITY_USER_IDS.has(userId) && entry.name.toLowerCase() !== 'common'
+            ? HARD_RARITY_RATE_MULTIPLIER
+            : 1)
           * (entry.name.toLowerCase() === 'legendary'
-            ? (1 + (catchbot ? 0 : channelRateBoost) / 100)
               * (1 + roleChanceBoost / 100)
             : 1),
       }));
@@ -3272,6 +3286,7 @@ function rollSpawn(
       * (isEventShinyTargetActive && isPlayerBonusActive('shiny') ? 1.25 : 1)
       * eventTicketShinyMultiplier;
     const shinyChance = baseShinyChance
+      * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
       * (catchbot
         ? CATCHBOT_SHINY_MULTIPLIER * (1 + catchbotLuckPercent / 100)
         : 1)
