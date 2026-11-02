@@ -6066,6 +6066,39 @@ function removeTeamSlot(userId, slot) {
   return pokemon;
 }
 
+function removeOwnedPokemonCatch(userId, catchId) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(catchId) || catchId <= 0) {
+    throw new TypeError('catchId must be a positive safe integer.');
+  }
+  return db.transaction(() => {
+    const pokemon = db.prepare(
+      'SELECT * FROM catches WHERE id = ? AND user_id = ?'
+    ).get(catchId, userId);
+    if (!pokemon) return null;
+
+    db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE id = ? AND buddy_catch_id = ?')
+      .run(userId, catchId);
+    db.prepare('DELETE FROM bot_settings WHERE key = ?')
+      .run(`buddy_nickname:${userId}:${catchId}`);
+
+    const savedTeams = db.prepare(
+      'SELECT id, pokemon_ids FROM saved_teams WHERE user_id = ?'
+    ).all(userId);
+    const updateSavedTeam = db.prepare('UPDATE saved_teams SET pokemon_ids = ? WHERE id = ?');
+    for (const team of savedTeams) {
+      const pokemonIds = JSON.parse(team.pokemon_ids || '[]');
+      const remainingIds = pokemonIds.filter((id) => id !== catchId);
+      if (remainingIds.length !== pokemonIds.length) {
+        updateSavedTeam.run(JSON.stringify(remainingIds), team.id);
+      }
+    }
+
+    db.prepare('DELETE FROM catches WHERE id = ? AND user_id = ?').run(catchId, userId);
+    return pokemon;
+  }).immediate();
+}
+
 function getUserCatches(userId) {
   assertUserId(userId);
   return db.prepare(
@@ -9982,6 +10015,7 @@ module.exports = {
   setCatchTeamStatus,
   setTeamCatchByQuery,
   removeTeamSlot,
+  removeOwnedPokemonCatch,
   swapTeamSlots,
   getUserCatches,
   getDexIndexOffset,

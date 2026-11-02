@@ -209,6 +209,7 @@ const {
   setTeamCatchByQuery,
   getDexIndexOffset,
   removeTeamSlot,
+  removeOwnedPokemonCatch,
   swapTeamSlots,
   getActiveWorldBoss,
   registerWorldBossPlayer,
@@ -13504,6 +13505,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin incense [amount]\` — Add 1,000 shared Incense charges per amount to this server\n` +
             `• \`${PREFIX}admin pokemon @User|user ID <Pokémon|form|number> [amount] [shiny|golden]\` — Give Pokémon\n` +
             `• \`${PREFIX}admin pokemon multi @User|user ID <Pokémon, Pokémon...>\` — Give up to 100 Pokémon; prefix entries with \`shiny\` or \`golden\`\n` +
+            `• \`${PREFIX}admin pokemon remove @User|user ID <Pokémon|form|dex>\` — Remove one matching Pokémon from a user\n` +
             `• \`${PREFIX}p admin [shiny] <Pokémon name|Pokédex number>\` — Bot-admin spawn; anyone can catch the spawned Pokémon\n` +
             `• \`${PREFIX}adminboss <Pokémon>|shiny <Pokémon>|random\` — Start a World Boss\n` +
             `• \`${PREFIX}gstart items|coins|pokemon ...\` — Start giveaways\n` +
@@ -14258,6 +14260,8 @@ client.on('messageCreate', async (message) => {
       const mentionedTarget = message.mentions.users.first();
       const targetIdArgumentIndex = subtype === 'vote' && action === 'coin'
         ? 2
+        : subtype === 'pokemon' && action === 'remove'
+          ? 2
         : ['pokemon', 'coin', 'coins', 'pkc', 'token', 'tokens', 'patreontoken', 'patreontokens', 'item'].includes(subtype)
           ? 1
           : -1;
@@ -14275,6 +14279,7 @@ client.on('messageCreate', async (message) => {
           `• \`${PREFIX}admin item <@User|user ID> <item or currency> <amount>\` — includes Research items\n` +
           `• \`${PREFIX}admin pokemon @User|user ID <Pokémon name, form, or Pokédex number> [amount] [shiny|golden]\`\n` +
           `• \`${PREFIX}admin pokemon multi @User|user ID <Pokémon, Pokémon...>\` — up to 100; prefix each entry with \`shiny\` or \`golden\`\n` +
+          `• \`${PREFIX}admin pokemon remove @User|user ID <Pokémon name, form, or Pokédex number>\` — remove one matching Pokémon\n` +
           `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
           `• \`${PREFIX}admin pokemon sprite <Pokémon|form|number> <https URL> [shiny https URL]\`\n` +
           `• \`${PREFIX}admin giveaway remove <@User|user ID>\` — remove a user from the most recent active giveaway in this channel\n` +
@@ -14546,6 +14551,34 @@ client.on('messageCreate', async (message) => {
       }
 
       if (['pokemon', 'mon', 'p'].includes(subtype)) {
+        if (action === 'remove') {
+          const pokemonQuery = args.slice(3)
+            .filter((argument) =>
+              !/^<@!?\d+>$/.test(argument) && argument !== rawTargetId
+            )
+            .join(' ')
+            .trim();
+          if (!pokemonQuery) {
+            return message.reply(
+              `Usage: \`${PREFIX}admin pokemon remove @User|user ID <Pokémon name, form, or Pokédex number>\``
+            );
+          }
+          const matches = findUserPokemonMatches(target.id, pokemonQuery);
+          if (!matches.length) {
+            return message.reply(`<@${target.id}> does not have a Pokémon matching **${pokemonQuery}**.`);
+          }
+          const removed = removeOwnedPokemonCatch(target.id, matches[0].id);
+          if (!removed) {
+            return message.reply('That Pokémon is no longer in the user’s storage.');
+          }
+          const variant = removed.is_golden ? 'Golden ' : removed.is_shiny ? 'Shiny ' : '';
+          const duplicateNote = matches.length > 1
+            ? ` Removed the newest matching copy; **${matches.length - 1}** other match${matches.length === 2 ? '' : 'es'} remain.`
+            : '';
+          return message.reply(
+            `Removed **${variant}${removed.name}** from <@${target.id}>'s storage.${duplicateNote}`
+          );
+        }
         const pokemonArgs = args.slice(2).filter((argument) =>
           !/^<@!?\d+>$/.test(argument) && argument !== rawTargetId
         );
