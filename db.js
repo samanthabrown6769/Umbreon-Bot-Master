@@ -1281,6 +1281,7 @@ ensureColumns('clans', {
   pr_tier: 'INTEGER NOT NULL DEFAULT 0',
   shop_boost: 'INTEGER NOT NULL DEFAULT 0',
   amulet_boost: 'INTEGER NOT NULL DEFAULT 0',
+  bonus_catches: 'INTEGER NOT NULL DEFAULT 0',
 });
 ensureColumns('clan_members', {
   perk_rank: 'INTEGER NOT NULL DEFAULT 0',
@@ -2044,6 +2045,21 @@ if (!db.prepare("SELECT 1 FROM migration_flags WHERE name = 'joined_at_first_com
       )
     `).run(Date.now());
     db.prepare("INSERT INTO migration_flags (name) VALUES ('joined_at_first_command')").run();
+  })();
+}
+
+// One-time bonus: every existing clan gets 20,000 catches stored on the clan itself.
+if (!db.prepare("SELECT 1 FROM migration_flags WHERE name = 'clan_bonus_20k_clan_level'").get()) {
+  db.transaction(() => {
+    if (db.prepare("SELECT 1 FROM migration_flags WHERE name = 'clan_bonus_20k_catches'").get()) {
+      db.prepare(`
+        UPDATE clan_members SET catches = MAX(catches - 20000, 0)
+        WHERE clan_id IN (SELECT id FROM clans WHERE clans.leader_id = clan_members.user_id)
+      `).run();
+    }
+    db.prepare('UPDATE clans SET bonus_catches = bonus_catches + 20000').run();
+    db.prepare("INSERT OR IGNORE INTO migration_flags (name) VALUES ('clan_bonus_20k_catches')").run();
+    db.prepare("INSERT INTO migration_flags (name) VALUES ('clan_bonus_20k_clan_level')").run();
   })();
 }
 
@@ -4592,6 +4608,7 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
       userId
     );
     syncDuplicateCatchState(userId, pokemon.id);
+    recordPokemonSeen(userId, megaForm.id, Boolean(isShiny), Boolean(pokemon.is_golden));
     const megaDexNumbers = getPokemonDexNumbersForForms().get(megaForm.id);
     return {
       pokemon: {
@@ -4876,6 +4893,7 @@ function applyPokemonEvolution(userId, row, target, itemName = null, consumesHel
     userId
   );
   syncDuplicateCatchState(userId, row.id);
+  recordPokemonSeen(userId, target.id, Boolean(row.is_shiny), Boolean(row.is_golden));
   return {
     itemName,
     from: row.name,
@@ -4886,6 +4904,7 @@ function applyPokemonEvolution(userId, row, target, itemName = null, consumesHel
     rarity: row.is_golden ? 'Golden' : target.rarity,
     sprite: row.is_shiny ? (target.shiny_sprite || target.sprite) : target.sprite,
     slug: target.slug,
+    speciesId: target.species_id,
   };
 }
 
@@ -6102,6 +6121,7 @@ const SPECIAL_SPAWN_RESERVED_SPECIES = Object.freeze([
   'Genesect',
   'Regigigas',
   'Lunala',
+  'Solgaleo',
 ]);
 
 const STARTER_SPECIES_NAMES = Object.freeze([
@@ -6718,6 +6738,10 @@ const ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS = new Set([
   '681156125395124360',
   '434593153341980672',
   '1258056251967930409',
+  '793793055495946251',
+  '1476645992680915081',
+  '1395705912668327956',
+  '426946381098254336',
 ]);
 
 function distributeWorldBossRewards(bossId) {
@@ -6739,6 +6763,8 @@ function distributeWorldBossRewards(bossId) {
     for (const [index, entry] of leaderboard.entries()) {
       const isMvp = index === 0;
       trackClanActivity(entry.user_id, 'battle');
+      // Fighting the boss counts as Seen; drops below are Owned only.
+      recordPokemonSeen(entry.user_id, template.formId, Boolean(template.isShiny), false);
       db.prepare(`
         INSERT OR IGNORE INTO world_boss_rewards
           (boss_id, user_id, boss_name, max_hp, damage, rank, total_players, coins)
@@ -6992,6 +7018,14 @@ function getUserMarketListingCount(userId) {
   ).get(userId).count;
 }
 
+const MARKET_MINIMUM_PRICES = Object.freeze({ Legendary: 40000, Shiny: 75000, Golden: 500000 });
+function getMarketMinimumPrice(mon) {
+  if (mon.is_golden) return { label: 'Golden', minimum: MARKET_MINIMUM_PRICES.Golden };
+  if (mon.is_shiny) return { label: 'Shiny', minimum: MARKET_MINIMUM_PRICES.Shiny };
+  if (mon.rarity === 'Legendary') return { label: 'Legendary', minimum: MARKET_MINIMUM_PRICES.Legendary };
+  return null;
+}
+
 function listOnMarket(sellerId, catchId, price) {
   assertUserId(sellerId);
   if (!Number.isSafeInteger(catchId) || catchId <= 0
@@ -7009,6 +7043,10 @@ function listOnMarket(sellerId, catchId, price) {
       'SELECT * FROM catches WHERE id = ? AND user_id = ?'
     ).get(catchId, sellerId);
     if (!mon || mon.in_team) return null;
+    const minimumRule = getMarketMinimumPrice(mon);
+    if (minimumRule && price < minimumRule.minimum) {
+      return { error: 'below_minimum', ...minimumRule };
+    }
 
     const inserted = db.prepare(`
       INSERT INTO market (
@@ -7075,6 +7113,10 @@ function listPokemonOnMarket(sellerId, pokemonId, amount, price, forceVariant = 
       LIMIT ?
     `).all(sellerId, pokemonId, variant.is_shiny, variant.is_golden, amount);
     const mon = catches[0];
+    const minimumRule = getMarketMinimumPrice(mon);
+    if (minimumRule && price < minimumRule.minimum) {
+      return { error: 'below_minimum', ...minimumRule };
+    }
     const result = db.prepare(`
       INSERT INTO market (
         seller_id, pokemon_id, name, rarity, is_shiny, is_golden, level, price, amount,
@@ -8121,7 +8163,7 @@ function purchaseClanRank(userId, rank) {
     }
     const totalCatches = db.prepare(
       'SELECT COALESCE(SUM(catches + fishes), 0) AS total FROM clan_members WHERE clan_id = ?'
-    ).get(clan.id).total;
+    ).get(clan.id).total + (clan.bonus_catches || 0);
     if (totalCatches < selected.catches) {
       return { error: 'catch_requirement', required: selected.catches, total: totalCatches };
     }
@@ -8343,9 +8385,9 @@ function getClanLeaderboard() {
   return db.prepare(`
     SELECT clans.id, clans.name, clans.clan_rank, clans.leader_id,
       COUNT(clan_members.user_id) AS member_count,
-      COALESCE(SUM(clan_members.catches), 0) AS catches,
+      COALESCE(SUM(clan_members.catches), 0) + clans.bonus_catches AS catches,
       COALESCE(SUM(clan_members.fishes), 0) AS fishes,
-      COALESCE(SUM(clan_members.catches + clan_members.fishes), 0) AS total_activity
+      COALESCE(SUM(clan_members.catches + clan_members.fishes), 0) + clans.bonus_catches AS total_activity
     FROM clans
     LEFT JOIN clan_members ON clan_members.clan_id = clans.id
     GROUP BY clans.id
@@ -8355,6 +8397,7 @@ function getClanLeaderboard() {
 
 function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.now()) {
   const categories = new Set([
+    'daily',
     'monthly',
     'yearly',
     'catches',
@@ -8369,12 +8412,12 @@ function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.n
     throw new TypeError('Clan highscore limit must be between 1 and 100.');
   }
 
-  const period = category === 'monthly' || category === 'yearly' ? category : null;
+  const period = ['daily', 'monthly', 'yearly'].includes(category) ? category : null;
   const periodStart = period ? getClanPeriodBounds(period, timestamp).start : null;
   const rows = db.prepare(`
     SELECT clans.id, clans.name, clans.clan_rank, clans.treasury,
       COUNT(DISTINCT cm.user_id) AS member_count,
-      COALESCE(SUM(cm.catches), 0) AS catches,
+      COALESCE(SUM(cm.catches), 0) + clans.bonus_catches AS catches,
       COALESCE(SUM(cm.fishes), 0) AS fishes,
       COALESCE(SUM(cm.hatches), 0) AS hatches,
       COALESCE(SUM(cm.swaps), 0) AS swaps,
@@ -8391,6 +8434,7 @@ function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.n
   `).all(period, periodStart);
 
   const valueForCategory = {
+    daily: (row) => row.period_catches,
     monthly: (row) => row.period_catches,
     yearly: (row) => row.period_catches,
     catches: (row) => row.catches + row.fishes,
@@ -8514,7 +8558,7 @@ function isUserBanned(userId) {
 }
 
 function wipeUserData(userId) {
-  const keep = new Set(['banned_users', 'market_sales', 'patreon_token_trades']);
+  const keep = new Set(['banned_users', 'market_sales', 'patreon_token_trades', 'clan_members', 'clan_activity_periods']);
   return db.transaction(() => {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
     const deleted = {};
@@ -9064,6 +9108,7 @@ function setWorldBossAnnouncementPost(bossId, guildId, channelId, messageId) {
 
 const GUILD_CHANNEL_CATCH_RATE_BOOSTS = new Map([
   ['1560102297198006274', 5],
+  ['1565161395496943709', 5],
 ]);
 
 function getChannelCatchRateBoost(userId, guildId, channelId) {

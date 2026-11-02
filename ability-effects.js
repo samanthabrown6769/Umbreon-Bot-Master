@@ -328,7 +328,13 @@ function afterHit(h, ctx, A, B, move, dmg, { type, crit = false }, L) {
   if (a) {
     if (a === 'poison-touch' && contact && t.hp > 0 && chance()) h.inflictStatus(ctx, t, B.side, 'psn', L, { sourceSide: A.side });
     if (t.hp <= 0 && m.hp > 0) {
-      if (a === 'moxie' || a === 'chilling-neigh' || a === 'beast-boost') { L(tag(m)); h.changeStage(ctx, m, A.side, 'atk', 1, L); }
+      if (a === 'moxie' || a === 'chilling-neigh') { L(tag(m)); h.changeStage(ctx, m, A.side, 'atk', 1, L); }
+      else if (a === 'beast-boost') {
+        const stats = m.stats || m;
+        const [key] = [['atk', stats.atk], ['def', stats.def], ['spe', stats.spd]]
+          .reduce((best, entry) => ((entry[1] || 0) > (best[1] || 0) ? entry : best));
+        L(tag(m)); h.changeStage(ctx, m, A.side, key, 1, L);
+      }
       else if (a === 'grim-neigh') { L(tag(m)); h.changeStage(ctx, m, A.side, 'spa', 1, L); }
     }
   }

@@ -1155,6 +1155,11 @@
     "minLevel": 32
   },
   {
+    "fromSpeciesId": 674,
+    "toSpeciesId": 675,
+    "minLevel": 32
+  },
+  {
     "fromSpeciesId": 679,
     "toSpeciesId": 680,
     "minLevel": 35
