@@ -6712,7 +6712,8 @@ function applyWorldBossDamage(userId, bossId, damage, timestamp = Date.now()) {
     ).get(bossId);
     if (!boss) return { error: 'inactive' };
 
-    const appliedDamage = Math.min(damage, boss.current_hp);
+    const scaledDamage = Math.max(1, Math.floor(damage * 0.75));
+    const appliedDamage = Math.min(scaledDamage, boss.current_hp);
     const currentHp = boss.current_hp - appliedDamage;
     db.prepare('UPDATE world_boss SET current_hp = ?, is_active = ? WHERE id = ?')
       .run(currentHp, currentHp > 0 ? 1 : 0, bossId);
@@ -6743,6 +6744,7 @@ const ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS = new Set([
   '1476645992680915081',
   '1395705912668327956',
   '426946381098254336',
+  '1020738345791410276',
 ]);
 
 function distributeWorldBossRewards(bossId) {

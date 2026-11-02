@@ -5756,7 +5756,7 @@ async function announceRareSpawn(guild, user, pokemon, source) {
         iconURL: client.user.displayAvatarURL(),
       })
       .setTitle(
-        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} has found a ` +
+        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : `<@${user.id}>`} has found a ` +
         `${rarityEmoji} ${shinyPrefix}${pokemon.name}!`
       )
       .setFooter({
@@ -5793,7 +5793,7 @@ async function announceBattleIconDrop(guild, user, iconIndex) {
         iconURL: client.user.displayAvatarURL(),
       })
       .setTitle(
-        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} has unlocked ` +
+        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : `<@${user.id}>`} has unlocked ` +
         `${emoji} ${trainerName}'s battle icon!`.replace('  ', ' ')
       )
       .setFooter({ text: `Battle icon drop • Today at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}` })
@@ -9523,7 +9523,6 @@ async function handleStatsCommand(message, args) {
 }
 
 client.on('interactionCreate', (interaction) => {
-  rememberUser(interaction.user);
   if (interaction.user && isUserBanned(interaction.user.id)) {
     if (interaction.isRepliable()) interaction.reply({ content: '⛔ You are banned from this bot.', flags: MessageFlags.Ephemeral }).catch(() => {});
     interaction.__banned = true;
@@ -9671,12 +9670,10 @@ function formatGiveawayRewards(prizeData) {
 
 function formatGiveawayEntrants(giveawayId) {
   const entrants = db.prepare(
-    'SELECT user_id, username FROM giveaway_entries WHERE giveaway_id = ? ORDER BY rowid'
+    'SELECT user_id FROM giveaway_entries WHERE giveaway_id = ? ORDER BY rowid'
   ).all(giveawayId);
   if (!entrants.length) return '*No entries yet.*';
-  const shown = entrants.slice(0, 50).map((entry) =>
-    entry.username ? `\`${entry.username}\`` : `<@${entry.user_id}>`
-  );
+  const shown = entrants.slice(0, 50).map((entry) => `<@${entry.user_id}>`);
   const suffix = entrants.length > 50 ? `, and **${entrants.length - 50}** more` : '';
   return shown.join(', ') + suffix;
 }
@@ -10812,65 +10809,23 @@ setInterval(() => {
   restRouteCounts.clear();
 }, 30000).unref();
 
-db.exec('CREATE TABLE IF NOT EXISTS user_names (user_id TEXT PRIMARY KEY, username TEXT NOT NULL)');
-const userNameCache = new Map(
-  db.prepare('SELECT user_id, username FROM user_names').all().map((row) => [row.user_id, row.username])
-);
-const saveUserNameStatement = db.prepare(`
-  INSERT INTO user_names (user_id, username) VALUES (?, ?)
-  ON CONFLICT(user_id) DO UPDATE SET username = excluded.username
-`);
-
-function rememberUser(user) {
-  if (!user?.id || !user.username || userNameCache.get(user.id) === user.username) return;
-  userNameCache.set(user.id, user.username);
-  try {
-    saveUserNameStatement.run(user.id, user.username);
-  } catch (error) {
-    console.error(`Failed to store username for user ${user.id}:`, error);
-  }
-}
-
-function replaceUserMentions(text) {
-  if (typeof text !== 'string' || !text.includes('<@')) return text;
-  return text.replace(/<@!?(\d{15,25})>/g, (mention, id) => {
-    const username = client.users?.cache.get(id)?.username || userNameCache.get(id);
-    return username || mention;
-  });
-}
-
-// Outgoing messages show usernames instead of @mentions; payloads with keepMentions (cooldown pings) are left alone.
-function replaceMentionsInPayload(options) {
+function preventUnrequestedMentionNotifications(options) {
   if (!options || typeof options !== 'object' || options.keepMentions) return;
-  options.content = replaceUserMentions(options.content);
-  for (const embed of options.embeds || []) {
-    const data = embed?.data ?? embed;
-    if (!data || typeof data !== 'object') continue;
-    data.title = replaceUserMentions(data.title);
-    data.description = replaceUserMentions(data.description);
-    if (data.footer?.text) data.footer.text = replaceUserMentions(data.footer.text);
-    if (data.author?.name) data.author.name = replaceUserMentions(data.author.name);
-    for (const field of data.fields || []) {
-      field.name = replaceUserMentions(field.name);
-      field.value = replaceUserMentions(field.value);
-    }
-  }
+  options.allowedMentions ??= { parse: [] };
 }
 
 const originalResolveBody = MessagePayload.prototype.resolveBody;
-MessagePayload.prototype.resolveBody = function resolveBodyWithUsernames(...resolveArgs) {
+MessagePayload.prototype.resolveBody = function resolveBodyWithSafeMentions(...resolveArgs) {
   try {
-    replaceMentionsInPayload(this.options);
+    preventUnrequestedMentionNotifications(this.options);
   } catch (error) {
-    console.error('Failed to replace user mentions with usernames:', error);
+    console.error('Failed to configure allowed mentions:', error);
   }
   return originalResolveBody.apply(this, resolveArgs);
 };
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
-  rememberUser(message.author);
-  for (const mentioned of message.mentions.users.values()) rememberUser(mentioned);
   const automatedActivityAlert = recordCommandCadence(message);
   if (automatedActivityAlert) {
     void notifyOwnerOfCommandCadence(message.author.id, automatedActivityAlert)
@@ -11902,7 +11857,7 @@ client.on('messageCreate', async (message) => {
         const variant = result.isGolden ? 'Golden ' : result.isShiny ? 'Shiny ' : '';
         const embed = new EmbedBuilder()
           .setColor(result.isGolden ? 0xf1c40f : result.isShiny ? 0xff66cc : 0x8e44ad)
-          .setAuthor({ name: `${message.author.username}'s Egg hatched!`, iconURL: message.author.displayAvatarURL() })
+          .setAuthor({ name: `<@${userId}>'s Egg hatched!`, iconURL: message.author.displayAvatarURL() })
           .setDescription(
             `${EMOJIS.pokeEgg} Your Egg hatched into ${result.isGolden ? EMOJIS.golden : result.isShiny ? EMOJIS.shiny : ''} ` +
             `**${variant}${hatch.pokemon.name}**!` +
@@ -15261,7 +15216,6 @@ client.on('messageCreate', async (message) => {
               .setDisabled(currentPage >= pageCount - 1)
           ),
         ];
-        const usernameCache = new Map();
         const renderStats = async () => {
           const stats = getClanActivityStats(playerClan.id, period, category, userId);
           const pageCount = Math.max(1, Math.ceil(stats.rows.length / pageSize));
@@ -15284,14 +15238,7 @@ client.on('messageCreate', async (message) => {
             battles: stats.totals.battles,
           });
           const pageRows = stats.rows.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
-          const memberLines = await Promise.all(pageRows.map(async (row) => {
-            let name = usernameCache.get(row.user_id);
-            if (!name) {
-              const discordUser = message.client.users.cache.get(row.user_id)
-                || await message.client.users.fetch(row.user_id);
-              name = discordUser.username;
-              usernameCache.set(row.user_id, name);
-            }
+          const memberLines = pageRows.map((row) => {
             const selectedIcon = getSelectedBattleIcon(row.user_id);
             const preset = Object.values(DEFAULT_TRAINER_ICONS)
               .find((trainerIcon) => trainerIcon.value === selectedIcon);
@@ -15311,8 +15258,8 @@ client.on('messageCreate', async (message) => {
               catchbot: row.period_catchbot,
               battles: row.period_battles,
             });
-            return `**${row.rank}. ${icon} ${name}**\n${counters}`;
-          }));
+            return `**${row.rank}. ${icon} <@${row.user_id}>**\n${counters}`;
+          });
           const memberStats = stats.rows.find((row) => row.user_id === userId);
           const resetTimestamp = Math.floor(stats.end / 1000);
           const ownRankLine = memberStats
@@ -16141,7 +16088,7 @@ client.on('messageCreate', async (message) => {
       const leaderboard = getDailyCatchLeaderboard();
       const description = leaderboard.length
         ? leaderboard.map((entry, index) =>
-          `**${index + 1}.** ${entry.username} — **${entry.catches.toLocaleString()}** catch${entry.catches === 1 ? '' : 'es'}`
+          `**${index + 1}.** <@${entry.user_id}> — **${entry.catches.toLocaleString()}** catch${entry.catches === 1 ? '' : 'es'}`
         ).join('\n')
         : '*No Pokémon have been caught yet today.*';
       const resetTimestamp = Math.floor(getNextDailyReset() / 1000);
