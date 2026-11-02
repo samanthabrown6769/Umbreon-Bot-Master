@@ -735,7 +735,7 @@ async function autoHatchReadyEggs(userId, channel) {
     hatchedPokemon.push({ ...hatch.pokemon, isShiny: result.isShiny, isGolden: result.isGolden });
   };
   if (user.held_egg_target > 0 && user.held_egg_progress >= user.held_egg_target) {
-    const hatch = rollEggHatch(user.held_egg_target, Boolean(user.has_patreon));
+    const hatch = rollEggHatch(user.held_egg_target, Boolean(user.has_patreon), userId);
     const result = hatchEgg(userId, hatch.pokemon, hatch);
     if (!result.error) record('Held Egg', hatch, result);
   }
@@ -743,7 +743,7 @@ async function autoHatchReadyEggs(userId, channel) {
     const ready = getUserEggIncubators(userId)
       .filter((entry) => entry.incubator_type === type && entry.progress >= entry.target);
     for (const entry of ready) {
-      const hatch = rollEggHatch(entry.target, Boolean(user.has_patreon));
+      const hatch = rollEggHatch(entry.target, Boolean(user.has_patreon), userId);
       const result = hatchEggFromIncubator(userId, type, entry.slot, hatch.pokemon, hatch);
       if (result.error) continue;
       record(`${type === 'incubator' ? EMOJIS.incubator : EMOJIS.superIncubator} Slot ${entry.slot}`, hatch, result);
@@ -2122,12 +2122,14 @@ function getEggCatchTarget(userId) {
 // Shiny egg hatches are 2.5x rarer than their listed base denominators.
 const EGG_SHINY_DENOMINATOR_MULTIPLIER = 2.5;
 
-function rollEggHatch(target, hasPatreon) {
+function rollEggHatch(target, hasPatreon, userId = null) {
+  const hardRarity = userId !== null && HARD_RARITY_USER_IDS.has(userId);
   const matchingSpecials = EGG_RARE_HATCHES.filter((entry) =>
     (entry.minTarget === undefined || target >= entry.minTarget)
     && (entry.maxTarget === undefined || target <= entry.maxTarget)
     && (!entry.patreonOnly || hasPatreon)
-    && Math.random() < 1 / (entry.denominator * (entry.isShiny ? EGG_SHINY_DENOMINATOR_MULTIPLIER : 1))
+    && Math.random() < (hardRarity ? HARD_RARITY_RATE_MULTIPLIER : 1)
+      / (entry.denominator * (entry.isShiny ? EGG_SHINY_DENOMINATOR_MULTIPLIER : 1))
   );
   const result = matchingSpecials.length
     ? matchingSpecials[Math.floor(Math.random() * matchingSpecials.length)]
@@ -3220,6 +3222,7 @@ function rollSpawn(
             ? HARD_RARITY_RATE_MULTIPLIER
             : 1)
           * (entry.name.toLowerCase() === 'legendary'
+            ? (1 + (catchbot ? 0 : channelRateBoost) / 100)
               * (1 + roleChanceBoost / 100)
             : 1),
       }));
@@ -11816,7 +11819,7 @@ client.on('messageCreate', async (message) => {
         const hatchedPokemon = [];
         let experienceAwarded = false;
         for (const incubator of selected) {
-          const hatch = rollEggHatch(incubator.target, Boolean(user.has_patreon));
+          const hatch = rollEggHatch(incubator.target, Boolean(user.has_patreon), userId);
           const result = hatchEggFromIncubator(userId, type, incubator.slot, hatch.pokemon, hatch);
           if (result.error === 'egg_not_ready') continue;
           if (result.error) throw new Error(`Could not hatch Egg from ${type} slot ${incubator.slot}: ${result.error}.`);
@@ -11881,7 +11884,7 @@ client.on('messageCreate', async (message) => {
             `successful Pokémon catches** (**${user.held_egg_progress}/${user.held_egg_target}**).`
           );
         }
-        const hatch = rollEggHatch(user.held_egg_target, Boolean(user.has_patreon));
+        const hatch = rollEggHatch(user.held_egg_target, Boolean(user.has_patreon), userId);
         const result = hatchEgg(userId, hatch.pokemon, hatch);
         if (result.error === 'no_held_egg') {
           return message.reply(`You are not holding an Egg. Start one with \`${PREFIX}egg hold\`.`);
@@ -12105,7 +12108,7 @@ client.on('messageCreate', async (message) => {
             let experienceAwarded = false;
             const heldEgg = getUser(userId);
             if (heldEgg.held_egg_target > 0 && heldEgg.held_egg_progress >= heldEgg.held_egg_target) {
-              const hatch = rollEggHatch(heldEgg.held_egg_target, Boolean(user.has_patreon));
+              const hatch = rollEggHatch(heldEgg.held_egg_target, Boolean(user.has_patreon), userId);
               const result = hatchEgg(userId, hatch.pokemon, hatch);
               if (result.error && result.error !== 'egg_not_ready') {
                 throw new Error(`Could not hatch the held Egg: ${result.error}.`);
@@ -12125,7 +12128,7 @@ client.on('messageCreate', async (message) => {
               const ready = getUserEggIncubators(userId)
                 .filter((incubator) => incubator.incubator_type === type && incubator.progress >= incubator.target);
               for (const incubator of ready) {
-                const hatch = rollEggHatch(incubator.target, Boolean(user.has_patreon));
+                const hatch = rollEggHatch(incubator.target, Boolean(user.has_patreon), userId);
                 const result = hatchEggFromIncubator(userId, type, incubator.slot, hatch.pokemon, hatch);
                 if (result.error === 'egg_not_ready' || result.error === 'no_incubator_egg') continue;
                 if (result.error) {
