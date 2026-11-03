@@ -302,6 +302,8 @@ const {
   getEvolutionRoute,
   setGiveawayChannel,
   getGiveawayChannel,
+  setGiveawayRole,
+  getGiveawayRole,
   getAutoSpawnChannel,
   getAllAutoSpawnChannels,
   LOTTERY_SCHEDULE,
@@ -2439,7 +2441,7 @@ function getMarketListingEmojis(pokemon) {
   const isShiny = Boolean(pokemon.isShiny ?? pokemon.is_shiny);
   const isGolden = Boolean(pokemon.isGolden ?? pokemon.is_golden);
   const displayRarity = getDisplayRarity(pokemon.rarity, pokemon.name, isShiny);
-  const rarityEmoji = RARITY_EMOJIS[displayRarity.toLowerCase()] || '';
+  const rarityEmoji = isGolden ? EMOJIS.golden : (RARITY_EMOJIS[displayRarity.toLowerCase()] || '');
   const megaSpecies = String(pokemon.name).toLowerCase().match(/sableye|gengar|mawile|banette/)?.[0];
   const megaSpriteEmoji = /^(shiny )?mega$/i.test(displayRarity) && megaSpecies
     ? MEGA_SPECIES_EMOJIS[megaSpecies]
@@ -5718,19 +5720,20 @@ async function announceEventChecklistCompletion(guild, user, rewardPokemon, prog
   }
 }
 
-const RARE_SPAWN_SOURCE_ADMIN_ID = '1567241893774098483';
+const RARE_SPAWN_LOG_CHANNEL_ID = '1567241893774098483';
 const GUILD_JOIN_REPORT_ADMIN_ID = '1514082847609061541';
 
 async function notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden) {
+  const prefix = isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
+  const content =
+    `🔎 **${user.username}** (\`${user.id}\`) got **${prefix}${pokemon.name}** (${isGolden ? 'Golden' : pokemon.rarity})\n` +
+    `Source: \`${source || 'unknown'}\`\nServer: ${guild.name} (\`${guild.id}\`)`;
   try {
-    const admin = await client.users.fetch(RARE_SPAWN_SOURCE_ADMIN_ID);
-    const prefix = isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
-    await admin.send(
-      `🔎 **${user.username}** (\`${user.id}\`) got **${prefix}${pokemon.name}** (${isGolden ? 'Golden' : pokemon.rarity})\n` +
-      `Source: \`${source || 'unknown'}\`\nServer: ${guild.name} (\`${guild.id}\`)`
-    );
+    const channel = await client.channels.fetch(RARE_SPAWN_LOG_CHANNEL_ID);
+    if (!channel?.isTextBased()) throw new Error('not a text channel');
+    await channel.send({ content, allowedMentions: { parse: [] } });
   } catch (error) {
-    console.error('Failed to DM rare spawn source to admin:', error.message);
+    console.error('Failed to send rare spawn log to channel:', error.message);
   }
 }
 
@@ -10227,7 +10230,7 @@ function rollGiveawayItems() {
   return result;
 }
 
-async function postGiveaway(guildId, channel, prizeTitle, prizeData, winnerCount, durationMs) {
+async function postGiveaway(guildId, channel, prizeTitle, prizeData, winnerCount, durationMs, startedBy = null) {
   const endsAt = Date.now() + durationMs;
   const startEmbed = new EmbedBuilder()
     .setColor(0x0099ff)
@@ -10241,9 +10244,11 @@ async function postGiveaway(guildId, channel, prizeTitle, prizeData, winnerCount
     .setFooter({ text: `Winners: ${winnerCount} • Entry is free!` });
   const prizeSprite = getGiveawayPokemonSprite(prizeData);
   if (prizeSprite) startEmbed.setImage(prizeSprite);
+  const pingRoleId = getGiveawayRole(guildId)
+    || (guildId === WORLD_BOSS_GUILD_ID ? GIVEAWAY_PING_ROLE_ID : null);
   const giveawayMessage = await channel.send({
-    content: `<@&${GIVEAWAY_PING_ROLE_ID}>`,
-    allowedMentions: { roles: [GIVEAWAY_PING_ROLE_ID] },
+    content: pingRoleId ? `<@&${pingRoleId}>` : undefined,
+    allowedMentions: { roles: pingRoleId ? [pingRoleId] : [] },
     embeds: [startEmbed],
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('ga_enter').setLabel('Enter Giveaway')
@@ -10254,9 +10259,13 @@ async function postGiveaway(guildId, channel, prizeTitle, prizeData, winnerCount
   });
   const { lastInsertRowid } = db.prepare(`
     INSERT INTO active_giveaways
-      (message_id, channel_id, guild_id, prize_title, prize_data, winner_count, ends_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(giveawayMessage.id, channel.id, guildId, prizeTitle, JSON.stringify(prizeData), winnerCount, endsAt);
+      (message_id, channel_id, guild_id, prize_title, prize_data, winner_count, ends_at, started_by, started_by_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(giveawayMessage.id, channel.id, guildId, prizeTitle, JSON.stringify(prizeData), winnerCount, endsAt,
+    startedBy?.id ?? null, startedBy?.username ?? null);
+  if (startedBy) {
+    console.log(`[giveaway] ${startedBy.username} (${startedBy.id}) started "${prizeTitle}" in guild ${guildId}`);
+  }
   scheduleGiveaway(Number(lastInsertRowid), endsAt);
 }
 
@@ -12607,14 +12616,16 @@ client.on('messageCreate', async (message) => {
       if (!message.guild) return message.reply('Giveaways can only be managed inside a server.');
       const canManage = isBotAdmin(message)
         || message.member?.permissions.has(PermissionsBitField.Flags.ManageGuild);
-      if (!canManage) return message.reply('⛔ Only server managers can start giveaways.');
+      if (!canManage) return message.reply('⛔ Only server managers can manage giveaways.');
       const type = args[0]?.toLowerCase();
-      if (type === 'pokemon' && !isBotAdmin(message)) {
-        return message.reply('⛔ Pokémon giveaways can only be started by an admin.');
+      const isConfig = type === 'set' || type === 'role';
+      if (!isConfig && !isBotAdmin(message)) {
+        return message.reply('⛔ Only bot admins can start giveaways.');
       }
       const giveawayUsage =
         '**Giveaway commands:**\n' +
         `• \`${PREFIX}giveaway set [#channel]\` — Set the giveaway channel.\n` +
+        `• \`${PREFIX}giveaway role set <@role|role id>\` / \`${PREFIX}giveaway role clear\` — Set the role pinged in this server.\n` +
         `• \`${PREFIX}gstart items <winners> [minutes]\` — Item bundle.\n` +
         `• \`${PREFIX}gstart coins <amount> <winners> [minutes]\` — PokéCoins.\n` +
         `• \`${PREFIX}gstart pokemon <name> <true|false|golden> <winners> [minutes]\` — A Pokémon.`;
@@ -12626,6 +12637,22 @@ client.on('messageCreate', async (message) => {
         }
         setGiveawayChannel(message.guildId, channel.id);
         return message.reply(`✅ Giveaway channel set to <#${channel.id}>.`);
+      }
+
+      if (type === 'role') {
+        const action = args[1]?.toLowerCase();
+        if (action === 'clear') {
+          setGiveawayRole(message.guildId, null);
+          return message.reply('✅ Giveaway role cleared for this server.');
+        }
+        if (action !== 'set') return message.reply(giveawayUsage);
+        const rawId = args[2]?.match(/^<@&(\d+)>$|^(\d+)$/);
+        const role = message.mentions.roles.first()
+          || (rawId ? message.guild.roles.cache.get(rawId[1] || rawId[2]) : null)
+          || message.guild.roles.cache.find((r) => r.name.toLowerCase() === args.slice(2).join(' ').toLowerCase());
+        if (!role || role.id === message.guild.id) return message.reply('Mention a valid role: `giveaway role set @role`.');
+        setGiveawayRole(message.guildId, role.id);
+        return message.reply(`✅ Giveaways in this server will ping <@&${role.id}>.`);
       }
 
       const positive = (value, fallback, max) => {
@@ -12694,7 +12721,8 @@ client.on('messageCreate', async (message) => {
         : null;
       if (!targetChannel || targetChannel.guildId !== message.guildId) targetChannel = message.channel;
       await postGiveaway(
-        message.guildId, targetChannel, prizeTitle, prizeData, winnerCount, durationMinutes * 60 * 1000
+        message.guildId, targetChannel, prizeTitle, prizeData, winnerCount, durationMinutes * 60 * 1000,
+        message.author
       );
       if (targetChannel.id !== message.channel.id) {
         return message.reply(`✅ Giveaway started in <#${targetChannel.id}>!`);
@@ -24912,20 +24940,48 @@ client.on('messageCreate', async (message) => {
           search = searchForm.name;
         }
       }
+      let goldenView = false;
+      if (['golden', 'goldens'].includes(marketSubCommand) && args.length === 1) {
+        goldenView = true;
+        search = 'Golden Pokémon';
+      }
       const pageSize = 10;
-      const listingCount = getMarketListingCount(search, searchFilter);
+      let goldenListings = [];
+      if (goldenView) {
+        const formsById = new Map(db.prepare(
+          'SELECT id, species_id, slug FROM pokemon_forms'
+        ).all().map((form) => [form.id, form]));
+        const dexOf = (listing) => {
+          const form = formsById.get(listing.pokemon_id);
+          return getCollectionDexNumber({
+            pokemon_id: listing.pokemon_id,
+            species_id: form?.species_id,
+            pokemon_slug: form?.slug,
+            is_golden: 1,
+          });
+        };
+        goldenListings = db.prepare('SELECT * FROM market WHERE is_golden = 1').all()
+          .map((listing) => ({ listing, dex: dexOf(listing) }))
+          .sort((a, b) => a.dex - b.dex || a.listing.price - b.listing.price || a.listing.id - b.listing.id)
+          .map(({ listing, dex }) => ({ ...listing, dexNumber: dex }));
+      }
+      const listingCount = goldenView ? goldenListings.length : getMarketListingCount(search, searchFilter);
       if (!listingCount) {
-        return message.reply(search
+        return message.reply(goldenView
+          ? 'No Golden Pokémon are currently listed on the market.'
+          : search
           ? `No market listings found for **${search}**.`
           : `The market is currently empty! Sell something using \`${PREFIX}market list <Pokémon number or name> <amount> <price>\`.`);
       }
       const totalPages = Math.ceil(listingCount / pageSize);
       let currentPage = 1;
       const pageEmbed = () => {
-        const listings = getMarketListings(search, pageSize, (currentPage - 1) * pageSize, searchFilter);
+        const listings = goldenView
+          ? goldenListings.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+          : getMarketListings(search, pageSize, (currentPage - 1) * pageSize, searchFilter);
         const embed = new EmbedBuilder()
           .setColor(0x1abc9c)
-          .setTitle(search ? `🏪 Market Search: ${search}` : '🏪 Umbreon Global Market')
+          .setTitle(goldenView ? '🏪 Golden Market (by Dex number)' : search ? `🏪 Market Search: ${search}` : '🏪 Umbreon Global Market')
           .setDescription(
             `**Pokémon • ID • Price ea • ⌛ Available • 📆 Listed on**\n` +
             listings.map((listing, index) => {
@@ -24940,9 +24996,10 @@ client.on('messageCreate', async (message) => {
                   timeZone: 'UTC',
                 }).format(listedAt)
                 : 'Unknown';
-              const pokemonLabel = `**${listing.name}**`;
+              const pokemonLabel = `**${listing.is_golden ? 'Golden ' : ''}${listing.name}**`;
+              const dexLabel = listing.dexNumber !== undefined ? `\`#${listing.dexNumber}\` ` : '';
               const ownershipMark = listing.seller_id === userId ? '(★) ' : '';
-              return `${ownershipMark}\`${(currentPage - 1) * pageSize + index + 1}.\` ${getMarketListingEmojis(listing)}${pokemonLabel} • \`#${listing.id}\` • ` +
+              return `${ownershipMark}\`${(currentPage - 1) * pageSize + index + 1}.\` ${dexLabel}${getMarketListingEmojis(listing)}${pokemonLabel} • \`#${listing.id}\` • ` +
                 `${EMOJIS.pokecoin} ${listing.price.toLocaleString()} • ⌛ ${listing.amount.toLocaleString()} available • ${listedDate}`;
             }).join('\n')
           )

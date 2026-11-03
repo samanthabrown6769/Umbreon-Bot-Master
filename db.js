@@ -932,6 +932,11 @@ db.exec(`
     channel_id TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS giveaway_roles (
+    guild_id TEXT PRIMARY KEY,
+    role_id TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS active_giveaways (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     message_id TEXT UNIQUE,
@@ -1269,6 +1274,11 @@ if (!clanActivityTableSql.includes("'yearly'")) {
     `);
   }).immediate();
 }
+
+ensureColumns('active_giveaways', {
+  started_by: 'TEXT',
+  started_by_name: 'TEXT',
+});
 
 ensureColumns('clans', {
   co_leader_id: 'TEXT',
@@ -8997,6 +9007,23 @@ function getGiveawayChannel(guildId) {
   ).get(guildId) || null;
 }
 
+function setGiveawayRole(guildId, roleId) {
+  if (!roleId) {
+    db.prepare('DELETE FROM giveaway_roles WHERE guild_id = ?').run(guildId);
+    return;
+  }
+  db.prepare(`
+    INSERT INTO giveaway_roles (guild_id, role_id) VALUES (?, ?)
+    ON CONFLICT(guild_id) DO UPDATE SET role_id = excluded.role_id
+  `).run(guildId, roleId);
+}
+
+function getGiveawayRole(guildId) {
+  return db.prepare(
+    'SELECT role_id FROM giveaway_roles WHERE guild_id = ?'
+  ).get(guildId)?.role_id || null;
+}
+
 function getAutoSpawnChannel(guildId) {
   return db.prepare(
     'SELECT * FROM autospawn_channels WHERE guild_id = ? AND enabled = 1'
@@ -10311,6 +10338,8 @@ module.exports = {
   evolvePokemonByLevel,
   setGiveawayChannel,
   getGiveawayChannel,
+  setGiveawayRole,
+  getGiveawayRole,
   getAutoSpawnChannel,
   getAllAutoSpawnChannels,
   LOTTERY_SCHEDULE,
