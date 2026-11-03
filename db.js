@@ -2403,27 +2403,21 @@ function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}
       return { duplicate: true };
     }
 
-    const previousDay = user.last_vote_day;
-    const previousDate = previousDay ? Date.parse(`${previousDay}T00:00:00.000Z`) : NaN;
-    const currentDate = Date.parse(`${voteDay}T00:00:00.000Z`);
-    const dayGap = Number.isFinite(previousDate)
-      ? Math.round((currentDate - previousDate) / 86_400_000)
-      : Infinity;
-    const streak = dayGap === 0 ? user.vote_streak : dayGap === 1 ? user.vote_streak + 1 : 1;
-    const isNewStreakDay = dayGap !== 0;
+    // The vote streak counts every vote and never resets.
+    const streak = user.vote_streak + 1;
     const streakCoinBonus = streak >= 50 ? 2 : streak >= 10 ? 1 : 0;
     let milestoneCoinBonus = 0;
     const streakRewards = { rare_candies: 0, vote_eggs: 0, masterballs: 0, boxes: [] };
 
-    if (isNewStreakDay && streak === 10) {
+    if (streak === 10) {
       streakRewards.rare_candies += 2;
       streakRewards.vote_eggs += 2;
       streakRewards.boxes.push('Legendary Box');
-    } else if (isNewStreakDay && streak === 25) {
+    } else if (streak === 25) {
       milestoneCoinBonus = 2;
       streakRewards.masterballs += 1;
       streakRewards.boxes.push('Shiny Box');
-    } else if (isNewStreakDay && streak === 50) {
+    } else if (streak === 50) {
       milestoneCoinBonus = 2;
       streakRewards.rare_candies += 2;
       streakRewards.vote_eggs += 2;

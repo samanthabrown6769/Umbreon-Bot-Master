@@ -39,7 +39,7 @@ function formatVoteRewardLines(rewards) {
 async function sendVoteRewardDm(voterId, rewards) {
   const voter = await client.users.fetch(voterId);
   await voter.send(
-    `Thank you for voting for the Umbreon Official Server! 💜 Your vote streak is **${rewards.streak} day${rewards.streak === 1 ? '' : 's'}**.\n\n` +
+    `Thank you for voting for the Umbreon Official Server! 💜 Your vote streak is **${rewards.streak}**.\n\n` +
     `**You received:**\n` +
     formatVoteRewardLines(rewards).join('\n') +
     `\n\n⏰ You can vote again in 12 hours — I'll remind you!`
@@ -11785,7 +11785,7 @@ client.on('messageCreate', async (message) => {
         .setColor(0x00a8fc)
         .setDescription(
           `${voteStatus}\n` +
-          `📅 | Vote multiple days in a row for streak rewards!\n` +
+          `📅 | Every vote adds to your vote streak, which never resets!\n` +
           `⏰ | Remember to vote once every 12 hours for rewards!\n` +
           `🆕 | Voting provides a hidden +1 ${EMOJIS.shinyCharm} Shiny Charm bonus!\n` +
           `| [Click here to vote for the Umbreon Official Server](${voteUrl})\n\n` +
@@ -14490,7 +14490,7 @@ client.on('messageCreate', async (message) => {
           dmNote = '\n⚠️ Could not DM the user.';
         }
         return message.reply(
-          `✅ Manual vote granted to <@${target.id}> — streak **${rewards.streak} day${rewards.streak === 1 ? '' : 's'}**.\n` +
+          `✅ Manual vote granted to <@${target.id}> — streak **${rewards.streak}**.\n` +
           formatVoteRewardLines(rewards).join('\n') + dmNote
         );
       }
