@@ -24,6 +24,7 @@ function getTopggVoteUrl() {
 function formatVoteRewardLines(rewards) {
   return [
     `${EMOJIS.votecoin} **Vote Coins:** +${rewards.voteCoins}`,
+    `${EMOJIS.pokecoin} **PokéCoins:** +${rewards.pokecoins.toLocaleString()}`,
     rewards.lootboxes ? `${LOOTBOX_EMOJI} **Lootbox:** +${rewards.lootboxes}` : null,
     rewards.bonusBoxes.length
       ? `📦 **Box:** ${rewards.bonusBoxes.join(', ')}`
@@ -38,11 +39,16 @@ function formatVoteRewardLines(rewards) {
 
 async function sendVoteRewardDm(voterId, rewards) {
   const voter = await client.users.fetch(voterId);
+  const user = getUser(voterId);
+  const nextVoteAt = user.last_vote_at + 12 * 60 * 60 * 1000;
   await voter.send(
-    `Thank you for voting for the Umbreon Official Server! 💜 Your vote streak is **${rewards.streak}**.\n\n` +
+    `💜 **Thank you for voting for Umbreon!** You may vote again <t:${Math.floor(nextVoteAt / 1000)}:R>.\n\n` +
     `**You received:**\n` +
     formatVoteRewardLines(rewards).join('\n') +
-    `\n\n⏰ You can vote again in 12 hours — I'll remind you!`
+    `\n\n📊 **Lifetime votes:** ${user.votes_claimed.toLocaleString()}\n` +
+    `🔥 **Your Vote Streak:** ${rewards.streak}\n` +
+    `🆕 10+ Vote Streak: +1 ${EMOJIS.votecoin} per vote ${rewards.streak >= 10 ? '✅' : '❌'}\n` +
+    `🆕 50+ Vote Streak: +2 ${EMOJIS.votecoin} per vote ${rewards.streak >= 50 ? '✅' : '❌'}`
   );
 }
 
@@ -326,6 +332,7 @@ const {
   getPlayerClan,
   getClanPerkMultipliers,
   getClanByName,
+  adjustClanCatchTotal,
   getClanMembers,
   getClanActivityStats,
   getClanHighScores,
@@ -14028,6 +14035,39 @@ client.on('messageCreate', async (message) => {
         if (!clanName) return message.reply(`Usage: \`${PREFIX}admin clan delete <clan name>\`.`);
         const removed = deleteClanByName(clanName);
         return message.reply(removed ? `🗑️ Deleted clan **${removed.name}**.` : `❌ No clan named **${clanName}** found.`);
+      }
+
+      if (command === 'admin' && subtype === 'clan') {
+        const catchesIndex = args.findIndex((argument, index) =>
+          index > 0 && argument.toLowerCase() === 'catches'
+        );
+        if (catchesIndex > 0) {
+          const clanName = args.slice(1, catchesIndex).join(' ').trim();
+          const catchAction = args[catchesIndex + 1]?.toLowerCase();
+          const amount = parseAmount(args[catchesIndex + 2] || '');
+          if (!clanName || !['add', 'remove'].includes(catchAction)
+              || args.length !== catchesIndex + 3
+              || !Number.isSafeInteger(amount) || amount <= 0) {
+            return message.reply(
+              `Usage: \`${PREFIX}admin clan <clan name> catches <add|remove> <amount>\`.`
+            );
+          }
+
+          const result = adjustClanCatchTotal(clanName, catchAction === 'add' ? amount : -amount);
+          if (result.error === 'clan_not_found') {
+            return message.reply(`❌ No clan named **${clanName}** found.`);
+          }
+          if (result.error === 'insufficient_catches') {
+            return message.reply(
+              `❌ **${result.clan?.name || clanName}** only has **${result.total.toLocaleString()}** catches to remove.`
+            );
+          }
+          return message.reply(
+            `✅ ${catchAction === 'add' ? 'Added' : 'Removed'} **${amount.toLocaleString()}** catches ` +
+            `${catchAction === 'add' ? 'to' : 'from'} **${result.clan.name}**. ` +
+            `Clan total: **${result.totalCatches.toLocaleString()}**.`
+          );
+        }
       }
 
       if (command === 'admin' && subtype === 'clan' && action === 'perks') {

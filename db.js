@@ -2428,10 +2428,12 @@ function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}
     const isGlobalBonusDay = Number(voteDay.slice(-2)) <= 5;
     const baseVoteCoins = 1 + streakCoinBonus + milestoneCoinBonus;
     const voteCoins = baseVoteCoins * getPatreonPerks(userId).voteCoinMult + (isGlobalBonusDay ? 1 : 0);
+    const pokecoins = Math.floor(Math.random() * 10001) + 10000;
     const rewards = {
       duplicate: false,
       streak,
       voteCoins,
+      pokecoins,
       boxes: [...streakRewards.boxes],
       bonusBoxes: [],
       lootboxes: 0,
@@ -2454,6 +2456,8 @@ function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}
     for (const boxName of rewards.bonusBoxes) addUserItem(userId, boxName);
 
     incrementUser(userId, {
+      coins: pokecoins,
+      pkc_earned: pokecoins,
       votes_claimed: 1,
       vote_coins: voteCoins,
       lootboxes: rewards.lootboxes,
@@ -6788,7 +6792,7 @@ function applyWorldBossDamage(userId, bossId, damage, timestamp = Date.now()) {
     ).get(bossId);
     if (!boss) return { error: 'inactive' };
 
-    const scaledDamage = Math.max(1, Math.floor(damage * 0.75));
+    const scaledDamage = Math.max(1, Math.floor(damage * 0.5));
     const appliedDamage = Math.min(scaledDamage, boss.current_hp);
     const currentHp = boss.current_hp - appliedDamage;
     db.prepare('UPDATE world_boss SET current_hp = ?, is_active = ? WHERE id = ?')
@@ -8399,6 +8403,33 @@ function depositClanTreasury(userId, amount) {
 
 function getClanByName(name) {
   return db.prepare('SELECT * FROM clans WHERE name = ? COLLATE NOCASE').get(name) || null;
+}
+
+function adjustClanCatchTotal(name, amount) {
+  if (typeof name !== 'string' || !name.trim()) {
+    throw new TypeError('Clan name must be a non-empty string.');
+  }
+  if (!Number.isSafeInteger(amount) || amount === 0) {
+    throw new TypeError('Clan catch adjustment must be a non-zero safe integer.');
+  }
+
+  return db.transaction(() => {
+    const clan = getClanByName(name.trim());
+    if (!clan) return { error: 'clan_not_found' };
+
+    const memberActivity = db.prepare(
+      'SELECT COALESCE(SUM(catches), 0) AS total FROM clan_members WHERE clan_id = ?'
+    ).get(clan.id).total;
+    const currentTotal = memberActivity + clan.bonus_catches;
+    const totalCatches = currentTotal + amount;
+    if (!Number.isSafeInteger(totalCatches)) throw new RangeError('Clan catch total exceeds the safe integer range.');
+    if (totalCatches < 0) return { error: 'insufficient_catches', total: currentTotal };
+
+    // Keep admin adjustments separate from member-attributed catch totals.
+    db.prepare('UPDATE clans SET bonus_catches = bonus_catches + ? WHERE id = ?')
+      .run(amount, clan.id);
+    return { clan, totalCatches };
+  }).immediate();
 }
 
 function getClanMembers(clanId) {
@@ -10228,6 +10259,7 @@ module.exports = {
   getClanPerkPurchaseInfo,
   depositClanTreasury,
   getClanByName,
+  adjustClanCatchTotal,
   getClanMembers,
   getClanActivityStats,
   getClanHighScores,
