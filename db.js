@@ -9957,6 +9957,35 @@ function getFactionLeaders(factionKey, perRank = 2) {
   return { memberCount: members.length, byRank };
 }
 
+// One-time manual vote grants (applied once per key, so restarts never repeat them).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS manual_grants (
+    grant_key TEXT PRIMARY KEY,
+    applied_at INTEGER NOT NULL
+  );
+`);
+
+function applyMissedVoteGrant(grantKey, userId) {
+  db.transaction(() => {
+    if (db.prepare('SELECT 1 FROM manual_grants WHERE grant_key = ?').get(grantKey)) return;
+    const user = getUser(userId);
+    const streak = user.vote_streak + 1;
+    const streakCoinBonus = streak >= 50 ? 2 : streak >= 10 ? 1 : 0;
+    // The missed vote happened on 2026-11-03, inside the first-5-days bonus window.
+    const voteCoins = (1 + streakCoinBonus) * getPatreonPerks(userId).voteCoinMult + 1;
+    incrementUser(userId, { votes_claimed: 1, vote_coins: voteCoins });
+    updateUser(userId, {
+      vote_streak: streak,
+      highest_vote_streak: Math.max(user.highest_vote_streak, streak),
+    });
+    addUserItem(userId, 'Rare Box', 1);
+    db.prepare('INSERT INTO manual_grants (grant_key, applied_at) VALUES (?, ?)').run(grantKey, Date.now());
+    console.log(`[manual-grant] ${grantKey}: ${voteCoins} Vote Coins, 1 Rare Box, streak ${streak} for ${userId}.`);
+  }).immediate();
+}
+
+applyMissedVoteGrant('missed-vote-20261103', '1514082847609061541');
+
 module.exports = {
   getTimeOfDayPhase,
   getEvolutionRoute,
