@@ -2362,6 +2362,23 @@ function awardCoinsWithBoost(userId, baseAmount) {
   return { finalAmount, boostPercent: amuletBoost.percentBoost };
 }
 
+const VOTE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vote_reminders (
+    user_id TEXT PRIMARY KEY,
+    remind_at INTEGER NOT NULL
+  );
+`);
+
+function takeDueVoteReminders(now = Date.now()) {
+  return db.transaction(() => {
+    const due = db.prepare('SELECT user_id FROM vote_reminders WHERE remind_at <= ?').all(now);
+    if (due.length) db.prepare('DELETE FROM vote_reminders WHERE remind_at <= ?').run(now);
+    return due.map((row) => row.user_id);
+  }).immediate();
+}
+
 function processTopggVote(userId, timestamp = Date.now()) {
   assertUserId(userId);
   if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
@@ -2374,7 +2391,7 @@ function processTopggVote(userId, timestamp = Date.now()) {
   const rewardVote = db.transaction(() => {
     const user = getUser(userId);
     if (user.last_vote_at > 0 && (
-      timestamp <= user.last_vote_at || timestamp - user.last_vote_at < 60_000
+      timestamp <= user.last_vote_at || timestamp - user.last_vote_at < VOTE_COOLDOWN_MS
     )) {
       return { duplicate: true };
     }
@@ -2450,6 +2467,8 @@ function processTopggVote(userId, timestamp = Date.now()) {
       last_vote_at: timestamp,
       last_vote_day: voteDay,
     });
+    db.prepare('INSERT OR REPLACE INTO vote_reminders (user_id, remind_at) VALUES (?, ?)')
+      .run(userId, timestamp + VOTE_COOLDOWN_MS);
     return rewards;
   });
 
@@ -3652,8 +3671,8 @@ function hatchEggFromIncubator(userId, incubatorType, slot, pokemon, { isShiny =
 
 function holdEgg(userId, catchTarget) {
   assertUserId(userId);
-  if (!Number.isSafeInteger(catchTarget) || catchTarget < 30 || catchTarget > 130) {
-    throw new TypeError('Egg catch target must be between 30 and 130.');
+  if (!Number.isSafeInteger(catchTarget) || catchTarget < 20 || catchTarget > 130) {
+    throw new TypeError('Egg catch target must be between 20 and 130.');
   }
   return db.transaction(() => {
     const user = getUser(userId);
@@ -4866,6 +4885,28 @@ function resolveItemEvolution(itemName, catchRow) {
   return resolveSpeciesEvolution(pair[0], pair[1], catchRow);
 }
 
+// Equipped moves the evolved form cannot normally learn are kept as permanent extra moves
+// so battles keep using the moveset the player selected before evolving.
+function carryOverEvolutionMoves(userId, row, target) {
+  const current = db.prepare('SELECT moves, sketched_moves FROM catches WHERE id = ? AND user_id = ?')
+    .get(row.id, userId);
+  if (!current) return;
+  const equipped = parseSketchedMoves(current.moves);
+  if (!equipped.length) return;
+  const targetLearnset = new Set(restrictStyleExclusiveMoves([
+    ...getSpeciesLearnset(target.species_id),
+    ...getSpeciesLearnset(target.species_id, target.id),
+    ...getGigantamaxMoves(target.species_id, target.id),
+  ], target.id));
+  const sketched = parseSketchedMoves(current.sketched_moves);
+  const missing = equipped.filter((name) => pokemonMovesData.moves[name]
+    && !targetLearnset.has(name) && !sketched.includes(name)
+    && !(name.startsWith('g-max-') && !getGigantamaxMoves(target.species_id, target.id).includes(name)));
+  if (!missing.length) return;
+  db.prepare('UPDATE catches SET sketched_moves = ? WHERE id = ? AND user_id = ?')
+    .run(JSON.stringify([...sketched, ...missing]), row.id, userId);
+}
+
 function applyPokemonEvolution(userId, row, target, itemName = null, consumesHeldItem = false) {
   const maxHp = calculateStat(target.base_hp, row.hp_iv, row.level, true, row.is_shiny, row.ev_hp, Boolean(row.is_golden), row.rarity);
   const atk = calculateStat(target.base_atk, row.atk_iv, row.level, false, row.is_shiny, row.ev_atk, Boolean(row.is_golden), row.rarity);
@@ -4892,6 +4933,7 @@ function applyPokemonEvolution(userId, row, target, itemName = null, consumesHel
     row.id,
     userId
   );
+  carryOverEvolutionMoves(userId, row, target);
   syncDuplicateCatchState(userId, row.id);
   recordPokemonSeen(userId, target.id, Boolean(row.is_shiny), Boolean(row.is_golden));
   return {
@@ -6977,6 +7019,22 @@ db.exec(`
     sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS pokemon_gifts_recipient_idx ON pokemon_gifts(recipient_id, sender_id);
+  CREATE TABLE IF NOT EXISTS pokemon_gift_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gift_id INTEGER,
+    sender_id TEXT NOT NULL,
+    recipient_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    is_shiny INTEGER NOT NULL DEFAULT 0,
+    is_golden INTEGER NOT NULL DEFAULT 0,
+    sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    claimed_at DATETIME
+  );
+  CREATE INDEX IF NOT EXISTS pokemon_gift_history_sender_idx ON pokemon_gift_history(sender_id);
+  CREATE INDEX IF NOT EXISTS pokemon_gift_history_recipient_idx ON pokemon_gift_history(recipient_id);
+  INSERT INTO pokemon_gift_history (gift_id, sender_id, recipient_id, name, is_shiny, is_golden, sent_at)
+  SELECT id, sender_id, recipient_id, name, is_shiny, is_golden, sent_at FROM pokemon_gifts
+  WHERE id NOT IN (SELECT gift_id FROM pokemon_gift_history WHERE gift_id IS NOT NULL);
 `);
 
 // Moves a Pokémon out of the sender's box into the recipient's gift inventory.
@@ -7006,11 +7064,26 @@ function sendPokemonGift(senderId, recipientId, catchId) {
       senderId, recipientId, mon.pokemon_id, mon.name, mon.rarity, mon.is_shiny, mon.is_golden,
       mon.caught_ball ?? null, mon.hp_iv, mon.atk_iv, mon.def_iv, mon.spa_iv, mon.spdef_iv, mon.spd_iv
     );
+    db.prepare(`
+      INSERT INTO pokemon_gift_history (gift_id, sender_id, recipient_id, name, is_shiny, is_golden)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(Number(inserted.lastInsertRowid), senderId, recipientId, mon.name, mon.is_shiny, mon.is_golden);
     db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(catchId);
     saveCatchStateSnapshot(senderId, catchId);
     db.prepare('DELETE FROM catches WHERE id = ? AND user_id = ?').run(catchId, senderId);
     return { giftId: Number(inserted.lastInsertRowid), pokemon: mon };
   }).immediate();
+}
+
+// kind: 'received' lists claimed gifts, 'sent' lists everything the user has sent.
+function getGiftHistory(userId, kind) {
+  assertUserId(userId);
+  const column = kind === 'sent' ? 'sender_id' : 'recipient_id';
+  return db.prepare(`
+    SELECT * FROM pokemon_gift_history
+    WHERE ${column} = ? AND (? = 'sent' OR claimed_at IS NOT NULL)
+    ORDER BY id DESC
+  `).all(userId, kind);
 }
 
 function getUserGifts(recipientId, senderId = null) {
@@ -7042,6 +7115,7 @@ function claimPokemonGifts(recipientId, senderId = null) {
       rebaseTransferredPokemon(recipientId, newCatchId);
       syncNewCatchState(recipientId, newCatchId);
       db.prepare('DELETE FROM pokemon_gifts WHERE id = ?').run(gift.id);
+      db.prepare("UPDATE pokemon_gift_history SET claimed_at = CURRENT_TIMESTAMP WHERE gift_id = ?").run(gift.id);
     }
     return gifts;
   }).immediate();
@@ -8529,6 +8603,15 @@ function joinClan(userId, clanId) {
   }).immediate();
 }
 
+// Departing members' catches stay in the clan's total via bonus_catches.
+function preserveClanMemberCatches(clanId, userId) {
+  db.prepare(`
+    UPDATE clans SET bonus_catches = bonus_catches + COALESCE(
+      (SELECT catches + fishes FROM clan_members WHERE user_id = ? AND clan_id = ?), 0)
+    WHERE id = ?
+  `).run(userId, clanId, clanId);
+}
+
 function leaveClan(userId) {
   return db.transaction(() => {
     const clan = getPlayerClan(userId);
@@ -8538,6 +8621,7 @@ function leaveClan(userId) {
     if (coLeaders.includes(userId)) {
       saveClanCoLeaderIds(clan.id, coLeaders.filter((id) => id !== userId));
     }
+    preserveClanMemberCatches(clan.id, userId);
     db.prepare('DELETE FROM clan_members WHERE user_id = ?').run(userId);
     updateUser(userId, { clan: 'None' });
     return { clan };
@@ -8567,6 +8651,7 @@ function kickClanMember(userId, targetUserId) {
       saveClanCoLeaderIds(clan.id, coLeaderIds.filter((id) => id !== targetUserId));
     }
 
+    preserveClanMemberCatches(clan.id, targetUserId);
     db.prepare('DELETE FROM clan_members WHERE user_id = ? AND clan_id = ?')
       .run(targetUserId, clan.id);
     updateUser(targetUserId, { clan: 'None' });
@@ -9910,6 +9995,7 @@ module.exports = {
   incrementUser,
   grantGlobalUserReward,
   processTopggVote,
+  takeDueVoteReminders,
   openVoteBox,
   getAmuletCoinBoost,
   getPatreonPerks,
@@ -10133,6 +10219,7 @@ module.exports = {
   rebaseTransferredPokemon,
   sendPokemonGift,
   getUserGifts,
+  getGiftHistory,
   claimPokemonGifts,
   reconcileDuplicateCatchStates,
   registerCollection,

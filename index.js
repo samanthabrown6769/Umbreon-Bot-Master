@@ -13,7 +13,7 @@ function rebuildPokemonDatabaseFiles() {
 
 function getTopggVoteUrl() {
   const configuredUrl = process.env.TOPGG_VOTE_URL?.trim();
-  if (!configuredUrl) return `https://top.gg/bot/${client.user.id}/vote`;
+  if (!configuredUrl) return 'https://top.gg/discord/servers/901828626048847872/vote';
   const parsedUrl = new URL(configuredUrl);
   if (parsedUrl.protocol !== 'https:') {
     throw new TypeError('TOPGG_VOTE_URL must use HTTPS.');
@@ -52,8 +52,10 @@ function startTopggWebhook() {
       try {
         const voter = await client.users.fetch(voterId);
         await voter.send(
-          `Thanks for voting! Your vote streak is **${rewards.streak} day${rewards.streak === 1 ? '' : 's'}**.\n` +
-          rewardLines.join('\n')
+          `Thank you for voting for the Umbreon Official Server! 💜 Your vote streak is **${rewards.streak} day${rewards.streak === 1 ? '' : 's'}**.\n\n` +
+          `**You received:**\n` +
+          rewardLines.join('\n') +
+          `\n\n⏰ You can vote again in 12 hours — I'll remind you!`
         );
       } catch (error) {
         console.warn(`[vote-webhook] Could not send the vote reward DM to ${voterId}:`, error.message);
@@ -142,6 +144,7 @@ const {
   rebaseTransferredPokemon,
   sendPokemonGift,
   getUserGifts,
+  getGiftHistory,
   claimPokemonGifts,
   getPokemonFormBySlug,
   getPokemonLearnset,
@@ -231,6 +234,7 @@ const {
   incrementUser,
   grantGlobalUserReward,
   processTopggVote,
+  takeDueVoteReminders,
   openVoteBox,
   listOnMarket,
   listPokemonOnMarket,
@@ -3901,6 +3905,7 @@ const UNLIMITED_CHANNEL_BOOSTER_IDS = new Set([
 const WORLD_BOSS_SPAWN_ALLOWED_USER_IDS = new Set([
   '1352997432929288194',
   '183625933041827840',
+  '426946381098254336',
 ]);
 
 async function sendPagedEmbeds(message, embeds, label) {
@@ -6196,10 +6201,18 @@ function countQuestTypes(pokemonList) {
 function countQuestRarities(pokemonList) {
   const counts = {};
   for (const pokemon of pokemonList) {
-    const rarity = getDisplayRarity(pokemon.rarity, pokemon.name, pokemon.isShiny);
-    counts[rarity] = (counts[rarity] || 0) + 1;
+    for (const rarity of getQuestRarities(pokemon)) counts[rarity] = (counts[rarity] || 0) + 1;
   }
   return counts;
+}
+
+// Shiny legendaries count towards both Shiny and Legendary rarity quests.
+function getQuestRarities(pokemon) {
+  const rarities = [getDisplayRarity(pokemon.rarity, pokemon.name, Boolean(pokemon.isShiny || pokemon.is_shiny))];
+  if ((pokemon.isShiny || pokemon.is_shiny) && `${pokemon.rarity}`.toLowerCase() === 'legendary') {
+    rarities.push('Legendary');
+  }
+  return rarities;
 }
 
 let inlineEncounterCounter = 0;
@@ -6669,7 +6682,7 @@ async function askForBall(
       catches: isFishing ? 0 : 1,
       fishes: isFishing ? 1 : 0,
       fishingConditions,
-      rarityCounts: { [catchDisplayRarity]: 1 },
+      rarityCounts: countQuestRarities([target]),
       typeCounts: countQuestTypes([target]),
     });
     announceQuestCompletions(userId, message.channel, completedRepeatableQuests);
@@ -8955,6 +8968,77 @@ function summarizeGifts(gifts) {
   return [...totals.entries()].map(([label, count]) => `• **${label}** x${count}`).join('\n');
 }
 
+function summarizeGiftsBySender(gifts) {
+  const bySender = new Map();
+  for (const gift of gifts) {
+    if (!bySender.has(gift.sender_id)) bySender.set(gift.sender_id, []);
+    bySender.get(gift.sender_id).push(gift);
+  }
+  return [...bySender].map(([senderId, list]) => `From <@${senderId}>:\n${summarizeGifts(list)}`).join('\n\n');
+}
+
+function formatGiftHistoryLines(rows, kind) {
+  return rows.map((row) => {
+    const label = `${row.is_shiny ? `${EMOJIS.shiny} ` : ''}${row.is_golden ? `${EMOJIS.golden} ` : ''}${row.name}`;
+    const time = Math.floor(new Date(`${row.sent_at.replace(' ', 'T')}Z`).getTime() / 1000);
+    return kind === 'sent'
+      ? `• **${label}** → <@${row.recipient_id}> • <t:${time}:R>`
+      : `• **${label}** ← <@${row.sender_id}> • <t:${time}:R>`;
+  });
+}
+
+async function handleGiftHistory(message, userId) {
+  const perPage = 10;
+  let kind = 'received';
+  let page = 0;
+  const load = () => getGiftHistory(userId, kind);
+  let rows = load();
+  const buildPayload = (disabled = false) => {
+    const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+    page = Math.min(page, totalPages - 1);
+    const lines = formatGiftHistoryLines(rows.slice(page * perPage, (page + 1) * perPage), kind);
+    const embed = makeEmbed(
+      kind === 'sent' ? '🎁 Gifts Sent' : '🎁 Gifts Received',
+      lines.length ? lines.join('\n') : `No gifts ${kind} yet.`,
+      0x3498db
+    ).setFooter({ text: `Page ${page + 1}/${totalPages} • ${rows.length} total` });
+    return {
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('gifthistory:received').setLabel('Received')
+          .setStyle(kind === 'received' ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(disabled),
+        new ButtonBuilder().setCustomId('gifthistory:sent').setLabel('Sent')
+          .setStyle(kind === 'sent' ? ButtonStyle.Primary : ButtonStyle.Secondary).setDisabled(disabled),
+        new ButtonBuilder().setCustomId('gifthistory:prev').setLabel('Previous')
+          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page === 0),
+        new ButtonBuilder().setCustomId('gifthistory:next').setLabel('Next')
+          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page >= totalPages - 1)
+      )],
+      allowedMentions: { parse: [] },
+    };
+  };
+  const reply = await message.reply(buildPayload());
+  const collector = reply.createMessageComponentCollector({ componentType: ComponentType.Button, time: 120000 });
+  collector.on('collect', async (interaction) => {
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: 'These buttons are not for you.', ephemeral: true });
+    }
+    const action = interaction.customId.split(':')[1];
+    if (action === 'received' || action === 'sent') {
+      kind = action;
+      page = 0;
+      rows = load();
+    } else {
+      page += action === 'next' ? 1 : -1;
+      page = Math.max(page, 0);
+    }
+    return interaction.update(buildPayload());
+  });
+  collector.on('end', () => {
+    reply.edit(buildPayload(true)).catch(() => {});
+  });
+}
+
 async function handleGift(message, userId, args) {
   const sub = args[0]?.toLowerCase();
   if (sub === 'claim') {
@@ -8962,17 +9046,18 @@ async function handleGift(message, userId, args) {
     const gifts = claimPokemonGifts(userId, senderId);
     if (!gifts.length) return message.reply('🎁 You have no gifts to claim.');
     return message.reply({
-      embeds: [makeEmbed('🎁 Gifts Claimed', summarizeGifts(gifts), 0x2ecc71)],
+      embeds: [makeEmbed('🎁 Gifts Claimed', summarizeGiftsBySender(gifts), 0x2ecc71)],
       allowedMentions: { parse: [] },
     });
   }
+  if (sub === 'history') return handleGiftHistory(message, userId);
   if (sub === 'list') {
     const gifts = getUserGifts(userId);
     if (!gifts.length) return message.reply('🎁 You have no gifts waiting.');
     return message.reply({
       embeds: [makeEmbed(
         '🎁 Gifts Waiting',
-        `${summarizeGifts(gifts)}\n\nUse \`${PREFIX}gift claim\` to claim them.`
+        `${summarizeGiftsBySender(gifts)}\n\nUse \`${PREFIX}gift claim\` to claim them.`
       )],
       allowedMentions: { parse: [] },
     });
@@ -10036,7 +10121,6 @@ function getDailyRewards(streak) {
   if (streak % 30 === 0) boxes['Shiny Box'] = 1;
   return {
     coins: 3000 + 200 * (Math.min(streak, 50) - 1),
-    voteCoins: Math.min(5, 1 + Math.floor(streak / 10)),
     greatballs: 10 + 2 * Math.floor(streak / 5),
     ultraballs: 5 + Math.floor(streak / 5),
     rareCandies: streak % 14 === 0 ? 10 : 0,
@@ -11675,22 +11759,26 @@ client.on('messageCreate', async (message) => {
     if (command === 'vote') {
       const voter = getUser(userId);
       const voteUrl = getTopggVoteUrl();
-      const botName = client.user?.username || 'the bot';
       const perks = getPatreonPerks(userId);
       const streak = voter.vote_streak || 0;
       const streakBonus = streak >= 50 ? 2 : streak >= 10 ? 1 : 0;
-      const perVote = (1 + streakBonus) * perks.voteCoinMult;
+      const bonusDay = new Date().getUTCDate() <= 5;
+      const perVote = (1 + streakBonus) * perks.voteCoinMult + (bonusDay ? 1 : 0);
       const lastVoted = voter.last_vote_at > 0
         ? `<t:${Math.floor(voter.last_vote_at / 1000)}:R>`
         : 'never';
+      const nextVoteAt = voter.last_vote_at + 12 * 60 * 60 * 1000;
+      const voteStatus = nextVoteAt > Date.now()
+        ? `⏳ **| You can vote again** <t:${Math.floor(nextVoteAt / 1000)}:R>`
+        : `🙀 **| You can vote now!**`;
       const embed = new EmbedBuilder()
         .setColor(0x00a8fc)
         .setDescription(
-          `🙀 **| You can vote now!**\n` +
+          `${voteStatus}\n` +
           `📅 | Vote multiple days in a row for streak rewards!\n` +
           `⏰ | Remember to vote once every 12 hours for rewards!\n` +
           `🆕 | Voting provides a hidden +1 ${EMOJIS.shinyCharm} Shiny Charm bonus!\n` +
-          `| [Click here to vote for ${botName}](${voteUrl})\n\n` +
+          `| [Click here to vote for the Umbreon Official Server](${voteUrl})\n\n` +
           `${EMOJIS.votecoin} **Your Vote Coins**: ${voter.vote_coins.toLocaleString()}\n` +
           `💰 Spend your vote coins at \`${PREFIX}shop\`\n\n` +
           `To open ${LOOTBOX_EMOJI} Lootboxes, type \`${PREFIX}lootbox\` or \`${PREFIX}lootbox all\`\n` +
@@ -11703,7 +11791,7 @@ client.on('messageCreate', async (message) => {
           `🔥 **Your Vote streak**: ${streak}\n` +
           `• **10+ Vote Streak:** You permanently receive +1 ${EMOJIS.votecoin} per vote ${streak >= 10 ? '✅' : '❌'}\n` +
           `• **50+ Vote Streak:** You permanently receive +2 ${EMOJIS.votecoin} per vote ${streak >= 50 ? '✅' : '❌'}\n\n` +
-          `😍 **You currently receive:** ${EMOJIS.votecoin} ${perVote} per vote\n\n` +
+          `😍 **You currently receive:** ${EMOJIS.votecoin} ${perVote} per vote${bonusDay ? ' (includes the +1 first-5-days bonus)' : ''}\n\n` +
           `Support our Patreon for extra voting benefits & sneak peeks for new features!\n` +
           `**Weekend votes or voting on the first 5 days of the month gives bonus rewards!**`
         );
@@ -12992,28 +13080,52 @@ client.on('messageCreate', async (message) => {
           const guildName = guild?.name || `Server ${guildId}`;
           return `• [${channelName}](${`https://discord.com/channels/${guildId}/${channelId}`}) — **${guildName}**`;
         });
-        // Embed descriptions are capped at 4096 characters.
-        let channelList = channelLines.length ? '' : 'You have not boosted any channels.';
-        for (let i = 0; i < channelLines.length; i += 1) {
-          const next = `${channelList}${channelList ? '\n' : ''}${channelLines[i]}`;
-          if (next.length > 3900) {
-            channelList += `\n…and ${channelLines.length - i} more`;
-            break;
+        const boostsPerPage = 10;
+        const totalBoostPages = Math.max(1, Math.ceil(channelLines.length / boostsPerPage));
+        let boostPage = 0;
+        const buildBoostPayload = (disabled = false) => {
+          const pageLines = channelLines.slice(boostPage * boostsPerPage, (boostPage + 1) * boostsPerPage);
+          const embed = new EmbedBuilder()
+            .setColor(0x5865f2)
+            .setTitle(`${message.author.username}'s Boosted Channels`)
+            .setDescription(pageLines.length ? pageLines.join('\n') : 'You have not boosted any channels.')
+            .addFields({
+              name: 'Boost',
+              value: '+5% catch, shiny, and Legendary rates for everyone in each listed channel.',
+            })
+            .setFooter({
+              text: `Page ${boostPage + 1}/${totalBoostPages} • ${boostedChannels.length} / ${UNLIMITED_CHANNEL_BOOSTER_IDS.has(userId) ? '∞' : '10'} channels boosted`,
+            });
+          const payload = { embeds: [embed], components: [] };
+          if (totalBoostPages > 1) {
+            payload.components = [new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('chboost:prev').setLabel('Previous')
+                .setStyle(ButtonStyle.Secondary).setDisabled(disabled || boostPage === 0),
+              new ButtonBuilder().setCustomId('chboost:next').setLabel('Next')
+                .setStyle(ButtonStyle.Secondary).setDisabled(disabled || boostPage >= totalBoostPages - 1)
+            )];
           }
-          channelList = next;
-        }
-        const embed = new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle(`${message.author.username}'s Boosted Channels`)
-          .setDescription(channelList)
-          .addFields({
-            name: 'Boost',
-            value: '+5% catch, shiny, and Legendary rates for everyone in each listed channel.',
-          })
-          .setFooter({
-            text: `${boostedChannels.length} / ${UNLIMITED_CHANNEL_BOOSTER_IDS.has(userId) ? '∞' : '10'} channels boosted`,
+          return payload;
+        };
+        const boostMessage = await message.reply(buildBoostPayload());
+        if (totalBoostPages > 1) {
+          const boostCollector = boostMessage.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 120000,
           });
-        return message.reply({ embeds: [embed] });
+          boostCollector.on('collect', async (interaction) => {
+            if (interaction.user.id !== userId) {
+              return interaction.reply({ content: 'These buttons are not for you.', ephemeral: true });
+            }
+            boostPage += interaction.customId === 'chboost:next' ? 1 : -1;
+            boostPage = Math.min(Math.max(boostPage, 0), totalBoostPages - 1);
+            return interaction.update(buildBoostPayload());
+          });
+          boostCollector.on('end', () => {
+            boostMessage.edit(buildBoostPayload(true)).catch(() => {});
+          });
+        }
+        return;
       }
       if (args.length === 2 && action === 'remove' && setting === 'all') {
         const removed = removeAllChannelCatchRateBoosts(userId);
@@ -13069,6 +13181,36 @@ client.on('messageCreate', async (message) => {
         `Usage: \`${PREFIX}channel add boost\`, \`${PREFIX}channel remove boost|all\`, ` +
         `or \`${PREFIX}channel boost\`.`
       );
+    }
+
+    if (command === 'rarespawn') {
+      if (!message.guild) return message.reply('Rare-spawn channels can only be set inside a server.');
+      if (args[0]?.toLowerCase() !== 'set' || args.length !== 2) {
+        return message.reply(`Usage: \`${PREFIX}rarespawn set #channel\`.`);
+      }
+      const channelId = args[1].match(/^<#(\d+)>$/)?.[1] || args[1];
+      if (!/^\d{17,20}$/.test(channelId)) {
+        return message.reply(`Mention a text channel, e.g. \`${PREFIX}rarespawn set #channel\`.`);
+      }
+      let rareChannel;
+      try {
+        rareChannel = await message.guild.channels.fetch(channelId);
+      } catch (error) {
+        console.error(`Failed to fetch rare-spawns channel ${channelId}:`, error);
+      }
+      if (!rareChannel || rareChannel.type !== ChannelType.GuildText) {
+        return message.reply('Choose a server text channel for rare-spawn announcements.');
+      }
+      const rarePermissions = rareChannel.permissionsFor(message.guild.members.me);
+      if (!rarePermissions?.has([
+        PermissionsBitField.Flags.ViewChannel,
+        PermissionsBitField.Flags.SendMessages,
+        PermissionsBitField.Flags.EmbedLinks,
+      ])) {
+        return message.reply('The bot needs permission to view the channel and send messages and embeds in it.');
+      }
+      setRareSpawnAnnouncementChannel(message.guild.id, rareChannel.id);
+      return message.reply(`✅ Rare-spawn announcements will be posted in <#${rareChannel.id}>.`);
     }
 
     if (command === 'admin' && args[0]?.toLowerCase() === 'rarespawns') {
@@ -16377,7 +16519,6 @@ client.on('messageCreate', async (message) => {
           cl_daily_claimed: 1,
         });
         incrementUser(userId, {
-          vote_coins: rewards.voteCoins,
           ultraballs: rewards.ultraballs,
           greatballs: rewards.greatballs,
           rare_candies: rewards.rareCandies,
@@ -16405,7 +16546,6 @@ client.on('messageCreate', async (message) => {
       }
       const { streak, rewards: claimed } = dailyClaim;
       const bonusItems = [
-        `${EMOJIS.votecoin} ${claimed.voteCoins} Vote Coin${claimed.voteCoins === 1 ? '' : 's'}`,
         `${EMOJIS.greatball} ${claimed.greatballs} Greatballs`,
         `${EMOJIS.ultraball} ${claimed.ultraballs} Ultraballs`,
       ];
@@ -17378,8 +17518,9 @@ client.on('messageCreate', async (message) => {
             if (pokemon.isGolden) saveCatch(userId, pokemon, false, true, true);
             else saveCatch(userId, pokemon, pokemon.isShiny, true);
             caughtPokemon.push({ ...pokemon });
-            const displayRarity = getDisplayRarity(pokemon.rarity, pokemon.name, pokemon.isShiny);
-            rarityCounts[displayRarity] = (rarityCounts[displayRarity] || 0) + 1;
+            for (const questRarity of getQuestRarities(pokemon)) {
+              rarityCounts[questRarity] = (rarityCounts[questRarity] || 0) + 1;
+            }
             if (pokemon.isGolden) {
               goldenCount += 1;
               counts.golden += 1;
@@ -25658,6 +25799,21 @@ client.once('clientReady', () => {
   };
   safely('daily-giveaways', runDailyGiveaways)();
   setInterval(safely('daily-giveaways', runDailyGiveaways), 60 * 1000);
+  const sendVoteReminders = async () => {
+    for (const reminderUserId of takeDueVoteReminders()) {
+      try {
+        const reminderUser = await client.users.fetch(reminderUserId);
+        await reminderUser.send(
+          `⏰ It's been 12 hours — you can vote again for the Umbreon Official Server!\n` +
+          `[Click here to vote](${getTopggVoteUrl()})`
+        );
+      } catch (error) {
+        console.warn(`[vote-reminder] Could not DM ${reminderUserId}:`, error.message);
+      }
+    }
+  };
+  safely('vote-reminders', sendVoteReminders)();
+  setInterval(safely('vote-reminders', sendVoteReminders), 60 * 1000);
   const expireTokenOrders = () => {
     try {
       expirePatreonTokenOrders();
