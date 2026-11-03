@@ -9985,6 +9985,8 @@ function applyMissedVoteGrant(grantKey, userId) {
 }
 
 applyMissedVoteGrant('missed-vote-20261103', '1514082847609061541');
+applyMissedVoteGrant('missed-vote-20261103-793793055495946251', '793793055495946251');
+applyMissedVoteGrant('missed-vote-20261103-434593153341980672', '434593153341980672');
 
 module.exports = {
   getTimeOfDayPhase,
