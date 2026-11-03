@@ -21,6 +21,31 @@ function getTopggVoteUrl() {
   return parsedUrl.toString();
 }
 
+function formatVoteRewardLines(rewards) {
+  return [
+    `${EMOJIS.votecoin} **Vote Coins:** +${rewards.voteCoins}`,
+    rewards.lootboxes ? `${LOOTBOX_EMOJI} **Lootbox:** +${rewards.lootboxes}` : null,
+    rewards.bonusBoxes.length
+      ? `📦 **Box:** ${rewards.bonusBoxes.join(', ')}`
+      : null,
+    rewards.boxes.length ? `📦 **Streak Boxes:** ${rewards.boxes.join(', ')}` : null,
+    rewards.rareCandies ? `${EMOJIS.rarecandy} **Rare Candies:** +${rewards.rareCandies}` : null,
+    rewards.eggs ? `${EMOJIS.pokeEgg} **Eggs:** +${rewards.eggs} (use \`${PREFIX}egg hold\` to incubate)` : null,
+    rewards.masterballs ? `${EMOJIS.masterball} **Masterballs:** +${rewards.masterballs}` : null,
+    rewards.goldenRazzBerries ? `🫐 **Golden Razz Berry:** +${rewards.goldenRazzBerries}` : null,
+  ].filter(Boolean);
+}
+
+async function sendVoteRewardDm(voterId, rewards) {
+  const voter = await client.users.fetch(voterId);
+  await voter.send(
+    `Thank you for voting for the Umbreon Official Server! 💜 Your vote streak is **${rewards.streak} day${rewards.streak === 1 ? '' : 's'}**.\n\n` +
+    `**You received:**\n` +
+    formatVoteRewardLines(rewards).join('\n') +
+    `\n\n⏰ You can vote again in 12 hours — I'll remind you!`
+  );
+}
+
 function startTopggWebhook() {
   if (!TOPGG_WEBHOOK_AUTH) {
     console.log('[vote-webhook] Disabled: TOPGG_WEBHOOK_AUTH is not configured.');
@@ -40,26 +65,8 @@ function startTopggWebhook() {
         console.warn(`[vote-webhook] Vote from ${voterId} ignored: inside the 12-hour window.`);
         return;
       }
-      const rewardLines = [
-        `${EMOJIS.votecoin} **Vote Coins:** +${rewards.voteCoins}`,
-        rewards.lootboxes ? `${LOOTBOX_EMOJI} **Lootbox:** +${rewards.lootboxes}` : null,
-        rewards.bonusBoxes.length
-          ? `📦 **Box:** ${rewards.bonusBoxes.join(', ')}`
-          : null,
-        rewards.boxes.length ? `📦 **Streak Boxes:** ${rewards.boxes.join(', ')}` : null,
-        rewards.rareCandies ? `${EMOJIS.rarecandy} **Rare Candies:** +${rewards.rareCandies}` : null,
-        rewards.eggs ? `${EMOJIS.pokeEgg} **Eggs:** +${rewards.eggs} (use \`${PREFIX}egg hold\` to incubate)` : null,
-        rewards.masterballs ? `${EMOJIS.masterball} **Masterballs:** +${rewards.masterballs}` : null,
-        rewards.goldenRazzBerries ? `🫐 **Golden Razz Berry:** +${rewards.goldenRazzBerries}` : null,
-      ].filter(Boolean);
       try {
-        const voter = await client.users.fetch(voterId);
-        await voter.send(
-          `Thank you for voting for the Umbreon Official Server! 💜 Your vote streak is **${rewards.streak} day${rewards.streak === 1 ? '' : 's'}**.\n\n` +
-          `**You received:**\n` +
-          rewardLines.join('\n') +
-          `\n\n⏰ You can vote again in 12 hours — I'll remind you!`
-        );
+        await sendVoteRewardDm(voterId, rewards);
       } catch (error) {
         console.warn(`[vote-webhook] Could not send the vote reward DM to ${voterId}:`, error.message);
       }
@@ -13644,6 +13651,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin coins <@user|user ID> <amount>\` — Add or remove PokéCoins\n` +
             `• \`${PREFIX}admin token <@user|user ID> <amount>\` — Add or remove Patreon tokens\n` +
             `• \`${PREFIX}admin vote coin <@user|user ID> <amount>\` — Add or remove Vote Coins\n` +
+            `• \`${PREFIX}admin manual vote <@user|user ID>\` — Grant a vote: streak +1 and the normal vote rewards (ignores the 12-hour cooldown)\n` +
             `• \`${PREFIX}admin research points <@user|user ID> [amount]\` — Check or adjust a user's Research Points\n` +
             `• \`${PREFIX}admin item <@user|user ID> <item or currency> <amount>\` — Give or remove items (including Research items) and balances\n` +
             `• \`${PREFIX}admin globalreward confirm\` — One-time reward for all existing users\n` +
@@ -14403,7 +14411,7 @@ client.on('messageCreate', async (message) => {
       }
 
       const mentionedTarget = message.mentions.users.first();
-      const targetIdArgumentIndex = subtype === 'vote' && action === 'coin'
+      const targetIdArgumentIndex = (subtype === 'vote' && action === 'coin') || (subtype === 'manual' && action === 'vote')
         ? 2
         : subtype === 'pokemon' && action === 'remove'
           ? 2
@@ -14420,6 +14428,7 @@ client.on('messageCreate', async (message) => {
           `• \`${PREFIX}admin coins <@User|user ID> <amount>\`\n` +
           `• \`${PREFIX}admin token <@User|user ID> <amount>\`\n` +
           `• \`${PREFIX}admin vote coin @User|user ID <amount>\`\n` +
+          `• \`${PREFIX}admin manual vote @User|user ID\`\n` +
           `• \`${PREFIX}admin research points <@User|user ID> [amount]\`\n` +
           `• \`${PREFIX}admin item <@User|user ID> <item or currency> <amount>\` — includes Research items\n` +
           `• \`${PREFIX}admin pokemon @User|user ID <Pokémon name, form, or Pokédex number> [amount] [shiny|golden]\`\n` +
@@ -14469,6 +14478,20 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           `${EMOJIS.patreonToken} ${amount > 0 ? 'Granted' : 'Removed'} **${Math.abs(amount).toLocaleString()} Patreon token(s)** ` +
           `${amount > 0 ? 'to' : 'from'} <@${target.id}> (${updatedTokens.toLocaleString()} owned).`
+        );
+      }
+
+      if (subtype === 'manual' && action === 'vote') {
+        const rewards = processTopggVote(target.id, Date.now(), { force: true });
+        let dmNote = '';
+        try {
+          await sendVoteRewardDm(target.id, rewards);
+        } catch (error) {
+          dmNote = '\n⚠️ Could not DM the user.';
+        }
+        return message.reply(
+          `✅ Manual vote granted to <@${target.id}> — streak **${rewards.streak} day${rewards.streak === 1 ? '' : 's'}**.\n` +
+          formatVoteRewardLines(rewards).join('\n') + dmNote
         );
       }
 

@@ -2386,7 +2386,7 @@ function takeDueVoteReminders(now = Date.now()) {
   }).immediate();
 }
 
-function processTopggVote(userId, timestamp = Date.now()) {
+function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}) {
   assertUserId(userId);
   if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
     throw new TypeError('Vote timestamp must be a non-negative safe integer.');
@@ -2397,7 +2397,7 @@ function processTopggVote(userId, timestamp = Date.now()) {
   const voteDay = date.toISOString().slice(0, 10);
   const rewardVote = db.transaction(() => {
     const user = getUser(userId);
-    if (user.last_vote_at > 0 && (
+    if (!force && user.last_vote_at > 0 && (
       timestamp <= user.last_vote_at || timestamp - user.last_vote_at < VOTE_DUPLICATE_WINDOW_MS
     )) {
       return { duplicate: true };
