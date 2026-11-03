@@ -1,5 +1,5 @@
 const http = require('node:http');
-const { timingSafeEqual } = require('node:crypto');
+const { createHmac, timingSafeEqual } = require('node:crypto');
 
 const MAX_BODY_BYTES = 16 * 1024;
 
@@ -8,6 +8,20 @@ function isValidAuthorization(header, expected) {
   const received = Buffer.from(header);
   const secret = Buffer.from(expected);
   return received.length === secret.length && timingSafeEqual(received, secret);
+}
+
+function isValidSignature(header, rawBody, secret) {
+  if (typeof header !== 'string') return false;
+  const parts = Object.fromEntries(
+    header.split(',').map((item) => {
+      const index = item.indexOf('=');
+      return [item.slice(0, index).trim(), item.slice(index + 1).trim()];
+    })
+  );
+  if (!parts.t || !/^[0-9a-f]+$/i.test(parts.v1 || '')) return false;
+  const expected = createHmac('sha256', secret).update(`${parts.t}.`).update(rawBody).digest();
+  const received = Buffer.from(parts.v1, 'hex');
+  return received.length === expected.length && timingSafeEqual(received, expected);
 }
 
 function createTopggWebhookServer({ authorization, onVote }) {
@@ -28,7 +42,8 @@ function createTopggWebhookServer({ authorization, onVote }) {
       response.writeHead(405, { Allow: 'POST' }).end();
       return;
     }
-    if (!isValidAuthorization(request.headers.authorization, authorization)) {
+    const signatureHeader = request.headers['x-topgg-signature'];
+    if (!signatureHeader && !isValidAuthorization(request.headers.authorization, authorization)) {
       response.writeHead(401).end();
       return;
     }
@@ -51,9 +66,15 @@ function createTopggWebhookServer({ authorization, onVote }) {
         response.writeHead(413).end('Payload too large');
         return;
       }
+      const rawBody = Buffer.concat(chunks);
+      if (signatureHeader && !isValidSignature(signatureHeader, rawBody, authorization)) {
+        console.warn('[vote-webhook] Rejected request: invalid x-topgg-signature (secret mismatch?).');
+        response.writeHead(401).end();
+        return;
+      }
       let payload;
       try {
-        payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        payload = JSON.parse(rawBody.toString('utf8'));
       } catch {
         response.writeHead(400).end('Invalid JSON');
         return;
