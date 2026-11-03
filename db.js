@@ -1755,6 +1755,11 @@ const upsertPokemonForm = db.prepare(`
     is_custom = 0
 `);
 const getExistingPokemonFormName = db.prepare('SELECT name FROM pokemon_forms WHERE id = ?');
+// Startup rename/rarity passes update catches per Pokémon form; without these each one scans the whole table.
+db.exec(`
+  CREATE INDEX IF NOT EXISTS catches_pokemon_id_idx ON catches(pokemon_id);
+  CREATE INDEX IF NOT EXISTS catches_user_pokemon_idx ON catches(user_id, pokemon_id, is_shiny, is_golden);
+`);
 const renameExistingCatch = db.prepare('UPDATE catches SET name = ? WHERE pokemon_id = ? AND name = ?');
 const renameExistingMarketListing = db.prepare('UPDATE market SET name = ? WHERE pokemon_id = ? AND name = ?');
 db.exec('CREATE TEMP TABLE IF NOT EXISTS pokemon_catalog_import_ids (id INTEGER PRIMARY KEY)');
