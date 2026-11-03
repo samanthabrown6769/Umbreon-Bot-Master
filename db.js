@@ -6237,6 +6237,18 @@ function getStarterChainIds() {
   return starterChainIds;
 }
 
+const RANDOM_POKEMON_CACHE_MS = 30000;
+const randomPokemonCache = new Map();
+const pokemonFormCache = new Map();
+function getCachedPokemonForm(id) {
+  const cached = pokemonFormCache.get(id);
+  if (cached && Date.now() - cached.at < RANDOM_POKEMON_CACHE_MS) return cached.row;
+  const row = db.prepare('SELECT * FROM pokemon_forms WHERE id = ?').get(id);
+  if (pokemonFormCache.size > 5000) pokemonFormCache.clear();
+  pokemonFormCache.set(id, { at: Date.now(), row });
+  return row;
+}
+
 function getRandomPokemon(
   rarity = null,
   waterOnly = false,
@@ -6266,7 +6278,12 @@ function getRandomPokemon(
   const excludedSpeciesFilter = excludedSpeciesNames.length
     ? `AND lower(species_name) NOT IN (${excludedSpeciesNames.map(() => '?').join(', ')})`
     : '';
-  const select = db.prepare(`
+  const cacheKey = JSON.stringify([
+    rarity, waterOnly, excludeGmax, excludeMega, allowedFormIds, excludedSpeciesNames, exactFormIds,
+  ]);
+  const cachedCandidates = randomPokemonCache.get(cacheKey);
+  const cacheFresh = cachedCandidates && Date.now() - cachedCandidates.at < RANDOM_POKEMON_CACHE_MS;
+  const select = cacheFresh ? null : db.prepare(`
     SELECT id, evolution_chain_id FROM pokemon_forms
     WHERE (? IS NULL OR rarity = ?)
       AND (? = 0 OR is_water = 1)
@@ -6284,7 +6301,7 @@ function getRandomPokemon(
       ${exactFilter}
       ${excludedSpeciesFilter}
   `);
-  const getForm = db.prepare('SELECT * FROM pokemon_forms WHERE id = ?');
+  const getForm = { get: (id) => getCachedPokemonForm(id) };
   const starters = getStarterChainIds();
 
   const attempts = [
@@ -6293,24 +6310,38 @@ function getRandomPokemon(
     [rarity, false],
     [null, false],
   ];
-  for (const [rarityFilter, waterFilter] of attempts) {
-    const candidates = select.all(
-      rarityFilter,
-      rarityFilter,
-      waterFilter ? 1 : 0,
-      excludeMega ? 1 : 0,
-      excludeGmax ? 1 : 0,
-      ...(allowedFormIds || []),
-      ...(exactFormIds || []),
-      ...excludedSpeciesNames.map((name) => name.toLowerCase())
-    );
+  const attemptCandidates = cacheFresh ? cachedCandidates.attempts : [];
+  for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex += 1) {
+    const [rarityFilter, waterFilter] = attempts[attemptIndex];
+    let entry = attemptCandidates[attemptIndex];
+    if (!entry) {
+      const rows = select.all(
+        rarityFilter,
+        rarityFilter,
+        waterFilter ? 1 : 0,
+        excludeMega ? 1 : 0,
+        excludeGmax ? 1 : 0,
+        ...(allowedFormIds || []),
+        ...(exactFormIds || []),
+        ...excludedSpeciesNames.map((name) => name.toLowerCase())
+      );
+      entry = { rows, total: null };
+      attemptCandidates[attemptIndex] = entry;
+    }
+    const candidates = entry.rows;
     if (!candidates.length) continue;
     const weightOf = (candidate) => (starters.has(candidate.evolution_chain_id) ? STARTER_SPAWN_WEIGHT : 1);
-    let roll = Math.random() * candidates.reduce((total, candidate) => total + weightOf(candidate), 0);
+    if (entry.total === null) {
+      entry.total = candidates.reduce((total, candidate) => total + weightOf(candidate), 0);
+    }
+    let roll = Math.random() * entry.total;
     let chosen = candidates[candidates.length - 1];
     for (const candidate of candidates) {
       roll -= weightOf(candidate);
       if (roll < 0) { chosen = candidate; break; }
+    }
+    if (!cacheFresh) {
+      randomPokemonCache.set(cacheKey, { at: Date.now(), attempts: attemptCandidates });
     }
     const pokemon = getForm.get(chosen.id);
     if (pokemon) {
@@ -6337,7 +6368,15 @@ function getRandomPokemon(
   throw new Error('Pokémon catalog contains no spawnable entries.');
 }
 
+let raritySettingsCache = null;
 function getRaritySettings() {
+  if (raritySettingsCache && Date.now() - raritySettingsCache.at < 5000) return raritySettingsCache.value;
+  const value = computeRaritySettings();
+  raritySettingsCache = { at: Date.now(), value };
+  return value;
+}
+
+function computeRaritySettings() {
   const rarities = db.prepare(`
     SELECT settings.name, settings.spawn_weight, settings.catch_chance,
       COUNT(pokemon.id) AS pokemon_count
