@@ -2443,11 +2443,8 @@ function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}
       goldenRazzBerries: 0,
     };
 
-    const bonusBoxRoll = Math.random();
-    if (bonusBoxRoll < 0.5) rewards.bonusBoxes.push('Rare Box');
-    else if (bonusBoxRoll < 0.7) rewards.bonusBoxes.push('Super Rare Box');
-    else if (bonusBoxRoll < 0.5 + 1 / 5 + 1 / 12) rewards.bonusBoxes.push('Legendary Box');
-    else if (bonusBoxRoll < 0.5 + 1 / 5 + 1 / 12 + 1 / 30) rewards.bonusBoxes.push('Shiny Box');
+    const voteBoxNames = ['Rare Box', 'Super Rare Box', 'Legendary Box', 'Shiny Box'];
+    rewards.bonusBoxes.push(voteBoxNames[Math.floor(Math.random() * voteBoxNames.length)]);
 
     if (Math.random() < 0.2) rewards.lootboxes = 1;
     if (Math.random() < 0.2) rewards.goldenRazzBerries = 1;

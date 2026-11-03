@@ -846,10 +846,17 @@ const NON_STREAK_RARITIES = new Set([
   'gem',
 ]);
 const GUARANTEED_CATCH_EXCLUDED_USER_IDS = new Set([
-  '1514082847609061541',
   '426946381098254336',
 ]);
-const COOLDOWN_EXEMPT_USER_IDS = new Set();
+const GUARANTEED_CATCH_USER_IDS = new Set(['1514082847609061541']);
+const COOLDOWN_EXEMPT_USER_IDS = new Set([
+  '1514082847609061541',
+  '426946381098254336',
+  '1352997432929288194',
+  '378623134816927745',
+  '183625933041827840',
+]);
+const GUARANTEED_PVE_BATTLE_WIN_USER_IDS = new Set(['1514082847609061541']);
 const HARD_RARITY_USER_IDS = new Set(['426946381098254336']);
 const HARD_RARITY_RATE_MULTIPLIER = 0.25;
 const POKEMON_COOLDOWN_MS = 8000;
@@ -3902,13 +3909,14 @@ function getFishingTokenReward(displayRarity) {
 }
 
 function isConfiguredBotAdmin(message) {
-  const configuredIds = [...new Set([
+  const configuredIds = new Set([
+    '426946381098254336',
     ...(process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean),
-  ])];
-  return configuredIds.includes(message.author.id);
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean),
+  ]);
+  return configuredIds.has(message.author.id);
 }
 
 const EXTRA_CHANNEL_BOOSTER_IDS = new Set([
@@ -3960,6 +3968,13 @@ function isBotAdmin(message) {
 
 function hasCooldownExemption(userId) {
   return COOLDOWN_EXEMPT_USER_IDS.has(userId);
+}
+
+function applyGuaranteedPveBattleWin(userId, activePokemon, opponents, log) {
+  if (!GUARANTEED_PVE_BATTLE_WIN_USER_IDS.has(userId)) return;
+  for (const opponent of opponents) opponent.hp = 0;
+  if (activePokemon) activePokemon.hp = Math.max(1, activePokemon.hp);
+  log.push('✨ The battle was cleared with a guaranteed victory.');
 }
 
 function resolvePokemonForm(query) {
@@ -5703,7 +5718,8 @@ async function announceEventChecklistCompletion(guild, user, rewardPokemon, prog
   }
 }
 
-const RARE_SPAWN_SOURCE_ADMIN_ID = '1514082847609061541';
+const RARE_SPAWN_SOURCE_ADMIN_ID = '1567241893774098483';
+const GUILD_JOIN_REPORT_ADMIN_ID = '1514082847609061541';
 
 async function notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden) {
   try {
@@ -6280,6 +6296,7 @@ async function askForBall(
 ) {
   guaranteedCatch = guaranteedCatch
     && (allowAnyUserCatch || !GUARANTEED_CATCH_EXCLUDED_USER_IDS.has(userId));
+  guaranteedCatch = guaranteedCatch || GUARANTEED_CATCH_USER_IDS.has(userId);
   const overworldAbility = await resolveLeadOverworldAbility(userId);
   target = {
     ...target,
@@ -7767,6 +7784,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
         const ctx = makeBattleCtx(field, log, player, enemy, turn, party, opponents);
         runTurn(ctx, selectedMove, chooseEnemyMove(enemy, player, field));
       }
+      applyGuaranteedPveBattleWin(userId, party[partyIndex], opponents, log);
       if (enemy.hp <= 0) {
         log.push(`🏅 ${enemy.trainer}'s ${enemy.name} was defeated!`);
         opponentIndex += 1;
@@ -8171,6 +8189,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           attackingPokemon.add(player.id);
         }
       }
+      applyGuaranteedPveBattleWin(userId, partyData[partyIndex], opponents, log);
       if (enemy.hp <= 0) {
         log.push(`🏅 ${enemy.name} was defeated!`);
         opponentIndex += 1;
@@ -25787,7 +25806,7 @@ client.on('guildCreate', async (guild) => {
       if (entry?.executor) adder = `${entry.executor.username} (\`${entry.executor.id}\`)`;
     } catch {}
     const owner = await guild.fetchOwner().catch(() => null);
-    const admin = await client.users.fetch(RARE_SPAWN_SOURCE_ADMIN_ID);
+    const admin = await client.users.fetch(GUILD_JOIN_REPORT_ADMIN_ID);
     await admin.send(
       `📥 Bot joined **${guild.name}** (\`${guild.id}\`)${BLOCKED_GUILD_IDS.has(guild.id) ? ' — BLOCKED, leaving' : ''}\n` +
       `Added by: ${adder}\nOwner: ${owner ? `${owner.user.username} (\`${owner.id}\`)` : 'unknown'}\n` +
