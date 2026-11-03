@@ -25714,6 +25714,11 @@ client.on('messageCreate', async (message) => {
       );
       const swapTicketsReady = !Number.isSafeInteger(lastSwapTicketDay) || lastSwapTicketDay < swapDay;
       const huntActive = user.hunt_target_id > 0 && user.hunt_expires_at > now;
+      const dailyClaimed = !dailyReady;
+      const voteClaimed = !voteReady;
+      const questsCompleted = readyQuestCount === 0;
+      const swapTicketsClaimed = !swapTicketsReady;
+      const huntClaimed = user.hunt_completed === 1;
       const dailyStatus = dailyReady
         ? 'Your daily is available!'
         : `Your next daily is <t:${Math.floor(getNextDailyReset(now) / 1000)}:R>.`;
@@ -25734,16 +25739,16 @@ client.on('messageCreate', async (message) => {
         ? 'You can claim your daily Swap Tickets!'
         : 'You have claimed your daily Swap Tickets.';
       const huntStatus = huntActive
-        ? `Daily Hunt: **${user.hunt_target_name}** (${user.hunt_progress}/${user.hunt_required}).`
+        ? `Daily Hunt: **${user.hunt_target_name}** (${user.hunt_progress}/${user.hunt_required})${huntClaimed ? ' — Complete!' : '.'}`
         : 'You can check your daily hunt target!';
-      const checklistBox = (checked) => checked ? '✅' : '⬛';
+      const checklistBox = (checked) => checked ? '✅' : '⬜';
       const description =
-        `${checklistBox(dailyReady)} 🕐 ${dailyStatus}\n` +
-        `${checklistBox(voteReady)} 🗳️ ${voteStatus}\n` +
-        `${checklistBox(readyQuestCount > 0)} 📜 ${questStatus}\n` +
+        `${checklistBox(dailyClaimed)} 🕐 ${dailyStatus}\n` +
+        `${checklistBox(voteClaimed)} 🗳️ ${voteStatus}\n` +
+        `${checklistBox(questsCompleted)} 📜 ${questStatus}\n` +
         `${checklistBox(catchbotNeedsClaim)} 🤖 ${catchbotStatus}\n` +
-        `${checklistBox(swapTicketsReady)} 🎟️ ${swapStatus}\n` +
-        `${checklistBox(!huntActive)} 🎯 ${huntStatus}\n\n` +
+        `${checklistBox(swapTicketsClaimed)} 🎟️ ${swapStatus}\n` +
+        `${checklistBox(huntClaimed)} 🎯 ${huntStatus}\n\n` +
         `\`${PREFIX}daily\`; \`${PREFIX}vote\`; \`${PREFIX}quest\`; ` +
         `\`${PREFIX}catchbot\`; \`${PREFIX}swap\`; \`${PREFIX}hunt\``;
       const embed = new EmbedBuilder()
