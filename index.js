@@ -3988,11 +3988,15 @@ function resolvePokemonForm(query) {
       ORDER BY species_id, id
     `).all();
     const dexNumbers = getPokemonDexNumbers(forms);
-    return forms.find((pokemon) => {
+    const found = forms.find((pokemon) => {
       const numbers = dexNumbers.get(pokemon.id);
       return numbers?.dexNumber === requestedNumber
         || numbers?.shinyDexNumber === requestedNumber;
-    }) || null;
+    });
+    if (found) return found;
+    return forms.find((pokemon) =>
+      getGoldenDexNumber(pokemon.species_id, pokemon.slug) === requestedNumber
+    ) || null;
   }
   const normalizeName = (name) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalized = normalizeName(normalizedName);
@@ -4027,6 +4031,10 @@ function getDexQueryMarketVariant(pokemon, query) {
   `).all();
   const numbers = getPokemonDexNumbers(forms).get(pokemon.id);
   const requested = Number(query.trim());
+  if (numbers?.dexNumber !== requested && numbers?.shinyDexNumber !== requested
+      && getGoldenDexNumber(pokemon.species_id, pokemon.slug) === requested) {
+    return 'golden';
+  }
   return numbers?.shinyDexNumber === requested && numbers.dexNumber !== requested ? 'shiny' : 'normal';
 }
 
