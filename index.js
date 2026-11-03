@@ -25736,13 +25736,14 @@ client.on('messageCreate', async (message) => {
       const huntStatus = huntActive
         ? `Daily Hunt: **${user.hunt_target_name}** (${user.hunt_progress}/${user.hunt_required}).`
         : 'You can check your daily hunt target!';
+      const checklistBox = (checked) => checked ? '✅' : '⬛';
       const description =
-        `🕐 ${dailyStatus}\n` +
-        `🗳️ ${voteStatus}\n` +
-        `📜 ${questStatus}\n` +
-        `🤖 ${catchbotStatus}\n` +
-        `🎟️ ${swapStatus}\n` +
-        `🎯 ${huntStatus}\n\n` +
+        `${checklistBox(dailyReady)} 🕐 ${dailyStatus}\n` +
+        `${checklistBox(voteReady)} 🗳️ ${voteStatus}\n` +
+        `${checklistBox(readyQuestCount > 0)} 📜 ${questStatus}\n` +
+        `${checklistBox(catchbotNeedsClaim)} 🤖 ${catchbotStatus}\n` +
+        `${checklistBox(swapTicketsReady)} 🎟️ ${swapStatus}\n` +
+        `${checklistBox(!huntActive)} 🎯 ${huntStatus}\n\n` +
         `\`${PREFIX}daily\`; \`${PREFIX}vote\`; \`${PREFIX}quest\`; ` +
         `\`${PREFIX}catchbot\`; \`${PREFIX}swap\`; \`${PREFIX}hunt\``;
       const embed = new EmbedBuilder()
