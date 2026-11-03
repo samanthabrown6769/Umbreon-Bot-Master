@@ -34,6 +34,11 @@ function createTopggWebhookServer({ authorization, onVote }) {
 
   return http.createServer((request, response) => {
     const requestPath = new URL(request.url || '/', 'http://localhost').pathname;
+    console.log(`[vote-webhook] ${request.method} ${requestPath} (signature header: ${Boolean(request.headers['x-topgg-signature'])})`);
+    if (request.method === 'GET' && (requestPath === '/' || requestPath === '/topgg')) {
+      response.writeHead(200, { 'Content-Type': 'text/plain' }).end('Umbreon vote webhook is online.');
+      return;
+    }
     if (requestPath !== '/topgg') {
       response.writeHead(404).end();
       return;

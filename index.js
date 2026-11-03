@@ -25777,7 +25777,6 @@ function scheduleCatchbotReminder(userId, runningUntil) {
 client.once('clientReady', () => {
   console.log(`🚀 Pokémon bot online as ${client.user.tag}`);
   for (const blockedId of BLOCKED_GUILD_IDS) leaveIfBlockedGuild(client.guilds.cache.get(blockedId));
-  startTopggWebhook();
   const incenseEmoji = client.emojis.cache.find((emoji) => emoji.name === 'incense');
   if (incenseEmoji) EMOJIS.incense = incenseEmoji.toString();
   const pokeradarEmoji = client.emojis.cache.find((emoji) => emoji.name === 'pokeradar');
@@ -25893,4 +25892,5 @@ if (!token) throw new Error('Set BOT_TOKEN in .env before starting the bot.');
 process.on('unhandledRejection', (reason) => console.error('[process] unhandled rejection:', reason));
 process.on('uncaughtException', (error) => console.error('[process] uncaught exception:', error));
 
+startTopggWebhook();
 client.login(token);
