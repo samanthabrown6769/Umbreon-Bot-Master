@@ -36,7 +36,10 @@ function startTopggWebhook() {
     authorization: TOPGG_WEBHOOK_AUTH,
     onVote: async (voterId) => {
       const rewards = processTopggVote(voterId);
-      if (rewards.duplicate) return;
+      if (rewards.duplicate) {
+        console.warn(`[vote-webhook] Vote from ${voterId} ignored: inside the 12-hour window.`);
+        return;
+      }
       const rewardLines = [
         `${EMOJIS.votecoin} **Vote Coins:** +${rewards.voteCoins}`,
         rewards.lootboxes ? `${LOOTBOX_EMOJI} **Lootbox:** +${rewards.lootboxes}` : null,
@@ -25340,7 +25343,7 @@ client.on('messageCreate', async (message) => {
       if (args.length > 2 || (args[0] && args[0].toLowerCase() !== 'open' && args.length > 1)) {
         return message.reply(`Usage: \`${PREFIX}lb [amount|all]\` or \`${PREFIX}lootbox open [amount|all]\`.`);
       }
-      const amountArgument = args[0]?.toLowerCase() === 'open' ? args[1] : args[0];
+      const amountArgument = (args[0]?.toLowerCase() === 'open' ? args[1] : args[0])?.toLowerCase();
       const amount = amountArgument === 'all'
         ? getUser(userId).lootboxes
         : amountArgument === undefined ? 1 : parseAmount(amountArgument);

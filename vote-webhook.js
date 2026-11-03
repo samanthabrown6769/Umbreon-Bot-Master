@@ -58,16 +58,22 @@ function createTopggWebhookServer({ authorization, onVote }) {
         response.writeHead(400).end('Invalid JSON');
         return;
       }
-      if (payload?.type === 'test') {
+      if (payload?.type === 'test' || payload?.type === 'webhook.test') {
         response.writeHead(200).end('Webhook test received');
         return;
       }
-      if (payload?.type !== 'upvote' || !/^\d{17,20}$/.test(payload.user || '')) {
+      const voterId = payload?.type === 'upvote'
+        ? payload.user
+        : payload?.type === 'vote.create'
+          ? payload.data?.user?.platform_id
+          : null;
+      if (!/^\d{17,20}$/.test(String(voterId || ''))) {
+        console.warn('[vote-webhook] Ignored unrecognised payload:', JSON.stringify(payload).slice(0, 300));
         response.writeHead(400).end('Invalid Top.gg vote payload');
         return;
       }
       try {
-        await onVote(payload.user, payload);
+        await onVote(String(voterId), payload);
         response.writeHead(200).end('Vote received');
       } catch (error) {
         console.error('[vote-webhook] Failed to process Top.gg vote:', error);

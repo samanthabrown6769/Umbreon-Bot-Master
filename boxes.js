@@ -11,7 +11,7 @@ const BOXES = {
     description: 'Gives PokéCoins and has a 10% chance to drop a random Super Rare Pokémon; otherwise, it gives Greatballs and Ultraballs.',
   },
   'Legendary Box': {
-    aliases: ['legendarybox', 'legbox', 'lgb'], emoji: '<:legendarybox:1559925069831082105>',
+    aliases: ['legendarybox', 'legbox', 'lgb', 'lb'], emoji: '<:legendarybox:1559925069831082105>',
     rarity: 'Legendary', shiny: false, pokemonDropChance: 0.1, coins: [25000, 25000], eggs: [0.125, 1, 1],
     description: 'Gives 25,000 PokéCoins and has a 10% chance to drop a random Legendary Pokémon; otherwise, it gives Greatballs and Ultraballs.',
   },

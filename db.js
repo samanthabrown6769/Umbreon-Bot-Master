@@ -2363,6 +2363,8 @@ function awardCoinsWithBoost(userId, baseAmount) {
 }
 
 const VOTE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+// Slightly under 12h so webhook delivery delays never drop a genuine vote.
+const VOTE_DUPLICATE_WINDOW_MS = 11.5 * 60 * 60 * 1000;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS vote_reminders (
@@ -2391,7 +2393,7 @@ function processTopggVote(userId, timestamp = Date.now()) {
   const rewardVote = db.transaction(() => {
     const user = getUser(userId);
     if (user.last_vote_at > 0 && (
-      timestamp <= user.last_vote_at || timestamp - user.last_vote_at < VOTE_COOLDOWN_MS
+      timestamp <= user.last_vote_at || timestamp - user.last_vote_at < VOTE_DUPLICATE_WINDOW_MS
     )) {
       return { duplicate: true };
     }
