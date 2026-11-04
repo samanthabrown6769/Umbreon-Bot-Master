@@ -2267,6 +2267,11 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
     shiny: '<:SHisuianZorua:1562192199188488294>',
     golden: '<:GHisuianZorua:1566263100037013535>',
   },
+  'zorua hisui': {
+    normal: '<:HisuianZorua:1562183797502513233>',
+    shiny: '<:SHisuianZorua:1562192199188488294>',
+    golden: '<:GHisuianZorua:1566263100037013535>',
+  },
   'giratina origin': {
     normal: '<:GiratinaOrigin:1562183799205396500>',
     shiny: '<:SGiratinaOrigin:1562183810659917934>',
@@ -2285,8 +2290,8 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'mega mewtwo y': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
   'mewtwo mega y': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
   'mewtwo y mega': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
-  'charizard gmax': { shiny: '<:SGMAXCharizard:1566263067334021150>' },
-  'gmax charizard': { shiny: '<:SGMAXCharizard:1566263067334021150>' },
+  'charizard gmax': { normal: '<:GMAXCharizard:1567575571204931656>', shiny: '<:SGMAXCharizard:1566263067334021150>' },
+  'gmax charizard': { normal: '<:GMAXCharizard:1567575571204931656>', shiny: '<:SGMAXCharizard:1566263067334021150>' },
   'lapras gmax': { shiny: '<:SGMAXLapras:1566263068650897459>' },
   'gmax lapras': { shiny: '<:SGMAXLapras:1566263068650897459>' },
   'hatterene gmax': { shiny: '<:SGMAXHatterene:1566263070613839973>' },
@@ -2335,7 +2340,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   yungoos: { golden: '<:goldenyungoos:1562202544007155752>' },
   litleo: { golden: '<:goldenlitleo:1562202542203740261>' },
   croagunk: { golden: '<:goldencroagunk:1562202540521558026>' },
-  varoom: { golden: '<:goldenvaroom:1562203391835381840>' },
+  varoom: { golden: '<:goldenvaroom:1562203391835381840>', shiny: '<:SVaroom:1567575526594445454>' },
   aron: { golden: '<:goldenaron:1562208128618209310>' },
   terapagos: { normal: '<:terapagos:1562208130325151744>' },
   mewtwo: {
@@ -2404,21 +2409,55 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
     normal: '<:manaphy:1562188357738696754>',
     shiny: '<:Smanaphy:1562188355536420984>',
   },
+  smoliv: { shiny: '<:SSmoliv:1567575520378491053>' },
+  bramblin: { shiny: '<:SBramblin:1567575523520024637>' },
+  brambleghast: { shiny: '<:SBrambleghast:1567575525009129472>' },
+  'iron boulder': { normal: '<:IronBoulder:1567575531409510400>', shiny: '<:SIronBoulder:1567575529182466200>' },
+  'hisuian sliggoo': { shiny: '<:SHisuianSliggoo:1567575532852486224>' },
+  'sliggoo hisui': { shiny: '<:SHisuianSliggoo:1567575532852486224>' },
+  'hisuian qwilfish': { shiny: '<:SHisuianQwilfish:1567575534659960892>' },
+  'qwilfish hisui': { shiny: '<:SHisuianQwilfish:1567575534659960892>' },
+  chewtle: { shiny: '<:SChewtle:1567575536857776299>' },
+  silcobra: { shiny: '<:SSilcobra:1567575538879696916>' },
+  toxel: { shiny: '<:SToxel:1567575540263555223>' },
+  impidimp: { shiny: '<:SImpidimp:1567575542910164992>' },
+  marill: { shiny: '<:SMarill:1567575544793403543>' },
+  cursola: { shiny: '<:SCursola:1567575546869588099>' },
+  fuecoco: { shiny: '<:SFuecoco:1567575551361814571>' },
+  tarountula: { shiny: '<:STarountula:1567575553236541611>' },
+  lokix: { shiny: '<:SLokix:1567575556457766962>' },
+  pawmo: { shiny: '<:SPawmo:1567575558513238116>' },
+  finizen: { shiny: '<:SFinizen:1567575561776267427>' },
+  glimmet: { shiny: '<:SGlimmet:1567575564011831396>' },
+  timburr: { golden: '<:GTimburr:1567575644496203877>' },
+  'mega zygarde': { normal: '<:MegaZygarde:1567575569783193640>' },
+  'zygarde mega': { normal: '<:MegaZygarde:1567575569783193640>' },
+  'eevee gmax': { normal: '<:GMAXEevee:1567575573763588268>' },
+  'gmax eevee': { normal: '<:GMAXEevee:1567575573763588268>' },
+  'inteleon gmax': { normal: '<:GMAXInteleon:1567575576401674520>' },
+  'gmax inteleon': { normal: '<:GMAXInteleon:1567575576401674520>' },
+  'appletun gmax': { normal: '<:GMAXAppletun:1567575579933413536>' },
+  'gmax appletun': { normal: '<:GMAXAppletun:1567575579933413536>' },
 });
 
 function getPokemonSpriteEmoji(pokemon) {
-  const rawName = String(
-    pokemon?.form_name || pokemon?.form_slug?.replace(/-/g, ' ') || pokemon?.name || ''
-  ).trim();
-  const name = rawName.replace(/^(?:shiny|golden)\s+/i, '').toLowerCase().replace(/-/g, ' ');
-  const isShiny = Boolean(pokemon?.isShiny ?? pokemon?.is_shiny) || /^shiny\s+/i.test(rawName);
-  const isGolden = Boolean(pokemon?.isGolden ?? pokemon?.is_golden) || /^golden\s+/i.test(rawName);
-  const species = Object.keys(POKEMON_SPRITE_EMOJIS)
-    .filter((candidate) => {
-      const key = candidate.replace(/-/g, ' ');
-      return name === key || name.startsWith(`${key} `);
-    })
-    .sort((a, b) => b.length - a.length)[0];
+  const rawNames = [pokemon?.name, pokemon?.form_name, pokemon?.form_slug?.replace(/-/g, ' ')]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const isShiny = Boolean(pokemon?.isShiny ?? pokemon?.is_shiny) || rawNames.some((raw) => /^shiny\s+/i.test(raw));
+  const isGolden = Boolean(pokemon?.isGolden ?? pokemon?.is_golden) || rawNames.some((raw) => /^golden\s+/i.test(raw));
+  let species = null;
+  // Try every available name (display name, form name, slug) and keep the most specific match.
+  for (const raw of rawNames) {
+    const name = raw.replace(/^(?:shiny|golden)\s+/i, '').toLowerCase().replace(/-/g, ' ');
+    const match = Object.keys(POKEMON_SPRITE_EMOJIS)
+      .filter((candidate) => {
+        const key = candidate.replace(/-/g, ' ');
+        return name === key || name.startsWith(`${key} `);
+      })
+      .sort((a, b) => b.length - a.length)[0];
+    if (match && (!species || match.length > species.length)) species = match;
+  }
   if (!species) return '';
   const variants = POKEMON_SPRITE_EMOJIS[species];
   return (isGolden && variants.golden) || (isShiny && variants.shiny) || variants.normal || '';
