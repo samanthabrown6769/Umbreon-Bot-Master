@@ -208,5 +208,14 @@
     "slug": "arceus-ghost",
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/arceus-ghost.gif",
     "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/arceus-ghost.gif"
-  }
+  },
+  { "slug": "tornadus-incarnate", "name": "Tornadus" },
+  { "slug": "landorus-incarnate", "name": "Landorus" },
+  { "slug": "thundurus-incarnate", "name": "Thundurus" },
+  { "slug": "keldeo-ordinary", "name": "Keldeo" },
+  { "slug": "zygarde-50", "name": "Zygarde" },
+  { "slug": "meloetta-aria", "name": "Meloetta" },
+  { "slug": "urshifu-single-strike", "name": "Urshifu" },
+  { "slug": "shaymin-land", "name": "Shaymin" },
+  { "slug": "enamorus-incarnate", "name": "Enamorus" }
 ]

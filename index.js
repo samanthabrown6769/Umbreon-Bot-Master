@@ -2391,14 +2391,14 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
     shiny: '<:Sjirachi:1562188369969291295>',
   },
   keldeo: {
-    normal: '<:keldeo:1562188368207421610>',
+    normal: '<:Keldeo:1567608072250069032>',
     shiny: '<:Skeldeo:1562188366391541903>',
   },
   cobalion: { normal: '<:cobalion:1562193601767936111>' },
   terrakion: { normal: '<:terrakion:1562193599142305903>' },
   virizion: { normal: '<:virizion:1562193596583510097>' },
   genesect: {
-    normal: '<:genesect:1562188364688396308>',
+    normal: '<:Genesect:1567608068659740702>',
     shiny: '<:Sgenesect:1562188362717200465>',
   },
   phione: {
@@ -2493,6 +2493,64 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   suicune: { normal: '<:Suicune:1567600512059314186>' },
   salandit: { shiny: '<:SSalandit:1567600510083670077>' },
   necrozma: { normal: '<:Necrozma:1567600506472501518>' },
+  pidove: { shiny: '<:SPidove:1567600508288499862>' },
+  mew: { normal: '<:Mew:1567608125257941102>' },
+  raikou: { normal: '<:Raikou:1567608122871259136>' },
+  entei: { normal: '<:Entei:1567608119612416130>' },
+  latias: { normal: '<:Latias:1567608116852559983>' },
+  latios: { normal: '<:Latios:1567608114994348102>' },
+  kyogre: { normal: '<:Kyogre:1567608112968630353>' },
+  groudon: { normal: '<:Groudon:1567608110867288074>' },
+  deoxys: { normal: '<:Deoxys:1567608109059547176>' },
+  uxie: { normal: '<:Uxie:1567608107365044234>' },
+  mesprit: { normal: '<:Mesprit:1567608105100120145>' },
+  azelf: { normal: '<:Azelf:1567608102725882018>' },
+  dialga: { normal: '<:Dialga:1567608101031518239>' },
+  palkia: { normal: '<:Palkia:1567608099282620436>' },
+  heatran: { normal: '<:Heatran:1567608097495851121>' },
+  giratina: { normal: '<:Giratina:1567608093888741396>' },
+  cresselia: { normal: '<:Cresselia:1567608091829076151>' },
+  darkrai: { normal: '<:Darkrai:1567608089937449100>' },
+  shaymin: { normal: '<:Shaymin:1567608087781707886>' },
+  arceus: { normal: '<:Arceus:1567608085831356586>' },
+  victini: { normal: '<:Victini:1567608084162158772>' },
+  tornadus: { normal: '<:Tornadus:1567608082563862760>' },
+  thundurus: { normal: '<:Thundurus:1567608080680620083>' },
+  reshiram: { normal: '<:Reshiram:1567608079124660326>' },
+  zekrom: { normal: '<:Zekrom:1567608077560324246>' },
+  landorus: { normal: '<:Landorus:1567608075869749258>' },
+  kyurem: { normal: '<:Kyurem:1567608073789505697>' },
+  meloetta: { normal: '<:Meloetta:1567608070610358302>' },
+  xerneas: { normal: '<:Xerneas:1567608051811356672>' },
+  yveltal: { normal: '<:Yveltal:1567608049932181717>' },
+  zygarde: { normal: '<:Zygarde:1567608048195870720>' },
+  diancie: { normal: '<:Diancie:1567608046568607815>' },
+  hoopa: { normal: '<:Hoopa:1567608044378914976>' },
+  volcanion: { normal: '<:Volcanion:1567608042214654152>' },
+  'tapu koko': { normal: '<:TapuKoko:1567608040872480849>' },
+  'tapu lele': { normal: '<:TapuLele:1567608038595104958>' },
+  'tapu bulu': { normal: '<:TapuBulu:1567608036111949834>' },
+  'tapu fini': { normal: '<:TapuFini:1567608034216124597>' },
+  cosmog: { normal: '<:Cosmog:1567608031968239898>' },
+  cosmoem: { normal: '<:Cosmoem:1567608029979873480>' },
+  solgaleo: { normal: '<:Solgaleo:1567608027547177181>' },
+  lunala: { normal: '<:Lunala:1567608025559212153>' },
+  nihilego: { normal: '<:Nihilego:1567608024045060146>' },
+  buzzwole: { normal: '<:Buzzwole:1567608022392377454>' },
+  pheromosa: { normal: '<:Pheromosa:1567608020291027066>' },
+  xurkitree: { normal: '<:Xurkitree:1567608018529558649>' },
+  celesteela: { normal: '<:Celesteela:1567608016776200323>' },
+  kartana: { normal: '<:Kartana:1567608014503157822>' },
+  guzzlord: { normal: '<:Guzzlord:1567608012703539449>' },
+  magearna: { normal: '<:Magearna:1567608010950443029>' },
+  marshadow: { normal: '<:Marshadow:1567608009637499011>' },
+  poipole: { normal: '<:Poipole:1567608007515439215>' },
+  naganadel: { normal: '<:Nagandel:1567608005053390980>' },
+  stakataka: { normal: '<:Stakataka:1567608002989654050>' },
+  blacephalon: { normal: '<:Blacephalon:1567608001249021972>' },
+  zeraora: { normal: '<:Zeraora:1567607991421763614>' },
+  melmetal: { normal: '<:Melmetal:1567607989576138783>' },
+  zacian: { normal: '<:Zacian:1567607988192022649>' },
   sizzlipede: { shiny: '<:SSizzlipede:1567600504555569233>' },
   caterpie: { shiny: '<:SCaterpie:1567600502542176386>' },
   bidoof: { shiny: '<:SBidoof:1567600500847812678>' },
@@ -2512,6 +2570,12 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'gmax appletun': { normal: '<:GMAXAppletun:1567575579933413536>' },
 });
 
+const EXACT_ONLY_SPRITE_KEYS = new Set([
+  'necrozma', 'deoxys', 'shaymin', 'arceus', 'tornadus', 'thundurus', 'landorus', 'kyurem', 'keldeo',
+  'meloetta', 'genesect', 'xerneas', 'yveltal', 'zygarde', 'hoopa', 'giratina', 'dialga', 'palkia',
+  'kyogre', 'groudon', 'solgaleo', 'lunala', 'zacian', 'melmetal', 'mew', 'latias', 'latios',
+]);
+
 function getPokemonSpriteEmoji(pokemon) {
   const rawNames = [pokemon?.name, pokemon?.form_name, pokemon?.form_slug?.replace(/-/g, ' ')]
     .map((value) => String(value || '').trim())
@@ -2525,6 +2589,7 @@ function getPokemonSpriteEmoji(pokemon) {
     const match = Object.keys(POKEMON_SPRITE_EMOJIS)
       .filter((candidate) => {
         const key = candidate.replace(/-/g, ' ');
+        if (EXACT_ONLY_SPRITE_KEYS.has(key)) return name === key;
         return name === key || name.startsWith(`${key} `);
       })
       .sort((a, b) => b.length - a.length)[0];
