@@ -218,6 +218,49 @@ function setRareSpawnNameHidden(userId, hidden) {
   return hidden;
 }
 
+const BALL_BUTTON_KEYS = ['pb', 'gb', 'ub', 'mb', 'prb', 'dv'];
+
+function getBallButtonOrder(userId) {
+  assertUserId(userId);
+  const stored = db.prepare('SELECT value FROM bot_settings WHERE key = ?')
+    .get(`ball_order:${userId}`)?.value;
+  const saved = (stored || '').split(',').filter((key, index, all) =>
+    BALL_BUTTON_KEYS.includes(key) && all.indexOf(key) === index);
+  return [...saved, ...BALL_BUTTON_KEYS.filter((key) => !saved.includes(key))];
+}
+
+function setBallButtonOrder(userId, order) {
+  assertUserId(userId);
+  if (!Array.isArray(order) || order.length !== BALL_BUTTON_KEYS.length
+      || new Set(order).size !== order.length
+      || order.some((key) => !BALL_BUTTON_KEYS.includes(key))) {
+    throw new TypeError('order must contain every ball key exactly once.');
+  }
+  db.prepare(`
+    INSERT INTO bot_settings (key, value)
+    VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(`ball_order:${userId}`, order.join(','));
+  return order;
+}
+
+function getHideEmptyBalls(userId) {
+  assertUserId(userId);
+  return db.prepare('SELECT value FROM bot_settings WHERE key = ?')
+    .get(`hide_empty_balls:${userId}`)?.value === 'true';
+}
+
+function setHideEmptyBalls(userId, hidden) {
+  assertUserId(userId);
+  if (typeof hidden !== 'boolean') throw new TypeError('hidden must be a boolean.');
+  db.prepare(`
+    INSERT INTO bot_settings (key, value)
+    VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(`hide_empty_balls:${userId}`, String(hidden));
+  return hidden;
+}
+
 function getMarketCompletionNotificationsEnabled(userId) {
   assertUserId(userId);
   const value = db.prepare(
@@ -1652,6 +1695,7 @@ ensureColumns('market_sales', {
   is_golden: 'INTEGER NOT NULL DEFAULT 0',
   tax_rate: 'INTEGER NOT NULL DEFAULT 15',
   claimed: 'INTEGER NOT NULL DEFAULT 0',
+  quantity: 'INTEGER NOT NULL DEFAULT 1',
 });
 
 const catalogPath = path.join(__dirname, 'data', 'pokemon-catalog.json');
@@ -7399,6 +7443,24 @@ function markMarketSalesClaimed(userId, saleIds) {
   })();
 }
 
+function getMarketSaleHistory(pokemonId, variant = 'normal') {
+  const isShiny = variant === 'shiny' ? 1 : 0;
+  const isGolden = variant === 'golden' ? 1 : 0;
+  const where = 'pokemon_id = ? AND is_shiny = ? AND is_golden = ?';
+  const params = [pokemonId, isShiny, isGolden];
+  const totals = db.prepare(`
+    SELECT COALESCE(SUM(quantity), 0) AS copies,
+      COALESCE(SUM(sale_price), 0) AS gross,
+      COUNT(*) AS sale_count
+    FROM market_sales WHERE ${where}
+  `).get(...params);
+  const recent = db.prepare(`
+    SELECT sale_price, quantity, sold_at FROM market_sales
+    WHERE ${where} ORDER BY id DESC LIMIT 10
+  `).all(...params);
+  return { ...totals, recent };
+}
+
 function getUserMarketSaleSummary(userId) {
   assertUserId(userId);
   return db.prepare(`
@@ -7576,9 +7638,9 @@ function buyMarketItem(buyerId, listingId, quantity = 1) {
       db.prepare(`
         INSERT INTO market_sales (
           listing_id, seller_id, buyer_id, pokemon_id, name, rarity, is_shiny,
-          is_golden, sale_price, tax_amount, tax_rate, payout_amount
+          is_golden, sale_price, tax_amount, tax_rate, payout_amount, quantity
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         item.id,
         item.seller_id,
@@ -7591,7 +7653,8 @@ function buyMarketItem(buyerId, listingId, quantity = 1) {
         totalPrice,
         taxAmount,
         Math.round(taxRate * 100),
-        saleProceeds
+        saleProceeds,
+        amount
       );
     }
     if (item.amount > amount) {
@@ -10080,6 +10143,10 @@ module.exports = {
   logRareSpawn,
   getRareSpawnLog,
   getMarketCompletionNotificationsEnabled,
+  getBallButtonOrder,
+  setBallButtonOrder,
+  getHideEmptyBalls,
+  setHideEmptyBalls,
   setMarketCompletionNotificationsEnabled,
   setBuddyNickname,
   rerollBuddyIv,
@@ -10257,6 +10324,7 @@ module.exports = {
   getUnclaimedMarketSales,
   markMarketSalesClaimed,
   getUserMarketSaleSummary,
+  getMarketSaleHistory,
   clearMarketListings,
   removeUserMarketListings,
   stockMarketPokemon,

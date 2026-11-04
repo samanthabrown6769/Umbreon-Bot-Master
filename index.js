@@ -113,6 +113,10 @@ const {
   logRareSpawn,
   getRareSpawnLog,
   getMarketCompletionNotificationsEnabled,
+  getBallButtonOrder,
+  setBallButtonOrder,
+  getHideEmptyBalls,
+  setHideEmptyBalls,
   setMarketCompletionNotificationsEnabled,
   setBuddyNickname,
   rerollBuddyIv,
@@ -263,6 +267,7 @@ const {
   getUnclaimedMarketSales,
   markMarketSalesClaimed,
   getUserMarketSaleSummary,
+  getMarketSaleHistory,
   clearMarketListings,
   removeUserMarketListings,
   stockMarketPokemon,
@@ -6625,8 +6630,14 @@ async function askForBall(
       target.isShiny ? (target.shinyImg || target.img) : target.img
     );
   if (image) embed.setImage(image);
-  const ballEntries = Object.entries(BALL_CONFIG)
-    .filter(([, ball]) => !ball.fishingOnly || isFishing);
+  const ballOrder = getBallButtonOrder(userId);
+  let ballEntries = Object.entries(BALL_CONFIG)
+    .filter(([, ball]) => !ball.fishingOnly || isFishing)
+    .sort(([a], [b]) => ballOrder.indexOf(a) - ballOrder.indexOf(b));
+  if (!allowAnyUserCatch && getHideEmptyBalls(userId)) {
+    const stocked = ballEntries.filter(([, ball]) => user[ball.column] > 0);
+    if (stocked.length) ballEntries = stocked;
+  }
   const ballRows = [];
   for (let i = 0; i < ballEntries.length; i += 5) {
     ballRows.push(new ActionRowBuilder().addComponents(
@@ -11553,6 +11564,20 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'toggle') {
+      if (args[0]?.toLowerCase() === 'balls') {
+        const requested = args[1]?.toLowerCase();
+        if (args.length > 2 || (requested && !['on', 'off'].includes(requested))) {
+          return message.reply(`Usage: \`${PREFIX}toggle balls [on|off]\` (on = hide empty ball buttons).`);
+        }
+        const hidden = requested ? requested === 'on' : !getHideEmptyBalls(userId);
+        setHideEmptyBalls(userId, hidden);
+        return message.reply(
+          `✅ Empty ball buttons are now **${hidden ? 'hidden' : 'shown'}** on encounters. ` +
+          (hidden
+            ? 'A ball\'s button disappears from your next encounter once you run out of it.'
+            : 'All ball buttons stay visible even when you have none left.')
+        );
+      }
       if (args[0]?.toLowerCase() === 'market') {
         if (args.length > 2) {
           return message.reply(`Usage: \`${PREFIX}toggle market [on|off]\`.`);
@@ -11596,7 +11621,7 @@ client.on('messageCreate', async (message) => {
       if (args.length !== 1 || args[0]?.toLowerCase() !== 'cooldown') {
         return message.reply(
           `Usage: \`${PREFIX}toggle cooldown\`, \`${PREFIX}toggle market [on|off]\`, ` +
-          `or \`${PREFIX}toggle rarespawn [on|off]\`.`
+          `\`${PREFIX}toggle balls [on|off]\`, or \`${PREFIX}toggle rarespawn [on|off]\`.`
         );
       }
       const buildEmbed = () => {
@@ -25212,6 +25237,7 @@ client.on('messageCreate', async (message) => {
 
       let search = null;
       let searchFilter = null;
+      let historyTarget = null;
       const marketSubCommand = args[0]?.toLowerCase();
       const isVariantView = marketSubCommand === 'view'
         && /^(shiny|golden)(?:[\s_-]+.+|\[.+\])$/i.test(args.slice(1).join(' ').trim());
@@ -25231,15 +25257,20 @@ client.on('messageCreate', async (message) => {
         }
         search = `${searchShiny ? 'Shiny ' : searchGolden ? 'Golden ' : ''}${searchForm.name}`;
         searchFilter = { pokemonId: searchForm.id, isShiny: searchShiny, isGolden: searchGolden };
+        historyTarget = { pokemonId: searchForm.id, label: search, variant: searchVariant || 'normal' };
       }
       if (marketSubCommand === 'view' && !isVariantView) {
-        search = args.slice(1).join(' ').trim();
         search = args.slice(1).join(' ').trim();
         if (!search) {
           return message.reply(`Usage: \`${PREFIX}m view <Pokémon name|Pokédex number>\`.`);
         }
         const searchForm = resolvePokemonForm(search);
         if (searchForm) {
+          historyTarget = {
+            pokemonId: searchForm.id,
+            label: searchForm.name,
+            variant: getDexQueryMarketVariant(searchForm, search) || 'normal',
+          };
           search = searchForm.name;
         }
       }
@@ -25269,16 +25300,57 @@ client.on('messageCreate', async (message) => {
           .map(({ listing, dex }) => ({ ...listing, dexNumber: dex }));
       }
       const listingCount = goldenView ? goldenListings.length : getMarketListingCount(search, searchFilter);
-      if (!listingCount) {
+      if (!listingCount && !historyTarget) {
         return message.reply(goldenView
           ? 'No Golden Pokémon are currently listed on the market.'
           : search
           ? `No market listings found for **${search}**.`
           : `The market is currently empty! Sell something using \`${PREFIX}market list <Pokémon number or name> <amount> <price>\`.`);
       }
-      const totalPages = Math.ceil(listingCount / pageSize);
+      const totalPages = Math.max(1, Math.ceil(listingCount / pageSize));
       let currentPage = 1;
+      let showingHistory = false;
+      const historyEmbed = () => {
+        const history = getMarketSaleHistory(historyTarget.pokemonId, historyTarget.variant);
+        const embed = new EmbedBuilder()
+          .setColor(0x1abc9c)
+          .setTitle(`📈 Market History: ${historyTarget.label}`);
+        if (!history.sale_count) {
+          return embed.setDescription('No player market sales have been recorded for this Pokémon yet.');
+        }
+        const unitPrice = (sale) => Math.round(sale.sale_price / Math.max(1, sale.quantity));
+        return embed
+          .addFields(
+            {
+              name: 'Last sold',
+              value: `${EMOJIS.pokecoin} **${unitPrice(history.recent[0]).toLocaleString()}** each`,
+              inline: true,
+            },
+            {
+              name: 'Average (all sales)',
+              value: `${EMOJIS.pokecoin} **${Math.round(history.gross / Math.max(1, history.copies)).toLocaleString()}** each`,
+              inline: true,
+            },
+            {
+              name: 'Total sold',
+              value: `${history.copies.toLocaleString()} copies`,
+              inline: true,
+            }
+          )
+          .setDescription(history.recent.map((sale) =>
+            `${sale.quantity > 1 ? `${sale.quantity.toLocaleString()}x ` : ''}${EMOJIS.pokecoin} ` +
+            `**${unitPrice(sale).toLocaleString()}** each • ${sale.sold_at}`
+          ).join('\n'))
+          .setFooter({ text: 'Showing the 10 most recent sales. Average is per copy across all sales.' });
+      };
       const pageEmbed = () => {
+        if (showingHistory) return historyEmbed();
+        if (!listingCount) {
+          return new EmbedBuilder()
+            .setColor(0x1abc9c)
+            .setTitle(`🏪 Market Search: ${search}`)
+            .setDescription(`No market listings found for **${search}**. You can still check its sale history below.`);
+        }
         const listings = goldenView
           ? goldenListings.slice((currentPage - 1) * pageSize, currentPage * pageSize)
           : getMarketListings(search, pageSize, (currentPage - 1) * pageSize, searchFilter);
@@ -25312,18 +25384,39 @@ client.on('messageCreate', async (message) => {
           });
         return embed;
       };
-      const pageButtons = () => new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('market:prev')
-          .setLabel('Previous')
-          .setStyle(ButtonStyle.Secondary)
-          .setDisabled(currentPage === 1),
-        new ButtonBuilder()
-          .setCustomId('market:next')
-          .setLabel('Next')
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(currentPage === totalPages)
-      );
+      const pageButtons = () => {
+        if (showingHistory) {
+          return new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('market:back')
+              .setLabel('Back to Listings')
+              .setEmoji('🏪')
+              .setStyle(ButtonStyle.Primary)
+          );
+        }
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('market:prev')
+            .setLabel('Previous')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(currentPage === 1),
+          new ButtonBuilder()
+            .setCustomId('market:next')
+            .setLabel('Next')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(currentPage === totalPages)
+        );
+        if (historyTarget) {
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId('market:history')
+              .setLabel('Market History')
+              .setEmoji('📈')
+              .setStyle(ButtonStyle.Success)
+          );
+        }
+        return row;
+      };
       const marketMessage = await message.reply({
         embeds: [pageEmbed()],
         components: [pageButtons()],
@@ -25341,7 +25434,11 @@ client.on('messageCreate', async (message) => {
             });
             return;
           }
-          if (interaction.customId === 'market:prev') {
+          if (interaction.customId === 'market:history' && historyTarget) {
+            showingHistory = true;
+          } else if (interaction.customId === 'market:back') {
+            showingHistory = false;
+          } else if (interaction.customId === 'market:prev') {
             currentPage = Math.max(1, currentPage - 1);
           } else if (interaction.customId === 'market:next') {
             currentPage = Math.min(totalPages, currentPage + 1);
@@ -25874,6 +25971,83 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'profile' || command === 'pr' || command === 'pro') {
+      if (args.length === 3 && args.slice(0, 3).join(' ').toLowerCase() === 'change ball order') {
+        const ballLabel = (key) => `${BALL_CONFIG[key].emoji} ${BALL_CONFIG[key].name}`;
+        let picked = [];
+        const orderEmbed = () => new EmbedBuilder()
+          .setColor(0x2b2d31)
+          .setTitle('🎛️ Change Ball Order')
+          .setDescription(
+            `**Current order:** ${getBallButtonOrder(userId).map(ballLabel).join(' → ')}\n\n` +
+            `Click the balls in the order you want them to appear on encounters.\n` +
+            `**New order:** ${picked.length ? picked.map(ballLabel).join(' → ') : '*none selected*'}`
+          );
+        const orderButtons = (disabled = false) => {
+          const rows = [new ActionRowBuilder(), new ActionRowBuilder()];
+          Object.keys(BALL_CONFIG).forEach((key, index) => {
+            rows[index < 5 ? 0 : 1].addComponents(
+              new ButtonBuilder()
+                .setCustomId(`ballorder:${key}`)
+                .setEmoji(BALL_CONFIG[key].buttonEmoji)
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(disabled || picked.includes(key))
+            );
+          });
+          rows[1].addComponents(
+            new ButtonBuilder()
+              .setCustomId('ballorder:reset')
+              .setLabel('Clear selection')
+              .setStyle(ButtonStyle.Danger)
+              .setDisabled(disabled || !picked.length)
+          );
+          return rows;
+        };
+        const orderMessage = await message.reply({ embeds: [orderEmbed()], components: orderButtons() });
+        const orderCollector = orderMessage.createMessageComponentCollector({
+          componentType: ComponentType.Button,
+          time: 120000,
+        });
+        orderCollector.on('collect', async (interaction) => {
+          try {
+            if (interaction.user.id !== userId) {
+              return interaction.reply({
+                content: `Run \`${PREFIX}profile change ball order\` to change your own ball order.`,
+                ephemeral: true,
+              });
+            }
+            const action = interaction.customId.split(':')[1];
+            if (action === 'reset') {
+              picked = [];
+            } else if (Object.hasOwn(BALL_CONFIG, action) && !picked.includes(action)) {
+              picked.push(action);
+            }
+            if (picked.length === Object.keys(BALL_CONFIG).length) {
+              setBallButtonOrder(userId, picked);
+              orderCollector.stop('saved');
+              return interaction.update({
+                embeds: [new EmbedBuilder()
+                  .setColor(0x2ecc71)
+                  .setTitle('✅ Ball Order Saved')
+                  .setDescription(picked.map(ballLabel).join(' → '))],
+                components: [],
+              });
+            }
+            await interaction.update({ embeds: [orderEmbed()], components: orderButtons() });
+          } catch (error) {
+            console.error(`Failed to update ball order for user ${userId}:`, error);
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({ content: 'Could not update your ball order.', ephemeral: true });
+            }
+          }
+        });
+        orderCollector.on('end', (_, reason) => {
+          if (reason === 'saved') return;
+          orderMessage.edit({ components: orderButtons(true) }).catch((error) => {
+            console.error(`Failed to disable ball order buttons for user ${userId}:`, error);
+          });
+        });
+        return;
+      }
       const resolved = await resolveCommandUser(message, args);
       if (resolved.error === 'usage') {
         return message.reply(`Usage: \`${PREFIX}profile [@user|user ID]\`.`);
