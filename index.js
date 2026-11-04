@@ -25762,17 +25762,13 @@ client.on('messageCreate', async (message) => {
       const now = new Date();
       const phase = getTimeOfDayPhase(now);
       const phaseLabel = { day: '☀️ Day', dusk: '🌇 Dusk', night: '🌙 Night' }[phase];
-      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const unix = Math.floor(now.getTime() / 1000);
-      const est = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      const fmt = (timeZone) => new Intl.DateTimeFormat('en-US', {
+        timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
         hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short',
       }).format(now);
       return message.reply(
-        `🕒 **${est}**\n` +
-        `Relative: <t:${unix}:R> • Your local time: <t:${unix}:F>\n` +
-        `Bot time: **${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}** ` +
-        `(${zone}) — ${phaseLabel}\n` +
+        `🕒 **EST:** ${fmt('America/New_York')}\n` +
+        `${phaseLabel}\n` +
         'Day: 06:00–17:00 • Dusk: 17:00–18:00 • Night: 18:00–06:00'
       );
     }
