@@ -455,7 +455,7 @@ const {
   isPlateItem,
 } = require('./held-item-effects');
 const { getGoldenSpriteUrl } = require('./golden-pokemon');
-const { getCurrentPromo, getActivePromos, findPromoByItemName, rollPromoItemDrop } = require('./promo');
+const { getCurrentPromo, getActivePromos, getPastPromos, findPromoByItemName, rollPromoItemDrop } = require('./promo');
 const { EVOLUTION_ITEMS, findEvolutionItem } = require('./evolution-items');
 const { BOXES, VOTE_BOXES, LOOTBOX_EMOJI, findBox, findVoteBox } = require('./boxes');
 const {
@@ -776,7 +776,7 @@ async function autoHatchReadyEggs(userId, channel) {
   if (!hatched.length) return;
   const equipLines = autoEquipEggs(userId);
   const embed = new EmbedBuilder()
-    .setColor(0x8e44ad)
+    .setColor(getEggHatchColor(hatchedPokemon))
     .setTitle(`${EMOJIS.pokeEgg} Auto-hatched ${hatched.length} Egg${hatched.length === 1 ? '' : 's'}!`)
     .setDescription(
       `${hatched.join('\n')}\n\n` +
@@ -2227,6 +2227,18 @@ function getDisplayRarity(rarity, pokemonName = '', isShiny = false) {
 function getRarityColor(rarity, pokemonName = '', isShiny = false) {
   const displayRarity = getDisplayRarity(rarity, pokemonName, isShiny).toLowerCase();
   return RARITY_COLORS[displayRarity] || 0x3498db;
+}
+
+// Embed colour for egg hatches: the rarest hatched Pokémon decides it.
+function getEggHatchColor(hatchedPokemon) {
+  const priority = ['golden', 'shiny', 'gem', 'legendary', 'super rare', 'rare', 'uncommon', 'common'];
+  const rankOf = (pokemon) => {
+    const key = pokemon.isGolden ? 'golden' : getDisplayRarity(pokemon.rarity, pokemon.name, pokemon.isShiny).toLowerCase();
+    const index = priority.indexOf(key);
+    return { key, index: index < 0 ? priority.length : index };
+  };
+  const best = hatchedPokemon.map(rankOf).sort((a, b) => a.index - b.index)[0];
+  return RARITY_COLORS[best?.key] || 0x8e44ad;
 }
 
 // Species-specific Mega emojis, filled at startup from the emojis the bot can see.
@@ -4695,8 +4707,9 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
     `${heldItemMultiplier > 1 ? ` ${pokemon.held_item} boosted the move!` : ''}` +
     `${isCritical ? ' 💥 *(CRITICAL HIT!)*' : ''}${dropText}${selfBoostText}`,
   ];
-  if (battleMon && battleFx.slug(move.name) === 'drain-punch' && result.damage > 0) {
-    battleFx.healMon(battleMon, Math.max(1, Math.floor(result.damage / 2)), (text) => battleLog.push(text));
+  const drainFraction = battleFx.DRAIN_MOVES[battleFx.slug(move.name)];
+  if (battleMon && drainFraction && result.damage > 0) {
+    battleFx.healMon(battleMon, Math.max(1, Math.floor(result.damage * drainFraction)), (text) => battleLog.push(text));
   }
   if (battleMon && bossMon && abilityCtx) {
     battleFx.abilities.afterHit(
@@ -8249,7 +8262,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           const [minCoins, maxCoins] = CHALLENGER_TIERS[challenge.challengerTier].coins;
           challengerCoins = awardCoinsWithBoost(
             userId,
-            (minCoins + Math.floor(Math.random() * (maxCoins - minCoins + 1))) * luckIncenseMultiplier * 0.5
+            Math.floor((minCoins + Math.floor(Math.random() * (maxCoins - minCoins + 1))) * luckIncenseMultiplier * 0.5)
           ).finalAmount;
         }
         if (isRematch) {
@@ -9024,13 +9037,26 @@ function summarizeGiftsBySender(gifts) {
   return [...bySender].map(([senderId, list]) => `From <@${senderId}>:\n${summarizeGifts(list)}`).join('\n\n');
 }
 
-function formatGiftHistoryLines(rows, kind) {
-  return rows.map((row) => {
-    const label = `${row.is_shiny ? `${EMOJIS.shiny} ` : ''}${row.is_golden ? `${EMOJIS.golden} ` : ''}${row.name}`;
-    const time = Math.floor(new Date(`${row.sent_at.replace(' ', 'T')}Z`).getTime() / 1000);
+// Groups gift history per trading partner, sorted by amount (then most recent).
+function summarizeGiftHistory(rows, kind) {
+  const partnerKey = kind === 'sent' ? 'recipient_id' : 'sender_id';
+  const byUser = new Map();
+  for (const row of rows) {
+    const entry = byUser.get(row[partnerKey]) || { userId: row[partnerKey], amount: 0, lastSentAt: row.sent_at };
+    entry.amount += 1;
+    if (row.sent_at > entry.lastSentAt) entry.lastSentAt = row.sent_at;
+    byUser.set(row[partnerKey], entry);
+  }
+  return [...byUser.values()].sort((a, b) =>
+    b.amount - a.amount || (a.lastSentAt < b.lastSentAt ? 1 : a.lastSentAt > b.lastSentAt ? -1 : 0));
+}
+
+function formatGiftHistoryLines(entries, kind) {
+  return entries.map((entry) => {
+    const time = Math.floor(new Date(`${String(entry.lastSentAt).replace(' ', 'T')}Z`).getTime() / 1000);
     return kind === 'sent'
-      ? `• **${label}** → <@${row.recipient_id}> • <t:${time}:R>`
-      : `• **${label}** ← <@${row.sender_id}> • <t:${time}:R>`;
+      ? `• **${entry.amount.toLocaleString()}** Pokémon → <@${entry.userId}> • last <t:${time}:R>`
+      : `• **${entry.amount.toLocaleString()}** Pokémon ← <@${entry.userId}> • last <t:${time}:R>`;
   });
 }
 
@@ -9038,17 +9064,18 @@ async function handleGiftHistory(message, userId) {
   const perPage = 10;
   let kind = 'received';
   let page = 0;
-  const load = () => getGiftHistory(userId, kind);
+  const load = () => summarizeGiftHistory(getGiftHistory(userId, kind), kind);
   let rows = load();
   const buildPayload = (disabled = false) => {
     const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
     page = Math.min(page, totalPages - 1);
     const lines = formatGiftHistoryLines(rows.slice(page * perPage, (page + 1) * perPage), kind);
+    const totalGifts = rows.reduce((sum, entry) => sum + entry.amount, 0);
     const embed = makeEmbed(
       kind === 'sent' ? '🎁 Gifts Sent' : '🎁 Gifts Received',
       lines.length ? lines.join('\n') : `No gifts ${kind} yet.`,
       0x3498db
-    ).setFooter({ text: `Page ${page + 1}/${totalPages} • ${rows.length} total` });
+    ).setFooter({ text: `Page ${page + 1}/${totalPages} • ${rows.length} trainers • ${totalGifts} Pokémon total` });
     return {
       embeds: [embed],
       components: [new ActionRowBuilder().addComponents(
@@ -11967,7 +11994,7 @@ client.on('messageCreate', async (message) => {
           .filter((incubator) => incubator.incubator_type === type).length;
         const stillIncubating = incubators.length - hatched.length;
         const embed = new EmbedBuilder()
-          .setColor(0x8e44ad)
+          .setColor(getEggHatchColor(hatchedPokemon))
           .setTitle(`${EMOJIS.pokeEgg} Hatched ${hatched.length} Egg${hatched.length === 1 ? '' : 's'}!`)
           .setDescription(
             `${hatched.join('\n')}\n\n` +
@@ -12030,8 +12057,8 @@ client.on('messageCreate', async (message) => {
         const equipLines = autoEquipEggs(userId);
         const variant = result.isGolden ? 'Golden ' : result.isShiny ? 'Shiny ' : '';
         const embed = new EmbedBuilder()
-          .setColor(result.isGolden ? 0xf1c40f : result.isShiny ? 0xff66cc : 0x8e44ad)
-          .setAuthor({ name: `<@${userId}>'s Egg hatched!`, iconURL: message.author.displayAvatarURL() })
+          .setColor(getEggHatchColor([{ ...hatch.pokemon, isShiny: result.isShiny, isGolden: result.isGolden }]))
+          .setAuthor({ name: `${message.author.username}'s Egg hatched!`, iconURL: message.author.displayAvatarURL() })
           .setDescription(
             `${EMOJIS.pokeEgg} Your Egg hatched into ${result.isGolden ? EMOJIS.golden : result.isShiny ? EMOJIS.shiny : ''} ` +
             `**${variant}${hatch.pokemon.name}**!` +
@@ -12896,7 +12923,60 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'promo') {
       const promos = getActivePromos();
-      if (!promos.length) return message.reply('There is no active promo right now.');
+      const subArg = args[0]?.toLowerCase();
+
+      if (!promos.length || ['past', 'history', 'old'].includes(subArg)) {
+        const history = getPastPromos();
+        const perPage = 8;
+        const totalPages = Math.max(1, Math.ceil(history.length / perPage));
+        let page = 0;
+        const buildHistoryEmbed = () => {
+          const slice = history.slice(page * perPage, (page + 1) * perPage);
+          const lines = slice.map((entry) =>
+            `${EMOJIS.golden} ${entry.emoji ? `${entry.emoji} ` : ''}**${entry.name}** 🟡 \`${entry.promoName || 'Promo'}\`${entry.egg ? ' 🥚' : ''}\n` +
+            `\`-> ${entry.start ? `${entry.start} — ` : 'Ended '}${entry.end}\``
+          );
+          return new EmbedBuilder()
+            .setColor(0x2B2D31)
+            .setDescription(
+              `⏳ **Current Promo:** ${promos.length ? promos.map((p) => p.name).join(', ') : 'None'}\n` +
+              `📅 **Past Promos:**\n` +
+              (lines.length ? lines.join('\n') : 'No past promos recorded yet.')
+            )
+            .setFooter({
+              text: `Page: ${page + 1}/${totalPages}.` +
+                (history[0] ? ` The most recent promo was held on: ${history[0].end}` : ''),
+            });
+        };
+        const buildHistoryRows = () => new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('promohist:prev').setLabel('Prev').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+          new ButtonBuilder().setCustomId('promohist:next').setLabel('Next').setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages - 1)
+        );
+        const historyMessage = await message.reply({
+          embeds: [buildHistoryEmbed()],
+          components: totalPages > 1 ? [buildHistoryRows()] : [],
+        });
+        if (totalPages > 1) {
+          const historyCollector = historyMessage.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 2 * 60 * 1000,
+          });
+          historyCollector.on('collect', async (interaction) => {
+            try {
+              if (interaction.user.id !== userId) {
+                await interaction.reply({ content: 'These buttons belong to another trainer.', ephemeral: true });
+                return;
+              }
+              page = Math.min(totalPages - 1, Math.max(0, page + (interaction.customId === 'promohist:next' ? 1 : -1)));
+              await interaction.update({ embeds: [buildHistoryEmbed()], components: [buildHistoryRows()] });
+            } catch (error) {
+              console.error('Promo history error:', error);
+            }
+          });
+          historyCollector.on('end', () => historyMessage.edit({ components: [] }).catch(() => {}));
+        }
+        return;
+      }
 
       const promoItemCount = (promo) => db.prepare(
         'SELECT amount FROM user_items WHERE user_id = ? AND item_name = ?'
@@ -17796,8 +17876,14 @@ client.on('messageCreate', async (message) => {
       if (action === 'info') {
         const query = args.slice(1).join(' ').trim();
         if (!query) return message.reply(`Usage: \`${PREFIX}bud info <Pokémon>\`.`);
-        const buddyMatch = findUserPokemonMatches(userId, query)
-          .find((pokemon) => pokemon.ever_buddy);
+        const variantMatch = query.match(/^(shiny|golden|gold)\s+(.+)$/i);
+        const wantsShiny = variantMatch?.[1].toLowerCase() === 'shiny';
+        const wantsGolden = Boolean(variantMatch) && !wantsShiny;
+        const baseQuery = variantMatch ? variantMatch[2].trim() : query;
+        const buddyMatches = findUserPokemonMatches(userId, baseQuery).filter((pokemon) => pokemon.ever_buddy);
+        const buddyMatch = variantMatch
+          ? buddyMatches.find((pokemon) => wantsShiny ? pokemon.is_shiny && !pokemon.is_golden : pokemon.is_golden)
+          : buddyMatches.find((pokemon) => !pokemon.is_shiny && !pokemon.is_golden) || buddyMatches[0];
         if (!buddyMatch) {
           return message.reply(
             `No buddy profile found for **${query}**. Set it as your buddy first with \`${PREFIX}bud set ${query}\`.`
@@ -21059,6 +21145,7 @@ client.on('messageCreate', async (message) => {
         grouped.set(key, entry);
       }
       const rarityOrder = new Map([
+        'Gem',
         'Shiny Gmax',
         'Gmax',
         'Shiny Mega',
@@ -21074,8 +21161,10 @@ client.on('messageCreate', async (message) => {
       const groupedCatches = [...grouped.values()];
       const rarityButtonOptions = [
         ['all', 'All'], ['common', 'Common'], ['uncommon', 'Uncommon'], ['rare', 'Rare'], ['super rare', 'Super Rare'],
-        ['legendary', 'Legendary'], ['shiny', 'Shiny'], ['golden', 'Golden'], ['mega', 'Mega'], ['gmax', 'Gmax'],
+        ['legendary', 'Legendary'], ['shiny', 'Shiny'], ['gem', 'Gem'], ['golden', 'Golden'], ['mega', 'Mega'], ['gmax', 'Gmax'],
       ];
+      const isGemCatch = (pokemon) => !pokemon.is_golden
+        && getDisplayRarity(pokemon.rarity, pokemon.name, Boolean(pokemon.is_shiny)).toLowerCase() === 'gem';
       let rarityButton = 'all';
       const matchesRarityButton = (pokemon) => {
         if (rarityButton === 'all') return true;
@@ -21095,6 +21184,7 @@ client.on('messageCreate', async (message) => {
         }
         if (sortByDuplicates && left.count !== right.count) return right.count - left.count;
         if (rarityFirst) {
+          if (isGemCatch(left) !== isGemCatch(right)) return isGemCatch(left) ? -1 : 1;
           if (Boolean(left.is_golden) !== Boolean(right.is_golden)) {
             return left.is_golden ? -1 : 1;
           }
@@ -21176,7 +21266,9 @@ client.on('messageCreate', async (message) => {
           new ButtonBuilder().setCustomId('box:last').setEmoji('⏩').setStyle(ButtonStyle.Secondary).setDisabled(currentPage === totalPages),
           new ButtonBuilder().setCustomId('box:sort').setLabel(sortByDuplicates ? 'Duplicates' : rarityFirst ? 'Rarity' : 'Recent').setEmoji('🔄').setStyle(ButtonStyle.Primary)
         ),
-        ...[rarityButtonOptions.slice(0, 5), rarityButtonOptions.slice(5)].map((group) =>
+        ...[rarityButtonOptions.slice(0, 5), rarityButtonOptions.slice(5, 10), rarityButtonOptions.slice(10)]
+          .filter((group) => group.length)
+          .map((group) =>
           new ActionRowBuilder().addComponents(group.map(([key, label]) => {
             const button = new ButtonBuilder()
               .setCustomId(`box:rarity:${key}`)
@@ -24072,7 +24164,7 @@ client.on('messageCreate', async (message) => {
       };
       const sendCollectionFeed = async (requestedPage) => {
         const pageSize = 18;
-        const entries = getRows({ buyersOnly: false, nonBuyersOnly: true, limit: 180 });
+        const entries = getRows({ limit: 180 });
         if (!entries.length) {
           return message.reply(
             `No public collections registered yet! Register one with \`${PREFIX}coll register <Pokédex number>\`.`
@@ -24090,14 +24182,17 @@ client.on('messageCreate', async (message) => {
             );
             const percent = ((row.owned_count / Math.max(1, row.population_count)) * 100).toFixed(2);
             const variantName = `${variantLabel(row.is_shiny, row.is_golden)}${row.pokemon_name}`;
+            const buyText = row.buy_price
+              ? ` • 💰 Buying: ${EMOJIS.pokecoin} **${row.buy_price.toLocaleString()}**`
+              : '';
             return `${emoji ? `${emoji} ` : ''}**${variantName} x${row.owned_count.toLocaleString()}** ` +
-              `\`#${getCollectionDexNumber(row)}\` \`(${percent}%)\` • <@${row.user_id}> • ${formatRelativeTime(row.updated_at)}`;
+              `\`#${getCollectionDexNumber(row)}\` \`(${percent}%)\` • <@${row.user_id}>${buyText} • ${formatRelativeTime(row.updated_at)}`;
           });
           return new EmbedBuilder()
             .setColor(0x0099ff)
-            .setTitle('Global Collections — Recent collections (non-buyers)')
+            .setTitle('Global Collections — Recently updated')
             .setDescription(
-              `${lines.join('\n')}\n\n💰 To view buyer collections, type \`${PREFIX}coll buyers\``
+              `${lines.join('\n')}\n\n💰 To view only buyer collections, type \`${PREFIX}coll buyers\``
             )
             .setFooter({
               text: `Page ${page} / ${totalPages} • Data refreshes automatically every 10 mins • ${PREFIX}coll info`,
@@ -24154,7 +24249,7 @@ client.on('messageCreate', async (message) => {
           Boolean(row.is_golden)
         );
         return `• ${rarityEmoji ? `${rarityEmoji} ` : ''}<@${row.user_id}> — **#${getCollectionDexNumber(row)} ${variantName}**` +
-          ` • Count: \`${row.owned_count}\`${priceText}${privacyText}`;
+          ` • Count: \`${row.owned_count}\`${priceText}${privacyText} • ${formatRelativeTime(row.updated_at)}`;
       }).join('\n').slice(0, 4000);
       const collectionEmbed = (title, rows, showPrivacy = false) => new EmbedBuilder()
         .setColor(0x0099ff)

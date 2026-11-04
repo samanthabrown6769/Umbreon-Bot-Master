@@ -526,11 +526,15 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   if (t.hp <= 0 && tf.destinyBond) { m.hp = 0; L(`${m.name} was taken down with ${t.name}!`); }
   applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L);
   AB.afterHit(AH, ctx, A, B, move, dmg, { type, crit }, L);
-  if (slug(move.name) === 'drain-punch' && dmg > 0 && m.hp > 0) {
+  const drainFraction = DRAIN_MOVES[slug(move.name)];
+  if (drainFraction && dmg > 0 && m.hp > 0) {
     const damageDealt = Math.max(0, targetHpBefore - Math.max(0, t.hp));
-    if (damageDealt > 0) healMon(m, Math.max(1, Math.floor(damageDealt / 2)), L);
+    if (damageDealt > 0) healMon(m, Math.max(1, Math.floor(damageDealt * drainFraction)), L);
   }
 }
+
+// Fraction of damage dealt that the user heals.
+const DRAIN_MOVES = { 'drain-punch': 0.5, 'draining-kiss': 0.75 };
 
 // Stat drops that damaging moves inflict on the target: [chance %, stages].
 const DAMAGE_STAT_DROPS = {
@@ -1196,7 +1200,7 @@ module.exports = {
   battleGender,
   EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
   applyStatusMove, canAct, performMove, effectivePower, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
-  DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, RECHARGE_MOVES, takeBatonState, giveBatonState, cureStatus,
+  DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, DRAIN_MOVES, RECHARGE_MOVES, takeBatonState, giveBatonState, cureStatus,
   summarize(mon) {
     const f = fx(mon);
     const parts = [];

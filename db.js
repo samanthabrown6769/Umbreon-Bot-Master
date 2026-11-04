@@ -2159,7 +2159,7 @@ const NO_PATREON_PERKS = Object.freeze({
   ivChecker: false, megaChamberDiscount: 0, moveCostDiscount: 0, quickHands: 0, fishingBoost: 0, eggHatchSpeed: 0,
   autoEquipEggs: false, shopDiscount: 0, lootboxBoost: 0, goldenBoost: 0,
   dailyTokens: 0, dailyCoins: 0, monthly: null, questSlots: 3, questRefreshMultiplier: 1, releaseLocks: 0,
-  marketListingSlots: 0, marketTax: 0.1,
+  marketListingSlots: 0, marketTax: 0.1, legendaryChamberCost: null,
 });
 
 const PATREON_TIER_ORDER = ['common', 'uncommon', 'rare', 'superRare', 'legendary', 'shiny', 'golden'];
@@ -2181,7 +2181,7 @@ const PATREON_TIER_DELTAS = {
     monthly: { coins: 5000000, masterballs: 10, rare_candies: 100, eggs: 10, super_incubators: 3, Incense: 1 },
   },
   superRare: {
-    shopDiscount: 0.1, megaChamberDiscount: 0.2, eggHatchSpeed: 0.3, incenseBonus: 100, releaseLocks: 5,
+    shopDiscount: 0.1, megaChamberDiscount: 0.2, legendaryChamberCost: 4, eggHatchSpeed: 0.3, incenseBonus: 100, releaseLocks: 5,
     dailyTokens: 38, dailyCoins: 200000,
   },
   legendary: {
@@ -2195,7 +2195,7 @@ const PATREON_TIER_DELTAS = {
     },
   },
   shiny: {
-    shinyCharms: 1, amuletCoins: 4, incenseBonus: 300, megaChamberDiscount: 0.3,
+    shinyCharms: 1, amuletCoins: 4, incenseBonus: 300, megaChamberDiscount: 0.3, legendaryChamberCost: 3,
     marketListingSlots: 5, releaseLocks: 10, marketTax: 0,
     dailyTokens: 150, dailyCoins: 1000000,
     monthly: {
@@ -4400,14 +4400,15 @@ function sacrificeForChamber(userId, chamberKey, amount) {
   }).immediate();
 }
 
-// Legendary/mythical chamber Pokémon need 5 sacrifices; everything else needs 10.
+// Legendary/mythical chambers need 5 sacrifices (4 for Super Rare/Legendary Patreon, 3 for Shiny/Golden); everything else needs 10.
 function getChamberRequirement(config, userId = null) {
   const row = db.prepare(
     'SELECT MAX(is_legendary) AS legendary FROM pokemon_forms WHERE species_id = ? AND is_default = 1'
   ).get(config.pokemonId);
-  const base = row?.legendary ? 5 : 10;
-  const discount = userId ? getPatreonPerks(userId).megaChamberDiscount : 0;
-  return Math.max(1, Math.ceil(base * (1 - discount)));
+  const perks = userId ? getPatreonPerks(userId) : null;
+  if (row?.legendary) return perks?.legendaryChamberCost || 5;
+  const discount = perks ? perks.megaChamberDiscount : 0;
+  return Math.max(1, Math.ceil(10 * (1 - discount)));
 }
 
 function completeMegaChamber(userId, chamberKey) {

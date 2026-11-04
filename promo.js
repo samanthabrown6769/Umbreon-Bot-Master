@@ -34,7 +34,27 @@ function getActivePromos() {
     return [];
   }
   const list = Array.isArray(config.promos) ? config.promos : [config];
-  return list.map(normalizePromo).filter(Boolean);
+  // Optional "endsAt" (ISO timestamp, e.g. "2026-11-04T05:00:00Z") hides a promo once it passes.
+  return list
+    .filter((promo) => {
+      if (!promo?.endsAt) return true;
+      const endsAt = Date.parse(promo.endsAt);
+      return Number.isNaN(endsAt) || endsAt > Date.now();
+    })
+    .map(normalizePromo)
+    .filter(Boolean);
+}
+
+// Past promos live in promo.json under "history", newest first:
+// { name, promoName, start, end, egg?, emoji? }
+function getPastPromos() {
+  try {
+    const config = JSON.parse(fs.readFileSync(PROMO_PATH, 'utf8'));
+    return Array.isArray(config.history) ? config.history.filter((entry) => entry && entry.name) : [];
+  } catch (error) {
+    console.error('Failed to read promo.json history:', error.message);
+    return [];
+  }
 }
 
 function getCurrentPromo() {
@@ -64,6 +84,7 @@ module.exports = {
   findPromoByItemName,
   getActivePromos,
   getCurrentPromo,
+  getPastPromos,
   getPromoItemNames,
   rollPromoItemDrop,
 };
