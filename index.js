@@ -2597,7 +2597,9 @@ function getPokemonSpriteEmoji(pokemon) {
   }
   if (!species) return '';
   const variants = POKEMON_SPRITE_EMOJIS[species];
-  return (isGolden && variants.golden) || (isShiny && variants.shiny) || variants.normal || '';
+  if (isGolden) return variants.golden || '';
+  if (isShiny) return variants.shiny || '';
+  return variants.normal || '';
 }
 
 function formatFactionFavorites(factionKey) {
