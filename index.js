@@ -1394,8 +1394,13 @@ function getBattleStatsChallenge(query) {
     if (challenger) {
       return { challenge: challenger, index: NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.indexOf(challenger) };
     }
+    const chamberEntry = CHAMBER_ICON_ENTRIES[Number(normalized) - CHAMBER_NPC_ID_START];
+    if (chamberEntry && Number(normalized) >= CHAMBER_NPC_ID_START) {
+      return { challenge: chamberEntry, index: NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.indexOf(chamberEntry) };
+    }
     const index = Number(normalized) - 1;
     return Number.isSafeInteger(index) && index >= 0 && index < allChallenges.length
+      && !allChallenges[index].chamberIcon
       ? { challenge: allChallenges[index], index }
       : null;
   }
@@ -7046,6 +7051,11 @@ const CHAMBER_ICON_ENTRIES = [...CHAMBER_TRAINERS, ...CHAMBER_MASTERS].map((trai
   team: [],
   reward: 0,
 }));
+const CHAMBER_NPC_ID_START = 600;
+const getChamberNpcId = (challenge) => {
+  const position = CHAMBER_ICON_ENTRIES.indexOf(challenge);
+  return position === -1 ? null : CHAMBER_NPC_ID_START + position;
+};
 NPC_SPECIAL_BATTLES.push(...CHAMBER_ICON_ENTRIES);
 const getChamberIconIndex = (trainerName) => {
   const specialIndex = NPC_SPECIAL_BATTLES.findIndex(
@@ -20175,10 +20185,7 @@ client.on('messageCreate', async (message) => {
         const query = args.slice(1).join(' ').trim();
         const match = getBattleStatsChallenge(query);
         if (!match) {
-          return message.reply(
-            `Usage: \`${PREFIX}battle stats <NPC number or name>\`. ` +
-            `NPC numbers range from **1** to **${NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.length}**.`
-          );
+          return message.reply('That NPC does not exist.');
         }
         const { challenge, index } = match;
         const personal = getBattleTrainerStats(userId, index);
@@ -20206,7 +20213,7 @@ client.on('messageCreate', async (message) => {
           .setTitle(`${trainerLabel} — Your Stats`)
           .setDescription(
             `**NPC Name:** \`${challenge.name}\`\n` +
-            `**NPC ID:** ${challenge.challengerId ?? index + 1}\n\n` +
+            `**NPC ID:** ${challenge.challengerId ?? getChamberNpcId(challenge) ?? index + 1}\n\n` +
             `You fought **${personal.fights}** battle${personal.fights === 1 ? '' : 's'} against ${trainerLabel}\n` +
             `**Icon:** ${iconStatus}\n` +
             `**Last team used:** ${teamText}\n` +
@@ -20382,6 +20389,12 @@ client.on('messageCreate', async (message) => {
             return startLeagueChallengeWithCooldown(message, userId, 0, [challenger]);
           }
           npcIndex = Number(requested) - 1;
+          const chamberEntry = Number(requested) >= CHAMBER_NPC_ID_START
+            ? CHAMBER_ICON_ENTRIES[Number(requested) - CHAMBER_NPC_ID_START]
+            : null;
+          if (chamberEntry) {
+            return message.reply(`Chamber trainers are fought through \`${PREFIX}mc battle\`.`);
+          }
         } else {
           const codeMatches = NPC_CAMPAIGN
             .map((challenge, index) => ({ challenge, index }))
