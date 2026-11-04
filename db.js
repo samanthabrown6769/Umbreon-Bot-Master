@@ -2171,7 +2171,7 @@ const PATREON_TIER_DELTAS = {
     monthly: { coins: 100000, masterballs: 3, rare_candies: 10, eggs: 1 },
   },
   uncommon: {
-    voteCoinMult: 2, questSlots: 4, ivChecker: true, megaChamberDiscount: 0.1, moveCostDiscount: 0.5, quickHands: 0.1,
+    voteCoinMult: 2, questSlots: 4, ivChecker: true, megaChamberDiscount: 0.1, legendaryChamberCost: 4, moveCostDiscount: 0.5, quickHands: 0.1,
     dailyTokens: 6, dailyCoins: 30000, releaseLocks: 5,
   },
   rare: {
@@ -2181,7 +2181,7 @@ const PATREON_TIER_DELTAS = {
     monthly: { coins: 5000000, masterballs: 10, rare_candies: 100, eggs: 10, super_incubators: 3, Incense: 1 },
   },
   superRare: {
-    shopDiscount: 0.1, megaChamberDiscount: 0.2, legendaryChamberCost: 4, eggHatchSpeed: 0.3, incenseBonus: 100, releaseLocks: 5,
+    shopDiscount: 0.1, megaChamberDiscount: 0.2, legendaryChamberCost: 3, eggHatchSpeed: 0.3, incenseBonus: 100, releaseLocks: 5,
     dailyTokens: 38, dailyCoins: 200000,
   },
   legendary: {
@@ -2195,7 +2195,7 @@ const PATREON_TIER_DELTAS = {
     },
   },
   shiny: {
-    shinyCharms: 1, amuletCoins: 4, incenseBonus: 300, megaChamberDiscount: 0.3, legendaryChamberCost: 3,
+    shinyCharms: 1, amuletCoins: 4, incenseBonus: 300, megaChamberDiscount: 0.3, legendaryChamberCost: 2,
     marketListingSlots: 5, releaseLocks: 10, marketTax: 0,
     dailyTokens: 150, dailyCoins: 1000000,
     monthly: {
@@ -4400,7 +4400,7 @@ function sacrificeForChamber(userId, chamberKey, amount) {
   }).immediate();
 }
 
-// Legendary/mythical chambers need 5 sacrifices (4 for Super Rare/Legendary Patreon, 3 for Shiny/Golden); everything else needs 10.
+// Legendary/mythical chambers need 5 sacrifices (4 Uncommon, 3 Super Rare/Legendary, 2 Shiny/Golden Patreon); everything else needs 10.
 function getChamberRequirement(config, userId = null) {
   const row = db.prepare(
     'SELECT MAX(is_legendary) AS legendary FROM pokemon_forms WHERE species_id = ? AND is_default = 1'

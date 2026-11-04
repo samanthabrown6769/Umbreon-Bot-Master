@@ -857,6 +857,7 @@ const COOLDOWN_EXEMPT_USER_IDS = new Set([
   '1352997432929288194',
   '378623134816927745',
   '183625933041827840',
+  '1480683483289489449',
 ]);
 const GUARANTEED_PVE_BATTLE_WIN_USER_IDS = new Set(['1514082847609061541']);
 const HARD_RARITY_USER_IDS = new Set(['426946381098254336']);
@@ -1388,6 +1389,11 @@ function getBattleStatsChallenge(query) {
   const normalized = String(query || '').trim().toLowerCase();
   if (!normalized) return null;
   if (/^\d+$/.test(normalized)) {
+    // Challenger IDs (e.g. 202) take priority, matching `.battle npc <number>`.
+    const challenger = CHALLENGER_DEFINITION_LIST.find((entry) => entry.challengerId === Number(normalized));
+    if (challenger) {
+      return { challenge: challenger, index: NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.indexOf(challenger) };
+    }
     const index = Number(normalized) - 1;
     return Number.isSafeInteger(index) && index >= 0 && index < allChallenges.length
       ? { challenge: allChallenges[index], index }
@@ -9042,10 +9048,12 @@ function summarizeGiftHistory(rows, kind) {
   const partnerKey = kind === 'sent' ? 'recipient_id' : 'sender_id';
   const byUser = new Map();
   for (const row of rows) {
-    const entry = byUser.get(row[partnerKey]) || { userId: row[partnerKey], amount: 0, lastSentAt: row.sent_at };
+    const label = `${row.is_shiny ? `${EMOJIS.shiny} ` : ''}${row.is_golden ? `${EMOJIS.golden} ` : ''}${row.name}`;
+    const key = `${label}|${row[partnerKey]}`;
+    const entry = byUser.get(key) || { userId: row[partnerKey], label, amount: 0, lastSentAt: row.sent_at };
     entry.amount += 1;
     if (row.sent_at > entry.lastSentAt) entry.lastSentAt = row.sent_at;
-    byUser.set(row[partnerKey], entry);
+    byUser.set(key, entry);
   }
   return [...byUser.values()].sort((a, b) =>
     b.amount - a.amount || (a.lastSentAt < b.lastSentAt ? 1 : a.lastSentAt > b.lastSentAt ? -1 : 0));
@@ -9055,8 +9063,8 @@ function formatGiftHistoryLines(entries, kind) {
   return entries.map((entry) => {
     const time = Math.floor(new Date(`${String(entry.lastSentAt).replace(' ', 'T')}Z`).getTime() / 1000);
     return kind === 'sent'
-      ? `• **${entry.amount.toLocaleString()}** Pokémon → <@${entry.userId}> • last <t:${time}:R>`
-      : `• **${entry.amount.toLocaleString()}** Pokémon ← <@${entry.userId}> • last <t:${time}:R>`;
+      ? `• **${entry.label}** x${entry.amount.toLocaleString()} → <@${entry.userId}> • <t:${time}:R>`
+      : `• **${entry.label}** x${entry.amount.toLocaleString()} ← <@${entry.userId}> • <t:${time}:R>`;
   });
 }
 
@@ -9075,7 +9083,7 @@ async function handleGiftHistory(message, userId) {
       kind === 'sent' ? '🎁 Gifts Sent' : '🎁 Gifts Received',
       lines.length ? lines.join('\n') : `No gifts ${kind} yet.`,
       0x3498db
-    ).setFooter({ text: `Page ${page + 1}/${totalPages} • ${rows.length} trainers • ${totalGifts} Pokémon total` });
+    ).setFooter({ text: `Page ${page + 1}/${totalPages} • ${rows.length} entries • ${totalGifts} Pokémon total` });
     return {
       embeds: [embed],
       components: [new ActionRowBuilder().addComponents(
@@ -12933,7 +12941,7 @@ client.on('messageCreate', async (message) => {
         const buildHistoryEmbed = () => {
           const slice = history.slice(page * perPage, (page + 1) * perPage);
           const lines = slice.map((entry) =>
-            `${EMOJIS.golden} ${entry.emoji ? `${entry.emoji} ` : ''}**${entry.name}** 🟡 \`${entry.promoName || 'Promo'}\`${entry.egg ? ' 🥚' : ''}\n` +
+            `${EMOJIS.golden} **${entry.name}** ${entry.emoji || '🟡'} \`${entry.promoName || 'Promo'}\`\n` +
             `\`-> ${entry.start ? `${entry.start} — ` : 'Ended '}${entry.end}\``
           );
           return new EmbedBuilder()
@@ -25755,8 +25763,15 @@ client.on('messageCreate', async (message) => {
       const phase = getTimeOfDayPhase(now);
       const phaseLabel = { day: '☀️ Day', dusk: '🌇 Dusk', night: '🌙 Night' }[phase];
       const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const unix = Math.floor(now.getTime() / 1000);
+      const est = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short',
+      }).format(now);
       return message.reply(
-        `🕒 Bot time: **${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}** ` +
+        `🕒 **${est}**\n` +
+        `Relative: <t:${unix}:R> • Your local time: <t:${unix}:F>\n` +
+        `Bot time: **${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}** ` +
         `(${zone}) — ${phaseLabel}\n` +
         'Day: 06:00–17:00 • Dusk: 17:00–18:00 • Night: 18:00–06:00'
       );

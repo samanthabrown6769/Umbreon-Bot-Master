@@ -5,12 +5,13 @@
       "name": "Golden Bulbasaur",
       "promoName": "Golden Leaf Promo",
       "end": "November 4, 2026",
-      "egg": true
+      "emoji": "<:goldenleaf:1559958369387815003>"
     },
     {
       "name": "Golden Pumpkaboo",
       "promoName": "Golden Pumpkin Promo",
-      "end": "November 4, 2026"
+      "end": "November 4, 2026",
+      "emoji": "<:goldenpumpkin:1559965616733950033>"
     }
   ],
   "promos": []
