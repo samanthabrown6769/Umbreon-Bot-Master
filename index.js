@@ -20206,7 +20206,7 @@ client.on('messageCreate', async (message) => {
           .setTitle(`${trainerLabel} — Your Stats`)
           .setDescription(
             `**NPC Name:** \`${challenge.name}\`\n` +
-            `**NPC ID:** ${index + 1}\n\n` +
+            `**NPC ID:** ${challenge.challengerId ?? index + 1}\n\n` +
             `You fought **${personal.fights}** battle${personal.fights === 1 ? '' : 's'} against ${trainerLabel}\n` +
             `**Icon:** ${iconStatus}\n` +
             `**Last team used:** ${teamText}\n` +
