@@ -214,6 +214,11 @@
   { "slug": "thundurus-incarnate", "name": "Thundurus" },
   { "slug": "keldeo-ordinary", "name": "Keldeo" },
   { "slug": "zygarde-50", "name": "Zygarde" },
+  {
+    "slug": "zygarde-mega",
+    "sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793830942/zygarde-mega-ezgif.com-resize.gif",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793830942/zygarde-mega-ezgif.com-resize.gif"
+  },
   { "slug": "meloetta-aria", "name": "Meloetta" },
   { "slug": "urshifu-single-strike", "name": "Urshifu" },
   { "slug": "shaymin-land", "name": "Shaymin" },
