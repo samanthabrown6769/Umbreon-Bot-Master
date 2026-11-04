@@ -5082,12 +5082,7 @@ function holdEvolutionItem(userId, itemQuery, pokemonQuery) {
   if (EVOLUTION_ITEMS[itemName]?.kind !== 'held' && !BATTLE_HELD_ITEM_NAMES.has(itemName)) {
     return { error: 'not_holdable', itemName };
   }
-  const researchHeldItem = RESEARCH_HELD_ITEMS.find((item) => item.name === itemName);
   return db.transaction(() => {
-    if (researchHeldItem?.requiresRelicExchange
-        && getUser(userId).research_relic_unlock_until <= Date.now()) {
-      return { error: 'relic_exchange_required', itemName };
-    }
     const owned = findOwnedPokemonRows(userId, pokemonQuery);
     if (!owned.length) return { error: 'pokemon_not_owned' };
     const candidates = owned.filter((row) => !row.held_item);
@@ -5105,12 +5100,7 @@ function holdEvolutionItem(userId, itemQuery, pokemonQuery) {
 
 function getResearchHeldItemError(userId, itemName, now = Date.now()) {
   assertUserId(userId);
-  const item = RESEARCH_HELD_ITEMS.find((entry) => entry.name === itemName);
-  if (!item) return null;
   if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('now must be a non-negative timestamp.');
-  if (item.requiresRelicExchange && getUser(userId).research_relic_unlock_until <= now) {
-    return 'relic_exchange_required';
-  }
   return null;
 }
 

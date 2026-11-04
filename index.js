@@ -2414,7 +2414,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   arboliva: { shiny: '<:SArboliva:1567588742963798087>' },
   bramblin: { shiny: '<:SBramblin:1567588751994265651>' },
   brambleghast: { shiny: '<:SBrambleghast:1567588749532078191>' },
-  'iron boulder': { normal: '<:IronBoulder:1567575531409510400>', shiny: '<:SIronBoulder:1567575529182466200>' },
+  'iron boulder': { normal: '<:IronBoulder:1567600534184001680>', shiny: '<:SIronBoulder:1567600532833706005>' },
   'hisuian sliggoo': { shiny: '<:SHisuianSliggoo:1567588765235421184>' },
   'sliggoo hisui': { shiny: '<:SHisuianSliggoo:1567588765235421184>' },
   'hisuian qwilfish': { shiny: '<:SHisuianQwilfish:1567588763566350558>' },
@@ -2424,7 +2424,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   toxel: { shiny: '<:SToxel:1567588624185303130>' },
   impidimp: { shiny: '<:SImpidimp:1567588626458738768>' },
   marill: { shiny: '<:SMarill:1567575544793403543>' },
-  cursola: { shiny: '<:SCursola:1567575546869588099>' },
+  cursola: { shiny: '<:SCursola:1567600535723442226>' },
   fuecoco: { shiny: '<:SFuecoco:1567588644368162978>' },
   crocalor: { shiny: '<:SCrocalor:1567588646268305508>' },
   skeledirge: { shiny: '<:SSkeledirge:1567588648533364736>' },
@@ -2486,6 +2486,21 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'gmax urshifu single strike': { normal: '<:GMAXUrshifuSingleStrike:1567575578205491351>' },
   'coalossal gmax': { normal: '<:GMAXCoalossal:1567588766850224339>' },
   'gmax coalossal': { normal: '<:GMAXCoalossal:1567588766850224339>' },
+  'ash greninja': { normal: '<:AshGreninja:1567600531445252106>', shiny: '<:SAshGreninja:1567600518321143828>' },
+  'greninja ash': { normal: '<:AshGreninja:1567600531445252106>', shiny: '<:SAshGreninja:1567600518321143828>' },
+  girafarig: { shiny: '<:SGirafarig:1567600516190441562>' },
+  murkrow: { shiny: '<:SMurkrow:1567600514751799457>' },
+  suicune: { normal: '<:Suicune:1567600512059314186>' },
+  salandit: { shiny: '<:SSalandit:1567600510083670077>' },
+  necrozma: { normal: '<:Necrozma:1567600506472501518>' },
+  sizzlipede: { shiny: '<:SSizzlipede:1567600504555569233>' },
+  caterpie: { shiny: '<:SCaterpie:1567600502542176386>' },
+  bidoof: { shiny: '<:SBidoof:1567600500847812678>' },
+  'galarian ponyta': { normal: '<:GalarianPonyta:1567600497484107826>' },
+  'ponyta galar': { normal: '<:GalarianPonyta:1567600497484107826>' },
+  'arceus ghost': { normal: '<:ArceusGhost:1567600495407923200>' },
+  'deoxys speed': { normal: '<:DeoxysSpeed:1567600493327421641>' },
+  meltan: { normal: '<:Meltan:1567600491586781294>' },
   timburr: { golden: '<:GTimburr:1567575644496203877>' },
   'mega zygarde': { normal: '<:MegaZygarde:1567575569783193640>' },
   'zygarde mega': { normal: '<:MegaZygarde:1567575569783193640>' },
@@ -9651,7 +9666,8 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
         ? halloweenEvent.emojis.complete
         : halloweenEvent.emojis.incomplete;
       const caught = eventCatchCounts.get(pokemon.key) || 0;
-      return `${icon} ${pokemon.name}${pokemon.tag ? ` ${pokemon.tag}` : ''} — **${caught}** caught`;
+      const sprite = getPokemonSpriteEmoji({ name: pokemon.name, isShiny: Boolean(pokemon.shiny) });
+      return `${icon} ${sprite ? `${sprite} ` : ''}${pokemon.name}${pokemon.tag ? ` ${pokemon.tag}` : ''} — **${caught}** caught`;
     };
     const regularReward = halloweenEvent.rewards.regular;
     const description =
