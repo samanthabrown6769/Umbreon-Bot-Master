@@ -1802,6 +1802,7 @@ db.transaction(() => {
   const REMOVED_FORM_CONVERSIONS = [
     { from: [10029], to: 710 },
     { from: [10030, 10031, 10032], to: 711 },
+    { from: [10228], to: 10184 },
   ];
   for (const { from, to } of REMOVED_FORM_CONVERSIONS) {
     const target = db.prepare('SELECT name, rarity FROM pokemon_forms WHERE id = ?').get(to);

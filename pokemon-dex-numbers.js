@@ -88,6 +88,7 @@ const SCREENSHOT_MEGA_DEX_NUMBERS = [
   ['froslass-mega', 7326],
   ['zeraora-mega', 7329],
   ['darkrai-mega', 7332],
+  ['zygarde-mega', 7335],
 ];
 const SCREENSHOT_GMAX_DEX_NUMBERS = [
   ['charizard-gmax', 7145],

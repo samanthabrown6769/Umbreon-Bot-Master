@@ -50,6 +50,7 @@ const GOLDEN_FORM_DEX_NUMBERS = new Map([
   ['metagross-mega', 7138],
   ['latias-mega', 7141],
   ['latios-mega', 7144],
+  ['zygarde-mega', 7337],
   ['kyurem-black', 7512],
   ['kyurem-white', 7515],
   ['zygarde-complete', 7566],

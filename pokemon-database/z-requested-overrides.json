@@ -200,6 +200,7 @@
   },
   {
     "slug": "greninja-ash",
+    "name": "Ash-Greninja",
     "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793187526/greninja-ash.gif",
     "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1793187650/greninja-ash_shiny.gif"
   },
