@@ -6726,6 +6726,15 @@ async function askForBall(
       return;
     }
     if (!reserved) actionTaken = true;
+    // Editing through the deferred interaction keeps Discord from re-rendering the pre-catch message over our edit.
+    const editEncounter = async (payload) => {
+      if (inline || !interaction?.deferred) return spawnMessage.edit(payload);
+      try {
+        return await interaction.editReply(payload);
+      } catch (error) {
+        return spawnMessage.edit(payload);
+      }
+    };
     const ball = BALL_CONFIG[selectedBall];
     const used = db.transaction(() => {
       const liveUser = getUser(userId);
@@ -6793,7 +6802,7 @@ async function askForBall(
         );
       const fledImage = image;
       if (fledImage) fledEmbed.setImage(fledImage);
-      await spawnMessage.edit({ content: '', embeds: [fledEmbed], components: [] });
+      await editEncounter({ content: '', embeds: [fledEmbed], components: [] });
       return;
     }
 
@@ -7015,7 +7024,7 @@ async function askForBall(
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
       `<:lvlup:1561369467467071679> • Congratulations, **${catcher.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
     ).join('\n') || '';
-    await spawnMessage.edit({
+    await editEncounter({
       content: [experienceMessage, levelUpMessage].filter(Boolean).join('\n'),
       embeds: [successEmbed],
       components: [],
@@ -8662,7 +8671,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
         trackClanActivity(userId, 'battle');
         rollActivityPromoDrops(interaction.user, interaction.guild, interaction.channel, 'battle');
       }
-      await interaction.editReply({
+      await editInteractionWithRetry(interaction, battleMessage, {
         embeds: [battleEmbed(finished, won)],
         components: finished
           ? []
@@ -8714,6 +8723,21 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       console.error(`Failed to close expired league battle for user ${userId}:`, error);
     }
   });
+}
+
+async function editInteractionWithRetry(interaction, message, payload, attempts = 3) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await (attempt === 0 && (interaction.deferred || interaction.replied)
+        ? interaction.editReply(payload)
+        : message.edit(payload));
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  throw lastError;
 }
 
 function makeEmbed(title, description, color = 0x3498db) {
@@ -20618,7 +20642,7 @@ client.on('messageCreate', async (message) => {
         if (!Number.isSafeInteger(npcIndex) || npcIndex < 0
             || npcIndex >= NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.length) {
           return message.reply(
-            `No NPC found. Use a number from **1** to **${NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.length}** or a name; see \`${PREFIX}battle npc list\`.`
+            `No NPC found.`
           );
         }
         if (npcIndex >= NPC_CAMPAIGN.length) {
