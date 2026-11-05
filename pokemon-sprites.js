@@ -78,7 +78,14 @@ const FORM_ALIASES = {
   'pikachu-partner-cap': 'pikachu-partner',
 };
 
+const ARCEUS_SPRITE_SLUGS = [
+  'bug', 'dark', 'dragon', 'electric', 'fairy', 'fighting', 'fire', 'flying', 'ghost',
+  'grass', 'ground', 'ice', 'poison', 'psychic', 'rock', 'steel', 'water',
+].map((type) => `arceus-${type}`);
+for (const slug of ARCEUS_SPRITE_SLUGS) FORM_ALIASES[slug] = slug;
+
 const DIRECT_SHOWDOWN_SLUGS = new Set([
+  ...ARCEUS_SPRITE_SLUGS,
   'indeedee-male',
   'indeedee-female',
   'oinkologne-male',
