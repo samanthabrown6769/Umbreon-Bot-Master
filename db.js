@@ -4684,6 +4684,7 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
       pokemon.id,
       userId
     );
+    resetPreEvolutionCopies(userId, pokemon);
     syncDuplicateCatchState(userId, pokemon.id);
     recordPokemonSeen(userId, megaForm.id, Boolean(isShiny), Boolean(pokemon.is_golden));
     const megaDexNumbers = getPokemonDexNumbersForForms().get(megaForm.id);
@@ -4965,6 +4966,44 @@ function carryOverEvolutionMoves(userId, row, target) {
     .run(JSON.stringify([...sketched, ...missing]), row.id, userId);
 }
 
+// Evolving (or Mega Evolving) moves a trainer's trained stats onto the new form, so any copies of the
+// previous form left behind go back to a fresh level 1 with zeroed EVs and newly rolled IVs.
+function resetPreEvolutionCopies(userId, row) {
+  const oldForm = db.prepare('SELECT base_hp, base_atk, base_def, base_spd FROM pokemon_forms WHERE id = ?')
+    .get(row.pokemon_id);
+  db.prepare(`
+    DELETE FROM user_pokemon_state_snapshots
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+  `).run(userId, row.pokemon_id, row.is_shiny, row.is_golden);
+  const copies = db.prepare(`
+    SELECT id, rarity FROM catches
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ? AND id != ?
+  `).all(userId, row.pokemon_id, row.is_shiny, row.is_golden, row.id);
+  if (!copies.length || !oldForm) return;
+  const roll = () => Math.floor(Math.random() * 32);
+  const hpIv = roll(); const atkIv = roll(); const defIv = roll(); const spdIv = roll();
+  const update = db.prepare(`
+    UPDATE catches
+    SET level = 1, experience = 0,
+      hp_iv = ?, atk_iv = ?, def_iv = ?, spa_iv = ?, spdef_iv = ?, spd_iv = ?,
+      ev_hp = 0, ev_atk = 0, ev_def = 0, ev_spa = 0, ev_spdef = 0, ev_spe = 0,
+      hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
+    WHERE id = ? AND user_id = ?
+  `);
+  for (const copy of copies) {
+    const isGolden = Boolean(row.is_golden);
+    const maxHp = calculateStat(oldForm.base_hp, hpIv, 1, true, row.is_shiny, 0, isGolden, copy.rarity);
+    update.run(
+      hpIv, atkIv, defIv, atkIv, defIv, spdIv,
+      maxHp, maxHp,
+      calculateStat(oldForm.base_atk, atkIv, 1, false, row.is_shiny, 0, isGolden, copy.rarity),
+      calculateStat(oldForm.base_def, defIv, 1, false, row.is_shiny, 0, isGolden, copy.rarity),
+      calculateStat(oldForm.base_spd, spdIv, 1, false, row.is_shiny, 0, isGolden, copy.rarity),
+      copy.id, userId
+    );
+  }
+}
+
 function applyPokemonEvolution(userId, row, target, itemName = null, consumesHeldItem = false) {
   const maxHp = calculateStat(target.base_hp, row.hp_iv, row.level, true, row.is_shiny, row.ev_hp, Boolean(row.is_golden), row.rarity);
   const atk = calculateStat(target.base_atk, row.atk_iv, row.level, false, row.is_shiny, row.ev_atk, Boolean(row.is_golden), row.rarity);
@@ -4992,6 +5031,7 @@ function applyPokemonEvolution(userId, row, target, itemName = null, consumesHel
     userId
   );
   carryOverEvolutionMoves(userId, row, target);
+  resetPreEvolutionCopies(userId, row);
   syncDuplicateCatchState(userId, row.id);
   recordPokemonSeen(userId, target.id, Boolean(row.is_shiny), Boolean(row.is_golden));
   return {
@@ -8588,7 +8628,7 @@ function getClanActivityStats(clanId, period = 'daily', category = 'catches', us
   const { start, end } = getClanPeriodBounds(period, timestamp);
   const rows = db.prepare(`
     SELECT cm.user_id, cm.catches, cm.fishes, cm.hatches, cm.swaps, cm.catchbot,
-      COALESCE(activity.catches, 0) AS period_catches,
+      COALESCE(activity.catches, 0) + COALESCE(activity.fishes, 0) AS period_catches,
       COALESCE(activity.fishes, 0) AS period_fishes,
       COALESCE(activity.hatches, 0) AS period_hatches,
       COALESCE(activity.swaps, 0) AS period_swaps,
@@ -8601,7 +8641,7 @@ function getClanActivityStats(clanId, period = 'daily', category = 'catches', us
       AND activity.period = ?
       AND activity.period_start = ?
     WHERE cm.clan_id = ?
-    ORDER BY activity.${column} DESC, activity.catches DESC, activity.fishes DESC, cm.joined_at ASC
+    ORDER BY ${column === 'catches' ? '(COALESCE(activity.catches, 0) + COALESCE(activity.fishes, 0))' : `activity.${column}`} DESC, activity.catches DESC, activity.fishes DESC, cm.joined_at ASC
   `).all(period, start, clanId);
   const totals = rows.reduce((summary, row) => ({
     catches: summary.catches + row.period_catches,

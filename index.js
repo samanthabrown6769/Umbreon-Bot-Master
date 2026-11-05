@@ -4817,7 +4817,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   const bossForm = db.prepare('SELECT types FROM pokemon_forms WHERE id = ?')
     .get(bossTemplate?.formId ?? bossTemplate?.id);
   const bossTypes = bossForm ? JSON.parse(bossForm.types) : [];
-  const baseMoveType = getHeldItemMoveType(move.name, move.type, pokemon.held_item);
+  const baseMoveType = getHeldItemMoveType(move.name, move.type, pokemon.held_item, pokemon.name);
   const abilityType = battleMon ? battleFx.abilities.adjustMoveType(battleMon, move, baseMoveType) : { type: baseMoveType, boost: 1 };
   const moveType = abilityType.type;
   const effectiveness = typeEffectiveness(moveType, bossTypes);
@@ -7160,7 +7160,7 @@ function describeBattleField(field) {
 function getEquippedBattleMoves(pokemon, speciesId, formId = null) {
   return getEquippedBattleMovesBase(pokemon, speciesId, formId)
     .map((move) => {
-      const type = getHeldItemMoveType(move.name, move.type, pokemon.held_item);
+      const type = getHeldItemMoveType(move.name, move.type, pokemon.held_item, pokemon.name);
       return type === move.type ? move : { ...move, type };
     });
 }
@@ -9698,8 +9698,7 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
           ...species,
           name: reward.displayName,
           ...(reward.rarity ? { rarity: reward.rarity } : {}),
-        }, reward.shiny);
-        return true;
+        }, reward.shiny, true);
       }).immediate();
       if (!claimed) {
         return message.reply('❌ This event reward is no longer available to claim.');

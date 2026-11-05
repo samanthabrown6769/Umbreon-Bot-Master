@@ -387,7 +387,7 @@ function applyContactEffect(ctx, A, B, kind, L) {
 
 function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   const m = A.mon; const t = B.mon; const f = fx(m); const tf = fx(t);
-  let type = getHeldItemMoveType(move.name, move.type, m.held_item);
+  let type = getHeldItemMoveType(move.name, move.type, m.held_item, m.name);
   if (f.electrified) { type = 'electric'; f.electrified = false; } else if (ctx.field.ionDeluge && type === 'normal') type = 'electric';
   const typeAdjust = AB.adjustMoveType(m, move, type);
   type = typeAdjust.type;
@@ -736,7 +736,7 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   }
   if (eff.nightmare) { if (tf.status === 'slp' && !tf.nightmare) { tf.nightmare = true; L(`${t.name} is locked in a nightmare!`); } else L('But it failed!'); }
   if (eff.yawn) { if (tf.status || tf.yawn) L('But it failed!'); else { tf.yawn = 2; L(`${t.name} grew drowsy!`); } }
-  if (eff.disable) { if (tf.lastMove) { tf.disabled = slug(tf.lastMove.name); tf.disableTurns = 4; L(`${t.name}'s **${tf.lastMove.name}** was disabled!`); } else L('But it failed!'); }
+  if (eff.disable) { if (tf.lastMove) { const key = slug(tf.lastMove.name); tf.disabledMoves = tf.disabledMoves || {}; tf.disabledMoves[key] = 4; L(`${t.name}'s **${tf.lastMove.name}** was disabled!`); } else L('But it failed!'); }
   if (eff.encore) { if (tf.lastMove) { tf.encore = 3; L(`${t.name} must keep using **${tf.lastMove.name}**!`); } else L('But it failed!'); }
   if (eff.psychoShift) {
     if (f.status && !tf.status && inflictStatus(ctx, t, B.side, f.status, () => {}, { sourceSide: A.side })) { L(`${t.name} received ${m.name}'s status!`); cureStatus(m); }
@@ -1014,7 +1014,7 @@ function canAct(ctx, A, B, move, L) {
   if (f.attract && move.power && Math.random() < 0.5) { L(`${m.name} is immobilized by love!`); return false; }
   if (f.taunt > 0 && !move.power) { L(`${m.name} can't use **${move.name}** after the taunt!`); return false; }
   if (f.torment && f.lastMove && slug(f.lastMove.name) === slugName) { L(`${m.name} can't use the same move twice in a row (Torment)!`); return false; }
-  if (f.disabled && f.disabled === slugName && f.disableTurns > 0) { L(`${m.name}'s **${move.name}** is disabled!`); return false; }
+  if (f.disabledMoves?.[slugName] > 0) { L(`${m.name}'s **${move.name}** is disabled!`); return false; }
   if (bf.imprison && (B.mon.moves || []).some((x) => slug(x.name) === slugName)) { L(`${m.name} can't use the sealed move **${move.name}**!`); return false; }
   return true;
 }
@@ -1092,7 +1092,10 @@ function endOfTurn(ctx) {
     for (const timer of ['taunt', 'healBlock', 'embargo', 'magnetRise', 'telekinesis', 'encore']) {
       if (f[timer] > 0 && f[timer] < 99) { f[timer] -= 1; if (f[timer] === 0 && timer === 'taunt') L(`${mon.name}'s taunt wore off!`); }
     }
-    if (f.disableTurns > 0) { f.disableTurns -= 1; if (f.disableTurns === 0) f.disabled = null; }
+    for (const key of Object.keys(f.disabledMoves || {})) {
+      f.disabledMoves[key] -= 1;
+      if (f.disabledMoves[key] <= 0) delete f.disabledMoves[key];
+    }
     f.magicCoat = false; f.snatch = false; f.quashed = false; f.powdered = false; f.electrified = false;
     f.flinch = false;
     const s = field.sides[side];

@@ -194,9 +194,15 @@ function isPlateItem(itemName) {
 }
 
 // Judgment takes the type of the Plate its holder carries.
-function getHeldItemMoveType(moveName, moveType, itemName) {
+// Without a Plate, an Arceus form (e.g. "Arceus Ghost") uses its own type.
+const ARCEUS_FORM_TYPES = new Set(['normal', 'fire', 'water', 'electric', 'grass', 'ice', 'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy']);
+function getHeldItemMoveType(moveName, moveType, itemName, pokemonName) {
   const isJudgment = String(moveName || '').toLowerCase().replace(/[^a-z]/g, '') === 'judgment';
-  return isJudgment && isPlateItem(itemName) ? TYPE_BOOSTING_HELD_ITEMS[itemName] : moveType;
+  if (!isJudgment) return moveType;
+  if (isPlateItem(itemName)) return TYPE_BOOSTING_HELD_ITEMS[itemName];
+  const form = /\barceus[\s-]+([a-z]+)\s*$/i.exec(String(pokemonName || ''));
+  const formType = form && form[1].toLowerCase();
+  return formType && ARCEUS_FORM_TYPES.has(formType) ? formType : moveType;
 }
 
 module.exports = {
