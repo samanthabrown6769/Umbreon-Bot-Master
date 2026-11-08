@@ -10074,7 +10074,6 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
       `Your ${halloweenEvent.emojis.ticket} Event Ticket is ${ticketStatus}\n${statusText}\n\n` +
       `\`1\` ${halloweenEvent.emojis.ticket} **Event Ticket** — ${halloweenEvent.emojis.pokecoin} **${halloweenEvent.ticketPrice.toLocaleString()}**\n` +
       `\`2\` ${halloweenEvent.emojis.premierball} **Premierball** — ${halloweenEvent.emojis.pokecoin} **${halloweenEvent.premierballPrice.toLocaleString()} each**\n\n` +
-      `${halloweenEvent.emojis.event} With an active ticket, each spawn has a **1 in ${EVENT_SPAWN_ODDS}** chance to be an event checklist Pokémon.\n` +
       'Use `.events buy ticket` to join or `.events buy premierball <amount>` to buy balls.\n' +
       'Use `.e cl` to view your checklist.' +
       eventLinkNotice
