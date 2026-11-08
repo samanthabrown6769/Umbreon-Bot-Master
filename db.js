@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
+const { pickWeighted } = require('./spawn-weights');
 const {
   getPokemonDexNumbers,
   getGoldenDexNumber,
@@ -6332,7 +6333,8 @@ function getRandomPokemon(
   excludeMega = false,
   allowedFormIds = null,
   excludedSpeciesNames = [],
-  exactFormIds = null
+  exactFormIds = null,
+  boostedSpeciesIds = []
 ) {
   const exactFilter = exactFormIds && exactFormIds.length
     ? `AND id IN (${exactFormIds.map(() => '?').join(', ')})`
@@ -6345,6 +6347,10 @@ function getRandomPokemon(
   if (!Array.isArray(excludedSpeciesNames)
       || excludedSpeciesNames.some((name) => typeof name !== 'string' || !name.trim())) {
     throw new TypeError('excludedSpeciesNames must be an array of non-empty strings.');
+  }
+  if (!Array.isArray(boostedSpeciesIds)
+      || boostedSpeciesIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+    throw new TypeError('boostedSpeciesIds must be an array of positive species IDs.');
   }
   const formFilter = allowedFormIds === null
     ? ''
@@ -6360,7 +6366,7 @@ function getRandomPokemon(
   const cachedCandidates = randomPokemonCache.get(cacheKey);
   const cacheFresh = cachedCandidates && Date.now() - cachedCandidates.at < RANDOM_POKEMON_CACHE_MS;
   const select = cacheFresh ? null : db.prepare(`
-    SELECT id, evolution_chain_id FROM pokemon_forms
+    SELECT id, species_id, evolution_chain_id FROM pokemon_forms
     WHERE (? IS NULL OR rarity = ?)
       AND (? = 0 OR is_water = 1)
       AND (? = 0 OR lower(rarity) NOT IN ('mega', 'shiny mega'))
@@ -6406,16 +6412,11 @@ function getRandomPokemon(
     }
     const candidates = entry.rows;
     if (!candidates.length) continue;
-    const weightOf = (candidate) => (starters.has(candidate.evolution_chain_id) ? STARTER_SPAWN_WEIGHT : 1);
-    if (entry.total === null) {
-      entry.total = candidates.reduce((total, candidate) => total + weightOf(candidate), 0);
-    }
-    let roll = Math.random() * entry.total;
-    let chosen = candidates[candidates.length - 1];
-    for (const candidate of candidates) {
-      roll -= weightOf(candidate);
-      if (roll < 0) { chosen = candidate; break; }
-    }
+    const boosted = new Set(boostedSpeciesIds);
+    const chosen = pickWeighted(candidates, (candidate) =>
+      (starters.has(candidate.evolution_chain_id) ? STARTER_SPAWN_WEIGHT : 1)
+      * (boosted.has(candidate.species_id) ? 2.5 : 1)
+    );
     if (!cacheFresh) {
       randomPokemonCache.set(cacheKey, { at: Date.now(), attempts: attemptCandidates });
     }
@@ -6979,6 +6980,8 @@ function distributeWorldBossRewards(bossId) {
         index + 1, leaderboard.length, isMvp ? 30000 : 12000
       );
       const received = [];
+      const factionPoints = addFactionPoints(entry.user_id, 5000 + Math.floor(Math.random() * 2501));
+      if (factionPoints) received.push({ name: 'Faction Points', amount: factionPoints });
       if (isMvp) {
         incrementUser(entry.user_id, {
           masterballs: 2,

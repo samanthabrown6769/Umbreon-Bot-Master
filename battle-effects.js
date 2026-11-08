@@ -915,7 +915,7 @@ function useCounterMove(ctx, A, B, move, L) {
 function useDelayedMove(ctx, A, B, move, L) {
   const slot = ctx.field.sides[B.side];
   if (slot.futureAttack) { L(`${A.mon.name} used **${move.name}**, but it failed!`); return; }
-  slot.futureAttack = { turns: 3, attacker: A.mon, move: { ...move }, name: move.name };
+  slot.futureAttack = { turns: 3, attacker: A.mon, target: B.mon, move: { ...move }, name: move.name };
   L(DELAYED_MOVES.has(slug(move.name)) && slug(move.name) === 'doom-desire'
     ? `${A.mon.name} chose Doom Desire as its destiny!`
     : `${A.mon.name} foresaw an attack!`);
@@ -926,10 +926,14 @@ function resolveDelayedAttacks(ctx, L) {
     const slot = ctx.field.sides[side];
     const pending = slot.futureAttack;
     if (!pending) continue;
+    const target = side === 'player' ? ctx.player : ctx.enemy;
+    if (slug(pending.name) === 'future-sight' && pending.target.hp <= 0) {
+      slot.futureAttack = null;
+      continue;
+    }
     pending.turns -= 1;
     if (pending.turns > 0) continue;
     slot.futureAttack = null;
-    const target = side === 'player' ? ctx.player : ctx.enemy;
     if (!target || target.hp <= 0) continue;
     const { attacker, move } = pending;
     const type = String(move.type || '').toLowerCase();
@@ -1192,6 +1196,7 @@ const abilities = {
   afterHit: (ctx, A, B, move, dmg, info, L) => AB.afterHit(AH, ctx, A, B, move, dmg, info, L),
   damageMultiplier: AB.damageMultiplier,
   adjustMoveType: AB.adjustMoveType,
+  adjustDefenderTypes: AB.adjustDefenderTypes,
   survivesLethal: AB.survivesLethal,
   ignoresIndirect: AB.ignoresIndirect,
   critChance: AB.critChance,
