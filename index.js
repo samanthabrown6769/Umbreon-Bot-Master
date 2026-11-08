@@ -2825,6 +2825,26 @@ function heldItemEncounterHint(pokemon) {
   return `🔍 **Frisk:** This wild Pokémon is holding ${emoji} **${pokemon.heldItem}**.\n`;
 }
 
+function buildHeldItemEncounterAlert(pokemon, userId) {
+  if (!pokemon?.heldItem) return null;
+  const item = pokemon.friskReveal
+    ? `${pokemon.heldItemEmoji || HELD_ITEM_EMOJI} **${pokemon.heldItem}**`
+    : `${HELD_ITEM_EMOJI} an item`;
+  return {
+    content: `<@${userId}> the Pokémon is holding ${item}!`,
+    allowedMentions: { users: [userId] },
+  };
+}
+
+function buildFactionEncounterAlert(pokemon, userId) {
+  const faction = getPokemonFactionTeam(pokemon?.speciesId ?? pokemon?.species_id);
+  if (!faction) return null;
+  return {
+    content: `<@${userId}> the Pokémon is a ${faction.emoji ? `${faction.emoji} ` : ''}faction hunt!`,
+    allowedMentions: { users: [userId] },
+  };
+}
+
 // Held-item emoji goes between the rarity icon and the Pokémon name.
 function heldItemNameMarker(pokemon, rarityEmoji = '') {
   return pokemon.heldItem ? `${rarityEmoji ? `${rarityEmoji} ` : ''}${HELD_ITEM_EMOJI} ` : '';
@@ -6599,6 +6619,49 @@ function makeInlineEncounterHost(onEdit) {
   };
 }
 
+function buildRareEncounterAlert(target, options) {
+  const isEvent = isEventOpen(halloweenEvent) && isEventChecklistSpawn(target);
+  if (target.rarity !== 'Legendary' && !target.isShiny && !isEvent) return null;
+  const { userId, isFishing, guaranteedCatch, catchDisplayRarity, rarityData, catchBonus, channelCatchRateBoost } = options;
+  const recommendedBall = ['pb', 'gb', 'ub', 'prb', ...(isFishing ? ['dv'] : []), 'mb']
+    .find((key) => guaranteedCatch || key === 'mb' || getBallCatchRate(
+      key, BALL_CONFIG[key], target, catchDisplayRarity, rarityData.catchChance, catchBonus, channelCatchRateBoost
+    ) >= 100);
+  const variant = target.isGolden || target.is_golden ? 'golden' : target.isShiny ? 'shiny' : 'normal';
+  const lastSale = target.id ? getMarketSaleHistory(target.id, variant).recent[0] : null;
+  const soldAt = lastSale?.sold_at
+    ? Date.parse(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(lastSale.sold_at)
+      ? `${lastSale.sold_at.replace(' ', 'T')}Z`
+      : lastSale.sold_at)
+    : NaN;
+  const valueLabel = Number.isFinite(soldAt)
+    ? `Value as of <t:${Math.floor(soldAt / 1000)}:R>`
+    : 'Market last sold';
+  const value = lastSale
+    ? `${EMOJIS.pokecoin} ${Math.round(lastSale.sale_price / lastSale.quantity).toLocaleString()}`
+    : 'No recorded sales';
+  const dexNumber = target.id || target.speciesId || target.species_id ? getCollectionDexNumber({
+    pokemon_id: target.id, species_id: target.speciesId ?? target.species_id,
+    pokemon_slug: target.slug, is_shiny: target.isShiny, is_golden: target.isGolden || target.is_golden,
+  }) : null;
+  const rarityEmoji = getRarityEmojis(catchDisplayRarity, target.name, target.isShiny, target.isGolden || target.is_golden);
+  const label = target.isShiny ? `Shiny ${target.name}` : target.isGolden || target.is_golden ? `Golden ${target.name}` : target.name;
+  const category = target.isShiny ? 'Shiny' : isEvent ? 'event' : 'Legendary';
+  const embed = new EmbedBuilder()
+    .setColor(isEvent ? EVENT_EMBED_COLOR : getRarityColor(target.rarity, target.name, target.isShiny))
+    .setTitle(`${rarityEmoji ? `${rarityEmoji} ` : ''}${label}${dexNumber != null ? ` #${dexNumber}` : ''}`)
+    .setDescription(
+      `**${valueLabel}**\n${value}\n\n` +
+      `**Recommended Ball**\n${BALL_CONFIG[recommendedBall].emoji} ${BALL_CONFIG[recommendedBall].name} — 100% catch rate` +
+      (options.allowAnyUserCatch ? '\nBased on the encounter initiator’s bonuses.' : '')
+    );
+  return {
+    content: `<@${userId}> ${isEvent && !target.isShiny ? 'an' : 'a'} ${category} Pokémon has appeared!`,
+    allowedMentions: { users: [userId] },
+    embeds: [embed],
+  };
+}
+
 async function askForBall(
   message,
   userId,
@@ -6703,7 +6766,6 @@ async function askForBall(
     .setDescription(
       `${spawnFoundText}\n` +
       (allowAnyUserCatch ? 'Anyone can catch it with the buttons or by typing a ball name.\n' : '') +
-      heldItemEncounterHint(target) +
       (target.researchToolsConsumed?.length
         ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
         : '') +
@@ -6721,25 +6783,12 @@ async function askForBall(
           `Premierballs: ${user.premierballs}` +
           `${isFishing ? `\nDiveballs: ${user.diveballs}` : ''}`)
     );
-  if (target.rarity === 'Legendary' || target.isShiny || (isEventOpen(halloweenEvent) && isEventChecklistSpawn(target))) {
-    const recommendedBall = ['pb', 'gb', 'ub', 'prb', ...(isFishing ? ['dv'] : []), 'mb']
-      .find((key) => guaranteedCatch || key === 'mb' || getBallCatchRate(
-        key, BALL_CONFIG[key], target, catchDisplayRarity, rarityData.catchChance,
-        clanPerks.crBonus + ninjaBonus, channelCatchRateBoost
-      ) >= 100);
-    const variant = target.isGolden || target.is_golden ? 'golden' : target.isShiny ? 'shiny' : 'normal';
-    const lastSale = target.id ? getMarketSaleHistory(target.id, variant).recent[0] : null;
-    embed.addFields(
-      { name: 'Your guaranteed catch', value: `${BALL_CONFIG[recommendedBall].emoji} ${BALL_CONFIG[recommendedBall].name}`, inline: true },
-      {
-        name: 'Market last sold',
-        value: lastSale
-          ? `${EMOJIS.pokecoin} ${Math.round(lastSale.sale_price / lastSale.quantity).toLocaleString()} each`
-          : 'No recorded sales',
-        inline: true,
-      }
-    );
-  }
+  const rareAlert = buildRareEncounterAlert(target, {
+    userId, isFishing, guaranteedCatch, catchDisplayRarity, rarityData,
+    catchBonus: clanPerks.crBonus + ninjaBonus, channelCatchRateBoost, allowAnyUserCatch,
+  });
+  const heldItemAlert = buildHeldItemEncounterAlert(target, userId);
+  const factionAlert = buildFactionEncounterAlert(target, userId);
   const image = target.isGolden || target.is_golden
     ? getGoldenSpriteUrl(target.speciesId ?? target.species_id ?? target.id, target.slug)
     : getPokemonShowdownSprite(
@@ -6787,6 +6836,21 @@ async function askForBall(
       time: timeoutMs,
       max: allowAnyUserCatch ? 0 : 1,
     });
+  if (rareAlert) {
+    message.channel.send(rareAlert).catch((error) => {
+      console.error('Failed to send rare encounter alert:', error);
+    });
+  }
+  if (heldItemAlert) {
+    message.channel.send(heldItemAlert).catch((error) => {
+      console.error('Failed to send held-item encounter alert:', error);
+    });
+  }
+  if (factionAlert) {
+    message.channel.send(factionAlert).catch((error) => {
+      console.error('Failed to send faction encounter alert:', error);
+    });
+  }
   announceQuestCompletions(userId, message.channel, completedQuests);
   let actionTaken = false;
   activeCatchEncounters.set(spawnMessage.id, async (interaction) => {
@@ -6938,7 +7002,7 @@ async function askForBall(
       WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
       LIMIT 1
     `).get(userId, target.id, target.isShiny ? 1 : 0, target.isGolden ? 1 : 0);
-    saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden), selectedBall);
+    saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden), selectedBall, !allowAnyUserCatch);
     if (target.heldItem) addUserItem(userId, target.heldItem);
     if (!guaranteedCatch) recordDailyCatch(userId, catcher.username);
     const resetCounterCategories = counterSource
@@ -9028,6 +9092,24 @@ function sendTradeHelp(message) {
   });
 }
 
+const TRANSFER_MIN_CATCHES = 500;
+const TRANSFER_MIN_ACCOUNT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function getTransferEligibilityError(userIds, now = Date.now()) {
+  const ineligible = userIds.map((id) => {
+    const user = getUser(id);
+    return user.transfer_wild_catches < TRANSFER_MIN_CATCHES
+      && user.transfer_account_created_at > 0
+      && now - user.transfer_account_created_at < TRANSFER_MIN_ACCOUNT_AGE_MS
+      ? { id, catches: user.transfer_wild_catches, eligibleAt: user.transfer_account_created_at + TRANSFER_MIN_ACCOUNT_AGE_MS }
+      : null;
+  }).filter(Boolean);
+  if (!ineligible.length) return null;
+  return '❌ Both players need at least 500 wild catches or a bot account at least 7 days old ' +
+    'to trade, gift, or give items, coins, or tokens.\n' +
+    ineligible.map((entry) => `<@${entry.id}>: ${entry.catches}/500 wild catches, or eligible <t:${Math.ceil(entry.eligibleAt / 1000)}:R>.`).join('\n');
+}
+
 async function handleNameTrade(message, userId, targetUser, yourArg, theirArg) {
   if (activeTradeLocks.has(userId) || activeTradeLocks.has(targetUser.id)) {
     return message.reply('⏳ One of the trainers is already in an active trade.');
@@ -9091,6 +9173,12 @@ async function handleNameTrade(message, userId, targetUser, yourArg, theirArg) {
       return;
     }
 
+    const eligibilityError = getTransferEligibilityError([userId, targetUser.id]);
+    if (eligibilityError) {
+      collector.stop('ineligible');
+      await interaction.update({ content: eligibilityError, embeds: [], components: [], allowedMentions: { parse: [] } });
+      return;
+    }
     const swapped = db.transaction(() => {
       const stillYours = db.prepare(
         'SELECT id FROM catches WHERE id = ? AND user_id = ? AND in_team = 0'
@@ -9257,6 +9345,8 @@ function applyMultiTradeCommand(session, side, command) {
 // Re-validates and executes the whole trade atomically; returns an error string on failure.
 function executeMultiTrade(session) {
   return db.transaction(() => {
+    const eligibilityError = getTransferEligibilityError(session.sides.map((side) => side.user.id));
+    if (eligibilityError) return eligibilityError;
     const moves = [];
     for (let index = 0; index < 2; index += 1) {
       const side = session.sides[index];
@@ -9541,6 +9631,8 @@ async function handleGift(message, userId, args) {
   }
   const targetUser = await client.users.fetch(targetId).catch(() => null);
   if (!targetUser || targetUser.bot) return message.reply('❌ I could not find that user.');
+  const eligibilityError = getTransferEligibilityError([userId, targetId]);
+  if (eligibilityError) return message.reply({ content: eligibilityError, allowedMentions: { parse: [] } });
 
   const entries = [];
   let nameTokens = [];
@@ -9649,6 +9741,10 @@ async function handleGift(message, userId, args) {
 async function handleTrade(message, userId, args) {
   const targetUser = message.mentions.users.first();
   if (!args.length || args[0].toLowerCase() === 'help') return sendTradeHelp(message);
+  if (targetUser && targetUser.id !== userId && !targetUser.bot) {
+    const eligibilityError = getTransferEligibilityError([userId, targetUser.id]);
+    if (eligibilityError) return message.reply({ content: eligibilityError, allowedMentions: { parse: [] } });
+  }
   if (args.some((argument) => argument.toLowerCase() === '-m')) {
     return handleMultiTrade(message, userId, args);
   }
@@ -9745,6 +9841,11 @@ async function handleTrade(message, userId, args) {
     completed = true;
     collector.stop('completed');
 
+    const eligibilityError = getTransferEligibilityError([userId, targetUser.id]);
+    if (eligibilityError) {
+      await message.channel.send({ content: eligibilityError, allowedMentions: { parse: [] } });
+      return;
+    }
     const result = db.transaction(() => {
       const senderStillOwns = db.prepare(
         'SELECT id FROM catches WHERE id = ? AND user_id = ? AND in_team = 0'
@@ -10938,6 +11039,79 @@ async function handleGiveawayEntry(interaction) {
   });
 }
 
+async function showHeldItemList(message, userId) {
+  const pokemon = db.prepare(`
+    SELECT pokemon_id, name, is_shiny, is_golden, held_item
+    FROM catches
+    WHERE user_id = ? AND held_item IS NOT NULL AND TRIM(held_item) <> ''
+    GROUP BY pokemon_id, CASE WHEN pokemon_id IS NULL THEN name END, is_shiny, is_golden, held_item
+    ORDER BY held_item COLLATE NOCASE, name COLLATE NOCASE, is_shiny, is_golden, pokemon_id
+  `).all(userId);
+  const grouped = new Map();
+  for (const mon of pokemon) {
+    if (!grouped.has(mon.held_item)) grouped.set(mon.held_item, []);
+    grouped.get(mon.held_item).push(mon);
+  }
+  const fields = [...grouped.entries()].map(([item, holders]) => {
+    const displayed = holders.slice(0, 10).map((mon) => getPokemonSpriteEmoji(mon)
+      || `${mon.is_shiny ? 'Shiny ' : mon.is_golden ? 'Golden ' : ''}${mon.name}`.slice(0, 60));
+    return {
+      name: `${getItemEmoji(item)} ${item} (${holders.length})`.slice(0, 80),
+      value: `${holders.length > displayed.length ? `*Showing ${displayed.length} of ${holders.length} Pokémon*\n` : ''}${displayed.join(' ')}`,
+      inline: true,
+    };
+  });
+  const pages = [[]];
+  let pageLength = 0;
+  for (const field of fields) {
+    const length = field.name.length + field.value.length;
+    if (pages[pages.length - 1].length >= 18 || pageLength + length > 5600) {
+      pages.push([]);
+      pageLength = 0;
+    }
+    pages[pages.length - 1].push(field);
+    pageLength += length;
+  }
+  const totalPages = pages.length;
+  let page = 1;
+  const buildEmbed = () => {
+    const embed = new EmbedBuilder()
+      .setColor(0x0099ff)
+      .setAuthor({ name: "Your Pokémon's Held Items", iconURL: message.author.displayAvatarURL() });
+    if (pages[page - 1].length) embed.addFields(pages[page - 1]);
+    else embed.setDescription('None of your Pokémon are holding an item.');
+    return embed.setFooter({
+      text: `Page ${page}/${totalPages} • Up to 10 Pokémon per item\nLearn item effects with ${PREFIX}item info <item name>`,
+    });
+  };
+  const buildButtons = (disabled = false) => new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('helditems:prev').setEmoji('⬅️').setStyle(ButtonStyle.Primary)
+      .setDisabled(disabled || page === 1),
+    new ButtonBuilder().setCustomId('helditems:next').setEmoji('➡️').setStyle(ButtonStyle.Primary)
+      .setDisabled(disabled || page === totalPages)
+  );
+  const sent = await message.reply({
+    embeds: [buildEmbed()],
+    components: totalPages > 1 ? [buildButtons()] : [],
+  });
+  if (totalPages <= 1) return;
+  const collector = sent.createMessageComponentCollector({ componentType: ComponentType.Button, time: 90000 });
+  collector.on('collect', async (interaction) => {
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: `Use \`${PREFIX}team list items\` to see your own Pokémon.`, ephemeral: true });
+    }
+    if (interaction.customId === 'helditems:prev') page = Math.max(1, page - 1);
+    else if (interaction.customId === 'helditems:next') page = Math.min(totalPages, page + 1);
+    else return;
+    return interaction.update({ embeds: [buildEmbed()], components: [buildButtons()] });
+  });
+  collector.on('end', () => {
+    sent.edit({ components: [buildButtons(true)] }).catch((error) => {
+      console.error('Failed to disable held-item list buttons:', error);
+    });
+  });
+}
+
 const autospawnStates = new Map();
 const AUTOSPAWN_GUILD_ID = '1560102297198006274';
 const AUTOSPAWN_GUESS_MS = 25 * 1000;
@@ -11073,9 +11247,6 @@ async function triggerAutoSpawn(channel, guildConfig, state, { messageThreshold 
       collector.stop('caught');
       try {
         saveCatch(interaction.user.id, target, target.isShiny, true);
-        advanceEggCatchProgress(
-          interaction.user.id, 1, interaction.channel, await hasEggBoostAbility(interaction.user.id)
-        );
         trackClanActivity(interaction.user.id, 'catch');
         announceRareSpawn(interaction.guild, interaction.user, target, 'Spawn catch button').catch(() => {});
         const owned = db.prepare(
@@ -20139,9 +20310,11 @@ client.on('messageCreate', async (message) => {
           : `🗑️ Deleted team **${teamName}** from your favorites.`);
       }
       if (action === 'list' || action === 'favs' || action === 'favorites') {
-        const showItems = args[1]?.toLowerCase() === 'items';
-        if (args.length > 1 && (!showItems || args.length > 2)) {
-          return message.reply(`Usage: \`${PREFIX}team list [items]\`.`);
+        if (action === 'list' && args[1]?.toLowerCase() === 'items' && args.length === 2) {
+          return showHeldItemList(message, userId);
+        }
+        if (args.length > 1) {
+          return message.reply(`Usage: \`${PREFIX}team list\` or \`${PREFIX}team list items\`.`);
         }
         const presets = getSavedTeams(userId);
         const defending = presets.find((preset) => preset.is_defending === 1);
@@ -20151,16 +20324,14 @@ client.on('messageCreate', async (message) => {
           if (!ids.length) return '*Empty team*';
           const mons = ids
             .map((id) => db.prepare(
-              `SELECT catches.name, catches.is_shiny, catches.is_golden, catches.level, catches.held_item,
+              `SELECT catches.name, catches.is_shiny, catches.is_golden, catches.level,
                 (SELECT value FROM bot_settings
                   WHERE key = 'buddy_nickname:' || catches.user_id || ':' || catches.id) AS nickname
               FROM catches WHERE catches.id = ? AND catches.user_id = ?`
             ).get(id, userId))
             .filter(Boolean);
           if (!mons.length) return '*Pokémon missing from box*';
-          return mons.map((mon) =>
-            `${teamPokemonLabel(mon)} \`Lv. ${mon.level}\`${showItems ? ` — ${mon.held_item || 'No item'}` : ''}`
-          ).join('\n');
+          return mons.map((mon) => `${teamPokemonLabel(mon)} \`Lv. ${mon.level}\``).join('\n');
         };
         const embed = new EmbedBuilder()
           .setColor(0x0099ff)
@@ -26484,6 +26655,8 @@ client.on('messageCreate', async (message) => {
       }
       if (recipient.id === userId) return message.reply('❌ You cannot give things to yourself!');
       if (recipient.bot) return message.reply('❌ You cannot give things to bots!');
+      const eligibilityError = getTransferEligibilityError([userId, recipient.id]);
+      if (eligibilityError) return message.reply({ content: eligibilityError, allowedMentions: { parse: [] } });
 
       const lastWord = rest.at(-1);
       const hasAmount = rest.length > 0 && /^[\d,.]+[kmb]?$|^all$/i.test(lastWord);

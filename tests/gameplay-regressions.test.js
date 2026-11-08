@@ -425,6 +425,44 @@ test('scheduler ignores other servers and the chat counter triggers at 500', asy
   db.close();
 });
 
+test('catching an autospawn awards the Pokémon without advancing eggs', async () => {
+  const { ctx, db } = autospawnContext();
+  const guildId = '1560102297198006274';
+  const handlers = {};
+  let choices;
+  let saved = 0;
+  let eggProgress = 0;
+  ctx.saveCatch = () => { saved += 1; };
+  ctx.advanceEggCatchProgress = () => { eggProgress += 1; };
+  ctx.hasEggBoostAbility = async () => true;
+  ctx.trackClanActivity = () => {};
+  ctx.announceRareSpawn = async () => {};
+  ctx.factionLogoPrefix = () => '';
+  ctx.PREFIX = '.';
+  db.exec('CREATE TABLE catches (user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER)');
+  const channel = {
+    id: 'allowed-channel', guildId,
+    send: async (payload) => {
+      choices = payload.components[0].toJSON().components;
+      return { createMessageComponentCollector: () => ({ on: (event, fn) => { handlers[event] = fn; }, stop: () => {} }) };
+    },
+  };
+  const state = ctx.createAutoSpawnState({ guild_id: guildId, message_count: 0, message_target: 15 });
+  await ctx.triggerAutoSpawn(channel, { guild_id: guildId }, state);
+  const button = choices.find((choice) => choice.label === 'Common');
+  let updated = false;
+  await handlers.collect({
+    customId: button.custom_id, user: { id: 'player', username: 'Player' }, guild: {}, channel,
+    update: async () => { updated = true; }, reply: async (payload) => { throw new Error(payload.content); },
+  });
+  assert.equal(saved, 1);
+  assert.equal(eggProgress, 0);
+  assert.equal(updated, true);
+  const normalCatch = extract(indexSource, 'async function askForBall(', '\nasync function ');
+  assert.match(normalCatch, /advanceEggCatchProgress\(userId, 1, message\.channel, eggAbilityBoost\)/);
+  db.close();
+});
+
 test('autospawn command requires a bot admin and the designated server', async () => {
   const source = extract(indexSource, "    if (command === 'autospawn') {", "\n    if (command === 'lottery'");
   const ctx = vm.createContext({
@@ -450,26 +488,227 @@ test('autospawn command requires a bot admin and the designated server', async (
 
 test('held-item encounters identify the item only with Frisk and do not alone trigger rare advice', () => {
   const hint = extract(indexSource, 'function heldItemEncounterHint(', '\n// Held-item emoji');
-  const advice = extract(indexSource, "  if (target.rarity === 'Legendary' || target.isShiny", '\n  const image =');
-  const embed = new EmbedBuilder();
+  const advice = extract(indexSource, 'function buildRareEncounterAlert(', '\nasync function askForBall(');
   const ctx = vm.createContext({
-    HELD_ITEM_EMOJI: 'item', target: { heldItem: 'Nugget', rarity: 'Common', id: 1 },
+    HELD_ITEM_EMOJI: 'item', EmbedBuilder,
     isEventOpen: () => false, isEventChecklistSpawn: () => false, halloweenEvent: {},
-    isFishing: false, guaranteedCatch: false, getBallCatchRate: () => 100,
-    BALL_CONFIG: { pb: { emoji: 'ball', name: 'Poké Ball' } }, catchDisplayRarity: 'Common',
-    rarityData: { catchChance: 1 }, clanPerks: { crBonus: 0 }, ninjaBonus: 0, channelCatchRateBoost: 0,
-    getMarketSaleHistory: () => ({ recent: [{ sale_price: 400, quantity: 2 }] }),
-    EMOJIS: { pokecoin: 'coin' }, embed,
+    getBallCatchRate: () => 100, getCollectionDexNumber: () => 42,
+    getRarityEmojis: () => '✨', getRarityColor: () => 0x123456,
+    BALL_CONFIG: { pb: { emoji: 'ball', name: 'Poké Ball' } },
+    getMarketSaleHistory: () => ({ recent: [{ sale_price: 400, quantity: 2, sold_at: '2026-11-07 18:00:00' }] }),
+    EMOJIS: { pokecoin: 'coin' },
   });
   vm.runInContext(`${hint}\n${advice}`, ctx);
-  assert.equal(embed.toJSON().fields, undefined);
-  assert.match(ctx.heldItemEncounterHint(ctx.target), /holding an item/);
-  assert.doesNotMatch(ctx.heldItemEncounterHint(ctx.target), /Nugget/);
-  assert.match(ctx.heldItemEncounterHint({ ...ctx.target, friskReveal: true }), /Nugget/);
+  const target = { heldItem: 'Nugget', rarity: 'Common', name: 'Pokemon', id: 1 };
+  const options = { userId: '123', catchDisplayRarity: 'Common', rarityData: { catchChance: 1 }, catchBonus: 0 };
+  assert.equal(ctx.buildRareEncounterAlert(target, options), null);
+  assert.match(ctx.heldItemEncounterHint(target), /holding an item/);
+  assert.doesNotMatch(ctx.heldItemEncounterHint(target), /Nugget/);
+  assert.match(ctx.heldItemEncounterHint({ ...target, friskReveal: true }), /Nugget/);
   assert.equal(ctx.heldItemEncounterHint({ friskReveal: true }), '');
-  ctx.target.rarity = 'Legendary';
-  vm.runInContext(advice, ctx);
-  assert.deepEqual(embed.toJSON().fields.map((field) => field.name), ['Your guaranteed catch', 'Market last sold']);
-  assert.match(embed.toJSON().fields[1].value, /200 each/);
+  const heldAlert = ctx.buildHeldItemEncounterAlert(target, '123');
+  assert.equal(heldAlert.content, '<@123> the Pokémon is holding item an item!');
+  assert.deepEqual(Array.from(heldAlert.allowedMentions.users), ['123']);
+  assert.doesNotMatch(heldAlert.content, /Nugget/);
+  assert.match(ctx.buildHeldItemEncounterAlert({ ...target, friskReveal: true, heldItemEmoji: 'coin' }, '123').content, /coin \*\*Nugget\*\*/);
+  assert.equal(ctx.buildHeldItemEncounterAlert({ friskReveal: true }, '123'), null);
+  const alert = ctx.buildRareEncounterAlert({ ...target, rarity: 'Legendary' }, options);
+  assert.match(alert.content, /<@123> a Legendary Pokémon/);
+  assert.match(alert.embeds[0].toJSON().title, /Pokemon #42/);
+  assert.match(alert.embeds[0].toJSON().description, /Value as of <t:1794074400:R>/);
+  assert.match(alert.embeds[0].toJSON().description, /coin 200/);
+  assert.match(alert.embeds[0].toJSON().description, /Poké Ball — 100% catch rate/);
   assert.match(indexSource, /friskReveal: String\(overworldAbility\)\.toLowerCase\(\) === 'frisk'/);
+});
+
+test('rare encounter alerts handle shiny, event, no sales, and shared encounters', () => {
+  const ctx = vm.createContext({
+    EmbedBuilder, halloweenEvent: {}, EVENT_EMBED_COLOR: 0xabcdef,
+    isEventOpen: () => true, isEventChecklistSpawn: (target) => !!target.event,
+    getBallCatchRate: () => 10, getCollectionDexNumber: (target) => target.is_shiny ? 101 : 100,
+    getRarityEmojis: () => '✨', getRarityColor: () => 0x123456,
+    BALL_CONFIG: { mb: { emoji: 'master', name: 'Master Ball' } },
+    getMarketSaleHistory: () => ({ recent: [] }), EMOJIS: { pokecoin: 'coin' },
+  });
+  vm.runInContext(extract(indexSource, 'function buildRareEncounterAlert(', '\nasync function askForBall('), ctx);
+  const options = { userId: '123', catchDisplayRarity: 'Shiny', rarityData: { catchChance: 1 }, allowAnyUserCatch: true };
+  const shiny = ctx.buildRareEncounterAlert({ id: 1, name: 'Diglett', rarity: 'Common', isShiny: true }, options);
+  assert.match(shiny.content, /a Shiny Pokémon/);
+  assert.match(shiny.embeds[0].toJSON().title, /Shiny Diglett #101/);
+  assert.match(shiny.embeds[0].toJSON().description, /No recorded sales/);
+  assert.match(shiny.embeds[0].toJSON().description, /Master Ball — 100% catch rate/);
+  assert.match(shiny.embeds[0].toJSON().description, /initiator/);
+  const event = ctx.buildRareEncounterAlert({ id: 1, name: 'Diglett', rarity: 'Common', event: true }, options);
+  assert.match(event.content, /an? event Pokémon/);
+  assert.equal(event.embeds[0].toJSON().color, 0xabcdef);
+  const encounter = extract(indexSource, 'async function askForBall(', '\nasync function ');
+  assert.match(encounter, /message\.channel\.send\(rareAlert\)/);
+  assert.match(encounter, /message\.channel\.send\(heldItemAlert\)/);
+  assert.match(encounter, /message\.channel\.send\(factionAlert\)/);
+  assert.doesNotMatch(encounter, /embed\.addFields\([\s\S]*?Market last sold/);
+});
+
+test('faction hunt alerts use the daily species mapping and mention the trainer', () => {
+  const ctx = vm.createContext({
+    getPokemonFactionTeam: (id) => id === 25 ? { id: 'rocket', emoji: '🚀' } : null,
+  });
+  vm.runInContext(extract(indexSource, 'function buildFactionEncounterAlert(', '\n// Held-item emoji'), ctx);
+  const alert = ctx.buildFactionEncounterAlert({ speciesId: 25 }, '123');
+  assert.equal(alert.content, '<@123> the Pokémon is a 🚀 faction hunt!');
+  assert.deepEqual(Array.from(alert.allowedMentions.users), ['123']);
+  assert.equal(ctx.buildFactionEncounterAlert({ species_id: 25 }, '123').content, alert.content);
+  assert.equal(ctx.buildFactionEncounterAlert({ speciesId: 26 }, '123'), null);
+});
+
+test('held-item list groups all owned Pokémon by item and pages without counting shared copies twice', async () => {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE catches (user_id TEXT, pokemon_id INTEGER, name TEXT, is_shiny INTEGER, is_golden INTEGER, held_item TEXT)`);
+  const insert = db.prepare('INSERT INTO catches VALUES (?, ?, ?, ?, ?, ?)');
+  for (let i = 0; i < 12; i += 1) insert.run('user', i + 1, `Mon${i}`, 0, 0, 'Ability Shield');
+  insert.run('user', 1, 'Mon0', 0, 0, 'Ability Shield');
+  insert.run('user', 1, 'Mon0', 1, 0, 'Ability Shield');
+  insert.run('other', 99, 'Other', 0, 0, 'Ability Shield');
+  insert.run('user', 90, 'No item', 0, 0, null);
+  for (let i = 0; i < 18; i += 1) insert.run('user', 100 + i, `Pokemon${i}`, 0, 0, `Item ${String(i).padStart(2, '0')}`);
+  const handlers = {};
+  let initial;
+  const sent = {
+    createMessageComponentCollector: () => ({ on: (event, handler) => { handlers[event] = handler; } }),
+    edit: async () => {},
+  };
+  const message = {
+    author: { id: 'user', displayAvatarURL: () => 'https://example.com/avatar.png' },
+    reply: async (payload) => { initial = payload; return sent; },
+  };
+  const ctx = vm.createContext({
+    db, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    ComponentType: { Button: 2 }, PREFIX: '.', console,
+    getItemEmoji: () => '🎁',
+    getPokemonSpriteEmoji: (pokemon) => pokemon.name === 'Mon1' ? '' : `:${pokemon.name}:`,
+  });
+  vm.runInContext(extract(indexSource, 'async function showHeldItemList(', '\nconst autospawnStates'), ctx);
+  await ctx.showHeldItemList(message, 'user');
+  const first = initial.embeds[0].toJSON();
+  assert.equal(first.author.name, "Your Pokémon's Held Items");
+  assert.equal(first.fields.length, 18);
+  assert.match(first.fields[0].name, /Ability Shield \(13\)/);
+  assert.match(first.fields[0].value, /Showing 10 of 13 Pokémon/);
+  assert.match(first.fields[0].value, /Mon1/);
+  assert.match(first.footer.text, /Page 1\/2/);
+  let denied;
+  await handlers.collect({ user: { id: 'other' }, reply: async (payload) => { denied = payload; } });
+  assert.equal(denied.ephemeral, true);
+  let updated;
+  await handlers.collect({
+    user: { id: 'user' }, customId: 'helditems:next',
+    update: async (payload) => { updated = payload; },
+  });
+  assert.equal(updated.embeds[0].toJSON().fields.length, 1);
+  assert.match(updated.embeds[0].toJSON().footer.text, /Page 2\/2/);
+  db.close();
+});
+
+test('held-item list handles empty collections separately from favorite-team listing', async () => {
+  const db = new Database(':memory:');
+  db.exec('CREATE TABLE catches (user_id TEXT, pokemon_id INTEGER, name TEXT, is_shiny INTEGER, is_golden INTEGER, held_item TEXT)');
+  let payload;
+  const ctx = vm.createContext({ db, EmbedBuilder, PREFIX: '.', getItemEmoji: () => '', getPokemonSpriteEmoji: () => '' });
+  vm.runInContext(extract(indexSource, 'async function showHeldItemList(', '\nconst autospawnStates'), ctx);
+  await ctx.showHeldItemList({
+    author: { displayAvatarURL: () => 'https://example.com/avatar.png' },
+    reply: async (value) => { payload = value; return {}; },
+  }, 'user');
+  assert.match(payload.embeds[0].toJSON().description, /None of your Pokémon/);
+  assert.equal(payload.components.length, 0);
+  assert.match(indexSource, /action === 'list' && args\[1\]\?\.toLowerCase\(\) === 'items' && args\.length === 2/);
+  assert.match(indexSource, /if \(command === 't'\) command = 'team'/);
+  db.close();
+});
+
+test('new accounts start the seven-day clock and only actual catches count toward transfers', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE users (id TEXT PRIMARY KEY, joined_at INTEGER DEFAULT 0, transfer_account_created_at INTEGER NOT NULL DEFAULT 0,
+      transfer_wild_catches INTEGER NOT NULL DEFAULT 0, total_catches INTEGER NOT NULL DEFAULT 0,
+      shiny_catches INTEGER NOT NULL DEFAULT 0, buddy_catch_id INTEGER);
+    INSERT INTO users (id) VALUES ('legacy');
+    CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, species_id INTEGER);
+    INSERT INTO pokemon_forms VALUES (1, 25);
+    CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, rarity TEXT, is_shiny INTEGER,
+      is_golden INTEGER, level INTEGER, hp_iv INTEGER, atk_iv INTEGER, def_iv INTEGER, spa_iv INTEGER, spdef_iv INTEGER,
+      spd_iv INTEGER, hp INTEGER, max_hp INTEGER, atk INTEGER, def INTEGER, spd INTEGER, in_team INTEGER, team_slot INTEGER,
+      moves TEXT, caught_ball TEXT);
+  `);
+  const now = 1800000000000;
+  const ctx = vm.createContext({
+    db, legacyUserIdColumn: false, Date: class extends Date { static now() { return now; } },
+    incrementableUserFields: new Set(['total_catches', 'shiny_catches', 'transfer_wild_catches']),
+    calculateStat: () => 10, getSpeciesLearnset: () => [], syncNewCatchState: () => {}, recordPokemonSeen: () => {},
+  });
+  vm.runInContext(extract(dbSource, 'function assertUserId(', '\n// One-time fix: joined_at'), ctx);
+  vm.runInContext(extract(dbSource, 'function incrementUser(', '\nfunction grantGlobalUserReward('), ctx);
+  vm.runInContext(extract(dbSource, 'function saveCatch(', '\n// abilityBoost:'), ctx);
+  assert.equal(ctx.getUser('legacy').transfer_account_created_at, 0);
+  assert.equal(ctx.getUser('new').transfer_account_created_at, now);
+  ctx.saveCatch('new', { id: 1, name: 'Pikachu' }, false, false);
+  assert.equal(ctx.getUser('new').transfer_wild_catches, 0);
+  ctx.saveCatch('new', { id: 1, name: 'Pikachu' }, false, true);
+  assert.equal(ctx.getUser('new').transfer_wild_catches, 1);
+  ctx.saveCatch('new', { id: 1, name: 'Pikachu' }, false, true, false, 'mb', false);
+  assert.equal(ctx.getUser('new').transfer_wild_catches, 1);
+  assert.equal(ctx.getUser('new').total_catches, 3);
+  db.close();
+});
+
+test('transfer eligibility uses 500 wild catches or exactly seven days for both players', () => {
+  const now = 1800000000000;
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const users = {
+    legacy: { transfer_account_created_at: 0, transfer_wild_catches: 0 },
+    young: { transfer_account_created_at: now - week + 1, transfer_wild_catches: 499, total_catches: 9999 },
+    old: { transfer_account_created_at: now - week, transfer_wild_catches: 0 },
+    caught: { transfer_account_created_at: now, transfer_wild_catches: 500 },
+  };
+  const ctx = vm.createContext({ getUser: (id) => users[id] });
+  vm.runInContext(extract(indexSource, 'const TRANSFER_MIN_CATCHES', '\nasync function handleNameTrade('), ctx);
+  assert.equal(ctx.getTransferEligibilityError(['legacy', 'caught'], now), null);
+  assert.equal(ctx.getTransferEligibilityError(['old', 'caught'], now), null);
+  const error = ctx.getTransferEligibilityError(['caught', 'young'], now);
+  assert.match(error, /<@young>: 499\/500 wild catches/);
+  assert.match(error, /7 days/);
+  assert.equal(ctx.getTransferEligibilityError(['young'], now + 1), null);
+});
+
+test('trade, gift and give reject ineligible accounts before initiating transfers', async () => {
+  const reason = '❌ eligibility denied';
+  const target = { id: 'target', bot: false };
+  const message = {
+    mentions: { users: { first: () => target } },
+    reply: async (value) => value,
+  };
+  const ctx = vm.createContext({
+    getTransferEligibilityError: () => reason,
+    client: { users: { fetch: async () => target } },
+    getGiftTarget: () => 'target', PREFIX: '.',
+  });
+  vm.runInContext(extract(indexSource, 'async function handleGift(', '\nasync function handleTrade('), ctx);
+  vm.runInContext(extract(indexSource, 'async function handleTrade(', '\nasync function '), ctx);
+  for (const args of [['@target', 'pikachu', 'eevee'], ['@target', '-m'], ['@target', 'pikachu']]) {
+    assert.equal((await ctx.handleTrade(message, 'sender', args)).content, reason);
+  }
+  assert.equal((await ctx.handleGift(message, 'sender', ['@target', 'pikachu'])).content, reason);
+  const giveSource = extract(indexSource, "    if (command === 'give') {", '\n  } catch (error) {');
+  vm.runInContext(`async function handleGive(message, userId, args) { const command = 'give'; ${giveSource} }`, ctx);
+  ctx.EMOJIS = { pokecoin: 'coin', patreonToken: 'token' };
+  assert.equal((await ctx.handleGive(message, 'sender', ['coins', '5'])).content, reason);
+  assert.equal((await ctx.handleGive(message, 'sender', ['tokens', '5'])).content, reason);
+  assert.equal((await ctx.handleGive(message, 'sender', ['Candy', '5'])).content, reason);
+});
+
+test('multi-trade rechecks eligibility before moving balances or Pokémon', () => {
+  const db = new Database(':memory:');
+  const ctx = vm.createContext({ db, getTransferEligibilityError: () => 'not eligible' });
+  vm.runInContext(extract(indexSource, 'function executeMultiTrade(', '\nasync function handleMultiTrade('), ctx);
+  assert.equal(ctx.executeMultiTrade({ sides: [{ user: { id: 'one' } }, { user: { id: 'two' } }] }), 'not eligible');
+  db.close();
 });

@@ -579,6 +579,8 @@ const userDefinitions = {
   cooldown_machine_catch_charges: 'INTEGER NOT NULL DEFAULT 0',
   cooldown_machine_fish_charges: 'INTEGER NOT NULL DEFAULT 0',
   total_catches: 'INTEGER NOT NULL DEFAULT 0',
+  transfer_account_created_at: 'INTEGER NOT NULL DEFAULT 0',
+  transfer_wild_catches: 'INTEGER NOT NULL DEFAULT 0',
   shiny_catches: 'INTEGER NOT NULL DEFAULT 0',
   common_streak: 'INTEGER NOT NULL DEFAULT 0',
   premierballs: 'INTEGER NOT NULL DEFAULT 0',
@@ -2000,6 +2002,7 @@ const incrementableUserFields = new Set([
   'cooldown_machine_catch_charges',
   'cooldown_machine_fish_charges',
   'total_catches',
+  'transfer_wild_catches',
   'shiny_catches',
   'common_streak',
   'buddy_exp',
@@ -2085,11 +2088,12 @@ function assertUserId(userId) {
 
 function getUser(userId) {
   assertUserId(userId);
+  const now = Date.now();
   const created = legacyUserIdColumn
-    ? db.prepare('INSERT OR IGNORE INTO users (id, user_id) VALUES (?, ?)').run(userId, userId)
-    : db.prepare('INSERT OR IGNORE INTO users (id) VALUES (?)').run(userId);
+    ? db.prepare('INSERT OR IGNORE INTO users (id, user_id, transfer_account_created_at) VALUES (?, ?, ?)').run(userId, userId, now)
+    : db.prepare('INSERT OR IGNORE INTO users (id, transfer_account_created_at) VALUES (?, ?)').run(userId, now);
   if (created.changes > 0) {
-    db.prepare('UPDATE users SET joined_at = ? WHERE id = ?').run(Date.now(), userId);
+    db.prepare('UPDATE users SET joined_at = ? WHERE id = ?').run(now, userId);
   }
   return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 }
@@ -3492,13 +3496,13 @@ function migrateSharedAttackAndDefenseIvs() {
 
 migrateSharedAttackAndDefenseIvs();
 
-function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false, caughtBall = null) {
+function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false, caughtBall = null, countTransferCatch = recordSeen) {
   assertUserId(userId);
   if (!pokemon || !Number.isSafeInteger(pokemon.id) || typeof pokemon.name !== 'string') {
     throw new TypeError('pokemon must include a valid id and name.');
   }
-  if (typeof recordSeen !== 'boolean' || typeof isGolden !== 'boolean') {
-    throw new TypeError('recordSeen and isGolden must be booleans.');
+  if (typeof recordSeen !== 'boolean' || typeof isGolden !== 'boolean' || typeof countTransferCatch !== 'boolean') {
+    throw new TypeError('recordSeen, isGolden and countTransferCatch must be booleans.');
   }
 
   const hpIv = Math.floor(Math.random() * 32);
@@ -3584,6 +3588,7 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
     incrementUser(userId, {
       total_catches: 1,
       shiny_catches: isShiny || pokemon.isShiny ? 1 : 0,
+      transfer_wild_catches: countTransferCatch ? 1 : 0,
     });
     return Number(result.lastInsertRowid);
   }).immediate();
