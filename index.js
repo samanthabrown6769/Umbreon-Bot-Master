@@ -26192,7 +26192,7 @@ client.on('messageCreate', async (message) => {
                   .find((form) => form.is_default && form.species_name === chosen.name) || null;
               }
             } else {
-              pokemon = getRandomPokemon(box.rarity, false, true, true);
+              pokemon = getRandomPokemon(box.rarity, false, true, true, []);
             }
             if (!pokemon) {
               greatballs += Math.floor(Math.random() * 5) + 2;

@@ -88,6 +88,7 @@ test('spawn selection applies chamber weights within the eligible rarity pool', 
     );
     INSERT INTO pokemon_forms VALUES (1,1,1,1,'Common',0,'Ordinary','Ordinary');
     INSERT INTO pokemon_forms VALUES (2,2,2,1,'Common',0,'Chamber','Chamber');
+    INSERT INTO pokemon_forms VALUES (3,2,2,0,'Common',0,'Chamber Alternate','Chamber');
   `);
   let roll = 0;
   const math = Object.create(Math);
@@ -102,6 +103,8 @@ test('spawn selection applies chamber weights within the eligible rarity pool', 
   roll = 0.3;
   assert.equal(ctx.getRandomPokemon('Common', false, true, true, [], [], null, [2]).speciesId, 2);
   assert.equal(ctx.getRandomPokemon('Common', false, true, true, [], [], null, []).speciesId, 1);
+  assert.equal(ctx.getRandomPokemon('Common', false, true, true, []).id, 1);
+  assert.match(indexSource, /getRandomPokemon\(box\.rarity, false, true, true, \[\]\)/);
   db.close();
 });
 
