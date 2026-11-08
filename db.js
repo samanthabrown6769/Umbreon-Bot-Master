@@ -4674,10 +4674,11 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
     `).run(userId, megaForm.stoneName);
     if (!consumedStone.changes) return { error: 'stone_required', stoneName: megaForm.stoneName };
 
+    const targetHeldItem = prepareEvolutionHeldItems(userId, pokemon, megaForm.id);
     db.prepare(`
       UPDATE catches
       SET pokemon_id = ?, name = ?, rarity = 'Mega',
-        hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?
+        hp = ?, max_hp = ?, atk = ?, def = ?, spd = ?, held_item = ?
       WHERE id = ? AND user_id = ?
     `).run(
       megaForm.id,
@@ -4687,6 +4688,7 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
       atk,
       def,
       spd,
+      targetHeldItem,
       pokemon.id,
       userId
     );
@@ -4701,6 +4703,7 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
         name: megaForm.name,
         rarity: 'Mega',
         is_shiny: isShiny,
+        held_item: targetHeldItem,
       },
       stone: megaForm.stoneName,
       dexNumber: isShiny ? megaDexNumbers?.shinyDexNumber : megaDexNumbers?.dexNumber,
@@ -4972,6 +4975,40 @@ function carryOverEvolutionMoves(userId, row, target) {
     .run(JSON.stringify([...sketched, ...missing]), row.id, userId);
 }
 
+function prepareEvolutionHeldItems(userId, row, targetFormId, consumesHeldItem = false) {
+  const targetCopy = db.prepare(`
+    SELECT held_item FROM catches
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+    ORDER BY id LIMIT 1
+  `).get(userId, targetFormId, row.is_shiny, row.is_golden);
+  if (row.held_item && consumesHeldItem) {
+    db.prepare(`
+      UPDATE catches SET held_item = NULL
+      WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+    `).run(userId, row.pokemon_id, row.is_shiny, row.is_golden);
+  } else if (row.held_item) {
+    const remaining = db.prepare(`
+      SELECT 1 FROM catches
+      WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ? AND id != ?
+      LIMIT 1
+    `).get(userId, row.pokemon_id, row.is_shiny, row.is_golden, row.id);
+    if (!remaining) {
+      const columns = db.prepare('PRAGMA table_info(catches)').all()
+        .map((column) => column.name)
+        .filter((name) => name !== 'id');
+      const quote = (name) => `"${name.replace(/"/g, '""')}"`;
+      const values = columns.map((name) =>
+        name === 'in_team' ? '0' : name === 'team_slot' ? 'NULL' : quote(name)
+      );
+      db.prepare(`
+        INSERT INTO catches (${columns.map(quote).join(', ')})
+        SELECT ${values.join(', ')} FROM catches WHERE id = ? AND user_id = ?
+      `).run(row.id, userId);
+    }
+  }
+  return targetCopy?.held_item || null;
+}
+
 // Evolving (or Mega Evolving) moves a trainer's trained stats onto the new form, so any copies of the
 // previous form left behind go back to a fresh level 1 with zeroed EVs and newly rolled IVs.
 function resetPreEvolutionCopies(userId, row) {
@@ -5011,6 +5048,7 @@ function resetPreEvolutionCopies(userId, row) {
 }
 
 function applyPokemonEvolution(userId, row, target, itemName = null, consumesHeldItem = false) {
+  const targetHeldItem = prepareEvolutionHeldItems(userId, row, target.id, consumesHeldItem);
   const maxHp = calculateStat(target.base_hp, row.hp_iv, row.level, true, row.is_shiny, row.ev_hp, Boolean(row.is_golden), row.rarity);
   const atk = calculateStat(target.base_atk, row.atk_iv, row.level, false, row.is_shiny, row.ev_atk, Boolean(row.is_golden), row.rarity);
   const def = calculateStat(target.base_def, row.def_iv, row.level, false, row.is_shiny, row.ev_def, Boolean(row.is_golden), row.rarity);
@@ -5032,7 +5070,7 @@ function applyPokemonEvolution(userId, row, target, itemName = null, consumesHel
     atk,
     def,
     spd,
-    consumesHeldItem ? null : row.held_item,
+    targetHeldItem,
     row.id,
     userId
   );

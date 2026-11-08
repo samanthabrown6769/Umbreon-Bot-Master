@@ -273,7 +273,7 @@ test('forfeit confirmation and cancellation preserve the other World Boss contro
     ['worldboss:forfeit:1', 'worldboss:restore:1']);
 });
 
-test('resetting pre-evolution copies leaves their held items equipped', () => {
+test('evolution keeps held items on original forms and preserves target-form items', () => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER);
@@ -283,13 +283,14 @@ test('resetting pre-evolution copies leaves their held items equipped', () => {
       rarity TEXT, held_item TEXT, level INTEGER, experience INTEGER, hp_iv INTEGER, atk_iv INTEGER,
       def_iv INTEGER, spa_iv INTEGER, spdef_iv INTEGER, spd_iv INTEGER, ev_hp INTEGER, ev_atk INTEGER,
       ev_def INTEGER, ev_spa INTEGER, ev_spdef INTEGER, ev_spe INTEGER, hp INTEGER, max_hp INTEGER,
-      atk INTEGER, def INTEGER, spd INTEGER
+      atk INTEGER, def INTEGER, spd INTEGER, in_team INTEGER DEFAULT 0, team_slot INTEGER
     );
     INSERT INTO pokemon_forms VALUES (16, 40, 45, 40, 56);
     INSERT INTO catches (id,user_id,pokemon_id,is_shiny,is_golden,rarity,held_item,level)
-      VALUES (1,'user',16,0,0,'Common','Nugget',10), (2,'user',16,0,0,'Common','Nugget',10);
+      VALUES (1,'user',16,0,0,'Common','Nugget',10), (2,'user',16,0,0,'Common','Nugget',10),
+        (3,'user',17,0,0,'Uncommon','Leftovers',10);
   `);
-  const source = extract(dbSource, 'function resetPreEvolutionCopies(', '\nfunction applyPokemonEvolution(');
+  const source = extract(dbSource, 'function prepareEvolutionHeldItems(', '\nfunction applyPokemonEvolution(');
   const evolution = extract(dbSource, 'function applyPokemonEvolution(', '\nfunction ');
   const ctx = vm.createContext({
     db, calculateStat: () => 10, carryOverEvolutionMoves: () => {},
@@ -302,7 +303,88 @@ test('resetting pre-evolution copies leaves their held items equipped', () => {
   const remaining = db.prepare('SELECT held_item, level FROM catches WHERE id = 2').get();
   assert.equal(remaining.held_item, 'Nugget');
   assert.equal(remaining.level, 1);
-  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id = 1').get().held_item, 'Nugget');
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id = 1').get().held_item, 'Leftovers');
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id = 3').get().held_item, 'Leftovers');
+  db.close();
+});
+
+test('evolution preserves a last original copy holding its item and consumes evolution items', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER);
+    CREATE TABLE user_pokemon_state_snapshots (user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER);
+    CREATE TABLE catches (
+      id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, is_shiny INTEGER, is_golden INTEGER,
+      rarity TEXT, held_item TEXT, level INTEGER, experience INTEGER, hp_iv INTEGER, atk_iv INTEGER,
+      def_iv INTEGER, spa_iv INTEGER, spdef_iv INTEGER, spd_iv INTEGER, ev_hp INTEGER, ev_atk INTEGER,
+      ev_def INTEGER, ev_spa INTEGER, ev_spdef INTEGER, ev_spe INTEGER, hp INTEGER, max_hp INTEGER,
+      atk INTEGER, def INTEGER, spd INTEGER, in_team INTEGER DEFAULT 0, team_slot INTEGER
+    );
+    INSERT INTO pokemon_forms VALUES (16,40,45,40,56), (19,30,30,30,30);
+    INSERT INTO catches (id,user_id,pokemon_id,name,is_shiny,is_golden,rarity,held_item,level,in_team,team_slot)
+      VALUES (1,'user',16,'Pidgey',0,0,'Common','Nugget',10,1,1),
+        (2,'user',19,'Base',0,0,'Common','Link Cable',10,0,NULL),
+        (3,'user',19,'Base',0,0,'Common','Link Cable',10,0,NULL);
+  `);
+  const ctx = vm.createContext({
+    db, calculateStat: () => 10, carryOverEvolutionMoves: () => {},
+    syncDuplicateCatchState: () => {}, recordPokemonSeen: () => {},
+  });
+  vm.runInContext(extract(dbSource, 'function prepareEvolutionHeldItems(', '\nfunction applyPokemonEvolution('), ctx);
+  vm.runInContext(extract(dbSource, 'function applyPokemonEvolution(', '\nfunction '), ctx);
+  ctx.applyPokemonEvolution('user', db.prepare('SELECT * FROM catches WHERE id=1').get(),
+    { id: 17, name: 'Pidgeotto', rarity: 'Uncommon' });
+  const original = db.prepare('SELECT * FROM catches WHERE pokemon_id=16').get();
+  assert.equal(original.held_item, 'Nugget');
+  assert.equal(original.level, 1);
+  assert.equal(original.in_team, 0);
+  assert.equal(original.team_slot, null);
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id=1').get().held_item, null);
+  ctx.applyPokemonEvolution('user', db.prepare('SELECT * FROM catches WHERE id=2').get(),
+    { id: 20, name: 'Evolved', rarity: 'Rare' }, 'Link Cable', true);
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id=3').get().held_item, null);
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id=2').get().held_item, null);
+  db.close();
+});
+
+test('Mega Evolution preserves the original item and an existing Mega form item', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (
+      id INTEGER PRIMARY KEY, species_id INTEGER, species_name TEXT, name TEXT, slug TEXT, rarity TEXT,
+      is_default INTEGER, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER
+    );
+    INSERT INTO pokemon_forms VALUES (1,1,'Venusaur','Venusaur','venusaur','Rare',1,80,82,83,80),
+      (2,1,'Venusaur','Mega Venusaur','venusaur-mega','Mega',0,80,100,123,80);
+    CREATE TABLE catches (
+      id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, is_shiny INTEGER, is_golden INTEGER,
+      rarity TEXT, held_item TEXT, level INTEGER, experience INTEGER, hp_iv INTEGER, atk_iv INTEGER,
+      def_iv INTEGER, spa_iv INTEGER, spdef_iv INTEGER, spd_iv INTEGER, ev_hp INTEGER, ev_atk INTEGER,
+      ev_def INTEGER, ev_spa INTEGER, ev_spdef INTEGER, ev_spe INTEGER, hp INTEGER, max_hp INTEGER,
+      atk INTEGER, def INTEGER, spd INTEGER, in_team INTEGER DEFAULT 0, team_slot INTEGER
+    );
+    INSERT INTO catches (id,user_id,pokemon_id,name,is_shiny,is_golden,rarity,held_item,level)
+      VALUES (1,'user',1,'Venusaur',0,0,'Rare','Nugget',10), (2,'user',2,'Mega Venusaur',0,0,'Mega','Leftovers',10);
+    CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER);
+    INSERT INTO user_items VALUES ('user','Mega Bracelet',1);
+    CREATE TABLE mega_stones (user_id TEXT, stone_name TEXT, amount INTEGER);
+    INSERT INTO mega_stones VALUES ('user','Venusaurite',1);
+    CREATE TABLE user_pokemon_state_snapshots (user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER);
+  `);
+  const ctx = vm.createContext({
+    db, assertUserId: () => {}, getMegaStoneForForm: () => 'Venusaurite', calculateStat: () => 10,
+    syncDuplicateCatchState: () => {}, recordPokemonSeen: () => {},
+    getPokemonDexNumbersForForms: () => new Map([[2, { dexNumber: 2 }]]),
+  });
+  vm.runInContext(extract(dbSource, 'function prepareEvolutionHeldItems(', '\nfunction applyPokemonEvolution('), ctx);
+  vm.runInContext(extract(dbSource, 'function megaEvolvePokemon(', '\nconst ROTOM_ITEMS'), ctx);
+  const result = ctx.megaEvolvePokemon('user', 'venusaur');
+  assert.equal(result.pokemon.held_item, 'Leftovers');
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id=1').get().held_item, 'Leftovers');
+  const base = db.prepare('SELECT held_item, level FROM catches WHERE pokemon_id=1').get();
+  assert.equal(base.held_item, 'Nugget');
+  assert.equal(base.level, 1);
+  assert.equal(db.prepare('SELECT amount FROM mega_stones').get().amount, 0);
   db.close();
 });
 
