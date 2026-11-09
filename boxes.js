@@ -12,8 +12,16 @@ const BOXES = {
   },
   'Legendary Box': {
     aliases: ['legendarybox', 'legbox', 'lgb', 'lb'], emoji: '<:legendarybox:1559925069831082105>',
-    rarity: 'Legendary', shiny: false, pokemonDropChance: 0.1, coins: [25000, 25000], eggs: [0.125, 1, 1],
-    description: 'Gives 25,000 PokéCoins and has a 10% chance to drop a random Legendary Pokémon; otherwise, it gives Greatballs and Ultraballs.',
+    rarity: 'Legendary',
+    excludedSpeciesNames: [
+      'Wo Chien', 'Chien Pao', 'Ting Lu', 'Chi Yu',
+      'Koraidon', 'Miraidon', 'Walking Wake', 'Iron Leaves',
+      'Okidogi', 'Munkidori', 'Fezandipiti', 'Ogerpon',
+      'Gouging Fire', 'Raging Bolt', 'Iron Boulder', 'Iron Crown',
+      'Terapagos', 'Pecharunt',
+    ],
+    shiny: false, pokemonDropChance: 0.1, coins: [25000, 25000], eggs: [0.125, 1, 1],
+    description: 'Gives 25,000 PokéCoins and has a 10% chance to drop a random Legendary Pokémon (excluding Gen 9 legendaries); otherwise, it gives Greatballs and Ultraballs.',
   },
   'Shiny Box': {
     aliases: ['shinybox', 'sb'], emoji: '<a:shinybox:1559925068254154803>',

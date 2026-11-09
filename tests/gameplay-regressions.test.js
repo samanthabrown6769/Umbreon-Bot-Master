@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const Database = require('better-sqlite3');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder } = require('discord.js');
 const battle = require('../battle-effects');
+const { BOXES } = require('../boxes');
 const { pickWeighted } = require('../spawn-weights');
 
 const indexSource = fs.readFileSync(require.resolve('../index.js'), 'utf8');
@@ -256,7 +257,7 @@ test('wiping a trainer keeps catches and clan lifetime totals while clearing per
   db.close();
 });
 
-test('spawn selection applies chamber weights within the eligible rarity pool', () => {
+test('spawn selection applies chamber weights and Legendary Box exclusions', () => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE pokemon_forms (
@@ -266,6 +267,8 @@ test('spawn selection applies chamber weights within the eligible rarity pool', 
     INSERT INTO pokemon_forms VALUES (1,1,1,1,'Common',0,'Ordinary','Ordinary');
     INSERT INTO pokemon_forms VALUES (2,2,2,1,'Common',0,'Chamber','Chamber');
     INSERT INTO pokemon_forms VALUES (3,2,2,0,'Common',0,'Chamber Alternate','Chamber');
+    INSERT INTO pokemon_forms VALUES (1001,1001,1001,1,'Legendary',0,'Wo Chien','Wo Chien');
+    INSERT INTO pokemon_forms VALUES (898,898,898,1,'Legendary',0,'Calyrex','Calyrex');
   `);
   let roll = 0;
   const math = Object.create(Math);
@@ -281,7 +284,11 @@ test('spawn selection applies chamber weights within the eligible rarity pool', 
   assert.equal(ctx.getRandomPokemon('Common', false, true, true, [], [], null, [2]).speciesId, 2);
   assert.equal(ctx.getRandomPokemon('Common', false, true, true, [], [], null, []).speciesId, 1);
   assert.equal(ctx.getRandomPokemon('Common', false, true, true, []).id, 1);
-  assert.match(indexSource, /getRandomPokemon\(box\.rarity, false, true, true, \[\]\)/);
+  assert.equal(
+    ctx.getRandomPokemon('Legendary', false, true, true, [], BOXES['Legendary Box'].excludedSpeciesNames).speciesId,
+    898
+  );
+  assert.match(indexSource, /box\.rarity, false, true, true, \[\], box\.excludedSpeciesNames \|\| \[\]/);
   db.close();
 });
 
