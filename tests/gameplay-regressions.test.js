@@ -74,10 +74,10 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.chooseEncounterRarity('normal', false, 0), 'Legendary');
   roll = 1 / 333;
   assert.equal(ctx.chooseEncounterRarity('normal', false, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 250);
-  assert.equal(ctx.getEventSpawnChance(50), 1.5 / 250);
-  assert.match(indexSource, /const EVENT_SPAWN_ODDS = 250;/);
-  assert.match(indexSource, /const EVENT_SPAWN_PITY_LIMIT = 250;/);
+  assert.equal(ctx.getEventSpawnChance(), 1 / 100);
+  assert.equal(ctx.getEventSpawnChance(50), 1.5 / 100);
+  assert.match(indexSource, /const EVENT_SPAWN_ODDS = 100;/);
+  assert.match(indexSource, /const EVENT_SPAWN_PITY_LIMIT = 100;/);
   assert.match(indexSource, /const LEGENDARY_BASE_CHANCE = 1 \/ 333;/);
   assert.match(indexSource, /const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 \/ 250;/);
   assert.match(indexSource, /const BASE_SHINY_RATE = 1 \/ 1000;/);
@@ -325,11 +325,11 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     rolls = [0, selectionRoll];
     return ctx.rollSpawn('water', 'user', rod, options);
   };
-  rolls = [1 / 250 - 1e-10, 0];
+  rolls = [1 / 100 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
-  rolls = [(1 + 5 / 100) / 250 - 1e-10, 0];
+  rolls = [(1 + 5 / 100) / 100 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 1);
-  rolls = [(1 + 5 / 100) / 250, 0.5, 0.1, 0.001];
+  rolls = [(1 + 5 / 100) / 100, 0.5, 0.1, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 4);
   assert.equal(fishEvent(0.52).id, 2);
   assert.deepEqual(selectedWeights, [1 / 0.95, 1]);
@@ -432,11 +432,11 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).isShiny, false);
 
   eventSpawnPity = 0;
-  for (let encounter = 1; encounter < 250; encounter += 1) {
+  for (let encounter = 1; encounter < 100; encounter += 1) {
     rolls = [0.5, 0.5, 1];
     assert.equal(ctx.rollSpawn('water', 'user', rod).id, 4);
   }
-  assert.equal(eventSpawnPity, 249);
+  assert.equal(eventSpawnPity, 99);
   rolls = [0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
   assert.equal(eventSpawnPity, 0);
