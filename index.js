@@ -379,6 +379,8 @@ const {
   recordWildEncounterCounter,
   resetEncounterCounters,
   getEncounterCounters,
+  recordEventSpawnCatch,
+  getEventSpawnCatch,
   resetChecklistIfNewDay,
   registerEvent,
   recordRarityCatch,
@@ -3557,6 +3559,7 @@ function rollSpawn(
       forcedShiny = forcedEvent.shiny;
       forcedEvent = null;
       isForcedEventSpawn = true;
+      pokemon.isEventSpawn = true;
     } else if (!catchbot && poolName === 'land') {
       const huntTarget = userId !== null && Math.random() < DAILY_HUNT_SPAWN_BOOST_CHANCE
         ? getActiveHuntTarget(userId)
@@ -7132,6 +7135,7 @@ async function askForBall(
         target.name
       )
       : [];
+    if (target.isEventSpawn) recordEventSpawnCatch(userId, target.name);
     const eggAbilityBoost = await hasEggBoostAbility(userId);
     advanceEggCatchProgress(userId, 1, message.channel, eggAbilityBoost);
     // The hatch bonus combined with an egg ability is capped at +4 progress per catch.
@@ -17433,7 +17437,19 @@ client.on('messageCreate', async (message) => {
                 inline: true,
               },
             ];
-          })
+          }),
+          ...(() => {
+            const eventCatch = getEventSpawnCatch(userId);
+            return [
+              { name: '\u200b', value: '🎃 Event spawn', inline: true },
+              { name: '\u200b', value: eventCatch ? eventCatch.last_pokemon : 'N/A', inline: true },
+              {
+                name: '\u200b',
+                value: eventCatch ? `<t:${Math.floor(eventCatch.last_caught_at / 1000)}:d>` : 'Never',
+                inline: true,
+              },
+            ];
+          })()
         );
       return message.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     }

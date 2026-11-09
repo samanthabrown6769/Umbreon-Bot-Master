@@ -44,6 +44,11 @@ db.exec(`
     last_catcher_id TEXT,
     PRIMARY KEY (user_id, source, category)
   );
+  CREATE TABLE IF NOT EXISTS user_event_spawn_catches (
+    user_id TEXT PRIMARY KEY,
+    last_caught_at INTEGER NOT NULL,
+    last_pokemon TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS encounter_spawn_pity (
     user_id TEXT NOT NULL,
     category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny')),
@@ -8262,6 +8267,27 @@ function resetEncounterCounters(userId, source, categories, pokemonName, timesta
   return uniqueCategories;
 }
 
+function recordEventSpawnCatch(userId, pokemonName, timestamp = Date.now()) {
+  assertUserId(userId);
+  if (typeof pokemonName !== 'string' || !pokemonName.trim()) {
+    throw new TypeError('A Pokémon name is required to record an event spawn catch.');
+  }
+  db.prepare(`
+    INSERT INTO user_event_spawn_catches (user_id, last_caught_at, last_pokemon)
+    VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      last_caught_at = excluded.last_caught_at,
+      last_pokemon = excluded.last_pokemon
+  `).run(userId, timestamp, pokemonName.trim());
+}
+
+function getEventSpawnCatch(userId) {
+  assertUserId(userId);
+  return db.prepare(
+    'SELECT last_caught_at, last_pokemon FROM user_event_spawn_catches WHERE user_id = ?'
+  ).get(userId) || null;
+}
+
 function getEncounterCounters(userId) {
   assertUserId(userId);
   for (const source of ['pokemon', 'fishing']) {
@@ -10582,6 +10608,8 @@ module.exports = {
   recordWildEncounterCounter,
   resetEncounterCounters,
   getEncounterCounters,
+  recordEventSpawnCatch,
+  getEventSpawnCatch,
   resetChecklistIfNewDay,
   advanceEventSpawnPity,
   resetEventSpawnPity,
