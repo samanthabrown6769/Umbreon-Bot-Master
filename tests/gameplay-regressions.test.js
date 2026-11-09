@@ -88,6 +88,31 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.match(indexSource, /name: 'Golden Rod',\s+baseShinyRate: 1 \/ 625,/);
 });
 
+test('event spawn pity is persistent and isolated by event and trainer', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE event_spawn_pity (
+      event_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      encounters_since_spawn INTEGER NOT NULL DEFAULT 0 CHECK (encounters_since_spawn >= 0),
+      PRIMARY KEY (event_id, user_id)
+    )
+  `);
+  const ctx = vm.createContext({ db });
+  vm.runInContext(
+    extract(dbSource, 'function advanceEventSpawnPity(', '\nfunction trackEventCatch('),
+    ctx
+  );
+
+  assert.equal(ctx.advanceEventSpawnPity('event-a', 'user-a'), 1);
+  assert.equal(ctx.advanceEventSpawnPity('event-a', 'user-a'), 2);
+  assert.equal(ctx.advanceEventSpawnPity('event-a', 'user-b'), 1);
+  assert.equal(ctx.advanceEventSpawnPity('event-b', 'user-a'), 1);
+  ctx.resetEventSpawnPity('event-a', 'user-a');
+  assert.equal(ctx.advanceEventSpawnPity('event-a', 'user-a'), 1);
+  db.close();
+});
+
 test('repels increase Rare and Super Rare odds while preserving total encounter rate', () => {
   const weightsSource = extract(indexSource, 'const ENCOUNTER_RARITY_WEIGHTS =', '\nconst LEGENDARY_GENERATION_ORDER');
   const rateSource = extract(indexSource, 'function getEncounterRarityRate(', '\nfunction formatEncounterWeights(');
@@ -193,6 +218,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   let pokeradar = false;
   let selectedWeights = [];
   let tierPerks = null;
+  let eventSpawnPity = 0;
   const configuredPerks = vm.runInNewContext(
     extract(dbSource, 'const NO_PATREON_PERKS =', '\nconst BASE_INCENSE_CHARGES')
       + '\n({ tiers: PATREON_TIER_PERKS, none: NO_PATREON_PERKS })'
@@ -227,6 +253,8 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     consumeEncounterModifier: () => 'normal', rollSpecialLegendarySpawn: () => null,
     getPatreonPerks: () => tierPerks || { shinyRatePct: 0, eventShinyPct },
     isPlayerBonusActive: (key) => key === 'shiny' && bonusActive,
+    advanceEventSpawnPity: () => { eventSpawnPity += 1; return eventSpawnPity; },
+    resetEventSpawnPity: () => { eventSpawnPity = 0; },
     HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
     getRaritySettings: () => [{ name: 'Common', spawn_weight: 1, pokemon_count: 1 }],
     getRandomPokemon: (rarity, water, a, b, excluded, species, ids) => {
@@ -361,6 +389,16 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   eventOpen = true;
   rolls = [0.5, 0.00025];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).isShiny, false);
+
+  eventSpawnPity = 0;
+  for (let encounter = 1; encounter < 100; encounter += 1) {
+    rolls = [0.5, 0.5, 1];
+    assert.equal(ctx.rollSpawn('water', 'user', rod).id, 4);
+  }
+  assert.equal(eventSpawnPity, 99);
+  rolls = [0];
+  assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
+  assert.equal(eventSpawnPity, 0);
 });
 
 test('Future Sight resolves two turns later and does not hit a replacement after a faint', () => {

@@ -916,6 +916,13 @@ db.exec(`
     PRIMARY KEY (event_id, user_id, pokemon_key)
   );
 
+  CREATE TABLE IF NOT EXISTS event_spawn_pity (
+    event_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    encounters_since_spawn INTEGER NOT NULL DEFAULT 0 CHECK (encounters_since_spawn >= 0),
+    PRIMARY KEY (event_id, user_id)
+  );
+
   CREATE TABLE IF NOT EXISTS event_pokemon (
     event_id TEXT NOT NULL,
     pokemon_key TEXT NOT NULL,
@@ -8305,6 +8312,27 @@ function registerEvent(event) {
   })();
 }
 
+function advanceEventSpawnPity(eventId, userId) {
+  return db.transaction(() => {
+    db.prepare(`
+      INSERT INTO event_spawn_pity (event_id, user_id, encounters_since_spawn)
+      VALUES (?, ?, 1)
+      ON CONFLICT(event_id, user_id) DO UPDATE SET
+        encounters_since_spawn = encounters_since_spawn + 1
+    `).run(eventId, userId);
+    return db.prepare(`
+      SELECT encounters_since_spawn
+      FROM event_spawn_pity
+      WHERE event_id = ? AND user_id = ?
+    `).get(eventId, userId).encounters_since_spawn;
+  })();
+}
+
+function resetEventSpawnPity(eventId, userId) {
+  db.prepare('DELETE FROM event_spawn_pity WHERE event_id = ? AND user_id = ?')
+    .run(eventId, userId);
+}
+
 function trackEventCatch(eventId, userId, pokemonName, isShiny) {
   return Boolean(recordEventCatch(eventId, userId, pokemonName, isShiny)?.added);
 }
@@ -10471,6 +10499,8 @@ module.exports = {
   resetEncounterCounters,
   getEncounterCounters,
   resetChecklistIfNewDay,
+  advanceEventSpawnPity,
+  resetEventSpawnPity,
   trackEventCatch,
   recordEventCatch,
   getUserEventProgress,

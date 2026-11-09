@@ -322,6 +322,8 @@ const {
   setAutoSpawnProgress,
   disableAutoSpawnChannel,
   markAutoSpawnHourlyTier,
+  advanceEventSpawnPity,
+  resetEventSpawnPity,
   getUserEventProgress,
   getUserEventCatchCounts,
   getEventAnnouncementChannel,
@@ -570,6 +572,7 @@ function getSwapExcludedSpecies() {
 for (const event of ALL_EVENTS) registerEvent(event);
 
 const EVENT_SPAWN_ODDS = 100;
+const EVENT_SPAWN_PITY_LIMIT = 100;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
@@ -3462,8 +3465,13 @@ function rollSpawn(
   const forcedEventPool = poolName === 'water'
     ? eventSpawnEntries.filter((entry) => entry.fish)
     : eventSpawnEntries;
-  if (eventTicketActive && forcedEventPool.length
-      && Math.random() < getEventSpawnChance(roleChanceBoost)) {
+  const eventSpawnEligible = eventTicketActive && forcedEventPool.length > 0;
+  const eventSpawnPity = eventSpawnEligible
+    ? advanceEventSpawnPity(halloweenEvent.id, userId)
+    : 0;
+  if (eventSpawnEligible
+      && (eventSpawnPity >= EVENT_SPAWN_PITY_LIMIT
+        || Math.random() < getEventSpawnChance(roleChanceBoost))) {
     const isPatreonUser = Boolean(getUser(userId).has_patreon);
     const eventShinyWeight = (isPatreonUser
       ? EVENT_TICKET_SHINY_RATES.patreon.event / EVENT_TICKET_SHINY_RATES.standard.event
@@ -3477,6 +3485,7 @@ function rollSpawn(
       * (incenseActive ? INCENSE_BOOST : 1)
       * (pokeradarActive ? 1.1 : 1);
     forcedEvent = pickWeighted(forcedEventPool, (entry) => entry.shiny ? eventShinyWeight : 1);
+    resetEventSpawnPity(halloweenEvent.id, userId);
   }
 
   if (!forcedEvent && !catchbot && poolName === 'land' && userId !== null) {
