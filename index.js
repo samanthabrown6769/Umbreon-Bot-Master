@@ -574,8 +574,8 @@ function getSwapExcludedSpecies() {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
-const EVENT_SPAWN_ODDS = 100;
-const EVENT_SPAWN_PITY_LIMIT = 100;
+const EVENT_SPAWN_ODDS = 200;
+const EVENT_SPAWN_PITY_LIMIT = 200;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
@@ -2396,8 +2396,15 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   },
   'gengar gmax': { normal: '<:gengargmax:1562192194914361455>' },
   'gmax gengar': { normal: '<:gengargmax:1562192194914361455>' },
-  grimer: { normal: '<:Grimer:1562183885817778288>', golden: '<:goldengrimer:1562202548276830229>' },
-  muk: { normal: '<:Muk:1562183887961194506>' },
+  grimer: {
+    normal: '<:Grimer:1562183885817778288>',
+    shiny: '<:SGrimer:1569451545236611152>',
+    golden: '<:goldengrimer:1562202548276830229>',
+  },
+  muk: {
+    normal: '<:Muk:1562183887961194506>',
+    shiny: '<:SMuk:1569451543160430724>',
+  },
   'eternatus eternamax': {
     normal: '<:EternatusEternamax:1562183889303240814>',
     shiny: '<:SEterntusEternamax:1562183895804547284>',
@@ -3012,7 +3019,7 @@ const ICONS = {
 
 // Patreon doubles the base full-odds shiny rate; event tickets have separate boosted rates.
 const BASE_SHINY_RATE = 1 / 1000;
-const FULL_ODDS_SHINY_PITY_LIMIT = 1000;
+const FULL_ODDS_SHINY_PITY_LIMIT = 750;
 // Incense: +10% shiny encounter rate and +10% promo item drop rate while server charges last.
 const INCENSE_BOOST = 1.1;
 const PATREON_SHINY_RATE = 1 / 500;
@@ -3197,6 +3204,13 @@ function activateEncounterModifier(userId, modifier, amount) {
     });
     return { encounters: activeCount + addedEncounters };
   }).immediate();
+}
+
+function parseEncounterModifierAmount(command, amountArg, ownedRepels) {
+  if (amountArg?.toLowerCase() === 'all') {
+    return command === 'repel' ? ownedRepels : Number.NaN;
+  }
+  return amountArg === undefined ? 1 : parseAmount(amountArg);
 }
 
 function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, roleChanceBoost = 0, userId = null) {
@@ -14592,7 +14606,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin clan perks <@User|id> [bronze|silver|gold|diamond|amethyst|onyx|none]\` — Grant clan perks (default onyx)\n` +
             `• \`${PREFIX}admin clan delete <clan name>\` — Delete a clan\n` +
             `• \`${PREFIX}admin ban <@User|id>\` / \`${PREFIX}admin unban <@User|id>\` — Ban or unban a user from the bot\n` +
-            `• \`${PREFIX}admin wipe <@User|id> confirm\` — Permanently delete a user's data (clan membership and catches are kept)`
+            `• \`${PREFIX}admin wipe <@User|id> confirm\` — Delete a user's data while keeping catches, clan membership, and clan lifetime totals`
           ),
         ];
         return sendPagedEmbeds(message, adminPages, '🛠️ Admin Help');
@@ -17191,10 +17205,11 @@ client.on('messageCreate', async (message) => {
       const rankInfo = getClanRankInfo(clan);
       const nextRankInfo = getNextClanRankInfo(clan);
       const totalCatches = members.reduce((sum, member) => sum + member.catches + member.fishes, 0) + (clan.bonus_catches || 0);
-      const totalFishes = members.reduce((sum, member) => sum + member.fishes, 0);
-      const totalHatches = members.reduce((sum, member) => sum + member.hatches, 0);
-      const totalSwaps = members.reduce((sum, member) => sum + member.swaps, 0);
-      const totalCatchbot = members.reduce((sum, member) => sum + member.catchbot, 0);
+      const totalFishes = members.reduce((sum, member) => sum + member.fishes, 0) + (clan.bonus_fishes || 0);
+      const totalHatches = members.reduce((sum, member) => sum + member.hatches, 0) + (clan.bonus_hatches || 0);
+      const totalSwaps = members.reduce((sum, member) => sum + member.swaps, 0) + (clan.bonus_swaps || 0);
+      const totalCatchbot = members.reduce((sum, member) => sum + member.catchbot, 0) + (clan.bonus_catchbot || 0);
+      const totalBattles = members.reduce((sum, member) => sum + member.battles, 0) + (clan.bonus_battles || 0);
       const clanLeaderboard = getClanLeaderboard();
       const globalRank = clanLeaderboard.findIndex((entry) => entry.id === clan.id) + 1;
       const clanRankIndex = ['starter', 'bronze', 'silver', 'gold', 'diamond', 'amethyst', 'onyx']
@@ -17261,7 +17276,7 @@ client.on('messageCreate', async (message) => {
           `<:caught:1560340176713031711> Clan catches: ${totalCatches.toLocaleString()} • ` +
           `${EMOJIS.pokeEgg} Hatches: ${totalHatches.toLocaleString()}\n` +
           `${client.emojis.cache.find((emoji) => emoji.name === 'tickets')?.toString() || '🎟️'} Clan swaps: ${totalSwaps.toLocaleString()} • 🤖 Catchbot: ${totalCatchbot.toLocaleString()}\n` +
-          `${EMOJIS.oldrod} Fish caught: ${totalFishes.toLocaleString()}\n\n` +
+          `${EMOJIS.oldrod} Fish caught: ${totalFishes.toLocaleString()} • ⚔️ Battles: ${totalBattles.toLocaleString()}\n\n` +
           `🗡️ Unlocked perks:\n${perkLines.length ? perkLines.join('\n') : 'No perks unlocked.'}` +
           `${personalContribution}`
         )
@@ -24579,10 +24594,18 @@ client.on('messageCreate', async (message) => {
     };
     if (encounterModifierCommands[command]) {
       const { modifier, label, emoji } = encounterModifierCommands[command];
-      if (args.length > 1) return message.reply(`Usage: \`${PREFIX}repel [amount]\`.`);
-      const amount = args[0] === undefined ? 1 : parseAmount(args[0]);
+      const usage = `Usage: \`${PREFIX}${command} [amount${command === 'repel' ? '|all' : ''}]\`.`;
+      if (args.length > 1) return message.reply(usage);
+      const useAllRepels = command === 'repel' && args[0]?.toLowerCase() === 'all';
+      const amount = parseEncounterModifierAmount(
+        command,
+        args[0],
+        useAllRepels ? getUser(userId).repels : 0
+      );
       if (!Number.isSafeInteger(amount) || amount <= 0) {
-        return message.reply(`Usage: \`${PREFIX}${command} [positive amount]\`.`);
+        return message.reply(useAllRepels
+          ? '❌ You do not have any Repels to use.'
+          : usage);
       }
       const activation = activateEncounterModifier(userId, modifier, amount);
       if (activation.error === 'modifier_active') {
@@ -26814,8 +26837,6 @@ client.on('messageCreate', async (message) => {
       }
       if (recipient.id === userId) return message.reply('❌ You cannot give things to yourself!');
       if (recipient.bot) return message.reply('❌ You cannot give things to bots!');
-      const eligibilityError = getTransferEligibilityError([userId, recipient.id]);
-      if (eligibilityError) return message.reply({ content: eligibilityError, allowedMentions: { parse: [] } });
 
       const lastWord = rest.at(-1);
       const hasAmount = rest.length > 0 && /^[\d,.]+[kmb]?$|^all$/i.test(lastWord);
@@ -26850,6 +26871,8 @@ client.on('messageCreate', async (message) => {
       }
 
       const field = isTokenTransfer ? 'patreon_tokens' : 'coins';
+      const eligibilityError = getTransferEligibilityError([userId, recipient.id]);
+      if (eligibilityError) return message.reply({ content: eligibilityError, allowedMentions: { parse: [] } });
       const sent = db.transaction(() => {
         const balance = getUser(userId)[field] || 0;
         if (balance < amount) return { error: true, balance };

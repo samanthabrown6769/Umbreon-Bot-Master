@@ -74,13 +74,15 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.chooseEncounterRarity('normal', false, 0), 'Legendary');
   roll = 1 / 333;
   assert.equal(ctx.chooseEncounterRarity('normal', false, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 100);
-  assert.equal(ctx.getEventSpawnChance(50), 1.5 / 100);
-  assert.match(indexSource, /const EVENT_SPAWN_ODDS = 100;/);
-  assert.match(indexSource, /const EVENT_SPAWN_PITY_LIMIT = 100;/);
+  assert.equal(ctx.getEventSpawnChance(), 1 / 200);
+  assert.equal(ctx.getEventSpawnChance(50), 1.5 / 200);
+  assert.match(indexSource, /const EVENT_SPAWN_ODDS = 200;/);
+  assert.match(indexSource, /const EVENT_SPAWN_PITY_LIMIT = 200;/);
   assert.match(indexSource, /const LEGENDARY_BASE_CHANCE = 1 \/ 333;/);
+  assert.match(indexSource, /const LEGENDARY_SPAWN_PITY_LIMIT = 333;/);
   assert.match(indexSource, /const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 \/ 250;/);
   assert.match(indexSource, /const BASE_SHINY_RATE = 1 \/ 1000;/);
+  assert.match(indexSource, /const FULL_ODDS_SHINY_PITY_LIMIT = 750;/);
   assert.match(indexSource, /const PATREON_SHINY_RATE = 1 \/ 500;/);
   assert.match(indexSource, /patreon: \{ event: 1 \/ 50, nonEvent: 1 \/ 250 \}/);
   assert.match(indexSource, /standard: \{ event: 1 \/ 100, nonEvent: 1 \/ 500 \}/);
@@ -134,10 +136,10 @@ test('Legendary and full-odds Shiny pity is persistent, separate, and resettable
     ctx.advanceEncounterPity('trainer', 'legendary');
   }
   assert.equal(ctx.advanceEncounterPity('trainer', 'legendary'), 333);
-  for (let encounter = 0; encounter < 999; encounter += 1) {
+  for (let encounter = 0; encounter < 749; encounter += 1) {
     ctx.advanceEncounterPity('trainer', 'shiny');
   }
-  assert.equal(ctx.advanceEncounterPity('trainer', 'shiny'), 1000);
+  assert.equal(ctx.advanceEncounterPity('trainer', 'shiny'), 750);
   assert.equal(ctx.advanceEncounterPity('other-trainer', 'shiny'), 1);
   ctx.resetEncounterPity('trainer', 'legendary');
   assert.equal(ctx.advanceEncounterPity('trainer', 'legendary'), 1);
@@ -162,6 +164,96 @@ test('repels increase Rare and Super Rare odds while preserving total encounter 
     assert.ok(ctx.getEncounterRarityRate(modifier, 'Super Rare') > baseSuperRare / 99);
   }
   assert.equal(ctx.getEncounterRarityRate('honey', 'Rare'), 8 / 99);
+});
+
+test('Grimer and Muk use their supplied shiny sprite emojis', () => {
+  const spriteMap = extract(indexSource, 'const POKEMON_SPRITE_EMOJIS = Object.freeze(', '\nconst EXACT_ONLY_SPRITE_KEYS');
+  const exactOnly = extract(indexSource, 'const EXACT_ONLY_SPRITE_KEYS =', '\nfunction getPokemonSpriteEmoji(');
+  const ctx = vm.createContext({});
+  vm.runInContext(
+    `${spriteMap}\n${exactOnly}\n${extract(indexSource, 'function getPokemonSpriteEmoji(', '\nfunction formatFactionFavorites(')}`,
+    ctx
+  );
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Grimer', isShiny: true }), '<:SGrimer:1569451545236611152>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Muk', isShiny: true }), '<:SMuk:1569451543160430724>');
+});
+
+test('repel all resolves to every owned Repel and is not accepted for other modifiers', () => {
+  const source = extract(
+    indexSource,
+    'function parseEncounterModifierAmount(',
+    '\nfunction chooseEncounterRarity('
+  );
+  const ctx = vm.createContext({ parseAmount: Number });
+  vm.runInContext(source, ctx);
+
+  assert.equal(ctx.parseEncounterModifierAmount('repel', 'all', 4), 4);
+  assert.equal(ctx.parseEncounterModifierAmount('repel', '2', 4), 2);
+  assert.equal(ctx.parseEncounterModifierAmount('repel', undefined, 4), 1);
+  assert.ok(Number.isNaN(ctx.parseEncounterModifierAmount('super_repel', 'all', 4)));
+});
+
+test('wiping a trainer keeps catches and clan lifetime totals while clearing personal activity', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE clans (
+      id INTEGER PRIMARY KEY, name TEXT, clan_rank TEXT, treasury INTEGER DEFAULT 0,
+      bonus_catches INTEGER DEFAULT 0, bonus_fishes INTEGER DEFAULT 0,
+      bonus_hatches INTEGER DEFAULT 0, bonus_swaps INTEGER DEFAULT 0,
+      bonus_catchbot INTEGER DEFAULT 0, bonus_battles INTEGER DEFAULT 0
+    );
+    CREATE TABLE clan_members (
+      user_id TEXT PRIMARY KEY, clan_id INTEGER, catches INTEGER DEFAULT 0, fishes INTEGER DEFAULT 0,
+      hatches INTEGER DEFAULT 0, swaps INTEGER DEFAULT 0, catchbot INTEGER DEFAULT 0,
+      battles INTEGER DEFAULT 0, donated_coins INTEGER DEFAULT 0
+    );
+    CREATE TABLE clan_activity_periods (
+      clan_id INTEGER, user_id TEXT, period TEXT, period_start INTEGER,
+      catches INTEGER DEFAULT 0, fishes INTEGER DEFAULT 0
+    );
+    CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT);
+    CREATE TABLE users (id TEXT PRIMARY KEY);
+    CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER);
+    INSERT INTO clans (id, name, clan_rank) VALUES (1, 'Test Clan', 'starter');
+    INSERT INTO clan_members VALUES ('trainer', 1, 10, 3, 4, 5, 6, 7, 8);
+    INSERT INTO clan_activity_periods VALUES (1, 'trainer', 'weekly', 1, 10, 0);
+    INSERT INTO catches VALUES (1, 'trainer');
+    INSERT INTO users VALUES ('trainer');
+    INSERT INTO user_items VALUES ('trainer', 'Candy', 2);
+  `);
+  const ctx = vm.createContext({ db });
+  vm.runInContext(
+    extract(dbSource, 'function wipeUserData(', '\nfunction deleteClanByName('),
+    ctx
+  );
+  vm.runInContext(
+    `${extract(dbSource, 'function getClanPeriodBounds(', '\nfunction getClanActivityStats(')}\n` +
+      extract(dbSource, 'function getClanHighScores(', '\nfunction createClan('),
+    ctx
+  );
+
+  ctx.wipeUserData('trainer');
+
+  const clan = db.prepare('SELECT * FROM clans WHERE id = 1').get();
+  const member = db.prepare('SELECT * FROM clan_members WHERE user_id = ?').get('trainer');
+  assert.deepEqual(
+    [clan.bonus_catches, clan.bonus_fishes, clan.bonus_hatches, clan.bonus_swaps, clan.bonus_catchbot, clan.bonus_battles],
+    [13, 3, 4, 5, 6, 7]
+  );
+  assert.deepEqual(
+    [member.catches, member.fishes, member.hatches, member.swaps, member.catchbot, member.battles, member.donated_coins],
+    [0, 0, 0, 0, 0, 0, 0]
+  );
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM clan_activity_periods WHERE user_id = ?').get('trainer').count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM catches WHERE user_id = ?').get('trainer').count, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users WHERE id = ?').get('trainer').count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM user_items WHERE user_id = ?').get('trainer').count, 0);
+  assert.equal(ctx.getClanHighScores('catches')[0].score, 13);
+  assert.equal(ctx.getClanHighScores('fishes')[0].score, 3);
+  assert.equal(ctx.getClanHighScores('hatches')[0].score, 4);
+  assert.equal(ctx.getClanHighScores('swaps')[0].score, 5);
+  assert.equal(ctx.getClanHighScores('catchbot')[0].score, 6);
+  db.close();
 });
 
 test('spawn selection applies chamber weights within the eligible rarity pool', () => {
@@ -213,9 +305,9 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
     ],
     getRandomPokemon: (rarity) => ({ id: 1, speciesName: rarity, name: rarity, rarity, types: [] }),
     SPECIAL_SPAWN_RESERVED_SPECIES: [], EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [],
-    eventSpawnFormIds: [], getEventSpawnChance: () => 1 / 100,
+    eventSpawnFormIds: [], getEventSpawnChance: () => 1 / 200,
     LEGENDARY_BASE_CHANCE: 1 / 333, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 250,
-    LEGENDARY_SPAWN_PITY_LIMIT: 333, FULL_ODDS_SHINY_PITY_LIMIT: 1000,
+    LEGENDARY_SPAWN_PITY_LIMIT: 333, FULL_ODDS_SHINY_PITY_LIMIT: 750,
     EVENT_TICKET_SHINY_RATES: { standard: { event: 0, nonEvent: 0 }, patreon: { event: 0, nonEvent: 0 } },
     BASE_SHINY_RATE: 1 / 1000, PATREON_SHINY_RATE: 1 / 500,
     CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
@@ -305,7 +397,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     LEGENDARY_BASE_CHANCE: 1 / 333,
     LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 250,
     LEGENDARY_SPAWN_PITY_LIMIT: 333,
-    FULL_ODDS_SHINY_PITY_LIMIT: 1000,
+    FULL_ODDS_SHINY_PITY_LIMIT: 750,
     EVENT_TICKET_SHINY_RATES: {
       standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02, nonEvent: 0.002 },
     },
@@ -325,11 +417,11 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     rolls = [0, selectionRoll];
     return ctx.rollSpawn('water', 'user', rod, options);
   };
-  rolls = [1 / 100 - 1e-10, 0];
+  rolls = [1 / 200 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
-  rolls = [(1 + 5 / 100) / 100 - 1e-10, 0];
+  rolls = [(1 + 5 / 100) / 200 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 1);
-  rolls = [(1 + 5 / 100) / 100, 0.5, 0.1, 0.001];
+  rolls = [(1 + 5 / 100) / 200, 0.5, 0.1, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 4);
   assert.equal(fishEvent(0.52).id, 2);
   assert.deepEqual(selectedWeights, [1 / 0.95, 1]);
@@ -363,9 +455,9 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     assert.ok(Math.abs(selectedWeights[0] - weight) < 1e-12, `${tier} event shiny weight`);
     assert.equal(selectedWeights[1], 1, `${tier} regular event weight`);
     const ordinaryChance = (tier ? 0.002 : 0.001) * (1 + ordinaryPct / 100) / (1 - charm / 100);
-    rolls = [1 / 100, 0.5, ordinaryChance - 1e-10];
+    rolls = [1 / 200, 0.5, ordinaryChance - 1e-10];
     assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true, `${tier} ordinary shiny below threshold`);
-    rolls = [1 / 100, 0.5, ordinaryChance + 1e-10];
+    rolls = [1 / 200, 0.5, ordinaryChance + 1e-10];
     assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false, `${tier} ordinary shiny above threshold`);
   }
   tierPerks = null;
@@ -418,7 +510,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   ctx.HARD_RARITY_RATE_MULTIPLIER = 1;
 
   // A non-event encounter at the ordinary shiny threshold stays non-shiny.
-  rolls = [1 / 100, 0.5, 0.001];
+  rolls = [1 / 200, 0.5, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
   ticket = false;
   rolls = [0.5, 0.001];
@@ -432,11 +524,11 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).isShiny, false);
 
   eventSpawnPity = 0;
-  for (let encounter = 1; encounter < 100; encounter += 1) {
+  for (let encounter = 1; encounter < 200; encounter += 1) {
     rolls = [0.5, 0.5, 1];
     assert.equal(ctx.rollSpawn('water', 'user', rod).id, 4);
   }
-  assert.equal(eventSpawnPity, 99);
+  assert.equal(eventSpawnPity, 199);
   rolls = [0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
   assert.equal(eventSpawnPity, 0);
@@ -446,7 +538,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     { name: 'Common', spawn_weight: 1, pokemon_count: 1 },
     { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
   ];
-  encounterPity = { legendary: 332, shiny: 999 };
+  encounterPity = { legendary: 332, shiny: 749 };
   ctx.rollEncounterLegendary = () => ({ id: 5, name: 'Legendary', speciesName: 'Legendary', rarity: 'Legendary' });
   rolls = [0.5];
   const guaranteedEncounter = ctx.rollSpawn('water', 'user', {
@@ -1329,17 +1421,27 @@ test('transfer eligibility uses 500 wild catches or exactly seven days for both 
   assert.equal(ctx.getTransferEligibilityError(['young'], now + 1), null);
 });
 
-test('trade, gift and give reject ineligible accounts before initiating transfers', async () => {
+test('trades and Pokémon gifts reject ineligible accounts, but fun-item gifts remain available', async () => {
   const reason = '❌ eligibility denied';
   const target = { id: 'target', bot: false };
+  let eligibilityChecks = 0;
   const message = {
     mentions: { users: { first: () => target } },
     reply: async (value) => value,
   };
   const ctx = vm.createContext({
-    getTransferEligibilityError: () => reason,
+    getTransferEligibilityError: () => {
+      eligibilityChecks += 1;
+      return reason;
+    },
     client: { users: { fetch: async () => target } },
     getGiftTarget: () => 'target', PREFIX: '.',
+    parseAmount: Number,
+    FUN_ITEM_EMOJIS: { Candy: '🍬' },
+    takeUserItem: () => true,
+    addUserItem: () => [],
+    announceQuestCompletions: () => {},
+    db: { transaction: (callback) => ({ immediate: callback }) },
   });
   vm.runInContext(extract(indexSource, 'async function handleGift(', '\nasync function handleTrade('), ctx);
   vm.runInContext(extract(indexSource, 'async function handleTrade(', '\nasync function '), ctx);
@@ -1350,9 +1452,26 @@ test('trade, gift and give reject ineligible accounts before initiating transfer
   const giveSource = extract(indexSource, "    if (command === 'give') {", '\n  } catch (error) {');
   vm.runInContext(`async function handleGive(message, userId, args) { const command = 'give'; ${giveSource} }`, ctx);
   ctx.EMOJIS = { pokecoin: 'coin', patreonToken: 'token' };
+  const checksBeforeGive = eligibilityChecks;
   assert.equal((await ctx.handleGive(message, 'sender', ['coins', '5'])).content, reason);
   assert.equal((await ctx.handleGive(message, 'sender', ['tokens', '5'])).content, reason);
-  assert.equal((await ctx.handleGive(message, 'sender', ['Candy', '5'])).content, reason);
+  assert.match((await ctx.handleGive(message, 'sender', ['Candy', '5'])).content, /You gave \*\*5x Candy\*\*/);
+  assert.equal(eligibilityChecks, checksBeforeGive + 2);
+});
+
+test('Pokémon transfer paths do not count as fun-item quest progress', () => {
+  const transferFlows = [
+    extract(indexSource, 'async function handleNameTrade(', '\nconst MULTI_TRADE_MAX_SPECIES'),
+    extract(indexSource, 'async function handleGift(', '\nasync function handleTrade('),
+    extract(indexSource, 'function executeMultiTrade(', '\nasync function handleMultiTrade('),
+  ];
+  for (const flow of transferFlows) {
+    assert.doesNotMatch(flow, /addUserItem|advanceQuestProgress/);
+  }
+  assert.doesNotMatch(
+    extract(dbSource, 'function recordPokemonTradeStats(', '\n// abilityBoost:'),
+    /itemCounts|advanceQuestProgress/
+  );
 });
 
 test('multi-trade rechecks eligibility before moving balances or Pokémon', () => {

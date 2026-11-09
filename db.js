@@ -1353,6 +1353,11 @@ ensureColumns('clans', {
   shop_boost: 'INTEGER NOT NULL DEFAULT 0',
   amulet_boost: 'INTEGER NOT NULL DEFAULT 0',
   bonus_catches: 'INTEGER NOT NULL DEFAULT 0',
+  bonus_fishes: 'INTEGER NOT NULL DEFAULT 0',
+  bonus_hatches: 'INTEGER NOT NULL DEFAULT 0',
+  bonus_swaps: 'INTEGER NOT NULL DEFAULT 0',
+  bonus_catchbot: 'INTEGER NOT NULL DEFAULT 0',
+  bonus_battles: 'INTEGER NOT NULL DEFAULT 0',
 });
 ensureColumns('clan_members', {
   perk_rank: 'INTEGER NOT NULL DEFAULT 0',
@@ -8735,7 +8740,7 @@ function getClanMembers(clanId) {
   return db.prepare(`
     SELECT clan_members.user_id, clan_members.catches, clan_members.fishes,
       clan_members.donated_coins, clan_members.joined_at, clan_members.hatches,
-      clan_members.swaps, clan_members.catchbot
+      clan_members.swaps, clan_members.catchbot, clan_members.battles
     FROM clan_members
     WHERE clan_id = ?
     ORDER BY clan_members.catches DESC, clan_members.fishes DESC, clan_members.joined_at ASC
@@ -8833,7 +8838,7 @@ function getClanLeaderboard() {
     SELECT clans.id, clans.name, clans.clan_rank, clans.leader_id,
       COUNT(clan_members.user_id) AS member_count,
       COALESCE(SUM(clan_members.catches), 0) + clans.bonus_catches AS catches,
-      COALESCE(SUM(clan_members.fishes), 0) AS fishes,
+      COALESCE(SUM(clan_members.fishes), 0) + clans.bonus_fishes AS fishes,
       COALESCE(SUM(clan_members.catches + clan_members.fishes), 0) + clans.bonus_catches AS total_activity
     FROM clans
     LEFT JOIN clan_members ON clan_members.clan_id = clans.id
@@ -8865,10 +8870,11 @@ function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.n
     SELECT clans.id, clans.name, clans.clan_rank, clans.treasury,
       COUNT(DISTINCT cm.user_id) AS member_count,
       COALESCE(SUM(cm.catches), 0) + clans.bonus_catches AS catches,
-      COALESCE(SUM(cm.fishes), 0) AS fishes,
-      COALESCE(SUM(cm.hatches), 0) AS hatches,
-      COALESCE(SUM(cm.swaps), 0) AS swaps,
-      COALESCE(SUM(cm.catchbot), 0) AS catchbot,
+      COALESCE(SUM(cm.fishes), 0) + clans.bonus_fishes AS fishes,
+      COALESCE(SUM(cm.hatches), 0) + clans.bonus_hatches AS hatches,
+      COALESCE(SUM(cm.swaps), 0) + clans.bonus_swaps AS swaps,
+      COALESCE(SUM(cm.catchbot), 0) + clans.bonus_catchbot AS catchbot,
+      clans.bonus_fishes AS bonus_fishes,
       COALESCE(SUM(activity.catches + activity.fishes), 0) AS period_catches
     FROM clans
     LEFT JOIN clan_members cm ON cm.clan_id = clans.id
@@ -8884,7 +8890,7 @@ function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.n
     daily: (row) => row.period_catches,
     monthly: (row) => row.period_catches,
     yearly: (row) => row.period_catches,
-    catches: (row) => row.catches + row.fishes,
+    catches: (row) => row.catches + row.fishes - row.bonus_fishes,
     hatches: (row) => row.hatches,
     swaps: (row) => row.swaps,
     catchbot: (row) => row.catchbot,
@@ -9016,8 +9022,40 @@ function isUserBanned(userId) {
 }
 
 function wipeUserData(userId) {
-  const keep = new Set(['banned_users', 'market_sales', 'patreon_token_trades', 'clan_members', 'clan_activity_periods']);
+  const keep = new Set([
+    'banned_users', 'market_sales', 'patreon_token_trades', 'clan_members',
+    'clan_activity_periods', 'catches',
+  ]);
   return db.transaction(() => {
+    const clanMember = db.prepare('SELECT * FROM clan_members WHERE user_id = ?').get(userId);
+    db.prepare('DELETE FROM clan_activity_periods WHERE user_id = ?').run(userId);
+    if (clanMember) {
+      db.prepare(`
+        UPDATE clans
+        SET bonus_catches = bonus_catches + ?,
+          bonus_fishes = bonus_fishes + ?,
+          bonus_hatches = bonus_hatches + ?,
+          bonus_swaps = bonus_swaps + ?,
+          bonus_catchbot = bonus_catchbot + ?,
+          bonus_battles = bonus_battles + ?
+        WHERE id = ?
+      `).run(
+        clanMember.catches + clanMember.fishes,
+        clanMember.fishes,
+        clanMember.hatches,
+        clanMember.swaps,
+        clanMember.catchbot,
+        clanMember.battles,
+        clanMember.clan_id
+      );
+      db.prepare(`
+        UPDATE clan_members
+        SET catches = 0, fishes = 0, hatches = 0, swaps = 0,
+          catchbot = 0, battles = 0, donated_coins = 0
+        WHERE user_id = ?
+      `).run(userId);
+    }
+
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
     const deleted = {};
     for (const { name } of tables) {
