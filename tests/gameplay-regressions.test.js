@@ -88,6 +88,26 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.match(indexSource, /name: 'Golden Rod',\s+baseShinyRate: 1 \/ 625,/);
 });
 
+test('repels increase Rare and Super Rare odds while preserving total encounter rate', () => {
+  const weightsSource = extract(indexSource, 'const ENCOUNTER_RARITY_WEIGHTS =', '\nconst LEGENDARY_GENERATION_ORDER');
+  const rateSource = extract(indexSource, 'function getEncounterRarityRate(', '\nfunction formatEncounterWeights(');
+  const ctx = vm.createContext({});
+  vm.runInContext(`${weightsSource}\n${rateSource}\nglobalThis.testWeights = ENCOUNTER_RARITY_WEIGHTS;`, ctx);
+
+  for (const [modifier, baseRare, baseSuperRare] of [
+    ['repel', 31, 3],
+    ['super_repel', 35, 4],
+    ['max_repel', 39, 5],
+  ]) {
+    const weights = ctx.testWeights[modifier];
+    assert.equal(weights.Rare, baseRare * 1.5);
+    assert.equal(weights['Super Rare'], baseSuperRare * 1.5);
+    assert.ok(ctx.getEncounterRarityRate(modifier, 'Rare') > baseRare / 99);
+    assert.ok(ctx.getEncounterRarityRate(modifier, 'Super Rare') > baseSuperRare / 99);
+  }
+  assert.equal(ctx.getEncounterRarityRate('honey', 'Rare'), 8 / 99);
+});
+
 test('spawn selection applies chamber weights within the eligible rarity pool', () => {
   const db = new Database(':memory:');
   db.exec(`

@@ -3018,9 +3018,9 @@ const GRAZZ_ENCOUNTERS_PER_BERRY = 50;
 const SPECIAL_SPAWN_EST_OFFSET_MS = 5 * 60 * 60 * 1000;
 const ENCOUNTER_RARITY_WEIGHTS = Object.freeze({
   normal: { Common: 40, Uncommon: 30, Rare: 27, 'Super Rare': 2 },
-  repel: { Common: 15, Uncommon: 50, Rare: 31, 'Super Rare': 3 },
-  super_repel: { Common: 12, Uncommon: 48, Rare: 35, 'Super Rare': 4 },
-  max_repel: { Common: 7, Uncommon: 48, Rare: 39, 'Super Rare': 5 },
+  repel: { Common: 15, Uncommon: 50, Rare: 46.5, 'Super Rare': 4.5 },
+  super_repel: { Common: 12, Uncommon: 48, Rare: 52.5, 'Super Rare': 6 },
+  max_repel: { Common: 7, Uncommon: 48, Rare: 58.5, 'Super Rare': 7.5 },
   honey: { Common: 75, Uncommon: 15, Rare: 8, 'Super Rare': 1 },
 });
 const LEGENDARY_GENERATION_ORDER = Object.freeze([
@@ -3055,6 +3055,12 @@ function chooseDailyHuntTarget(excludedId = null) {
 
 function formatPercent(chance) {
   return `${(chance * 100).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
+}
+
+function getEncounterRarityRate(modifier, rarity) {
+  const weights = ENCOUNTER_RARITY_WEIGHTS[modifier] || ENCOUNTER_RARITY_WEIGHTS.normal;
+  const totalWeight = Object.values(weights).reduce((total, weight) => total + weight, 0);
+  return weights[rarity] / totalWeight;
 }
 
 function formatEncounterWeights(modifier) {
@@ -3535,7 +3541,7 @@ function rollSpawn(
           null,
           chamberSpecies
         );
-        pokemon.encounterRateText = `${ENCOUNTER_RARITY_WEIGHTS[encounterModifier][rarity]}% encounter rate`;
+        pokemon.encounterRateText = `${formatPercent(getEncounterRarityRate(encounterModifier, rarity))} encounter rate`;
       }
       pokemon.encounterModifier = encounterModifier;
     } else {
