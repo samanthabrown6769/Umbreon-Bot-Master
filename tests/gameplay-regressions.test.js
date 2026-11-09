@@ -60,12 +60,12 @@ test('only open Mega Chambers contribute boosted species, without duplicates', (
 
 test('ordinary Legendary and event rolls use the requested base thresholds', () => {
   const legendarySource = extract(indexSource, 'function chooseEncounterRarity(', '\nfunction getRandomLegendaryFromGenerations(');
-  const eventSource = extract(indexSource, 'function getEventSpawnChance(', '\nlet eventSpawnFormIds');
+  const eventSource = extract(indexSource, 'const EVENT_SPAWN_ODDS =', '\nlet eventSpawnFormIds');
   let roll = 0;
   const math = Object.create(Math);
   math.random = () => roll;
   const ctx = vm.createContext({
-    Math: math, EVENT_SPAWN_ODDS: 1000, LEGENDARY_BASE_CHANCE: 1 / 666,
+    Math: math, LEGENDARY_BASE_CHANCE: 1 / 666,
     LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 500, HARD_RARITY_USER_IDS: new Set(),
     HARD_RARITY_RATE_MULTIPLIER: 1, ENCOUNTER_RARITY_WEIGHTS: { normal: { Common: 1 } },
   });
@@ -74,8 +74,8 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.chooseEncounterRarity('normal', false, 0), 'Legendary');
   roll = 1 / 666;
   assert.equal(ctx.chooseEncounterRarity('normal', false, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 1000);
-  assert.equal(ctx.getEventSpawnChance(50), 1.5 / 1000);
+  assert.equal(ctx.getEventSpawnChance(), 1 / 500);
+  assert.equal(ctx.getEventSpawnChance(50), 1.5 / 500);
   assert.match(indexSource, /const BASE_SHINY_RATE = 1 \/ 2000;/);
   assert.match(indexSource, /const PATREON_SHINY_RATE = 1 \/ 1000;/);
 });
@@ -128,7 +128,7 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
     ],
     getRandomPokemon: (rarity) => ({ id: 1, speciesName: rarity, name: rarity, rarity, types: [] }),
     SPECIAL_SPAWN_RESERVED_SPECIES: [], EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [],
-    eventSpawnFormIds: [], EVENT_SPAWN_ODDS: 1000, getEventSpawnChance: () => 1 / 1000,
+    eventSpawnFormIds: [], getEventSpawnChance: () => 1 / 500,
     LEGENDARY_BASE_CHANCE: 1 / 666, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 500,
     EVENT_TICKET_SHINY_RATES: { standard: { event: 0, nonEvent: 0 }, patreon: { event: 0, nonEvent: 0 } },
     BASE_SHINY_RATE: 1 / 2000, PATREON_SHINY_RATE: 1 / 1000,
@@ -150,6 +150,189 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true);
   rolls = [0.5, 0.5, 0.0005];
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
+});
+
+test('checklist shiny bonus weights only eligible event spawns', () => {
+  let rolls = [];
+  let bonusActive = false;
+  let eventOpen = true;
+  let ticket = true;
+  let patreon = false;
+  let eventShinyPct = 0;
+  let shinyBonus = 0;
+  let clanEventBonus = 0;
+  let incense = false;
+  let pokeradar = false;
+  let selectedWeights = [];
+  let tierPerks = null;
+  const configuredPerks = vm.runInNewContext(
+    extract(dbSource, 'const NO_PATREON_PERKS =', '\nconst BASE_INCENSE_CHARGES')
+      + '\n({ tiers: PATREON_TIER_PERKS, none: NO_PATREON_PERKS })'
+  );
+  const math = Object.create(Math);
+  math.random = () => {
+    assert.ok(rolls.length, 'Unexpected random roll');
+    return rolls.shift();
+  };
+  const entries = [
+    { ids: [1], shiny: true, fish: true },
+    { ids: [2], shiny: false, fish: true },
+    { ids: [3], shiny: true, fish: false },
+  ];
+  const names = { 1: 'Shiny target', 2: 'Regular target', 3: 'Land target', 4: 'Ordinary' };
+  const event = { pokemon: [
+    { key: 'shiny', shiny: true, matchNames: ['Shiny target'] },
+    { key: 'regular', shiny: false, matchNames: ['Regular target'] },
+    { key: 'land', shiny: true, matchNames: ['Land target'] },
+  ] };
+  const ctx = vm.createContext({
+    Math: math, pickWeighted: (pool, weightOf) => {
+      selectedWeights = Array.from(pool, weightOf);
+      return pickWeighted(pool, weightOf, math.random);
+    },
+    consumeIncenseCharge: () => incense, consumePokeradarCharge: () => pokeradar,
+    isEventOpen: () => eventOpen, halloweenEvent: event, eventSpawnEntries: entries,
+    getUser: () => ({ event_ticket: ticket, has_patreon: patreon }),
+    getPlayerClan: () => null, getClanPerkMultipliers: () => ({ erBonus: clanEventBonus }),
+    getTotalEffectiveShinyBonus: () => shinyBonus + (tierPerks ? tierPerks.shinyCharms : 0),
+    getChamberSpawnSpecies: () => [],
+    consumeEncounterModifier: () => 'normal', rollSpecialLegendarySpawn: () => null,
+    getPatreonPerks: () => tierPerks || { shinyRatePct: 0, eventShinyPct },
+    isPlayerBonusActive: (key) => key === 'shiny' && bonusActive,
+    HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
+    getRaritySettings: () => [{ name: 'Common', spawn_weight: 1, pokemon_count: 1 }],
+    getRandomPokemon: (rarity, water, a, b, excluded, species, ids) => {
+      const id = ids ? ids[0] : 4;
+      return { id, name: names[id], speciesName: names[id], rarity: rarity || 'Common' };
+    },
+    SPECIAL_SPAWN_RESERVED_SPECIES: [], EVENT_NON_FISH_SPECIES: [],
+    EVENT_FISH_SPAWN_FORM_IDS: [], eventSpawnFormIds: [],
+    LEGENDARY_BASE_CHANCE: 1 / 666,
+    LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 500,
+    EVENT_TICKET_SHINY_RATES: {
+      standard: { event: 0.005, nonEvent: 0.0005 }, patreon: { event: 0.01, nonEvent: 0.001 },
+    },
+    BASE_SHINY_RATE: 0.0005, PATREON_SHINY_RATE: 0.001,
+    CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
+    EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
+    FISH_PATREON_ONLY_SHINY_KEYS: new Set(),
+  });
+  vm.runInContext(
+    extract(indexSource, 'const EVENT_SPAWN_ODDS =', '\nlet eventSpawnFormIds')
+      + '\n' + extract(indexSource, 'function rollSpawn(', '\nconst EXPLORE_EXCLUSIVE_CHANCE')
+      + '\n' + extract(indexSource, 'function getEventPokemonKey(', '\nfunction getRarityInfo('),
+    ctx
+  );
+  const rod = { enablesLegendary: true, enablesShiny: true, baseShinyRate: 0.0005 };
+  const fishEvent = (selectionRoll, options = {}) => {
+    rolls = [0, selectionRoll];
+    return ctx.rollSpawn('water', 'user', rod, options);
+  };
+  rolls = [1 / 500 - 1e-10, 0];
+  assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
+  rolls = [(1 + 5 / 100) / 500 - 1e-10, 0];
+  assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 1);
+  rolls = [(1 + 5 / 100) / 500, 0.5, 0.1, 0.0005];
+  assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 4);
+  assert.equal(fishEvent(0.52).id, 2);
+  assert.deepEqual(selectedWeights, [1 / 0.95, 1]);
+  bonusActive = true;
+  const boundary = 1.25 / (1.25 + 0.95);
+  assert.equal(fishEvent(boundary - 1e-8).id, 1);
+  assert.equal(fishEvent(boundary + 1e-8).id, 2);
+  assert.equal(fishEvent(0.9).id, 2);
+  rolls = [0, 0.99];
+  assert.equal(ctx.rollSpawn('land', 'user').id, 3);
+
+  bonusActive = false;
+  const baseline = 1 / 0.95;
+  for (const [tier, eventPct, ordinaryPct, charm] of [
+    [null, 0, 0, 0],
+    ['common', 5, 25, 0],
+    ['uncommon', 5, 25, 0],
+    ['rare', 5, 25, 0],
+    ['superRare', 5, 25, 0],
+    ['legendary', 30, 50, 0],
+    ['shiny', 30, 50, 1],
+    ['golden', 30, 50, 1],
+  ]) {
+    tierPerks = tier ? configuredPerks.tiers[tier] : configuredPerks.none;
+    patreon = Boolean(tier);
+    assert.equal(tierPerks.eventShinyPct, eventPct, `${tier} event perk`);
+    assert.equal(tierPerks.shinyRatePct, ordinaryPct, `${tier} ordinary shiny perk`);
+    assert.equal(tierPerks.shinyCharms, charm, `${tier} shiny charms`);
+    fishEvent(0);
+    const weight = baseline * (tier ? 2 : 1) * (1 + eventPct / 100) / (1 - charm / 100);
+    assert.ok(Math.abs(selectedWeights[0] - weight) < 1e-12, `${tier} event shiny weight`);
+    assert.equal(selectedWeights[1], 1, `${tier} regular event weight`);
+    const ordinaryChance = (tier ? 0.001 : 0.0005) * (1 + ordinaryPct / 100) / (1 - charm / 100);
+    rolls = [1 / 500, 0.5, ordinaryChance - 1e-10];
+    assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true, `${tier} ordinary shiny below threshold`);
+    rolls = [1 / 500, 0.5, ordinaryChance + 1e-10];
+    assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false, `${tier} ordinary shiny above threshold`);
+  }
+  tierPerks = null;
+  patreon = true;
+  fishEvent(0);
+  assert.ok(Math.abs(selectedWeights[0] - baseline * 2) < 1e-12);
+  patreon = false;
+  eventShinyPct = 5;
+  fishEvent(0);
+  assert.ok(Math.abs(selectedWeights[0] - baseline * 1.05) < 1e-12);
+  eventShinyPct = 0;
+  clanEventBonus = 20;
+  fishEvent(0);
+  assert.ok(Math.abs(selectedWeights[0] - baseline / 0.8) < 1e-12);
+  clanEventBonus = 0;
+  shinyBonus = 10;
+  fishEvent(0);
+  assert.ok(Math.abs(selectedWeights[0] - baseline / 0.9) < 1e-12);
+  shinyBonus = 0;
+  fishEvent(0, { channelRateBoost: 5 });
+  assert.ok(Math.abs(selectedWeights[0] - baseline * 1.05) < 1e-12);
+  incense = true;
+  fishEvent(0);
+  assert.ok(Math.abs(selectedWeights[0] - baseline * 1.1) < 1e-12);
+  incense = false;
+  pokeradar = true;
+  fishEvent(0);
+  assert.ok(Math.abs(selectedWeights[0] - baseline * 1.1) < 1e-12);
+  pokeradar = false;
+  patreon = true;
+  eventShinyPct = 30;
+  shinyBonus = 10;
+  clanEventBonus = 20;
+  incense = true;
+  pokeradar = true;
+  ctx.HARD_RARITY_USER_IDS.add('user');
+  ctx.HARD_RARITY_RATE_MULTIPLIER = 0.5;
+  bonusActive = true;
+  fishEvent(0, { channelRateBoost: 5 });
+  const expectedWeight = 2 * 1.3 / 0.7 / 0.95 * 1.25 * 0.5 * 1.05 * 1.1 * 1.1;
+  assert.ok(Math.abs(selectedWeights[0] - expectedWeight) < 1e-12);
+  assert.equal(selectedWeights[1], 1);
+  patreon = false;
+  eventShinyPct = 0;
+  shinyBonus = 0;
+  clanEventBonus = 0;
+  incense = false;
+  pokeradar = false;
+  ctx.HARD_RARITY_USER_IDS.clear();
+  ctx.HARD_RARITY_RATE_MULTIPLIER = 1;
+
+  // A non-event encounter at the ordinary shiny threshold stays non-shiny.
+  rolls = [1 / 500, 0.5, 0.0005];
+  assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
+  ticket = false;
+  rolls = [0.5, 0.0005];
+  assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
+  ticket = true;
+  eventOpen = false;
+  rolls = [0.5, 0.0005];
+  assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
+  eventOpen = true;
+  rolls = [0.5, 0.000125];
+  assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).isShiny, false);
 });
 
 test('Future Sight resolves two turns later and does not hit a replacement after a faint', () => {
@@ -180,6 +363,227 @@ test('normal moves do not damage Ghost types unless Scrappy applies', () => {
   ctx.player.ability = 'Scrappy';
   battle.performMove(ctx, { mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' }, move, () => {});
   assert.ok(ctx.enemy.hp < 100);
+});
+
+test('NPC coin rewards are halved for first clears, rematches, challengers and Volo', () => {
+  const math = Object.create(Math);
+  let rolls = [];
+  math.random = () => {
+    assert.ok(rolls.length, 'Unexpected NPC reward roll');
+    return rolls.shift();
+  };
+  const ctx = vm.createContext({
+    Math: math,
+    CHALLENGER_TIERS: { basic: { coins: [5000, 10000] } },
+    awardCoinsWithBoost: (userId, amount) => ({ finalAmount: amount * 2 }),
+    clearLeagueChallenge: (userId, index, amount) => amount * 2,
+  });
+  const rewardCode = extract(indexSource, '        let rematchCoins = 0;', '\n        if (reward === false)');
+  vm.runInContext(
+    extract(indexSource, 'function halveNpcCoinReward(', '\nconst CHALLENGER_TIERS')
+      + `\nfunction calculateNpcRewards(challenge, isRematch, luckIncenseMultiplier) {
+        const userId = 'user', challengeIndex = 0;
+        ${rewardCode}
+        return { reward, rematchCoins, voloCoins, challengerCoins };
+      }`,
+    ctx
+  );
+  assert.equal(ctx.calculateNpcRewards({ reward: 5000 }, false, 1).reward, 2500);
+  assert.equal(ctx.calculateNpcRewards({ reward: 5000 }, false, 2).reward, 5000);
+  rolls = [0.9];
+  const rematch = ctx.calculateNpcRewards({ reward: 5000 }, true, 1);
+  assert.equal(rematch.rematchCoins, 625);
+  assert.equal(rematch.reward, 1250);
+  rolls = [0];
+  assert.equal(ctx.calculateNpcRewards({ invited: true, special: true, challengerTier: 'basic' }, true, 1).challengerCoins, 2500);
+  rolls = [0.99999];
+  assert.equal(ctx.calculateNpcRewards({ invited: true, special: true, challengerTier: 'basic' }, true, 2).challengerCoins, 10000);
+  rolls = [0, 0.9];
+  assert.equal(ctx.calculateNpcRewards({ volo: true, special: true }, true, 1).voloCoins, 5000);
+  rolls = [0.99999, 0.9];
+  assert.equal(ctx.calculateNpcRewards({ volo: true, special: true }, true, 2).voloCoins, 30000);
+  assert.equal(ctx.calculateNpcRewards({ special: true }, true, 1).reward, 0);
+  assert.equal(ctx.halveNpcCoinReward(1), 1);
+  assert.equal(ctx.halveNpcCoinReward(0), 0);
+  assert.match(indexSource, /Rematch won![\s\S]*?\$\{reward\.toLocaleString\(\)\}/);
+});
+
+test('cooldown exemption toggle is self-only, restricted, and applies to eligible commands', async () => {
+  const users = {
+    exempt: { cooldown_exemption_disabled: 0 },
+    admin: { cooldown_exemption_disabled: 0 },
+    ordinary: { cooldown_exemption_disabled: 0 },
+  };
+  const ctx = vm.createContext({
+    COOLDOWN_EXEMPT_USER_IDS: new Set(['exempt']),
+    isConfiguredBotAdmin: (message) => message.author.id === 'admin',
+    getUser: (id) => users[id],
+    updateUser: (id, values) => Object.assign(users[id], values),
+    PREFIX: '.',
+  });
+  vm.runInContext(
+    extract(indexSource, 'function hasCooldownExemption(', '\nfunction applyGuaranteedPveBattleWin(')
+      + `\nasync function toggle(message, userId, args) {
+        const command = 'admin';
+        ${extract(indexSource, "    if (command === 'admin' && args[0]?.toLowerCase() === 'toggle'", "\n    if (command === 'admin' || command === 'admingive')")}
+      }`,
+    ctx
+  );
+  const message = (id) => ({ author: { id }, reply: (text) => text });
+  assert.equal(ctx.hasCooldownExemption('exempt'), true);
+  assert.equal(ctx.isEncounterCooldownExempt(message('admin'), 'admin'), true);
+  assert.equal(ctx.hasCooldownExemption('admin'), false);
+  assert.match(await ctx.toggle(message('ordinary'), 'ordinary', ['toggle', 'cooldown', 'off']), /Only users/);
+  assert.match(await ctx.toggle(message('exempt'), 'exempt', ['toggle', 'cooldown', 'off', 'ordinary']), /Usage/);
+  assert.match(await ctx.toggle(message('exempt'), 'exempt', ['toggle', 'cooldown', 'on']), /now \*\*on/);
+  assert.equal(ctx.hasCooldownExemption('exempt'), false);
+  assert.equal(ctx.isEncounterCooldownExempt(message('exempt'), 'exempt'), false);
+  assert.match(await ctx.toggle(message('exempt'), 'exempt', ['toggle', 'cooldown', 'off']), /now \*\*off/);
+  assert.equal(ctx.hasCooldownExemption('exempt'), true);
+  await ctx.toggle(message('admin'), 'admin', ['toggle', 'cooldown', 'on']);
+  assert.equal(ctx.isEncounterCooldownExempt(message('admin'), 'admin'), false);
+  await ctx.toggle(message('admin'), 'admin', ['toggle', 'cooldown', 'off']);
+  assert.equal(ctx.isEncounterCooldownExempt(message('admin'), 'admin'), true);
+  assert.equal(users.ordinary.cooldown_exemption_disabled, 0);
+  assert.match(indexSource, /const cooldownExempt = hasCooldownExemption\(userId\);/);
+  assert.equal((indexSource.match(/const cooldownExempt = isEncounterCooldownExempt\(message, userId\);/g) || []).length, 2);
+  assert.match(dbSource, /cooldown_exemption_disabled: 'INTEGER NOT NULL DEFAULT 0'/);
+});
+
+test('Patreon reward wait starts on activation, survives tier changes and restarts on reactivation', () => {
+  let now = 1000000000;
+  const user = { patreon_tier: null, has_patreon: 0, patreon_rewards_available_at: 0 };
+  const ctx = vm.createContext({
+    Date: class extends Date { static now() { return now; } },
+    PATREON_TIER_ROLES: [
+      { key: 'rare', roleId: 'rare' }, { key: 'common', roleId: 'common' },
+    ],
+    getUser: () => user,
+    updateUser: (id, updates) => Object.assign(user, updates),
+    patreonTierSyncedAt: new Map(),
+    getPatreonPerks: () => ({}), buildPatreonWelcomeEmbed: () => ({}),
+    client: { users: { fetch: async () => ({ send: async () => {} }) } },
+  });
+  vm.runInContext(extract(indexSource, 'function syncPatreonTier(', '\nasync function getPatreonTier('), ctx);
+  ctx.syncPatreonTier('user', new Set(['common']));
+  assert.equal(user.patreon_rewards_available_at, now + 86400000);
+  now += 1000;
+  ctx.syncPatreonTier('user', new Set(['rare']));
+  assert.equal(user.patreon_rewards_available_at, 1000000000 + 86400000);
+  ctx.syncPatreonTier('user', new Set());
+  assert.equal(user.patreon_rewards_available_at, 0);
+  now += 1000;
+  ctx.syncPatreonTier('user', new Set(['common']));
+  assert.equal(user.patreon_rewards_available_at, now + 86400000);
+  user.patreon_rewards_available_at = 0;
+  ctx.syncPatreonTier('user', new Set(['rare']));
+  assert.equal(user.patreon_rewards_available_at, 0);
+});
+
+test('unavailable support server does not clear an existing Patreon tier', async () => {
+  const user = { patreon_tier: 'common', has_patreon: 1, patreon_rewards_available_at: 123 };
+  const ctx = vm.createContext({
+    client: { guilds: { cache: new Map() } }, ENCOUNTER_BOOST_GUILD_ID: 'support',
+    PATREON_TIER_ROLES: [{ key: 'common', name: 'Common', roleId: 'common' }],
+    EMOJIS: { common: '⭐' }, console: { warn: () => {} },
+    getUser: () => user,
+    syncPatreonTier: () => { throw new Error('Should not clear an unverified tier'); },
+  });
+  vm.runInContext(extract(indexSource, 'async function getPatreonTier(', "\nclient.on('guildMemberUpdate'"), ctx);
+  const tier = await ctx.getPatreonTier('user');
+  assert.equal(tier.key, 'common');
+  assert.equal(user.patreon_rewards_available_at, 123);
+});
+
+test('Patreon daily rewards wait 24 hours while the normal daily remains available', () => {
+  const perks = { dailyCoinMult: 2, dailyCoins: 5000, dailyTokens: 1 };
+  const ctx = vm.createContext({
+    getPatreonPerks: () => perks,
+    awardCoinsWithBoost: (id, coins) => ({ finalAmount: coins }),
+    incrementUser: (id, values) => ctx.increments.push(values),
+    increments: [],
+  });
+  const dailyCode = extract(indexSource, '        const dailyPerks = getPatreonPerks(userId);', '\n        for (const [boxName, quantity]');
+  vm.runInContext(`function dailyReward(now, currentUser) {
+    const userId = 'user';
+    const rewards = { coins: 1000 };
+    ${dailyCode}
+    return rewards;
+  }`, ctx);
+  let rewards = ctx.dailyReward(99, { patreon_tier: 'common', patreon_rewards_available_at: 100 });
+  assert.equal(rewards.coins, 1000);
+  assert.equal(rewards.patreonRewardsAvailableAt, 100);
+  assert.equal(rewards.patreonCoins, 0);
+  assert.equal(rewards.patreonTokens, 0);
+  assert.equal(ctx.increments.length, 0);
+  rewards = ctx.dailyReward(100, { patreon_tier: 'common', patreon_rewards_available_at: 100 });
+  assert.equal(rewards.coins, 2000);
+  assert.equal(rewards.patreonCoins, 5000);
+  assert.equal(rewards.patreonTokens, 1);
+  assert.equal(ctx.increments.length, 1);
+});
+
+test('monthly Patreon snapshot ignores the daily wait and remains fixed and idempotent', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE patreon_monthly_sent (user_id TEXT, month_key TEXT, PRIMARY KEY (user_id, month_key));
+    CREATE TABLE patreon_monthly_snapshots (month_key TEXT PRIMARY KEY, created_at INTEGER NOT NULL);
+    CREATE TABLE patreon_monthly_recipients (month_key TEXT, user_id TEXT, tier TEXT, PRIMARY KEY (month_key, user_id));
+  `);
+  const user = { patreon_tier: 'common', patreon_rewards_available_at: 101 };
+  let grants = 0;
+  const ctx = vm.createContext({
+    db, getUser: () => user, assertUserId: () => {},
+    PATREON_TIER_PERKS: { common: { monthly: { coins: 10, masterballs: 1, rare_candies: 1, eggs: 1 } } },
+    incrementUser: () => { grants += 1; }, addUserItem: () => {},
+  });
+  vm.runInContext(extract(dbSource, 'function savePatreonMonthlySnapshot(', '\nfunction getPatreonUserIds('), ctx);
+  assert.equal(ctx.getPatreonMonthlySnapshot('2026-11'), null);
+  assert.equal(ctx.savePatreonMonthlySnapshot('2026-11', [{ userId: 'user', tier: 'common' }], 100), true);
+  assert.equal(ctx.savePatreonMonthlySnapshot('2026-11', [{ userId: 'other', tier: 'common' }], 101), false);
+  user.patreon_tier = null;
+  assert.ok(ctx.grantPatreonMonthly('user', '2026-11').reward);
+  assert.equal(ctx.grantPatreonMonthly('user', '2026-11').error, 'already_sent');
+  assert.equal(ctx.grantPatreonMonthly('other', '2026-11').error, 'not_in_snapshot');
+  assert.equal(grants, 1);
+  assert.throws(() => ctx.savePatreonMonthlySnapshot('2026-12', [{ userId: 'user', tier: 'invalid' }], 100));
+  assert.equal(ctx.getPatreonMonthlySnapshot('2026-12'), null);
+  assert.equal(ctx.savePatreonMonthlySnapshot('2026-12', [], 100), true);
+  assert.equal(ctx.getPatreonMonthlySnapshot('2026-12').length, 0);
+  db.close();
+});
+
+test('monthly distribution retries the original role snapshot after a role transfer', async () => {
+  let members = new Map([['first', { id: 'first', roles: { cache: new Set(['role']) } }]]);
+  let snapshot = null;
+  const grants = [];
+  let failOnce = true;
+  const ctx = vm.createContext({
+    Date: class extends Date { static now() { return Date.parse('2026-12-01T03:00:00Z'); } },
+    getPatreonMonthlySnapshot: () => snapshot,
+    savePatreonMonthlySnapshot: (month, recipients) => { snapshot = recipients; },
+    ENCOUNTER_BOOST_GUILD_ID: 'support',
+    PATREON_TIER_ROLES: [{ key: 'common', name: 'Common', roleId: 'role' }],
+    client: {
+      guilds: { cache: new Map([['support', { members: { fetch: async () => members } }]]) },
+      users: { fetch: async () => ({ send: async () => {} }) },
+      channels: { fetch: async () => ({ send: async () => {} }) },
+    },
+    grantPatreonMonthly: (userId) => {
+      if (failOnce) { failOnce = false; throw new Error('temporary'); }
+      grants.push(userId);
+      return { reward: {} };
+    },
+    EmbedBuilder, monthlyRewardLines: () => [], console: { error: () => {} },
+  });
+  vm.runInContext(
+    extract(indexSource, 'const PATREON_PAYOUT_UTC_OFFSET_HOURS', '\nconst MEGA_STONE_EMOJIS'),
+    ctx
+  );
+  await ctx.runPatreonMonthlyPayout();
+  members = new Map([['second', { id: 'second', roles: { cache: new Set(['role']) } }]]);
+  await ctx.runPatreonMonthlyPayout();
+  assert.deepEqual(grants, ['first']);
 });
 
 test('event rollover retains configured announcement channels and does not undo opt-outs', () => {

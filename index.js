@@ -132,7 +132,8 @@ const {
   getAmuletCoinBoost,
   getPatreonPerks,
   grantPatreonMonthly,
-  getPatreonUserIds,
+  savePatreonMonthlySnapshot,
+  getPatreonMonthlySnapshot,
   PATREON_TIER_ORDER,
   PATREON_TIER_PERKS,
   BASE_INCENSE_CHARGES,
@@ -568,7 +569,7 @@ function getSwapExcludedSpecies() {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
-const EVENT_SPAWN_ODDS = 1000;
+const EVENT_SPAWN_ODDS = 500;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
@@ -708,7 +709,7 @@ const BONUS_ANNOUNCEMENT_CHANNEL_ID = '1565712507287371846';
 const BONUS_ANNOUNCEMENT_ROLE_ID = '1565712717833052180';
 const BONUS_EFFECT_TEXT = Object.freeze({
   swap: '+25% increased Golden and Shiny swap rates.',
-  shiny: '+25% Checklist Pokémon shiny spawn rates.',
+  shiny: '+25% selection weight for shiny event checklist Pokémon within event spawns.',
   wb: '+25% World Boss Pokémon drop rate.',
   dxp: 'Double EXP from catches.',
   fish: '+25% Golden Fishing spawn rate.',
@@ -1295,6 +1296,10 @@ const CHALLENGER_STAT_MULTIPLIERS = Object.freeze({
   defense: 1.5,
 });
 const CHALLENGER_INVITE_CHANCE = 1 / 250;
+function halveNpcCoinReward(amount) {
+  return amount > 0 ? Math.max(1, Math.floor(amount / 2)) : 0;
+}
+
 const CHALLENGER_TIERS = {
   basic: { label: 'Basic', questCategory: 'basic_challenger', coins: [5000, 10000], weight: 70 },
   boss: { label: 'Boss', questCategory: 'boss_challenger', coins: [15000, 30000], weight: 22 },
@@ -3453,7 +3458,19 @@ function rollSpawn(
     : eventSpawnEntries;
   if (eventTicketActive && forcedEventPool.length
       && Math.random() < getEventSpawnChance(roleChanceBoost)) {
-    forcedEvent = forcedEventPool[Math.floor(Math.random() * forcedEventPool.length)];
+    const isPatreonUser = Boolean(getUser(userId).has_patreon);
+    const eventShinyWeight = (isPatreonUser
+      ? EVENT_TICKET_SHINY_RATES.patreon.event / EVENT_TICKET_SHINY_RATES.standard.event
+      : 1)
+      * (1 + getPatreonPerks(userId).eventShinyPct / 100)
+      / (1 - (shinyBonus + clanPerks.erBonus) / 100)
+      / 0.95
+      * (isPlayerBonusActive('shiny') ? 1.25 : 1)
+      * (HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
+      * (1 + channelRateBoost / 100)
+      * (incenseActive ? INCENSE_BOOST : 1)
+      * (pokeradarActive ? 1.1 : 1);
+    forcedEvent = pickWeighted(forcedEventPool, (entry) => entry.shiny ? eventShinyWeight : 1);
   }
 
   if (!forcedEvent && !catchbot && poolName === 'land' && userId !== null) {
@@ -3620,7 +3637,6 @@ function rollSpawn(
     const baseShinyChance = baseShinyRate
       * patreonShinyMultiplier
       * shinyBonusMultiplier
-      * (isEventShinyTargetActive && isPlayerBonusActive('shiny') ? 1.25 : 1)
       * eventTicketShinyMultiplier;
     const shinyChance = baseShinyChance
       * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
@@ -4272,7 +4288,12 @@ function isBotAdmin(message) {
 }
 
 function hasCooldownExemption(userId) {
-  return COOLDOWN_EXEMPT_USER_IDS.has(userId);
+  return COOLDOWN_EXEMPT_USER_IDS.has(userId) && !getUser(userId).cooldown_exemption_disabled;
+}
+
+function isEncounterCooldownExempt(message, userId) {
+  return (isConfiguredBotAdmin(message) || COOLDOWN_EXEMPT_USER_IDS.has(userId))
+    && !getUser(userId).cooldown_exemption_disabled;
 }
 
 function applyGuaranteedPveBattleWin(userId, activePokemon, opponents, log) {
@@ -8683,7 +8704,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
         if (challenge.volo) {
           voloCoins = awardCoinsWithBoost(
             userId,
-            (5000 + Math.floor(Math.random() * 10001)) * luckIncenseMultiplier
+            halveNpcCoinReward((5000 + Math.floor(Math.random() * 10001)) * luckIncenseMultiplier)
           ).finalAmount;
           const voloDrops = [
             ['rare_candies', 2, 'Rare Candy'],
@@ -8698,13 +8719,15 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           const [minCoins, maxCoins] = CHALLENGER_TIERS[challenge.challengerTier].coins;
           challengerCoins = awardCoinsWithBoost(
             userId,
-            Math.floor((minCoins + Math.floor(Math.random() * (maxCoins - minCoins + 1))) * luckIncenseMultiplier * 0.5)
+            halveNpcCoinReward(Math.floor(
+              (minCoins + Math.floor(Math.random() * (maxCoins - minCoins + 1))) * luckIncenseMultiplier * 0.5
+            ))
           ).finalAmount;
         }
         if (isRematch) {
           rematchCoins = challenge.special || challenge.evStat
             ? 0
-            : Math.max(1, Math.floor(challenge.reward * 0.25 * luckIncenseMultiplier));
+            : halveNpcCoinReward(Math.max(1, Math.floor(challenge.reward * 0.25 * luckIncenseMultiplier)));
           if (!challenge.special && !challenge.evStat && Math.random() < 0.25) {
             const drops = [
               ['greatballs', 3, 'Greatball'],
@@ -8720,7 +8743,8 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           : isRematch
             ? awardCoinsWithBoost(userId, rematchCoins).finalAmount
             : clearLeagueChallenge(
-              userId, challengeIndex, Math.max(1, Math.floor(challenge.reward * luckIncenseMultiplier * 0.5))
+              userId, challengeIndex,
+              halveNpcCoinReward(Math.max(1, Math.floor(challenge.reward * luckIncenseMultiplier * 0.5)))
             );
         if (reward === false) {
           log.push('Your league progress changed during battle; this challenge was not counted twice.');
@@ -8807,7 +8831,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
             : challenge.factionNpc
               ? `🏆 **${challenge.name} defeated!** You earned **${factionPointsAwarded.toLocaleString()} faction points**.`
             : isRematch
-              ? `🏆 **Rematch won!** You earned ${EMOJIS.pokecoin} **${rematchCoins.toLocaleString()} PokéCoins**` +
+              ? `🏆 **Rematch won!** You earned ${EMOJIS.pokecoin} **${reward.toLocaleString()} PokéCoins**` +
                 `${rematchItem ? ` and **${rematchItem[1]}x ${rematchItem[2]}**` : ''}.`
               : `🏆 **Challenge cleared!** You earned ${EMOJIS.pokecoin} **${reward.toLocaleString()} PokéCoins**.`);
           if (challenge.expBattle) {
@@ -10432,7 +10456,7 @@ const PATREON_TIER_ROLES = [
 
 const patreonTierSyncedAt = new Map();
 
-function buildPatreonWelcomeEmbed(tier, perks) {
+function buildPatreonWelcomeEmbed(tier, perks, rewardsAvailableAt) {
   const lines = [];
   if (perks.catchBoost) lines.push(`+${perks.catchBoost}% catch rate`);
   if (perks.shinyCharms) lines.push(`${perks.shinyCharms}x Shiny Charm`);
@@ -10449,6 +10473,9 @@ function buildPatreonWelcomeEmbed(tier, perks) {
     .setDescription(
       `Your **${tier.name}** Patreon tier has been synced. Here's what you get:\n\n` +
       lines.map((line) => `• ${line}`).join('\n') +
+      (rewardsAvailableAt > Date.now()
+        ? `\n\nPatreon daily rewards become available <t:${Math.floor(rewardsAvailableAt / 1000)}:R>. Monthly rewards are not subject to this wait.`
+        : '') +
       `\n\nSee \`${PREFIX}perks\` for the full list.`
     );
   return embed;
@@ -10460,11 +10487,19 @@ function syncPatreonTier(userId, roles) {
   const user = getUser(userId);
   const changed = (user.patreon_tier ?? null) !== key;
   if (changed || user.has_patreon !== Number(Boolean(key))) {
-    updateUser(userId, { patreon_tier: key, has_patreon: Number(Boolean(key)) });
+    const updates = { patreon_tier: key, has_patreon: Number(Boolean(key)) };
+    if (key && !user.patreon_tier && !user.has_patreon) {
+      updates.patreon_rewards_available_at = Date.now() + 24 * 60 * 60 * 1000;
+    } else if (!key) {
+      updates.patreon_rewards_available_at = 0;
+    }
+    updateUser(userId, updates);
   }
   if (changed && tier) {
     client.users.fetch(userId)
-      .then((discordUser) => discordUser.send({ embeds: [buildPatreonWelcomeEmbed(tier, getPatreonPerks(userId))] }))
+      .then((discordUser) => discordUser.send({
+        embeds: [buildPatreonWelcomeEmbed(tier, getPatreonPerks(userId), getUser(userId).patreon_rewards_available_at)],
+      }))
       .catch(() => {});
   }
   patreonTierSyncedAt.set(userId, Date.now());
@@ -10475,8 +10510,11 @@ async function getPatreonTier(userId, user = getUser(userId)) {
   const fallback = { key: null, name: user.has_patreon ? 'Patron' : 'Player' };
   const guild = client.guilds.cache.get(ENCOUNTER_BOOST_GUILD_ID);
   if (!guild) {
-    syncPatreonTier(userId, new Set());
-    return { key: null, name: 'Player' };
+    console.warn(`Cannot sync Patreon for user ${userId}: support server is unavailable.`);
+    const storedTier = PATREON_TIER_ROLES.find(({ key }) => key === user.patreon_tier);
+    return storedTier
+      ? { key: storedTier.key, name: `${EMOJIS[storedTier.key]} ${storedTier.name} Patron` }
+      : fallback;
   }
   try {
     const member = await guild.members.fetch({ user: userId, force: true });
@@ -10561,11 +10599,22 @@ async function runPatreonMonthlyPayout() {
   const monthKey = `${pacific.year}-${String(pacific.month).padStart(2, '0')}`;
   let grantedCount = 0;
   try {
-    for (const userId of getPatreonUserIds()) {
+    let recipients = getPatreonMonthlySnapshot(monthKey);
+    if (recipients === null) {
+      const guild = client.guilds.cache.get(ENCOUNTER_BOOST_GUILD_ID);
+      if (!guild) throw new Error('Cannot snapshot Patreon recipients: support server is unavailable.');
+      const members = await guild.members.fetch();
+      const snapshot = [];
+      for (const member of members.values()) {
+        const tier = PATREON_TIER_ROLES.find(({ roleId }) => member.roles.cache.has(roleId));
+        if (tier) snapshot.push({ userId: member.id, tier: tier.key });
+      }
+      savePatreonMonthlySnapshot(monthKey, snapshot);
+      recipients = getPatreonMonthlySnapshot(monthKey);
+      if (recipients === null) throw new Error('Patreon monthly snapshot was not saved.');
+    }
+    for (const { userId, tier } of recipients) {
       try {
-        // Re-check the Discord role so lapsed members don't receive rewards.
-        const tier = await getPatreonTier(userId);
-        if (!tier.key) continue;
         const result = grantPatreonMonthly(userId, monthKey);
         if (!result.reward) continue;
         grantedCount += 1;
@@ -10573,7 +10622,7 @@ async function runPatreonMonthlyPayout() {
         await discordUser?.send({
           embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle('💰 Your Monthly Patreon Rewards')
             .setDescription(
-              `Thank you for supporting the bot! Your **${tier.name}** monthly rewards were added to your account:\n\n` +
+              `Thank you for supporting the bot! Your **${PATREON_TIER_ROLES.find((entry) => entry.key === tier).name}** monthly rewards were added to your account:\n\n` +
               monthlyRewardLines(result.reward).join('\n')
             )],
         }).catch(() => {});
@@ -10587,7 +10636,7 @@ async function runPatreonMonthlyPayout() {
   if (!grantedCount) return;
   try {
     const channel = await client.channels.fetch('1565508561105199214');
-    await channel.send(`💰 Monthly Patreon rewards for **${monthKey}** have been sent out to all supporters! Thank you for supporting the bot! 💛`);
+    await channel.send(`💰 Monthly Patreon rewards for **${monthKey}** have been sent to eligible supporters! Thank you for supporting the bot! 💛`);
   } catch (error) {
     console.error('Failed to announce monthly Patreon rewards:', error);
   }
@@ -12108,7 +12157,7 @@ client.on('messageCreate', async (message) => {
           benefits: [
             '🥷 Ninja perk: +5% catch rate (all ball types)',
             `${EMOJIS.shiny} +25% full-odds shiny rate`,
-            `${EMOJIS.eventticket} +5% event shiny rate`,
+            `${EMOJIS.eventticket} +5% event checklist shiny selection weight`,
             `💖 Access to Patreon-exclusive Shiny Pokémon (\`${PREFIX}excl patreon\`)`,
             '🎟️ 50% reduced `/swap` costs',
             '🔒 +5 release-lock slots',
@@ -12153,7 +12202,7 @@ client.on('messageCreate', async (message) => {
           color: 0x800080, emoji: EMOJIS.legendary, name: 'Legendary',
           benefits: [
             `${LOOTBOX_EMOJI} 10% improved lootbox item odds`,
-            `${EMOJIS.shiny} +25% shiny rate for full-odds and event shinies`,
+            `${EMOJIS.shiny} +25% full-odds shiny rate and event checklist shiny selection weight`,
             '🏪 +15 market listing slots (35 total)',
             '🔒 +5 additional release-lock slots (50 total)',
             '✨ Submit up to 10 non-Legendary Shiny Pokémon for the next event',
@@ -14196,6 +14245,19 @@ client.on('messageCreate', async (message) => {
       return message.reply(`Usage: \`${PREFIX}admin <Pokémon name|dex> <move name> <learn|remove>\` (works on your own Pokémon; unknown Pokémon or move).`);
     }
 
+    if (command === 'admin' && args[0]?.toLowerCase() === 'toggle'
+        && args[1]?.toLowerCase() === 'cooldown') {
+      if (!COOLDOWN_EXEMPT_USER_IDS.has(userId) && !isConfiguredBotAdmin(message)) {
+        return message.reply('⛔ Only users with a cooldown exemption can change this setting.');
+      }
+      const setting = args[2]?.toLowerCase();
+      if (args.length !== 3 || !['on', 'off'].includes(setting)) {
+        return message.reply(`Usage: \`${PREFIX}admin toggle cooldown <on|off>\`.`);
+      }
+      updateUser(userId, { cooldown_exemption_disabled: setting === 'on' ? 1 : 0 });
+      return message.reply(`✅ Your eligible command cooldowns are now **${setting}**.`);
+    }
+
     if (command === 'admin' || command === 'admingive') {
       if (!isBotAdmin(message)) {
         return message.reply('⛔ You do not have permission to use admin commands.');
@@ -16106,7 +16168,7 @@ client.on('messageCreate', async (message) => {
         });
       }
       const isAdmin = isConfiguredBotAdmin(message);
-      const cooldownExempt = isAdmin || hasCooldownExemption(userId);
+      const cooldownExempt = isEncounterCooldownExempt(message, userId);
       if (!cooldownExempt && catchCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'p', catchCooldowns)) {
           return message.reply(
@@ -16156,7 +16218,7 @@ client.on('messageCreate', async (message) => {
       if (args.length) return message.reply(`Usage: \`${PREFIX}fish\` or \`${PREFIX}fish shop\`.`);
       const rod = getFishingRod(user);
       const isAdmin = isConfiguredBotAdmin(message);
-      const cooldownExempt = isAdmin || hasCooldownExemption(userId);
+      const cooldownExempt = isEncounterCooldownExempt(message, userId);
       if (!cooldownExempt && fishCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'f', fishCooldowns)) {
           return message.reply(
@@ -16821,22 +16883,22 @@ client.on('messageCreate', async (message) => {
           gold: [
             'Catch Rate III: increases catch rate by 5% total',
             'Shiny Rate III: increases shiny rate by 5% total',
-            'Event Rate I: increases event shiny odds by 5%',
+            'Event Rate I: reduces the event shiny weight denominator by 5%',
             'Amulet Boost I: increases coin rewards by 5%',
           ],
           diamond: [
             'Catch Rate IV: increases catch rate by 10% total',
             'Shiny Rate IV: increases shiny rate by 10% total',
-            'Event Rate II: increases event shiny odds by 10%',
+            'Event Rate II: reduces the event shiny weight denominator by 10%',
             'Shop Boost I: discounts eligible shop purchases by 5%',
           ],
           amethyst: [
-            'Event Rate III: increases event shiny odds by 15%',
+            'Event Rate III: reduces the event shiny weight denominator by 15%',
             'Promo Rate I: increases promo item drop rate by 5%',
             'Quest Bonus: +1 quest slot in `.q`',
           ],
           onyx: [
-            'Event Rate IV: increases event shiny odds by 20%',
+            'Event Rate IV: reduces the event shiny weight denominator by 20%',
             'Shop Boost II: discounts eligible shop purchases by 10% total',
             'Amulet Boost II: increases coin rewards by 10% total',
             'Promo Rate II: increases promo item drop rate by 10% total',
@@ -16939,7 +17001,7 @@ client.on('messageCreate', async (message) => {
           '• Diamond: Catch/Shiny Rate IV (+10% total), Event Rate II, Shop Boost I (-5%)\n' +
           '• Amethyst: Event Rate III, Promo Rate I (+5%), +1 quest slot\n' +
           '• Onyx: Event Rate IV, Amulet Boost II (+10%), Shop Boost II (-10%), Promo Rate II (+10%), eggs hatch 2x faster\n\n' +
-          'Purchase unlocked perk tiers in order with `.clan purchase <rank>`. Each tier costs PokéCoins and requires personal catches: required catches are `floor(rank catch target ÷ current clan members)`. For example, Bronze requires 5,000 catches in a 20-member clan; Amethyst requires 230,769 in a 65-member clan. Catch Rate applies to `.p` and `.fish`; Shiny Rate applies to encounters and stacks with Shiny Charms. Event Rate boosts shiny odds for matching event Pokémon. Amulet Boost increases coin rewards; Shop Boost discounts eligible purchases.\n\n' +
+          'Purchase unlocked perk tiers in order with `.clan purchase <rank>`. Each tier costs PokéCoins and requires personal catches: required catches are `floor(rank catch target ÷ current clan members)`. For example, Bronze requires 5,000 catches in a 20-member clan; Amethyst requires 230,769 in a 65-member clan. Catch Rate applies to `.p` and `.fish`; Shiny Rate applies to encounters and stacks with Shiny Charms. Event Rate boosts shiny checklist selection weight within event spawns. Amulet Boost increases coin rewards; Shop Boost discounts eligible purchases.\n\n' +
           'Clan owners/co-owners upgrade the clan rank with `.clan upgrade <rank>`; donate with `.clan donate <amount>`.',
           0x3498db
         );
@@ -17350,10 +17412,12 @@ client.on('messageCreate', async (message) => {
           dailies_claimed: 1,
         });
         const dailyPerks = getPatreonPerks(userId);
-        rewards.coins = awardCoinsWithBoost(userId, rewards.coins * dailyPerks.dailyCoinMult).finalAmount;
-        rewards.patreonCoins = dailyPerks.dailyCoins;
-        rewards.patreonTokens = dailyPerks.dailyTokens;
-        if (dailyPerks.dailyCoins || dailyPerks.dailyTokens) {
+        const patreonRewardsWaiting = currentUser.patreon_tier && currentUser.patreon_rewards_available_at > now;
+        rewards.patreonRewardsAvailableAt = patreonRewardsWaiting ? currentUser.patreon_rewards_available_at : 0;
+        rewards.coins = awardCoinsWithBoost(userId, rewards.coins * (patreonRewardsWaiting ? 1 : dailyPerks.dailyCoinMult)).finalAmount;
+        rewards.patreonCoins = patreonRewardsWaiting ? 0 : dailyPerks.dailyCoins;
+        rewards.patreonTokens = patreonRewardsWaiting ? 0 : dailyPerks.dailyTokens;
+        if (rewards.patreonCoins || rewards.patreonTokens) {
           incrementUser(userId, { coins: dailyPerks.dailyCoins, patreon_tokens: dailyPerks.dailyTokens });
         }
         for (const [boxName, quantity] of Object.entries(rewards.boxes)) {
@@ -17404,6 +17468,11 @@ client.on('messageCreate', async (message) => {
         if (claimed.patreonCoins) patreonLines.push(`${EMOJIS.pokecoin} **${claimed.patreonCoins.toLocaleString()}** PokéCoins`);
         if (claimed.patreonTokens) patreonLines.push(`${EMOJIS.patreonToken} **${claimed.patreonTokens.toLocaleString()}** Patreon Tokens`);
         dailyEmbed.addFields({ name: '💖 Patreon Daily Rewards', value: patreonLines.join('\n') });
+      } else if (claimed.patreonRewardsAvailableAt) {
+        dailyEmbed.addFields({
+          name: '💖 Patreon Daily Rewards',
+          value: `Available <t:${Math.floor(claimed.patreonRewardsAvailableAt / 1000)}:R>. Your normal daily was claimed; Patreon daily rewards resume with your next daily claim after the wait.`,
+        });
       }
       return message.reply({ embeds: [dailyEmbed] });
     }
@@ -17417,7 +17486,8 @@ client.on('messageCreate', async (message) => {
         embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle('💰 Monthly Patreon Rewards')
           .setDescription(
             `Your monthly rewards are sent to you automatically on the **last day of every month at 10 PM EST** ` +
-            `(next: <t:${Math.floor(getNextPatreonMonthlyTime() / 1000)}:F>).\n\n` +
+            `(next: <t:${Math.floor(getNextPatreonMonthlyTime() / 1000)}:F>). ` +
+            `Monthly rewards are based on the Patreon role snapshot at distribution and do not have a waiting period.\n\n` +
             monthlyRewardLines(tierPerks.monthly).join('\n')
           )],
       });
@@ -20076,7 +20146,7 @@ client.on('messageCreate', async (message) => {
             command === 'league' ? '🏆 Regional NPC Campaign' : '🏆 Kanto Gym Challenge',
             `**Progress:** ${cleared}/${challenges.length} challenges cleared\n` +
             (next
-              ? `**Next:** ${next.name}\n**Reward:** ${EMOJIS.pokecoin} ${next.reward.toLocaleString()} PokéCoins\n\n` +
+              ? `**Next:** ${next.name}\n**Base reward:** ${EMOJIS.pokecoin} ${halveNpcCoinReward(Math.max(1, Math.floor(next.reward * 0.5))).toLocaleString()} PokéCoins\n\n` +
                 `Use \`${PREFIX}battle npc ${cleared + 1}\` to battle.`
               : command === 'league'
                 ? '**You have cleared every regional Gym, Trial, Elite Four, and Champion challenge!**'

@@ -619,8 +619,10 @@ const userDefinitions = {
   has_golden_rod: 'INTEGER NOT NULL DEFAULT 0',
   black_market_charm: 'INTEGER NOT NULL DEFAULT 0',
   has_patreon: 'INTEGER NOT NULL DEFAULT 0',
+  cooldown_exemption_disabled: 'INTEGER NOT NULL DEFAULT 0',
   patreon_tokens: 'INTEGER NOT NULL DEFAULT 0',
   patreon_tier: 'TEXT',
+  patreon_rewards_available_at: 'INTEGER NOT NULL DEFAULT 0',
   cl_catches: 'INTEGER NOT NULL DEFAULT 0',
   cl_fishes: 'INTEGER NOT NULL DEFAULT 0',
   cl_battles: 'INTEGER NOT NULL DEFAULT 0',
@@ -2364,15 +2366,52 @@ db.exec(`
     month_key TEXT NOT NULL,
     PRIMARY KEY (user_id, month_key)
   );
+  CREATE TABLE IF NOT EXISTS patreon_monthly_snapshots (
+    month_key TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS patreon_monthly_recipients (
+    month_key TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    tier TEXT NOT NULL,
+    PRIMARY KEY (month_key, user_id)
+  );
 `);
 
-// Grants the tier's monthly bundle once per user per month_key (e.g. "2026-10").
+function savePatreonMonthlySnapshot(monthKey, recipients, now = Date.now()) {
+  return db.transaction(() => {
+    const inserted = db.prepare(
+      'INSERT OR IGNORE INTO patreon_monthly_snapshots (month_key, created_at) VALUES (?, ?)'
+    ).run(monthKey, now);
+    if (!inserted.changes) return false;
+    const insertRecipient = db.prepare(
+      'INSERT INTO patreon_monthly_recipients (month_key, user_id, tier) VALUES (?, ?, ?)'
+    );
+    for (const recipient of recipients) {
+      if (!PATREON_TIER_PERKS[recipient.tier]?.monthly) throw new TypeError('Invalid Patreon snapshot tier.');
+      insertRecipient.run(monthKey, recipient.userId, recipient.tier);
+    }
+    return true;
+  }).immediate();
+}
+
+function getPatreonMonthlySnapshot(monthKey) {
+  if (!db.prepare('SELECT 1 FROM patreon_monthly_snapshots WHERE month_key = ?').get(monthKey)) return null;
+  return db.prepare(
+    'SELECT user_id AS userId, tier FROM patreon_monthly_recipients WHERE month_key = ? ORDER BY user_id'
+  ).all(monthKey);
+}
+
 function grantPatreonMonthly(userId, monthKey) {
   assertUserId(userId);
   return db.transaction(() => {
-    const user = getUser(userId);
-    const perks = PATREON_TIER_PERKS[user.patreon_tier];
-    if (!perks?.monthly) return { error: 'no_tier' };
+    const recipient = db.prepare(
+      'SELECT tier FROM patreon_monthly_recipients WHERE month_key = ? AND user_id = ?'
+    ).get(monthKey, userId);
+    if (!recipient) return { error: 'not_in_snapshot' };
+    const perks = PATREON_TIER_PERKS[recipient.tier];
+    if (!perks?.monthly) throw new Error(`Invalid Patreon tier in monthly snapshot for ${userId}.`);
+    getUser(userId);
     const marked = db.prepare(
       'INSERT OR IGNORE INTO patreon_monthly_sent (user_id, month_key) VALUES (?, ?)'
     ).run(userId, monthKey);
@@ -4817,7 +4856,7 @@ function takeUserItem(userId, itemName, amount = 1) {
 
 const PLAYER_BONUSES = Object.freeze({
   swap: { label: '+25% Golden/Shiny Swap rates', emoji: '🎟️' },
-  shiny: { label: '+25% Checklist Shiny rate', emoji: '<:eventticket:1558834590855077938>', short: 'Checklist Shiny' },
+  shiny: { label: '+25% Checklist Shiny spawn weight', emoji: '<:eventticket:1558834590855077938>', short: 'Checklist Shiny' },
   wb: { label: '+25% World Boss drop rate', emoji: '<:worldboss:1560318495084908646>', short: 'World Boss drop rate' },
   dxp: { label: 'Double EXP Bonus', emoji: '<:dxpticket:1560320022029541446>', short: 'Double EXP' },
   fish: { label: 'Golden Fishing spawns', emoji: '<:goldenrod:1558856912655876246>', short: 'Golden Fishing' },
@@ -10275,6 +10314,8 @@ module.exports = {
   BASE_POKERADAR_CHARGES,
   BASE_DOUBLE_XP_CHARGES,
   grantPatreonMonthly,
+  savePatreonMonthlySnapshot,
+  getPatreonMonthlySnapshot,
   getPatreonUserIds,
   PATREON_TIER_ORDER,
   PATREON_TIER_PERKS,
