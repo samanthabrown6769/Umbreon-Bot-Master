@@ -569,7 +569,7 @@ function getSwapExcludedSpecies() {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
-const EVENT_SPAWN_ODDS = 500;
+const EVENT_SPAWN_ODDS = 250;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
