@@ -324,6 +324,8 @@ const {
   markAutoSpawnHourlyTier,
   advanceEventSpawnPity,
   resetEventSpawnPity,
+  advanceEncounterPity,
+  resetEncounterPity,
   getUserEventProgress,
   getUserEventCatchCounts,
   getEventAnnouncementChannel,
@@ -373,6 +375,7 @@ const {
   getNextDailyReset,
   recordDailyCatch,
   getDailyCatchLeaderboard,
+  recordPokemonTradeStats,
   recordWildEncounterCounter,
   resetEncounterCounters,
   getEncounterCounters,
@@ -571,8 +574,8 @@ function getSwapExcludedSpecies() {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
-const EVENT_SPAWN_ODDS = 100;
-const EVENT_SPAWN_PITY_LIMIT = 100;
+const EVENT_SPAWN_ODDS = 250;
+const EVENT_SPAWN_PITY_LIMIT = 250;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
@@ -3009,6 +3012,7 @@ const ICONS = {
 
 // Patreon doubles the base full-odds shiny rate; event tickets have separate boosted rates.
 const BASE_SHINY_RATE = 1 / 1000;
+const FULL_ODDS_SHINY_PITY_LIMIT = 1000;
 // Incense: +10% shiny encounter rate and +10% promo item drop rate while server charges last.
 const INCENSE_BOOST = 1.1;
 const PATREON_SHINY_RATE = 1 / 500;
@@ -3034,6 +3038,7 @@ const LEGENDARY_GENERATION_ORDER = Object.freeze([
 ]);
 const LEGENDARY_BASE_CHANCE = 1 / 333;
 const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 / 250;
+const LEGENDARY_SPAWN_PITY_LIMIT = 333;
 // A hunt targets one specific Pokémon; the catches needed depend on its rarity.
 const DAILY_HUNT_CONFIG = Object.freeze({
   Common: { chance: 1, required: 5, rewards: { pokeballs: 2, greatballs: 1 } },
@@ -3460,6 +3465,12 @@ function rollSpawn(
     ? consumeEncounterModifier(userId)
     : 'normal';
   const chamberSpecies = getChamberSpawnSpecies();
+  const fallbackRaritySettings = poolName === 'water' || catchbot ? getRaritySettings() : null;
+  const fallbackLegendaryEnabled = Boolean(
+    fallbackRaritySettings && (poolName === 'land' || !rod || rod.enablesLegendary)
+  ) && fallbackRaritySettings.some((entry) =>
+    entry.name.toLowerCase() === 'legendary' && entry.spawn_weight > 0 && entry.pokemon_count > 0
+  );
 
   let forcedEvent = null;
   const forcedEventPool = poolName === 'water'
@@ -3488,7 +3499,23 @@ function rollSpawn(
     resetEventSpawnPity(halloweenEvent.id, userId);
   }
 
-  if (!forcedEvent && !catchbot && poolName === 'land' && userId !== null) {
+  const legendaryPityEligible = !forcedEvent
+    && !catchbot
+    && userId !== null
+    && (poolName === 'land' || fallbackLegendaryEnabled);
+  const legendaryPity = legendaryPityEligible
+    ? advanceEncounterPity(userId, 'legendary')
+    : 0;
+  const legendaryPityDue = legendaryPity >= LEGENDARY_SPAWN_PITY_LIMIT;
+  const finalizeSpawn = (pokemon, isLegendarySpawn = false) => {
+    if (userId !== null) {
+      if (pokemon.isShiny) resetEncounterPity(userId, 'shiny');
+      if (isLegendarySpawn) resetEncounterPity(userId, 'legendary');
+    }
+    return pokemon;
+  };
+
+  if (!forcedEvent && !legendaryPityDue && !catchbot && poolName === 'land' && userId !== null) {
     const specialPokemon = rollSpecialLegendarySpawn(
       userId,
       goldenRazzActive,
@@ -3496,12 +3523,18 @@ function rollSpawn(
       channelRateBoost,
       roleChanceBoost
     );
-    if (specialPokemon) return specialPokemon;
+    if (specialPokemon) {
+      return finalizeSpawn(
+        specialPokemon,
+        specialPokemon.rarity === 'Legendary' || specialPokemon.isLegendary || specialPokemon.isMythical
+      );
+    }
   }
 
   while (true) {
     let rarity;
     let pokemon;
+    let isLegendarySpawn = false;
     let isForcedEventSpawn = false;
     let forcedShiny = false;
     if (forcedEvent) {
@@ -3514,18 +3547,21 @@ function rollSpawn(
       const huntTarget = userId !== null && Math.random() < DAILY_HUNT_SPAWN_BOOST_CHANCE
         ? getActiveHuntTarget(userId)
         : null;
-      rarity = chooseEncounterRarity(
-        encounterModifier,
-        goldenRazzActive,
-        channelRateBoost,
-        roleChanceBoost,
-        userId
-      );
-      if (huntTarget) {
+      rarity = legendaryPityDue
+        ? 'Legendary'
+        : chooseEncounterRarity(
+          encounterModifier,
+          goldenRazzActive,
+          channelRateBoost,
+          roleChanceBoost,
+          userId
+        );
+      if (huntTarget && !legendaryPityDue) {
         pokemon = getRandomPokemon(null, false, false, false, null, [], [huntTarget.id]);
         pokemon.encounterRateText = '🎯 Daily Hunt boosted encounter';
       } else if (rarity === 'Legendary') {
         pokemon = rollEncounterLegendary(userId, chamberSpecies);
+        isLegendarySpawn = true;
         pokemon.encounterRateText = getLegendaryEncounterRateText(
           goldenRazzActive,
           channelRateBoost,
@@ -3554,10 +3590,8 @@ function rollSpawn(
       }
       pokemon.encounterModifier = encounterModifier;
     } else {
-      const raritySettings = getRaritySettings();
-      const legendaryEnabled = raritySettings.some((entry) =>
-        entry.name.toLowerCase() === 'legendary' && entry.spawn_weight > 0 && entry.pokemon_count > 0
-      );
+      const raritySettings = fallbackRaritySettings;
+      const legendaryEnabled = fallbackLegendaryEnabled;
       const rarityPool = raritySettings.filter(
         (entry) => entry.name.toLowerCase() !== 'gmax'
           && !['mega', 'shiny mega'].includes(entry.name.toLowerCase())
@@ -3588,8 +3622,10 @@ function rollSpawn(
         * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
         * (catchbot ? 0.1 : 1)
       );
-      if (legendaryEnabled && (!rod || rod.enablesLegendary) && Math.random() < legendaryChance) {
+      if (legendaryEnabled && (!rod || rod.enablesLegendary)
+          && (legendaryPityDue || Math.random() < legendaryChance)) {
         rarity = 'Legendary';
+        isLegendarySpawn = true;
       } else {
         let random = Math.random() * totalWeight;
         rarity = rarityPool[rarityPool.length - 1].name;
@@ -3661,8 +3697,25 @@ function rollSpawn(
       * (catchbot ? 1 : 1 + channelRateBoost / 100)
       * (incenseActive ? INCENSE_BOOST : 1)
       * (pokeradarActive ? 1.1 : 1);
+    const shinySpeciesKey = String(pokemon.speciesName).toLowerCase();
+    const fullOddsShinyEligible = !catchbot
+      && userId !== null
+      && !isForcedEventSpawn
+      && !eventTicketActive
+      && baseShinyRate === (isPatreonUser ? PATREON_SHINY_RATE : BASE_SHINY_RATE)
+      && !EGG_ONLY_SHINY_SPECIES_KEYS.has(shinySpeciesKey)
+      && (!FISH_ONLY_SHINY_KEYS.has(shinySpeciesKey)
+        || (rod && rod.enablesShiny
+          && (!FISH_PATREON_ONLY_SHINY_KEYS.has(shinySpeciesKey) || isPatreonUser)))
+      && !(isEventOpen(halloweenEvent) && isEventChecklistSpawn(pokemon));
+    const fullOddsShinyPity = fullOddsShinyEligible
+      ? advanceEncounterPity(userId, 'shiny')
+      : 0;
     pokemon.incenseActive = incenseActive;
-    pokemon.isShiny = isForcedEventSpawn ? forcedShiny : Math.random() < shinyChance;
+    pokemon.isShiny = isForcedEventSpawn
+      ? forcedShiny
+      : (Math.random() < shinyChance
+        || (fullOddsShinyEligible && fullOddsShinyPity >= FULL_ODDS_SHINY_PITY_LIMIT));
     if (pokemon.isShiny && !isForcedEventSpawn
         && EGG_ONLY_SHINY_SPECIES_KEYS.has(String(pokemon.speciesName).toLowerCase())) {
       pokemon.isShiny = false;
@@ -3683,8 +3736,8 @@ function rollSpawn(
       && eventTicketActive
       && isEventShinyTarget(pokemon)
     );
-    if (isForcedEventSpawn || !eventTicketActive) return pokemon;
-    if (!getEventPokemonKey(pokemon, false)) return pokemon;
+    if (isForcedEventSpawn || !eventTicketActive) return finalizeSpawn(pokemon, isLegendarySpawn);
+    if (!getEventPokemonKey(pokemon, false)) return finalizeSpawn(pokemon, isLegendarySpawn);
   }
 }
 
@@ -3760,9 +3813,19 @@ function rollExploreEncounter(userId, mapKey = 'grass') {
   const shinyBonus = getTotalEffectiveShinyBonus(userId);
   const shinyRate = (user.has_patreon ? PATREON_SHINY_RATE : BASE_SHINY_RATE)
     * (1 + getPatreonPerks(userId).shinyRatePct / 100) / (1 - shinyBonus / 100);
-  pokemon.isShiny = canShiny && Math.random() < shinyRate
-    && !EGG_ONLY_SHINY_SPECIES_KEYS.has(String(pokemon.speciesName).toLowerCase())
-    && !FISH_ONLY_SHINY_KEYS.has(String(pokemon.speciesName).toLowerCase());
+  const speciesKey = String(pokemon.speciesName).toLowerCase();
+  const fullOddsShinyEligible = canShiny
+    && !EGG_ONLY_SHINY_SPECIES_KEYS.has(speciesKey)
+    && !FISH_ONLY_SHINY_KEYS.has(speciesKey);
+  const fullOddsShinyPity = fullOddsShinyEligible
+    ? advanceEncounterPity(userId, 'shiny')
+    : 0;
+  pokemon.isShiny = canShiny
+    && (Math.random() < shinyRate
+      || (fullOddsShinyEligible && fullOddsShinyPity >= FULL_ODDS_SHINY_PITY_LIMIT))
+    && !EGG_ONLY_SHINY_SPECIES_KEYS.has(speciesKey)
+    && !FISH_ONLY_SHINY_KEYS.has(speciesKey);
+  if (pokemon.isShiny) resetEncounterPity(userId, 'shiny');
   pokemon.isEventShiny = false;
   pokemon.isExplore = true;
   pokemon.encounterModifier = 'normal';
@@ -9091,7 +9154,7 @@ function findTradeCatch(ownerId, spec) {
 // Box (non-team, unlocked) copies of one variant; the buddy is offered last.
 function getTradeableCatchRows(ownerId, entry, limit = Number.MAX_SAFE_INTEGER) {
   return db.prepare(`
-    SELECT id, name, caught_ball FROM catches
+    SELECT id, name, rarity, is_shiny, caught_ball FROM catches
     WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
       AND in_team = 0
     ORDER BY (id = COALESCE((SELECT buddy_catch_id FROM users WHERE id = ?), -1)), id
@@ -9231,6 +9294,8 @@ async function handleNameTrade(message, userId, targetUser, yourArg, theirArg) {
       if (!stillYours || !stillTheirs) return false;
       db.prepare('UPDATE catches SET user_id = ? WHERE id = ?').run(targetUser.id, yourMon.id);
       db.prepare('UPDATE catches SET user_id = ? WHERE id = ?').run(userId, theirMon.id);
+      recordPokemonTradeStats(targetUser.id, yourMon);
+      recordPokemonTradeStats(userId, theirMon);
       db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id IN (?, ?)')
         .run(yourMon.id, theirMon.id);
       rebaseTransferredPokemon(targetUser.id, yourMon.id);
@@ -9400,15 +9465,16 @@ function executeMultiTrade(session) {
       for (const entry of side.pokemon.values()) {
         const rows = getTradeableCatchRows(side.user.id, entry, entry.amount);
         if (rows.length < entry.amount) return `${side.user.username} no longer has ${entry.amount}x ${entry.name}.`;
-        moves.push({ from: side.user.id, to: session.sides[1 - index].user.id, ids: rows.map((row) => row.id), buddyId });
+        moves.push({ from: side.user.id, to: session.sides[1 - index].user.id, pokemon: rows, buddyId });
       }
     }
     for (const move of moves) {
-      for (const id of move.ids) {
-        db.prepare('UPDATE catches SET user_id = ? WHERE id = ?').run(move.to, id);
-        db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(id);
-        rebaseTransferredPokemon(move.to, id);
-        syncNewCatchState(move.to, id);
+      for (const pokemon of move.pokemon) {
+        db.prepare('UPDATE catches SET user_id = ? WHERE id = ?').run(move.to, pokemon.id);
+        db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(pokemon.id);
+        recordPokemonTradeStats(move.to, pokemon);
+        rebaseTransferredPokemon(move.to, pokemon.id);
+        syncNewCatchState(move.to, pokemon.id);
       }
     }
     for (let index = 0; index < 2; index += 1) {

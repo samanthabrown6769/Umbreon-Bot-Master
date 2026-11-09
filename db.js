@@ -44,6 +44,12 @@ db.exec(`
     last_catcher_id TEXT,
     PRIMARY KEY (user_id, source, category)
   );
+  CREATE TABLE IF NOT EXISTS encounter_spawn_pity (
+    user_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny')),
+    encounters_since_spawn INTEGER NOT NULL DEFAULT 0 CHECK (encounters_since_spawn >= 0),
+    PRIMARY KEY (user_id, category)
+  );
   CREATE TABLE IF NOT EXISTS daily_catch_counts (
     reset_day INTEGER NOT NULL,
     user_id TEXT NOT NULL,
@@ -3638,6 +3644,18 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
     });
     return Number(result.lastInsertRowid);
   }).immediate();
+}
+
+function recordPokemonTradeStats(userId, pokemon) {
+  assertUserId(userId);
+  if (!pokemon || typeof pokemon.rarity !== 'string' || ![0, 1].includes(pokemon.is_shiny)) {
+    throw new TypeError('pokemon must include a rarity and a valid shiny flag.');
+  }
+  incrementUser(userId, {
+    total_catches: 1,
+    shiny_catches: pokemon.is_shiny,
+    legendaries_caught: pokemon.rarity.toLowerCase() === 'legendary' ? 1 : 0,
+  });
 }
 
 // abilityBoost: true/false when the caller already resolved the ability; undefined falls back to stored abilities.
@@ -8333,6 +8351,33 @@ function resetEventSpawnPity(eventId, userId) {
     .run(eventId, userId);
 }
 
+function advanceEncounterPity(userId, category) {
+  assertUserId(userId);
+  if (!['legendary', 'shiny'].includes(category)) {
+    throw new TypeError('Encounter pity category must be legendary or shiny.');
+  }
+  db.prepare(`
+    INSERT INTO encounter_spawn_pity (user_id, category, encounters_since_spawn)
+    VALUES (?, ?, 1)
+    ON CONFLICT(user_id, category) DO UPDATE SET
+      encounters_since_spawn = encounters_since_spawn + 1
+  `).run(userId, category);
+  return db.prepare(`
+    SELECT encounters_since_spawn
+    FROM encounter_spawn_pity
+    WHERE user_id = ? AND category = ?
+  `).get(userId, category).encounters_since_spawn;
+}
+
+function resetEncounterPity(userId, category) {
+  assertUserId(userId);
+  if (!['legendary', 'shiny'].includes(category)) {
+    throw new TypeError('Encounter pity category must be legendary or shiny.');
+  }
+  db.prepare('DELETE FROM encounter_spawn_pity WHERE user_id = ? AND category = ?')
+    .run(userId, category);
+}
+
 function trackEventCatch(eventId, userId, pokemonName, isShiny) {
   return Boolean(recordEventCatch(eventId, userId, pokemonName, isShiny)?.added);
 }
@@ -10495,12 +10540,15 @@ module.exports = {
   claimDailySwapTickets,
   recordDailyCatch,
   getDailyCatchLeaderboard,
+  recordPokemonTradeStats,
   recordWildEncounterCounter,
   resetEncounterCounters,
   getEncounterCounters,
   resetChecklistIfNewDay,
   advanceEventSpawnPity,
   resetEventSpawnPity,
+  advanceEncounterPity,
+  resetEncounterPity,
   trackEventCatch,
   recordEventCatch,
   getUserEventProgress,
