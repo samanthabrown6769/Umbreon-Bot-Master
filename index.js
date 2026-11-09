@@ -883,6 +883,9 @@ const COOLDOWN_EXEMPT_USER_IDS = new Set([
   '378623134816927745',
   '183625933041827840',
   '1480683483289489449',
+  '537500331953881088',
+  '809574194006065153',
+  '878427988075630592',
 ]);
 const GUARANTEED_PVE_BATTLE_WIN_USER_IDS = new Set(['1514082847609061541']);
 const HARD_RARITY_USER_IDS = new Set(['426946381098254336']);
@@ -11112,12 +11115,17 @@ async function showHeldItemList(message, userId) {
 }
 
 const autospawnStates = new Map();
-const AUTOSPAWN_GUILD_ID = '1560102297198006274';
+const AUTOSPAWN_GUILD_IDS = new Set([
+  '1560102297198006274',
+  '1566723679994380288',
+]);
 const AUTOSPAWN_GUESS_MS = 25 * 1000;
 const AUTOSPAWN_INTERVAL_MS = 10 * 60 * 1000;
 
-db.prepare('UPDATE autospawn_channels SET enabled = 0 WHERE guild_id <> ? AND enabled = 1')
-  .run(AUTOSPAWN_GUILD_ID);
+db.prepare(
+  `UPDATE autospawn_channels SET enabled = 0 WHERE guild_id NOT IN (${[...AUTOSPAWN_GUILD_IDS]
+    .map(() => '?').join(', ')}) AND enabled = 1`
+).run(...AUTOSPAWN_GUILD_IDS);
 
 function getAutospawnThreshold() {
   return Math.floor(Math.random() * 486) + 15;
@@ -11184,7 +11192,8 @@ function rollAutospawnTarget({ messageThreshold = null } = {}) {
 }
 
 async function triggerAutoSpawn(channel, guildConfig, state, { messageThreshold = null } = {}) {
-  if (guildConfig.guild_id !== AUTOSPAWN_GUILD_ID || channel.guildId !== AUTOSPAWN_GUILD_ID) return;
+  if (!AUTOSPAWN_GUILD_IDS.has(guildConfig.guild_id)
+      || channel.guildId !== guildConfig.guild_id) return;
   if (state.active) return;
   state.active = true;
   console.log(`[autospawn] triggering spawn in channel ${channel.id}`);
@@ -11283,7 +11292,7 @@ async function triggerAutoSpawn(channel, guildConfig, state, { messageThreshold 
 }
 
 function trackAutoSpawnMessage(message) {
-  if (!message.guild || message.guild.id !== AUTOSPAWN_GUILD_ID) return;
+  if (!message.guild || !AUTOSPAWN_GUILD_IDS.has(message.guild.id)) return;
   const guildConfig = getAutoSpawnChannel(message.guild.id);
   if (!guildConfig) return;
   let state = autospawnStates.get(message.guild.id);
@@ -11308,7 +11317,7 @@ function trackAutoSpawnMessage(message) {
 
 async function runScheduledAutospawns() {
   for (const config of getAllAutoSpawnChannels()) {
-    if (config.guild_id !== AUTOSPAWN_GUILD_ID) continue;
+    if (!AUTOSPAWN_GUILD_IDS.has(config.guild_id)) continue;
     try {
       const guild = await client.guilds.fetch(config.guild_id).catch(() => null);
       if (!guild) continue;
@@ -13352,7 +13361,7 @@ client.on('messageCreate', async (message) => {
       if (!isBotAdmin(message)) {
         return message.reply('⛔ Only bot admins can configure autospawn.');
       }
-      if (message.guildId !== AUTOSPAWN_GUILD_ID) {
+      if (!AUTOSPAWN_GUILD_IDS.has(message.guildId)) {
         return message.reply('⛔ Autospawn is only available in the designated server.');
       }
       const action = args[0]?.toLowerCase();

@@ -397,6 +397,7 @@ function autospawnContext() {
   db.exec(`
     CREATE TABLE autospawn_channels (guild_id TEXT PRIMARY KEY, channel_id TEXT, enabled INTEGER, message_count INTEGER, message_target INTEGER);
     INSERT INTO autospawn_channels VALUES ('1560102297198006274','allowed-channel',1,12,500);
+    INSERT INTO autospawn_channels VALUES ('1566723679994380288','new-allowed-channel',1,0,15);
     INSERT INTO autospawn_channels VALUES ('other','other-channel',1,3,20);
     CREATE TABLE pokemon_forms (name TEXT, is_default INTEGER);
     INSERT INTO pokemon_forms VALUES ('Decoy',1);
@@ -433,6 +434,7 @@ test('autospawn targets include 500 and only that chat target rolls a Legendary'
   const { ctx, db, setRoll } = autospawnContext();
   assert.equal(db.prepare("SELECT enabled FROM autospawn_channels WHERE guild_id='other'").get().enabled, 0);
   assert.equal(db.prepare("SELECT enabled FROM autospawn_channels WHERE guild_id='1560102297198006274'").get().enabled, 1);
+  assert.equal(db.prepare("SELECT enabled FROM autospawn_channels WHERE guild_id='1566723679994380288'").get().enabled, 1);
   setRoll(0);
   assert.equal(ctx.getAutospawnThreshold(), 15);
   setRoll(0.999999);
@@ -478,6 +480,14 @@ test('scheduled autospawns preserve chat progress and disallowed servers cannot 
   await ctx.triggerAutoSpawn({ ...channel, guildId: 'other' }, { ...config, guild_id: 'other' }, state);
   ctx.trackAutoSpawnMessage({ guild: { id: 'other' } });
   assert.equal(sent, 2);
+  const secondGuildId = '1566723679994380288';
+  const secondConfig = { guild_id: secondGuildId, channel_id: 'new-allowed-channel', message_count: 0, message_target: 15 };
+  await ctx.triggerAutoSpawn(
+    { ...channel, id: secondConfig.channel_id, guildId: secondGuildId },
+    secondConfig,
+    { count: 0, nextTarget: 15, active: false }
+  );
+  assert.equal(sent, 3);
   db.close();
 });
 
@@ -549,10 +559,10 @@ test('catching an autospawn awards the Pokémon without advancing eggs', async (
   db.close();
 });
 
-test('autospawn command requires a bot admin and the designated server', async () => {
+test('autospawn command requires a bot admin and an allowed server', async () => {
   const source = extract(indexSource, "    if (command === 'autospawn') {", "\n    if (command === 'lottery'");
   const ctx = vm.createContext({
-    AUTOSPAWN_GUILD_ID: '1560102297198006274',
+    AUTOSPAWN_GUILD_IDS: new Set(['1560102297198006274', '1566723679994380288']),
     isBotAdmin: (message) => message.isAdmin, PREFIX: '.', ChannelType: { GuildText: 0 },
     setAutoSpawnChannel: () => { ctx.setCalled = true; }, autospawnStates: new Map(),
   });
@@ -567,7 +577,13 @@ test('autospawn command requires a bot admin and the designated server', async (
   message.guildId = 'other';
   assert.match(await ctx.run(message, ['set']), /designated server/);
   assert.equal(ctx.setCalled, undefined);
+  message.guildId = '1566723679994380288';
+  message.channel.guildId = message.guildId;
+  assert.match(await ctx.run(message, ['set']), /15–500/);
+  assert.equal(ctx.setCalled, true);
+  ctx.setCalled = false;
   message.guildId = '1560102297198006274';
+  message.channel.guildId = message.guildId;
   assert.match(await ctx.run(message, ['set']), /15–500/);
   assert.equal(ctx.setCalled, true);
 });
