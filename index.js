@@ -17441,11 +17441,17 @@ client.on('messageCreate', async (message) => {
           ...(() => {
             const eventCatch = getEventSpawnCatch(userId);
             return [
-              { name: '\u200b', value: '🎃 Event spawn', inline: true },
-              { name: '\u200b', value: eventCatch ? eventCatch.last_pokemon : 'N/A', inline: true },
+              { name: '\u200b', value: `${EMOJIS.eventticket} Event spawn`, inline: true },
               {
                 name: '\u200b',
-                value: eventCatch ? `<t:${Math.floor(eventCatch.last_caught_at / 1000)}:d>` : 'Never',
+                value: `${eventCatch.encounters_since.toLocaleString()} - ${eventCatch.last_pokemon || 'N/A'}`,
+                inline: true,
+              },
+              {
+                name: '\u200b',
+                value: eventCatch.last_caught_at
+                  ? `<t:${Math.floor(eventCatch.last_caught_at / 1000)}:d>`
+                  : 'Never',
                 inline: true,
               },
             ];

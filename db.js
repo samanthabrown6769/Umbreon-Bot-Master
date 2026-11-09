@@ -44,10 +44,11 @@ db.exec(`
     last_catcher_id TEXT,
     PRIMARY KEY (user_id, source, category)
   );
-  CREATE TABLE IF NOT EXISTS user_event_spawn_catches (
+  CREATE TABLE IF NOT EXISTS user_event_spawn_counters (
     user_id TEXT PRIMARY KEY,
-    last_caught_at INTEGER NOT NULL,
-    last_pokemon TEXT NOT NULL
+    encounters_since INTEGER NOT NULL DEFAULT 0,
+    last_caught_at INTEGER,
+    last_pokemon TEXT
   );
   CREATE TABLE IF NOT EXISTS encounter_spawn_pity (
     user_id TEXT NOT NULL,
@@ -63,6 +64,7 @@ db.exec(`
     PRIMARY KEY (reset_day, user_id)
   );
 `);
+db.exec('DROP TABLE IF EXISTS user_event_spawn_catches');
 const initializeEncounterCounter = db.prepare(`
   INSERT OR IGNORE INTO user_encounter_counters (user_id, source, category)
   VALUES (?, ?, ?)
@@ -8234,6 +8236,11 @@ function recordWildEncounterCounter(userId, source) {
     SET encounters_since = encounters_since + 1
     WHERE user_id = ? AND source = ?
   `).run(userId, source);
+  db.prepare(`
+    INSERT INTO user_event_spawn_counters (user_id, encounters_since)
+    VALUES (?, 1)
+    ON CONFLICT(user_id) DO UPDATE SET encounters_since = encounters_since + 1
+  `).run(userId);
 }
 
 function resetEncounterCounters(userId, source, categories, pokemonName, timestamp = Date.now()) {
@@ -8273,9 +8280,10 @@ function recordEventSpawnCatch(userId, pokemonName, timestamp = Date.now()) {
     throw new TypeError('A Pokémon name is required to record an event spawn catch.');
   }
   db.prepare(`
-    INSERT INTO user_event_spawn_catches (user_id, last_caught_at, last_pokemon)
-    VALUES (?, ?, ?)
+    INSERT INTO user_event_spawn_counters (user_id, encounters_since, last_caught_at, last_pokemon)
+    VALUES (?, 0, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
+      encounters_since = 0,
       last_caught_at = excluded.last_caught_at,
       last_pokemon = excluded.last_pokemon
   `).run(userId, timestamp, pokemonName.trim());
@@ -8284,8 +8292,8 @@ function recordEventSpawnCatch(userId, pokemonName, timestamp = Date.now()) {
 function getEventSpawnCatch(userId) {
   assertUserId(userId);
   return db.prepare(
-    'SELECT last_caught_at, last_pokemon FROM user_event_spawn_catches WHERE user_id = ?'
-  ).get(userId) || null;
+    'SELECT encounters_since, last_caught_at, last_pokemon FROM user_event_spawn_counters WHERE user_id = ?'
+  ).get(userId) || { encounters_since: 0, last_caught_at: null, last_pokemon: null };
 }
 
 function getEncounterCounters(userId) {
