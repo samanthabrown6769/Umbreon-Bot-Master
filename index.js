@@ -569,7 +569,7 @@ function getSwapExcludedSpecies() {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
-const EVENT_SPAWN_ODDS = 250;
+const EVENT_SPAWN_ODDS = 100;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
@@ -1897,7 +1897,7 @@ const ROD_CONFIGS = {
   },
   'good rod': {
     name: 'Good Rod',
-    baseShinyRate: 1 / 2500,
+    baseShinyRate: 1 / 1250,
     baseSpawnChance: 0.75,
     cooldownMs: FISHING_COOLDOWN_MS,
     pullWaitMs: 10000,
@@ -1907,7 +1907,7 @@ const ROD_CONFIGS = {
   },
   'super rod': {
     name: 'Super Rod',
-    baseShinyRate: 1 / 1250,
+    baseShinyRate: 1 / 625,
     baseSpawnChance: 0.8,
     cooldownMs: FISHING_COOLDOWN_MS,
     pullWaitMs: 6000,
@@ -1917,7 +1917,7 @@ const ROD_CONFIGS = {
   },
   'golden rod': {
     name: 'Golden Rod',
-    baseShinyRate: 1 / 1250,
+    baseShinyRate: 1 / 625,
     baseSpawnChance: 1,
     cooldownMs: FISHING_COOLDOWN_MS,
     pullWaitMs: 6000,
@@ -3005,13 +3005,13 @@ const ICONS = {
 };
 
 // Patreon doubles the base full-odds shiny rate; event tickets have separate boosted rates.
-const BASE_SHINY_RATE = 1 / 2000;
+const BASE_SHINY_RATE = 1 / 1000;
 // Incense: +10% shiny encounter rate and +10% promo item drop rate while server charges last.
 const INCENSE_BOOST = 1.1;
-const PATREON_SHINY_RATE = 1 / 1000;
+const PATREON_SHINY_RATE = 1 / 500;
 const EVENT_TICKET_SHINY_RATES = Object.freeze({
-  patreon: { event: 1 / 100, nonEvent: 1 / 500 },
-  standard: { event: 1 / 200, nonEvent: 1 / 1000 },
+  patreon: { event: 1 / 50, nonEvent: 1 / 250 },
+  standard: { event: 1 / 100, nonEvent: 1 / 500 },
 });
 const CATCHBOT_SHINY_MULTIPLIER = 0.25;
 const GRAZZ_ENCOUNTERS_PER_BERRY = 50;
@@ -3029,8 +3029,8 @@ const LEGENDARY_GENERATION_ORDER = Object.freeze([
   { generation: 'generation-vi', rollChance: 1 / 5 },
   { generation: 'generation-vii', rollChance: 1 / 5 },
 ]);
-const LEGENDARY_BASE_CHANCE = 1 / 666;
-const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 / 500;
+const LEGENDARY_BASE_CHANCE = 1 / 333;
+const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 / 250;
 // A hunt targets one specific Pokémon; the catches needed depend on its rarity.
 const DAILY_HUNT_CONFIG = Object.freeze({
   Common: { chance: 1, required: 5, rewards: { pokeballs: 2, greatballs: 1 } },
