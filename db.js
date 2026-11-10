@@ -6420,7 +6420,7 @@ const STARTER_SPECIES_NAMES = Object.freeze([
   'Sprigatito', 'Fuecoco', 'Quaxly',
 ]);
 // Starter evolution lines are this many times likelier than other Pokémon of the same rarity to spawn.
-const STARTER_SPAWN_WEIGHT = 4;
+const STARTER_SPAWN_WEIGHT = 6;
 let starterChainIds = null;
 function getStarterChainIds() {
   if (!starterChainIds) {

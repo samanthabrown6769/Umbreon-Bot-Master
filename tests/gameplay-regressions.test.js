@@ -306,6 +306,44 @@ test('spawn selection applies chamber weights and Legendary Box exclusions', () 
   db.close();
 });
 
+test('starter and Daily Hunt encounters use their increased spawn chances', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (
+      id INTEGER PRIMARY KEY, species_id INTEGER, evolution_chain_id INTEGER, is_default INTEGER,
+      rarity TEXT, is_water INTEGER, name TEXT, species_name TEXT, slug TEXT,
+      base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER, types TEXT,
+      is_legendary INTEGER, is_mythical INTEGER
+    );
+    INSERT INTO pokemon_forms VALUES
+      (1,1,1,1,'Uncommon',0,'Ordinary','Ordinary','ordinary',50,50,50,50,'["normal"]',0,0),
+      (725,725,375,1,'Uncommon',0,'Litten','Litten','litten',50,50,50,50,'["fire"]',0,0);
+  `);
+  let roll = 0;
+  const math = Object.create(Math);
+  math.random = () => roll;
+  const ctx = vm.createContext({
+    db, Math: math, pickWeighted: (candidates, weightOf) => pickWeighted(candidates, weightOf, () => roll),
+    randomPokemonCache: new Map(), RANDOM_POKEMON_CACHE_MS: 5000,
+    getStarterChainIds: () => new Set([375]),
+    getCachedPokemonForm: (id) => db.prepare('SELECT * FROM pokemon_forms WHERE id=?').get(id),
+  });
+  vm.runInContext(extract(dbSource, 'const STARTER_SPECIES_NAMES =', '\nconst RANDOM_POKEMON_CACHE_MS'), ctx);
+  vm.runInContext(extract(dbSource, 'function getRandomPokemon(', '\nlet raritySettingsCache'), ctx);
+  roll = 0.1;
+  assert.equal(ctx.getRandomPokemon('Uncommon').name, 'Ordinary');
+  roll = 0.2;
+  assert.equal(ctx.getRandomPokemon('Uncommon').name, 'Litten');
+
+  const huntChanceContext = vm.createContext({});
+  vm.runInContext(
+    extract(indexSource, 'const DAILY_HUNT_SPAWN_BOOST_CHANCE =', '\nfunction getActiveHuntTarget'),
+    huntChanceContext
+  );
+  assert.equal(vm.runInContext('DAILY_HUNT_SPAWN_BOOST_CHANCE', huntChanceContext), 0.25);
+  db.close();
+});
+
 test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier', () => {
   let rolls = [];
   const math = Object.create(Math);

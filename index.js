@@ -3434,7 +3434,7 @@ function rollSpecialLegendarySpawn(
 }
 
 // Chance that a land encounter is replaced by the user's active Daily Hunt target.
-const DAILY_HUNT_SPAWN_BOOST_CHANCE = 0.1;
+const DAILY_HUNT_SPAWN_BOOST_CHANCE = 0.25;
 
 function getActiveHuntTarget(userId) {
   const user = getUser(userId);
