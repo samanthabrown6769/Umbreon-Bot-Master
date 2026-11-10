@@ -104,10 +104,10 @@
   },
   {
     "slug": "iron-bundle",
-    "sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp",
-    "shiny_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp",
-    "animated_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/991.webp",
-    "shiny_animated_sprite": "https://assets.pokestats.gg/pokeapi/orig/pokemon/versions/generation-ix/scarlet-violet/shiny/991.webp"
+    "sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1794260477/ezgif.com-resize_2.webp",
+    "shiny_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1794260477/ezgif.com-resize_3.webp",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1794260477/ezgif.com-resize_2.webp",
+    "shiny_animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1794260477/ezgif.com-resize_3.webp"
   },
   {
     "slug": "iron-jugulis",

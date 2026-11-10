@@ -31,7 +31,18 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS bot_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
-  )
+  );
+  CREATE TABLE IF NOT EXISTS pokemon_admin_sprites (
+    slug TEXT PRIMARY KEY,
+    normal_url TEXT NOT NULL,
+    shiny_url TEXT
+  );
+  CREATE TABLE IF NOT EXISTS pokemon_admin_emojis (
+    slug TEXT NOT NULL,
+    variant TEXT NOT NULL CHECK (variant IN ('normal', 'shiny', 'golden')),
+    emoji TEXT NOT NULL,
+    PRIMARY KEY (slug, variant)
+  );
 `);
 db.exec(`
   CREATE TABLE IF NOT EXISTS user_encounter_counters (
@@ -463,28 +474,65 @@ function updatePokemonSpriteLinks(formId, normalUrl, shinyUrl = null) {
     'SELECT id, slug, name, shiny_sprite FROM pokemon_forms WHERE id = ?'
   ).get(formId);
   if (!form) return null;
-  const updates = {
-    sprite: normalUrl,
-    animated_sprite: normalUrl,
-  };
-  if (shinyUrl) {
-    updates.shiny_sprite = shinyUrl;
-    updates.shiny_animated_sprite = shinyUrl;
-  }
-  updatePokemonDatabaseOverride(form.slug, updates);
-  db.prepare(`
-    UPDATE pokemon_forms
-    SET sprite = ?, shiny_sprite = ?
-    WHERE id = ?
-  `).run(normalUrl, shinyUrl || form.shiny_sprite || normalUrl, formId);
+  db.transaction(() => {
+    db.prepare(`
+      INSERT INTO pokemon_admin_sprites (slug, normal_url, shiny_url) VALUES (?, ?, ?)
+      ON CONFLICT(slug) DO UPDATE SET normal_url = excluded.normal_url,
+        shiny_url = COALESCE(excluded.shiny_url, pokemon_admin_sprites.shiny_url)
+    `).run(form.slug, normalUrl, shinyUrl);
+    db.prepare(`
+      UPDATE pokemon_forms SET sprite = ?, shiny_sprite = ? WHERE id = ?
+    `).run(normalUrl, shinyUrl || form.shiny_sprite || normalUrl, formId);
+  }).immediate();
+  refreshPokemonSpriteOverrides();
+  return { ...form, sprite: normalUrl, shiny_sprite: shinyUrl || form.shiny_sprite || normalUrl };
+}
+
+function refreshPokemonSpriteOverrides() {
   const animatedSprites = new Map();
   for (const record of loadPokemonDatabase().values()) {
     if (record.animated || record.shinyAnimated) {
       animatedSprites.set(record.slug, { normal: record.animated, shiny: record.shinyAnimated });
     }
   }
+  for (const row of db.prepare('SELECT slug, normal_url, shiny_url FROM pokemon_admin_sprites').all()) {
+    const previous = animatedSprites.get(row.slug) || {};
+    animatedSprites.set(row.slug, { normal: row.normal_url, shiny: row.shiny_url || previous.shiny });
+  }
   setSpriteOverrides(animatedSprites);
-  return { ...form, sprite: normalUrl, shiny_sprite: shinyUrl || form.shiny_sprite || normalUrl };
+}
+
+function applyPokemonAdminSpriteOverrides() {
+  db.exec(`
+    UPDATE pokemon_forms SET
+      sprite = (SELECT normal_url FROM pokemon_admin_sprites WHERE slug = pokemon_forms.slug),
+      shiny_sprite = COALESCE(
+        (SELECT shiny_url FROM pokemon_admin_sprites WHERE slug = pokemon_forms.slug), shiny_sprite
+      )
+    WHERE slug IN (SELECT slug FROM pokemon_admin_sprites)
+  `);
+}
+
+function setPokemonSpriteEmoji(formId, variant, emoji) {
+  if (!Number.isSafeInteger(formId) || formId <= 0) throw new TypeError('Invalid Pokémon form ID.');
+  if (!['normal', 'shiny', 'golden'].includes(variant)) throw new TypeError('Invalid Pokémon emoji variant.');
+  if (typeof emoji !== 'string' || !/^<a?:[a-zA-Z0-9_]{2,32}:\d{15,25}>$/.test(emoji)) {
+    throw new TypeError('A custom Discord emoji is required.');
+  }
+  const form = db.prepare('SELECT id, slug, name FROM pokemon_forms WHERE id = ?').get(formId);
+  if (!form) return null;
+  db.prepare(`
+    INSERT INTO pokemon_admin_emojis (slug, variant, emoji) VALUES (?, ?, ?)
+    ON CONFLICT(slug, variant) DO UPDATE SET emoji = excluded.emoji
+  `).run(form.slug, variant, emoji);
+  return form;
+}
+
+function getPokemonSpriteEmojiOverrides() {
+  return db.prepare(`
+    SELECT pokemon_forms.slug, pokemon_forms.name, pokemon_admin_emojis.variant, pokemon_admin_emojis.emoji
+    FROM pokemon_admin_emojis JOIN pokemon_forms ON pokemon_forms.slug = pokemon_admin_emojis.slug
+  `).all();
 }
 
 const pokemonMovesPath = path.join(__dirname, 'data', 'pokemon-moves.json');
@@ -698,6 +746,7 @@ const userDefinitions = {
   held_egg_target: 'INTEGER NOT NULL DEFAULT 0',
   egg_auto_equip: 'INTEGER NOT NULL DEFAULT 0',
   egg_auto_hatch: 'INTEGER NOT NULL DEFAULT 0',
+  egg_use_incubators: 'INTEGER NOT NULL DEFAULT 1',
   swaps_done: 'INTEGER NOT NULL DEFAULT 0',
   fishes_caught: 'INTEGER NOT NULL DEFAULT 0',
   quests_completed: 'INTEGER NOT NULL DEFAULT 0',
@@ -1923,7 +1972,6 @@ db.transaction(() => {
 })();
 
 // pokemon-database/*.json: edit name, rarity and sprite URLs by slug; extra files and new slugs are supported.
-const animatedSprites = new Map();
 db.transaction(() => {
   const getFormBySlug = db.prepare('SELECT id, name, sprite, shiny_sprite FROM pokemon_forms WHERE slug = ?');
   const updateForm = db.prepare('UPDATE pokemon_forms SET name = ?, sprite = ?, shiny_sprite = ? WHERE id = ?');
@@ -1969,12 +2017,10 @@ db.transaction(() => {
       setImportedMarketRarity.run(record.rarity, form.id);
       persistImportedRarityOverride.run(form.id, record.rarity);
     }
-    if (record.animated || record.shinyAnimated) {
-      animatedSprites.set(record.slug, { normal: record.animated, shiny: record.shinyAnimated });
-    }
   }
+  applyPokemonAdminSpriteOverrides();
 })();
-setSpriteOverrides(animatedSprites);
+refreshPokemonSpriteOverrides();
 
 const defaultRaritySettings = [
   ['Common', 400, 70],
@@ -10483,6 +10529,8 @@ module.exports = {
   rerollBuddyIv,
   renamePokemonForm,
   updatePokemonSpriteLinks,
+  setPokemonSpriteEmoji,
+  getPokemonSpriteEmojiOverrides,
   SPECIAL_SPAWN_RESERVED_SPECIES,
   getFactionLeaders,
   FACTION_TEAMS,

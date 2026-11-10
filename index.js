@@ -122,6 +122,8 @@ const {
   rerollBuddyIv,
   renamePokemonForm,
   updatePokemonSpriteLinks,
+  setPokemonSpriteEmoji,
+  getPokemonSpriteEmojiOverrides,
   SPECIAL_SPAWN_RESERVED_SPECIES: BASE_SPAWN_RESERVED_SPECIES,
   findPokemonForms,
   addCustomPokemon,
@@ -763,31 +765,83 @@ function canUseEggAutomation(userId) {
   return Boolean(getPatreonPerks(userId).autoEquipEggs);
 }
 
-// Equips another Egg after a hatch (held slot first, then free incubator slots). Returns summary lines.
-function autoEquipEggs(userId, { incubators = true } = {}) {
-  const user = getUser(userId);
-  if (!user.egg_auto_equip || !canUseEggAutomation(userId)) return [];
+function fillEggIncubators(userId, { automatic = false } = {}) {
   const lines = [];
-  if (user.held_egg_target <= 0 && user.vote_eggs > 0) {
-    const target = getEggCatchTarget(userId);
-    if (!holdEgg(userId, target).error) lines.push(`Auto-equipped a new held Egg (**0/${target} catches**).`);
-  }
-  if (!incubators) return lines;
   for (const [type, itemName, label] of [
     ['incubator', 'Incubator', 'Incubator'],
     ['super_incubator', 'Super Incubator', 'Super Incubator'],
   ]) {
     const used = getUserEggIncubators(userId).filter((entry) => entry.incubator_type === type).length;
+    const freeSlots = EGG_INCUBATOR_LIMITS[type] - used;
     const owned = getUserItems(userId).find((item) => item.item_name === itemName)?.amount || 0;
-    const amount = Math.min(EGG_INCUBATOR_LIMITS[type] - used, owned, getUser(userId).vote_eggs);
-    if (amount < 1) continue;
+    const amount = Math.min(freeSlots, owned, getUser(userId).vote_eggs);
+    if (amount < 1) {
+      if (!automatic) {
+        const reason = freeSlots < 1 ? 'all slots are in use'
+          : owned < 1 ? 'no unused incubators are available' : 'no Eggs are available';
+        lines.push(`${label}: skipped (${reason}).`);
+      }
+      continue;
+    }
     const targets = Array.from({ length: amount }, () => {
       const catches = getEggCatchTarget(userId);
       return type === 'super_incubator' ? Math.ceil(catches / 2) : catches;
     });
     const result = startEggIncubators(userId, type, targets);
-    if (!result.error) lines.push(`Auto-equipped **${result.started.length} ${label}${result.started.length === 1 ? '' : 's'}**.`);
+    if (result.error) {
+      lines.push(`${label}: could not start Eggs (${result.error.replaceAll('_', ' ')}).`);
+      continue;
+    }
+    const count = result.started.length;
+    lines.push(automatic
+      ? `Auto-equipped **${count} ${label}${count === 1 ? '' : 's'}**.`
+      : `Started **${count} ${label}${count === 1 ? '' : 's'}** ` +
+        `(slot${count === 1 ? '' : 's'} ${result.started.map((entry) => entry.slot).join(', ')}).`);
   }
+  return lines;
+}
+
+function holdAllEggs(userId) {
+  const summary = [];
+  const user = getUser(userId);
+  if (user.held_egg_target > 0) {
+    summary.push('Your free held-Egg slot is already in use.');
+  } else if (user.vote_eggs > 0) {
+    const target = getEggCatchTarget(userId);
+    const result = holdEgg(userId, target);
+    if (result.error === 'no_eggs') {
+      summary.push('No Eggs were available for the free held-Egg slot.');
+    } else if (result.error) {
+      throw new Error(`Could not start the held Egg: ${result.error}.`);
+    } else {
+      summary.push(`Started the free held-Egg slot (**0/${target} catches**).`);
+    }
+  } else {
+    summary.push('No Eggs were available for the free held-Egg slot.');
+  }
+  if (user.egg_use_incubators) {
+    summary.push(...fillEggIncubators(userId));
+  } else {
+    summary.push('Incubators skipped (Use Incubators is OFF).');
+  }
+  return summary;
+}
+
+// Equips another Egg after a hatch (held slot first, then free incubator slots). Returns summary lines.
+function autoEquipEggs(userId) {
+  const user = getUser(userId);
+  if (!user.egg_auto_equip || !canUseEggAutomation(userId)) return [];
+  const lines = [];
+  if (user.held_egg_target <= 0 && user.vote_eggs > 0) {
+    const target = getEggCatchTarget(userId);
+    const result = holdEgg(userId, target);
+    if (result.error) {
+      lines.push(`Could not auto-equip a held Egg (${result.error.replaceAll('_', ' ')}).`);
+    } else {
+      lines.push(`Auto-equipped a new held Egg (**0/${target} catches**).`);
+    }
+  }
+  if (user.egg_use_incubators) lines.push(...fillEggIncubators(userId, { automatic: true }));
   return lines;
 }
 
@@ -2721,12 +2775,32 @@ const EXACT_ONLY_SPRITE_KEYS = new Set([
   'kyogre', 'groudon', 'solgaleo', 'lunala', 'zacian', 'melmetal', 'mew', 'latias', 'latios',
 ]);
 
+const pokemonSpriteEmojiOverrides = new Map();
+
+function refreshPokemonSpriteEmojis(rows) {
+  pokemonSpriteEmojiOverrides.clear();
+  for (const { slug, name, variant, emoji } of rows) {
+    for (const key of [slug, name]) {
+      const normalized = key.toLowerCase().replace(/-/g, ' ');
+      const variants = pokemonSpriteEmojiOverrides.get(normalized) || {};
+      variants[variant] = emoji;
+      pokemonSpriteEmojiOverrides.set(normalized, variants);
+    }
+  }
+}
+
 function getPokemonSpriteEmoji(pokemon) {
   const rawNames = [pokemon?.name, pokemon?.form_name, pokemon?.form_slug?.replace(/-/g, ' ')]
     .map((value) => String(value || '').trim())
     .filter(Boolean);
   const isShiny = Boolean(pokemon?.isShiny ?? pokemon?.is_shiny) || rawNames.some((raw) => /^shiny\s+/i.test(raw));
   const isGolden = Boolean(pokemon?.isGolden ?? pokemon?.is_golden) || rawNames.some((raw) => /^golden\s+/i.test(raw));
+  const variant = isGolden ? 'golden' : isShiny ? 'shiny' : 'normal';
+  for (const raw of rawNames) {
+    const name = raw.replace(/^(?:shiny|golden)\s+/i, '').toLowerCase().replace(/-/g, ' ');
+    const override = pokemonSpriteEmojiOverrides.get(name)?.[variant];
+    if (override) return override;
+  }
   let species = null;
   // Try every available name (display name, form name, slug) and keep the most specific match.
   for (const raw of rawNames) {
@@ -2752,6 +2826,8 @@ function formatFactionFavorites(factionKey) {
     .map((entry) => getPokemonSpriteEmoji({ name: entry.species_name }) || entry.species_name)
     .join(' ')}`;
 }
+
+refreshPokemonSpriteEmojis(getPokemonSpriteEmojiOverrides());
 
 function getRarityEmojis(rarity, pokemonName = '', isShiny = false, isGolden = false) {
   const displayRarity = getDisplayRarity(rarity, pokemonName, isShiny);
@@ -12944,7 +13020,10 @@ client.on('messageCreate', async (message) => {
         return;
       }
       if (subcommand === 'hold') {
-        if (args.length !== 1) return message.reply(`Usage: \`${PREFIX}egg hold\`.`);
+        if (args.length === 2 && args[1].toLowerCase() === 'all') {
+          return message.reply(`${EMOJIS.pokeEgg} **Hold All results**\n${holdAllEggs(userId).join('\n')}`);
+        }
+        if (args.length !== 1) return message.reply(`Usage: \`${PREFIX}egg hold [all]\`.`);
         const catchTarget = getEggCatchTarget(userId);
         const result = holdEgg(userId, catchTarget);
         if (result.error === 'egg_already_held') {
@@ -13018,7 +13097,7 @@ client.on('messageCreate', async (message) => {
       }
       if (subcommand || args.length) {
         return message.reply(
-          `Usage: \`${PREFIX}egg\`, \`${PREFIX}egg hold\`, \`${PREFIX}egg hatch\`, ` +
+          `Usage: \`${PREFIX}egg\`, \`${PREFIX}egg hold [all]\`, \`${PREFIX}egg hatch\`, ` +
           `\`${PREFIX}egg use-incubator <i|si> <amount|all>\`, or ` +
           `\`${PREFIX}egg hatch-incubator <i|si> <slot|all>\`.`
         );
@@ -13049,8 +13128,9 @@ client.on('messageCreate', async (message) => {
           .setDescription(
             `${EMOJIS.pokeEgg} **Your Eggs:** ${currentUser.vote_eggs.toLocaleString()}\n\n` +
             `${heldText}\n` +
-            `Use the buttons below to hold Eggs in all available slots or hatch every ready Egg. ` +
-            `You can also use \`${PREFIX}egg hold\` or \`${PREFIX}egg hatch\`.\n\n` +
+            `Hold All and Auto Equip use incubators: **${currentUser.egg_use_incubators ? 'ON' : 'OFF'}**. ` +
+            `Toggle this below; it does not affect manually starting incubators.\n` +
+            `Use the buttons below or \`${PREFIX}egg hold [all]\` and \`${PREFIX}egg hatch\`.\n\n` +
             `${incubatorLines('incubator', EGG_INCUBATOR_LIMITS.incubator, EMOJIS.incubator, 'Incubator')}\n\n` +
             `${incubatorLines('super_incubator', EGG_INCUBATOR_LIMITS.super_incubator, EMOJIS.superIncubator, 'Super Incubator')}\n\n` +
             `Use \`${PREFIX}egg use-incubator <i|si> <amount|all>\` to start incubators and ` +
@@ -13083,6 +13163,11 @@ client.on('messageCreate', async (message) => {
             .setCustomId('egg:auto-hatch')
             .setLabel(`Auto Hatch: ${toggles.egg_auto_hatch ? 'ON' : 'OFF'}`)
             .setStyle(toggles.egg_auto_hatch ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setDisabled(disabled),
+          new ButtonBuilder()
+            .setCustomId('egg:use-incubators')
+            .setLabel(`Use Incubators: ${toggles.egg_use_incubators ? 'ON' : 'OFF'}`)
+            .setStyle(toggles.egg_use_incubators ? ButtonStyle.Success : ButtonStyle.Secondary)
             .setDisabled(disabled)
         );
       };
@@ -13108,6 +13193,16 @@ client.on('messageCreate', async (message) => {
           }
           processingEggAction = true;
           ownsProcessingLock = true;
+          if (interaction.customId === 'egg:use-incubators') {
+            const enabled = getUser(userId).egg_use_incubators ? 0 : 1;
+            updateUser(userId, { egg_use_incubators: enabled });
+            await interaction.update({ embeds: [buildEggEmbed()], components: [buildEggButtons()] });
+            await interaction.followUp({
+              content: `${EMOJIS.pokeEgg} **Use Incubators** is now **${enabled ? 'ON' : 'OFF'}** for Hold All and Auto Equip.`,
+              ephemeral: true,
+            });
+            return;
+          }
           if (interaction.customId === 'egg:auto-equip' || interaction.customId === 'egg:auto-hatch') {
             if (!canUseEggAutomation(userId)) {
               await interaction.reply({
@@ -13132,57 +13227,7 @@ client.on('messageCreate', async (message) => {
             return;
           }
           if (interaction.customId === 'egg:hold-all') {
-            const summary = [];
-            const currentUser = getUser(userId);
-            if (currentUser.held_egg_target > 0) {
-              summary.push('Your free held-Egg slot is already in use.');
-            } else if (currentUser.vote_eggs > 0) {
-              const target = getEggCatchTarget(userId);
-              const result = holdEgg(userId, target);
-              if (result.error === 'no_eggs') {
-                summary.push('No Eggs were available for the free held-Egg slot.');
-              } else if (result.error) {
-                throw new Error(`Could not start the held Egg: ${result.error}.`);
-              } else {
-                summary.push(`Started the free held-Egg slot (**0/${target} catches**).`);
-              }
-            }
-
-            for (const [type, itemName, label] of [
-              ['incubator', 'Incubator', 'Incubator'],
-              ['super_incubator', 'Super Incubator', 'Super Incubator'],
-            ]) {
-              const active = getUserEggIncubators(userId)
-                .filter((incubator) => incubator.incubator_type === type);
-              const freeSlots = EGG_INCUBATOR_LIMITS[type] - active.length;
-              const owned = getUserItems(userId)
-                .find((item) => item.item_name === itemName)?.amount || 0;
-              const availableEggs = getUser(userId).vote_eggs;
-              const amount = Math.min(freeSlots, owned, availableEggs);
-              if (amount < 1) {
-                const reason = freeSlots < 1
-                  ? 'all slots are in use'
-                  : owned < 1
-                    ? 'no unused incubators are available'
-                    : 'no Eggs are available';
-                summary.push(`${label}: skipped (${reason}).`);
-                continue;
-              }
-              const targets = Array.from({ length: amount }, () => {
-                const catches = getEggCatchTarget(userId);
-                return type === 'super_incubator' ? Math.ceil(catches / 2) : catches;
-              });
-              const result = startEggIncubators(userId, type, targets);
-              if (result.error) {
-                summary.push(`${label}: could not start Eggs (${result.error.replaceAll('_', ' ')}).`);
-                continue;
-              }
-              summary.push(
-                `Started **${result.started.length} ${label}${result.started.length === 1 ? '' : 's'}** ` +
-                `(slot${result.started.length === 1 ? '' : 's'} ${result.started.map((entry) => entry.slot).join(', ')}).`
-              );
-            }
-
+            const summary = holdAllEggs(userId);
             await interaction.update({ embeds: [buildEggEmbed()], components: [buildEggButtons()] });
             await interaction.followUp({
               content: `${EMOJIS.pokeEgg} **Hold All results**\n${summary.join('\n')}`,
@@ -13370,8 +13415,8 @@ client.on('messageCreate', async (message) => {
           title: '🥚 Egg Inventory',
           description:
             `• \`${PREFIX}egg\` — View your Eggs, active progress, and incubator slots\n` +
-            `• Egg Centre buttons: **Hold All** fills every available held/incubator slot; **Hatch All** hatches every ready Egg\n` +
-            `• \`${PREFIX}egg hold\` — Hold an Egg and begin counting successful Pokémon catches\n` +
+            `• Egg Centre buttons: **Hold All** fills available slots; **Hatch All** hatches ready Eggs; **Use Incubators** controls Hold All and Auto Equip\n` +
+            `• \`${PREFIX}egg hold [all]\` — Hold an Egg, or fill available slots according to the incubator toggle\n` +
             `• \`${PREFIX}egg hatch\` — Hatch a ready free-held Egg into an Egg-exclusive Pokémon\n` +
             `• \`${PREFIX}excl egg\` — View Egg-exclusive Pokémon\n` +
             `• \`${PREFIX}egg use-incubator <i|si> <amount|all>\` — Start up to 2 Incubators or 6 Super Incubators\n` +
@@ -14568,6 +14613,30 @@ client.on('messageCreate', async (message) => {
       const subtype = args[0]?.toLowerCase();
       const action = args[1]?.toLowerCase();
 
+      if (command === 'admin' && args.length >= 2
+          && (args[args.length - 2]?.toLowerCase() === 'emoji' || action === 'emoji' || subtype === 'emoji'
+            || args[args.length - 1]?.toLowerCase() === 'emoji')) {
+        const emoji = args[args.length - 1];
+        let pokemonQuery = args[args.length - 2]?.toLowerCase() === 'emoji'
+          ? args.slice(0, -2).join(' ').trim() : '';
+        const prefix = pokemonQuery.match(/^(shiny|golden)\s+(.+)$/i);
+        if (prefix) pokemonQuery = prefix[2].trim();
+        if (!pokemonQuery || !/^<a?:[a-zA-Z0-9_]{2,32}:\d{15,25}>$/.test(emoji)) {
+          return message.reply(`Usage: \`${PREFIX}admin [shiny|golden] <Pokémon name|dex number> emoji <custom emoji>\`.`);
+        }
+        const form = resolvePokemonForm(pokemonQuery);
+        if (!form) return message.reply(`No Pokémon form matching **${pokemonQuery}** was found.`);
+        const dexVariant = getDexQueryMarketVariant(form, pokemonQuery);
+        const variant = prefix ? prefix[1].toLowerCase() : (dexVariant || 'normal');
+        if (prefix && dexVariant && dexVariant !== 'normal' && dexVariant !== variant) {
+          return message.reply('The Pokémon variant prefix does not match that Pokédex number.');
+        }
+        const updated = setPokemonSpriteEmoji(form.id, variant, emoji);
+        if (!updated) return message.reply(`No Pokémon form matching **${pokemonQuery}** was found.`);
+        refreshPokemonSpriteEmojis(getPokemonSpriteEmojiOverrides());
+        return message.reply(`Updated the ${variant} sprite emoji for **${updated.name}** to ${emoji}.`);
+      }
+
       if (command === 'admin' && subtype === 'factionpoints') {
         const targetId = args[1]?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
         const amount = args.length === 3 ? parseAmount(args[2]) : NaN;
@@ -14795,6 +14864,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin pokemon rarity <number> <rarity>\`\n` +
             `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
             `• \`${PREFIX}admin pokemon sprite <Pokémon|form|number> <https URL> [shiny https URL]\`\n` +
+            `• \`${PREFIX}admin [shiny|golden] <Pokémon|number> emoji <custom emoji>\`\n` +
             `• \`${PREFIX}admin pokemon add <rarity> -- <name> [sprite url]\`\n` +
             `• \`${PREFIX}admin set rarity [Pokémon|number] <c|u|r|sr|l|s|m|sm|g|sg>\` — Omit Pokémon to change your last catch\n` +
             `• \`${PREFIX}admin <Pokémon name|Pokédex number> <move name> <learn|remove>\` — Teach one of your Pokémon a move (any move) or remove it from its learned moves\n` +
@@ -15437,6 +15507,7 @@ client.on('messageCreate', async (message) => {
         if (!form) return message.reply(`No Pokémon form matching **${pokemonQuery}** was found.`);
         const renamed = renamePokemonForm(form.id, newName);
         if (!renamed) return message.reply(`No Pokémon form matching **${pokemonQuery}** was found.`);
+        refreshPokemonSpriteEmojis(getPokemonSpriteEmojiOverrides());
         for (const boss of WORLD_BOSS_POOL) {
           if (boss.formId === form.id) boss.name = `${boss.isShiny ? 'Shiny ' : ''}${renamed.name}`;
         }
@@ -15595,6 +15666,7 @@ client.on('messageCreate', async (message) => {
           `• \`${PREFIX}admin pokemon remove @User|user ID <Pokémon name, form, or Pokédex number>\` — remove one matching Pokémon\n` +
           `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
           `• \`${PREFIX}admin pokemon sprite <Pokémon|form|number> <https URL> [shiny https URL]\`\n` +
+          `• \`${PREFIX}admin [shiny|golden] <Pokémon|number> emoji <custom emoji>\`\n` +
           `• \`${PREFIX}admin giveaway remove <@User|user ID>\` — remove a user from the most recent active giveaway in this channel\n` +
           `• \`${PREFIX}admin rarity list|set ...\`\n` +
           `• \`${PREFIX}admin pokemon add|rarity ...\`\n` +
@@ -20486,7 +20558,9 @@ client.on('messageCreate', async (message) => {
       if (!isExploreTester(message)) return message.reply('Explore is currently in testing and is available to bot admins and approved testers only.');
       const selectedMap = selectExploreMap(args);
       if (!selectedMap) return message.reply(`Usage: \`${PREFIX}explore <gm 1|gm 2|fm 1|wm 1>\``);
-      const getStepLimit = () => getExploreStepStatus(getUser(userId), getPatreonPerks(userId)).limit;
+      const getStepLimit = () => getExploreStepStatus(
+        getUser(userId), getPatreonPerks(userId), Date.now(), getDailyResetDay, getNextDailyReset
+      ).limit;
       if (!getStepLimit()) return message.reply('Explore requires an active Patreon tier.');
       const sessionSeconds = getPatreonPerks(userId).exploreSeconds;
       const { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, renderExploreMap } = require('./exploreRenderer');
@@ -20510,8 +20584,12 @@ client.on('messageCreate', async (message) => {
       const background = theme.images[backgroundIndex];
       const readSteps = () => {
         const current = getUser(userId);
-        if (Date.now() - (current.last_explore_reset || 0) >= 24 * 60 * 60 * 1000) {
-          updateUser(userId, { explore_steps_today: 0, last_explore_reset: Date.now() });
+        const now = Date.now();
+        if (
+          !current.last_explore_reset
+          || getDailyResetDay(current.last_explore_reset) !== getDailyResetDay(now)
+        ) {
+          updateUser(userId, { explore_steps_today: 0, last_explore_reset: now });
           return 0;
         }
         return current.explore_steps_today || 0;
@@ -20583,7 +20661,7 @@ client.on('messageCreate', async (message) => {
           `\n${CHEST_EMOJI} Items found (${foundItemCount}): ${summarize(foundItems)}` +
           `\n${EMOJIS.pokecoin} Coins earned: **${sessionCoins.toLocaleString()}**`;
         return {
-          content: `🗺️ Map: ${theme.emoji} **${mapTitle}** — Steps today: **${steps}/${limit}** — Session: **${sessionSeconds} seconds**${finished ? summary : statusText}` +
+          content: `🗺️ Map: ${theme.emoji} **${mapTitle}** — Steps today: **${steps}/${limit}**${finished ? summary : statusText}` +
             (!finished && chest ? `\n${CHEST_EMOJI} Chest on the map${chest.x === x && chest.y === y ? ' — press 🔍 to open it!' : '.'}` : ''),
           files: [new AttachmentBuilder(await renderExploreMap(mapKey, x, y, trainerUrl, backgroundIndex, finished ? null : chest), { name: 'explore.png' })],
           attachments: [],
@@ -20696,7 +20774,7 @@ client.on('messageCreate', async (message) => {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
           const sprite = getPokemonSpriteEmoji(wild);
           statusText = `\n❗ A wild ${sprite ? `${sprite} ` : ''}**${wild.name}** appeared! ` +
-            `(${getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden)} ${wildRarity}) — throw a ball with the buttons on the right.`;
+            `(${getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden)} ${wildRarity})`;
         } else if (isSearch && activeWild) {
           statusText += foundText;
         } else if (!catchHandler) {
@@ -27145,7 +27223,9 @@ client.on('messageCreate', async (message) => {
       const huntStatus = huntActive
         ? `Daily Hunt: **${user.hunt_target_name}** (${user.hunt_progress}/${user.hunt_required})${huntClaimed ? ' — Complete!' : '.'}`
         : 'You can check your daily hunt target!';
-      const explore = getExploreStepStatus(user, getPatreonPerks(userId), now);
+      const explore = getExploreStepStatus(
+        user, getPatreonPerks(userId), now, getDailyResetDay, getNextDailyReset
+      );
       const exploreStatus = explore.limit
         ? `Explore steps: **${explore.used}/${explore.limit}**${explore.resetAt ? ` — resets <t:${Math.floor(explore.resetAt / 1000)}:R>.` : '.'}`
         : 'Explore requires an active Patreon tier.';

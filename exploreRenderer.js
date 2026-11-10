@@ -60,12 +60,10 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(background, 0, 0, width, height);
-  ctx.drawImage(trainer, posX, posY, TRAINER_WIDTH, TRAINER_HEIGHT);
   if (chestIcon) {
-    const samePosition = chest.x === posX && chest.y === posY;
-    const size = samePosition ? 16 : TRAINER_WIDTH;
-    ctx.drawImage(chestIcon, chest.x + (samePosition ? 16 : 0), chest.y, size, size);
+    ctx.drawImage(chestIcon, chest.x, chest.y, TRAINER_WIDTH, TRAINER_HEIGHT);
   }
+  ctx.drawImage(trainer, posX, posY, TRAINER_WIDTH, TRAINER_HEIGHT);
   return canvas.toBuffer('image/png');
 }
 

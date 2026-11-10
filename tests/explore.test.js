@@ -177,6 +177,8 @@ test('Explore map selectors choose the exact map and reject invalid choices', ()
   for (const args of [['gm'], ['gm', '0'], ['gm', '3'], ['fm', '2'], ['wm', '2'], ['wm', '1', 'extra'], ['__proto__', '1']]) {
     assert.equal(data.selectExploreMap(args), null);
   }
+  assert.equal(data.EXPLORE_MAPS.fire.images[0].file, 'fire-1.png');
+  assert.deepEqual(renderer.getExploreMapSize('fire', 0), { width: 640, height: 413 });
 });
 
 test('Explore testing access grants only the specified testers and bot admins', () => {
@@ -378,17 +380,63 @@ test('Patreon tiers provide the requested Explore limits and Golden bonus', () =
   }
 });
 
-test('Explore step status matches the rolling reset and current tier', () => {
+test('Explore step status follows the daily reset and current tier', () => {
+  const { getDailyResetDay, getNextDailyReset } = require('../db');
   const now = 100000000;
   const user = { has_patreon: 1, explore_steps_today: 600, last_explore_reset: now - 1000 };
-  assert.deepEqual(data.getExploreStepStatus(user, { exploreSteps: 500 }, now), {
-    limit: 500, used: 600, resetAt: now - 1000 + 86400000,
+  assert.deepEqual(data.getExploreStepStatus(user, { exploreSteps: 500 }, now, getDailyResetDay, getNextDailyReset), {
+    limit: 500, used: 600, resetAt: getNextDailyReset(now),
   });
-  assert.deepEqual(data.getExploreStepStatus(user, { exploreSteps: 2500 }, now + 86400000), {
-    limit: 2500, used: 0, resetAt: null,
+  assert.deepEqual(data.getExploreStepStatus(
+    user, { exploreSteps: 2500 }, now + 86400000, getDailyResetDay, getNextDailyReset
+  ), {
+    limit: 2500, used: 0, resetAt: getNextDailyReset(now + 86400000),
+  });
+  const beforeReset = Date.parse('2026-11-10T04:59:00Z');
+  user.last_explore_reset = Date.parse('2026-11-09T23:00:00Z');
+  assert.equal(data.getExploreStepStatus(
+    user, { exploreSteps: 500 }, beforeReset, getDailyResetDay, getNextDailyReset
+  ).used, 600);
+  const afterReset = Date.parse('2026-11-10T05:01:00Z');
+  assert.deepEqual(data.getExploreStepStatus(
+    user, { exploreSteps: 500 }, afterReset, getDailyResetDay, getNextDailyReset
+  ), {
+    limit: 500, used: 0, resetAt: Date.parse('2026-11-11T05:00:00Z'),
   });
   user.has_patreon = 0;
-  assert.equal(data.getExploreStepStatus(user, { exploreSteps: 500 }, now).limit, 0);
+  assert.equal(data.getExploreStepStatus(
+    user, { exploreSteps: 500 }, now, getDailyResetDay, getNextDailyReset
+  ).limit, 0);
+});
+
+test('Explore step counter resets on the daily boundary even before 24 hours elapse', () => {
+  const { getDailyResetDay } = require('../db');
+  const user = {
+    explore_steps_today: 600,
+    last_explore_reset: Date.parse('2026-11-09T23:00:00Z'),
+  };
+  const updates = [];
+  let now = Date.parse('2026-11-10T04:59:00Z');
+  const context = vm.createContext({
+    Date: { now: () => now },
+    userId: 'trainer',
+    getUser: () => user,
+    getDailyResetDay,
+    updateUser: (_userId, fields) => {
+      updates.push(fields);
+      Object.assign(user, fields);
+    },
+  });
+  const readSteps = extract('      const readSteps = () => {', '\n      let x =');
+  const readStepsFunction = vm.runInContext(`(() => { ${readSteps}; return readSteps; })()`, context);
+  readStepsFunction();
+  assert.equal(user.explore_steps_today, 600);
+  assert.equal(updates.length, 0);
+
+  now = Date.parse('2026-11-10T05:01:00Z');
+  assert.equal(readStepsFunction(), 0);
+  assert.equal(user.explore_steps_today, 0);
+  assert.equal(user.last_explore_reset, now);
 });
 
 test('Explore overworld abilities apply their own rates and repel only Common encounters', () => {
@@ -701,6 +749,7 @@ test('wild Shiny and event pity windows are independent and enforce exact bounda
 
 test('checklist displays Explore usage, reset and access status', async () => {
   const { EmbedBuilder } = require('discord.js');
+  const { getDailyResetDay, getNextDailyReset } = require('../db');
   const now = Date.now();
   const user = {
     has_patreon: 1, patreon_tier: 'common', explore_steps_today: 123, last_explore_reset: now - 1000,
@@ -712,7 +761,7 @@ test('checklist displays Explore usage, reset and access status', async () => {
     message: { author: { username: 'Trainer', displayAvatarURL: () => 'https://example.test/a.png' },
       reply: async (value) => { payloads.push(value); } },
     getUser: () => user, getPatreonPerks: () => ({ exploreSteps: 500 }), getExploreStepStatus: data.getExploreStepStatus,
-    getDailyResetDay: () => 1, getNextDailyReset: () => now + 86400000,
+    getDailyResetDay, getNextDailyReset,
     getCatchbotData: () => ({}), getUserQuests: () => [],
     db: { prepare: () => ({ get: () => null }) },
   });
@@ -733,6 +782,7 @@ test('Explore draws each supplied map at its aspect ratio with the selected trai
   const iconCtx = icon.getContext('2d');
   iconCtx.fillStyle = '#ff00ff';
   iconCtx.fillRect(0, 0, 4, 4);
+  iconCtx.clearRect(0, 0, 2, 4);
   let fetches = 0;
   const chestIcon = createCanvas(4, 4);
   chestIcon.getContext('2d').fillStyle = '#00ff00';
@@ -752,7 +802,7 @@ test('Explore draws each supplied map at its aspect ratio with the selected trai
         const result = createCanvas(image.width, image.height);
         const context = result.getContext('2d');
         context.drawImage(image, 0, 0);
-        assert.deepEqual([...context.getImageData(50, 66, 1, 1).data], [255, 0, 255, 255]);
+        assert.deepEqual([...context.getImageData(70, 66, 1, 1).data], [255, 0, 255, 255]);
         const original = await loadImage(require('node:path').join(__dirname, '..', 'assets', 'explore', theme.images[variant].file));
         const expected = createCanvas(image.width, image.height);
         const expectedCtx = expected.getContext('2d');
@@ -769,8 +819,18 @@ test('Explore draws each supplied map at its aspect ratio with the selected trai
     assert.deepEqual([...chestContext.getImageData(85, 68, 1, 1).data], [0, 255, 0, 255]);
     const occupiedMap = await loadImage(await renderer.renderExploreMap('grass', 48, 64, 'https://example.test/icon.png', 0, { x: 48, y: 64 }));
     chestContext.drawImage(occupiedMap, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(50, 66, 1, 1).data], [255, 0, 255, 255]);
-    assert.deepEqual([...chestContext.getImageData(66, 66, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(50, 66, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(70, 66, 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(48, 95, 1, 1).data], [0, 255, 0, 255]);
+    const emptyMap = await loadImage(await renderer.renderExploreMap('grass', 48, 64, 'https://example.test/icon.png', 0));
+    const emptyCanvas = createCanvas(emptyMap.width, emptyMap.height);
+    const emptyContext = emptyCanvas.getContext('2d');
+    emptyContext.drawImage(emptyMap, 0, 0);
+    assert.deepEqual([...chestContext.getImageData(80, 64, 1, 1).data], [...emptyContext.getImageData(80, 64, 1, 1).data]);
+    const rightEdge = await loadImage(await renderer.renderExploreMap('grass', 608, 64, 'https://example.test/icon.png', 0, { x: 608, y: 64 }));
+    chestContext.drawImage(rightEdge, 0, 0);
+    assert.deepEqual([...chestContext.getImageData(610, 66, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(630, 66, 1, 1).data], [255, 0, 255, 255]);
     assert.equal(fetches, 2);
     await assert.rejects(renderer.renderExploreMap('missing', 0, 0, 'x'), /Unknown Explore map/);
     await assert.rejects(renderer.renderExploreMap('grass', 0, 0, null), /No trainer icon/);
@@ -887,6 +947,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   let chestLifetime = 5;
   const rendered = [];
   const tierPerks = patreonPerks();
+  const { getDailyResetDay, getNextDailyReset } = require('../db');
   const math = Object.create(Math);
   math.random = () => nextRolls.length ? nextRolls.shift() : 0;
   const ctx = vm.createContext({
@@ -898,6 +959,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     }), Buffer, ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ComponentType,
     command: 'explore', args: ['gm', '2'], message: msg, userId: 'trainer', PREFIX: '.',
     selectExploreMap: data.selectExploreMap, getExploreStepStatus: data.getExploreStepStatus,
+    getDailyResetDay, getNextDailyReset,
     CHEST_EMOJI: chests.CHEST_EMOJI, CHEST_SPAWN_CHANCE: 0,
     spawnExploreChest: (x, y) => ({ x, y: y - 32, stepsRemaining: chestLifetime }),
     chooseExploreChestReward: (current, loot) => {
@@ -966,6 +1028,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   payloads.length = 0;
   await ctx.run();
   assert.match(payloads[0].content, /Grass Map 2.*0\/500/);
+  assert.doesNotMatch(payloads[0].content, /Session:.*seconds/);
   assert.deepEqual(rendered.at(-1), { map: 'grass', variant: 1 });
   assert.equal(ctx.activeExploreSessions.has('trainer'), true);
   await ctx.run();
@@ -988,6 +1051,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(rollAbility, 'frisk');
   assert.equal(shinyBoost, 5);
   assert.match(payloads.at(-1).content, /Bulbasaur/);
+  assert.doesNotMatch(payloads.at(-1).content, /throw a ball with the buttons on the right/i);
   assert.equal(payloads.at(-1).components[0].components[1].data.disabled, false);
   user.explore_steps_today = 500;
   assert.match((await click('exp_down'))[0].content, /all of your exploring steps/);
@@ -1016,6 +1080,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.ok(payloads.at(-1).content.includes('<:caught:1560340176713031711> Pokémon caught (3): :pokemon:² :shiny:¹'));
   assert.ok(payloads.at(-1).content.includes(`${chests.CHEST_EMOJI} Items found (0): None`));
   assert.ok(payloads.at(-1).content.includes('coin Coins earned: **369**'));
+  assert.doesNotMatch(payloads.at(-1).content, /Session:.*seconds/);
   assert.equal(payloads.at(-1).components.length, 0);
   assert.equal(ctx.activeExploreSessions.has('trainer'), false);
   assert.equal(cancelled, false);
@@ -1143,7 +1208,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     user.explore_steps_today = steps - 1;
     await ctx.run();
     assert.equal(collectorOptions.time, seconds * 1000);
-    assert.match(payloads.at(-1).content, new RegExp(`Session: \\*\\*${seconds} seconds\\*\\*`));
+    assert.doesNotMatch(payloads.at(-1).content, /Session:.*seconds/);
     await click('exp_search');
     assert.match(payloads.at(-1).content, new RegExp(`${steps}/${steps}`));
     assert.match((await click('exp_search'))[0].content, /all of your exploring steps/);

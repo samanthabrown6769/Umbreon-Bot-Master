@@ -8,7 +8,7 @@ const EXPLORE_MAPS = {
   },
   fire: {
     name: 'Fire Map', emoji: '🔥',
-    images: [{ file: 'fire-1.webp', width: 496, height: 320, startX: 0.38, startY: 0.14 }],
+    images: [{ file: 'fire-1.png', width: 1191, height: 768, startX: 0.16, startY: 0.22 }],
   },
   water: {
     name: 'Water Map', emoji: '🌊',
@@ -71,11 +71,15 @@ function selectExploreMap(args) {
   return { mapKey, backgroundIndex };
 }
 
-function getExploreStepStatus(user, perks, now = Date.now()) {
+function getExploreStepStatus(user, perks, now, getDailyResetDay, getNextDailyReset) {
   const limit = user.has_patreon ? perks.exploreSteps : 0;
-  const resetAt = user.last_explore_reset + 24 * 60 * 60 * 1000;
-  const expired = !user.last_explore_reset || now >= resetAt;
-  return { limit, used: expired ? 0 : user.explore_steps_today, resetAt: expired ? null : resetAt };
+  const expired = !user.last_explore_reset
+    || getDailyResetDay(user.last_explore_reset) !== getDailyResetDay(now);
+  return {
+    limit,
+    used: expired ? 0 : user.explore_steps_today,
+    resetAt: getNextDailyReset(now),
+  };
 }
 
 // Catch rates (%) per ball before clan/Patreon bonuses: [pb, gb, ub, prb, mb]
