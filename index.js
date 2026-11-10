@@ -576,8 +576,8 @@ function getSwapExcludedSpecies() {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
-const EVENT_SPAWN_ODDS = 200;
-const EVENT_SPAWN_PITY_LIMIT = 200;
+const EVENT_SPAWN_ODDS = 100;
+const EVENT_SPAWN_PITY_LIMIT = 100;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
@@ -3045,9 +3045,9 @@ const LEGENDARY_GENERATION_ORDER = Object.freeze([
   { generation: 'generation-vi', rollChance: 1 / 5 },
   { generation: 'generation-vii', rollChance: 1 / 5 },
 ]);
-const LEGENDARY_BASE_CHANCE = 1 / 333;
-const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 / 250;
-const LEGENDARY_SPAWN_PITY_LIMIT = 333;
+const LEGENDARY_BASE_CHANCE = 1 / 167;
+const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 / 125;
+const LEGENDARY_SPAWN_PITY_LIMIT = 167;
 // A hunt targets one specific Pokémon; the catches needed depend on its rarity.
 const DAILY_HUNT_CONFIG = Object.freeze({
   Common: { chance: 1, required: 5, rewards: { pokeballs: 2, greatballs: 1 } },
