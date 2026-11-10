@@ -1,6 +1,7 @@
 const path = require('node:path');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { EXPLORE_MAPS: MAP_THEMES } = require('./exploreData');
+const { CHEST_IMAGE_URL } = require('./exploreChests');
 
 const MAP_WIDTH = 640;
 const TRAINER_WIDTH = 32;
@@ -49,15 +50,22 @@ async function loadTrainerIcon(url) {
   return iconCache.get(url);
 }
 
-async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0) {
+async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, chest = null) {
   const map = getExploreMap(mapType, variant);
   const { width, height } = getExploreMapSize(mapType, variant);
-  const [background, trainer] = await Promise.all([loadMap(map), loadTrainerIcon(trainerUrl)]);
+  const [background, trainer, chestIcon] = await Promise.all([
+    loadMap(map), loadTrainerIcon(trainerUrl), chest ? loadTrainerIcon(CHEST_IMAGE_URL) : null,
+  ]);
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(background, 0, 0, width, height);
   ctx.drawImage(trainer, posX, posY, TRAINER_WIDTH, TRAINER_HEIGHT);
+  if (chestIcon) {
+    const samePosition = chest.x === posX && chest.y === posY;
+    const size = samePosition ? 16 : TRAINER_WIDTH;
+    ctx.drawImage(chestIcon, chest.x + (samePosition ? 16 : 0), chest.y, size, size);
+  }
   return canvas.toBuffer('image/png');
 }
 

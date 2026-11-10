@@ -56,6 +56,10 @@ db.exec(`
     encounters_since_spawn INTEGER NOT NULL DEFAULT 0 CHECK (encounters_since_spawn >= 0),
     PRIMARY KEY (user_id, category)
   );
+  CREATE TABLE IF NOT EXISTS wild_shiny_spawn_pity (
+    user_id TEXT PRIMARY KEY,
+    encounters_since_spawn INTEGER NOT NULL DEFAULT 0 CHECK (encounters_since_spawn >= 0)
+  );
   CREATE TABLE IF NOT EXISTS daily_catch_counts (
     reset_day INTEGER NOT NULL,
     user_id TEXT NOT NULL,
@@ -601,6 +605,8 @@ const userDefinitions = {
   buddy_catch_id: 'INTEGER',
   explore_steps_today: 'INTEGER NOT NULL DEFAULT 0',
   last_explore_reset: 'INTEGER NOT NULL DEFAULT 0',
+  explore_shiny_charm: 'INTEGER NOT NULL DEFAULT 0',
+  explore_amulet_coin: 'INTEGER NOT NULL DEFAULT 0',
   team_exp_share: 'INTEGER NOT NULL DEFAULT 0',
   exp_share_owned: 'INTEGER NOT NULL DEFAULT 0',
   rare_candies: 'INTEGER NOT NULL DEFAULT 0',
@@ -2234,7 +2240,7 @@ const NO_PATREON_PERKS = Object.freeze({
   catchBoost: 0, amuletCoins: 0, shinyCharms: 0, incenseBonus: 0,
   shinyRatePct: 0, eventShinyPct: 0, swapDiscount: 0, dailyCoinMult: 1, voteCoinMult: 1,
   ivChecker: false, megaChamberDiscount: 0, moveCostDiscount: 0, quickHands: 0, fishingBoost: 0, eggHatchSpeed: 0,
-  autoEquipEggs: false, shopDiscount: 0, lootboxBoost: 0, goldenBoost: 0,
+  autoEquipEggs: false, shopDiscount: 0, lootboxBoost: 0, goldenBoost: 0, exploreSteps: 0, exploreSeconds: 0,
   dailyTokens: 0, dailyCoins: 0, monthly: null, questSlots: 3, questRefreshMultiplier: 1, releaseLocks: 0,
   marketListingSlots: 0, marketTax: 0.1, legendaryChamberCost: null,
 });
@@ -2244,25 +2250,30 @@ const PATREON_TIER_ORDER = ['common', 'uncommon', 'rare', 'superRare', 'legendar
 const PATREON_TIER_DELTAS = {
   common: {
     catchBoost: 5, shinyRatePct: 25, eventShinyPct: 5, swapDiscount: 0.5, dailyCoinMult: 2,
+    exploreSteps: 500, exploreSeconds: 90,
     dailyTokens: 1, dailyCoins: 5000, releaseLocks: 5,
     monthly: { coins: 100000, masterballs: 3, rare_candies: 10, eggs: 1 },
   },
   uncommon: {
     voteCoinMult: 2, questSlots: 4, ivChecker: true, megaChamberDiscount: 0.1, legendaryChamberCost: 4, moveCostDiscount: 0.5, quickHands: 0.1,
+    exploreSteps: 2500, exploreSeconds: 100,
     dailyTokens: 6, dailyCoins: 30000, releaseLocks: 5,
   },
   rare: {
     questSlots: 5, questRefreshMultiplier: 0.5, fishingBoost: 0.05, eggHatchSpeed: 0.15, autoEquipEggs: true, incenseBonus: 50,
+    exploreSteps: 4000, exploreSeconds: 120,
     releaseLocks: 5, marketListingSlots: 5,
     dailyTokens: 15, dailyCoins: 75000,
     monthly: { coins: 5000000, masterballs: 10, rare_candies: 100, eggs: 10, super_incubators: 3, Incense: 1 },
   },
   superRare: {
     shopDiscount: 0.1, megaChamberDiscount: 0.2, legendaryChamberCost: 3, eggHatchSpeed: 0.3, incenseBonus: 100, releaseLocks: 5,
+    exploreSteps: 4500, exploreSeconds: 150,
     dailyTokens: 38, dailyCoins: 200000,
   },
   legendary: {
     lootboxBoost: 0.1, shinyRatePct: 50, eventShinyPct: 30, incenseBonus: 150, releaseLocks: 5,
+    exploreSteps: 5000, exploreSeconds: 180,
     marketListingSlots: 15,
     dailyTokens: 75, dailyCoins: 500000,
     monthly: {
@@ -2273,6 +2284,7 @@ const PATREON_TIER_DELTAS = {
   },
   shiny: {
     shinyCharms: 1, amuletCoins: 4, incenseBonus: 300, megaChamberDiscount: 0.3, legendaryChamberCost: 2,
+    exploreSteps: 5500, exploreSeconds: 210,
     marketListingSlots: 5, releaseLocks: 10, marketTax: 0,
     dailyTokens: 150, dailyCoins: 1000000,
     monthly: {
@@ -2283,6 +2295,7 @@ const PATREON_TIER_DELTAS = {
   },
   golden: {
     goldenBoost: 0.25, incenseBonus: 500,
+    exploreSteps: 6000, exploreSeconds: 240,
     dailyTokens: 500, dailyCoins: 3000000,
     monthly: {
       coins: 15000000, masterballs: 15, rare_candies: 150, eggs: 250, super_incubators: 75,
@@ -2464,11 +2477,13 @@ function getAmuletCoinBoost(userId) {
   const clan = getPlayerClan(userId);
   const owned = Math.max(0, user.amulet_coins || 0);
   const invisible = getClanPerkMultipliers(clan).amuletCoins + getPatreonPerks(userId).amuletCoins;
-  const totalEffective = owned + invisible;
+  const explore = user.explore_amulet_coin ? 1 : 0;
+  const totalEffective = owned + invisible + explore;
 
   return {
     owned,
     invisible,
+    explore,
     totalEffective,
     percentBoost: totalEffective * 5,
     multiplier: 1 + totalEffective * 0.05,
@@ -8418,6 +8433,21 @@ function resetEncounterPity(userId, category) {
     .run(userId, category);
 }
 
+function advanceWildShinyPity(userId) {
+  assertUserId(userId);
+  db.prepare(`
+    INSERT INTO wild_shiny_spawn_pity (user_id, encounters_since_spawn) VALUES (?, 1)
+    ON CONFLICT(user_id) DO UPDATE SET encounters_since_spawn = encounters_since_spawn + 1
+  `).run(userId);
+  return db.prepare('SELECT encounters_since_spawn FROM wild_shiny_spawn_pity WHERE user_id = ?')
+    .get(userId).encounters_since_spawn;
+}
+
+function resetWildShinyPity(userId) {
+  assertUserId(userId);
+  db.prepare('DELETE FROM wild_shiny_spawn_pity WHERE user_id = ?').run(userId);
+}
+
 function trackEventCatch(eventId, userId, pokemonName, isShiny) {
   return Boolean(recordEventCatch(eventId, userId, pokemonName, isShiny)?.added);
 }
@@ -8512,6 +8542,7 @@ function getTotalEffectiveShinyBonus(userId) {
   const clanPerks = getClanPerkMultipliers(getPlayerClan(userId));
   return Math.max(0, user.shiny_charms || 0)
     + (user.black_market_charm ? 1 : 0)
+    + (user.explore_shiny_charm ? 1 : 0)
     + getPatreonPerks(userId).shinyCharms
     + clanPerks.srBonus;
 }
@@ -10626,6 +10657,8 @@ module.exports = {
   resetEventSpawnPity,
   advanceEncounterPity,
   resetEncounterPity,
+  advanceWildShinyPity,
+  resetWildShinyPity,
   trackEventCatch,
   recordEventCatch,
   getUserEventProgress,

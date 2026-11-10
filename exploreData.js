@@ -12,7 +12,7 @@ const EXPLORE_MAPS = {
   },
   water: {
     name: 'Water Map', emoji: '🌊',
-    images: [{ file: 'water-1.webp', width: 1152, height: 320, startX: 0.3, startY: 0.5 }],
+    images: [{ file: 'water-1.png', width: 640, height: 571, startX: 0.68, startY: 0.49 }],
   },
 };
 
@@ -57,6 +57,27 @@ const EXPLORE_EXCLUSIVES = {
 // Dex numbers that can also spawn as Golden on each map type.
 const EXPLORE_GOLDENS = { grass: 252, fire: 725, water: 393 };
 
+function selectExploreMap(args) {
+  const input = args.map((arg) => arg.toLowerCase());
+  if (input.length === 0) return { mapKey: 'grass', backgroundIndex: null };
+  if (input.length === 1 && Object.hasOwn(EXPLORE_MAPS, input[0])) {
+    return { mapKey: input[0], backgroundIndex: null };
+  }
+  const mapKeys = { gm: 'grass', fm: 'fire', wm: 'water' };
+  if (input.length !== 2 || !Object.hasOwn(mapKeys, input[0]) || !/^[1-9]\d*$/.test(input[1])) return null;
+  const mapKey = mapKeys[input[0]];
+  const backgroundIndex = Number(input[1]) - 1;
+  if (!Number.isSafeInteger(backgroundIndex) || backgroundIndex >= EXPLORE_MAPS[mapKey].images.length) return null;
+  return { mapKey, backgroundIndex };
+}
+
+function getExploreStepStatus(user, perks, now = Date.now()) {
+  const limit = user.has_patreon ? perks.exploreSteps : 0;
+  const resetAt = user.last_explore_reset + 24 * 60 * 60 * 1000;
+  const expired = !user.last_explore_reset || now >= resetAt;
+  return { limit, used: expired ? 0 : user.explore_steps_today, resetAt: expired ? null : resetAt };
+}
+
 // Catch rates (%) per ball before clan/Patreon bonuses: [pb, gb, ub, prb, mb]
 const EXPLORE_CATCH_RATES = {
   Common: { pb: 75, gb: 90, ub: 100, prb: 100, mb: 100 },
@@ -84,5 +105,7 @@ module.exports = {
   EXPLORE_GOLDENS,
   EXPLORE_EXCLUSIVE_SPECIES_IDS,
   EXPLORE_EXCLUSIVE_SHINY_IDS,
+  selectExploreMap,
+  getExploreStepStatus,
   getExploreCatchRate,
 };

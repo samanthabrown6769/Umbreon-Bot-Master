@@ -161,7 +161,10 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.getEventSpawnChance(), 1 / 100);
   assert.equal(ctx.getEventSpawnChance(50), 1.5 / 100);
   assert.match(indexSource, /const EVENT_SPAWN_ODDS = 100;/);
-  assert.match(indexSource, /const EVENT_SPAWN_PITY_LIMIT = 100;/);
+  assert.match(indexSource, /const EVENT_SPAWN_PITY_MIN = 100;/);
+  assert.match(indexSource, /const EVENT_SPAWN_PITY_LIMIT = 250;/);
+  assert.match(indexSource, /const WILD_SHINY_PITY_MIN = 1000;/);
+  assert.match(indexSource, /const WILD_SHINY_PITY_LIMIT = 2000;/);
   assert.match(indexSource, /const LEGENDARY_BASE_CHANCE = 1 \/ 167;/);
   assert.match(indexSource, /const LEGENDARY_SPAWN_PITY_LIMIT = 167;/);
   assert.match(indexSource, /const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 \/ 125;/);
@@ -227,6 +230,22 @@ test('Legendary and full-odds Shiny pity is persistent, separate, and resettable
   assert.equal(ctx.advanceEncounterPity('other-trainer', 'shiny'), 1);
   ctx.resetEncounterPity('trainer', 'legendary');
   assert.equal(ctx.advanceEncounterPity('trainer', 'legendary'), 1);
+  db.close();
+});
+
+test('wild shiny pity persists independently from Explore pity and resets per trainer', () => {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE wild_shiny_spawn_pity (
+    user_id TEXT PRIMARY KEY, encounters_since_spawn INTEGER NOT NULL DEFAULT 0
+  )`);
+  const ctx = vm.createContext({ db, assertUserId: () => {} });
+  vm.runInContext(extract(dbSource, 'function advanceWildShinyPity(', '\nfunction trackEventCatch('), ctx);
+  assert.equal(ctx.advanceWildShinyPity('trainer'), 1);
+  assert.equal(ctx.advanceWildShinyPity('trainer'), 2);
+  assert.equal(ctx.advanceWildShinyPity('other'), 1);
+  ctx.resetWildShinyPity('trainer');
+  assert.equal(ctx.advanceWildShinyPity('trainer'), 1);
+  assert.equal(ctx.advanceWildShinyPity('other'), 2);
   db.close();
 });
 
@@ -510,6 +529,7 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
     getPatreonPerks: () => ({ shinyRatePct: 0, eventShinyPct: 0 }),
     isPlayerBonusActive: () => false, HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
     advanceEncounterPity: () => 0, resetEncounterPity: () => {},
+    advanceWildShinyPity: () => 1000, resetWildShinyPity: () => {},
     getRaritySettings: () => [
       { name: 'Common', spawn_weight: 1, pokemon_count: 1 },
       { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
@@ -520,6 +540,7 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
     eventSpawnFormIds: [], getEventSpawnChance: () => 1 / 100,
     LEGENDARY_BASE_CHANCE: 1 / 167, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
     LEGENDARY_SPAWN_PITY_LIMIT: 167, FULL_ODDS_SHINY_PITY_LIMIT: 750,
+    WILD_SHINY_PITY_MIN: 1000, WILD_SHINY_PITY_LIMIT: 2000,
     EVENT_TICKET_SHINY_RATES: { standard: { event: 0, nonEvent: 0 }, patreon: { event: 0, nonEvent: 0 } },
     BASE_SHINY_RATE: 1 / 1000, PATREON_SHINY_RATE: 1 / 500,
     CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
@@ -557,7 +578,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   let pokeradar = false;
   let selectedWeights = [];
   let tierPerks = null;
-  let eventSpawnPity = 0;
+  let eventSpawnPity = 99;
   let encounterPity = { legendary: 0, shiny: 0 };
   let raritySettings = [{ name: 'Common', spawn_weight: 1, pokemon_count: 1 }];
   const configuredPerks = vm.runInNewContext(
@@ -598,6 +619,8 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     resetEventSpawnPity: () => { eventSpawnPity = 0; },
     advanceEncounterPity: (_userId, category) => { encounterPity[category] += 1; return encounterPity[category]; },
     resetEncounterPity: (_userId, category) => { encounterPity[category] = 0; },
+    advanceWildShinyPity: () => { encounterPity.shiny += 1; return encounterPity.shiny + 1000; },
+    resetWildShinyPity: () => { encounterPity.shiny = 0; },
     HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
     getRaritySettings: () => raritySettings,
     getRandomPokemon: (rarity, water, a, b, excluded, species, ids) => {
@@ -611,6 +634,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
     LEGENDARY_SPAWN_PITY_LIMIT: 167,
     FULL_ODDS_SHINY_PITY_LIMIT: 750,
+    WILD_SHINY_PITY_MIN: 1000, WILD_SHINY_PITY_LIMIT: 2000,
     EVENT_TICKET_SHINY_RATES: {
       standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02, nonEvent: 0.002 },
     },
@@ -627,13 +651,17 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   );
   const rod = { enablesLegendary: true, enablesShiny: true, baseShinyRate: 0.001 };
   const fishEvent = (selectionRoll, options = {}) => {
+    eventSpawnPity = 99;
     rolls = [0, selectionRoll];
     return ctx.rollSpawn('water', 'user', rod, options);
   };
+  eventSpawnPity = 99;
   rolls = [1 / 100 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
+  eventSpawnPity = 99;
   rolls = [(1 + 5 / 100) / 100 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 1);
+  eventSpawnPity = 99;
   rolls = [(1 + 5 / 100) / 100, 0.5, 0.1, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 4);
   assert.equal(fishEvent(0.52).id, 2);
@@ -643,6 +671,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   assert.equal(fishEvent(boundary - 1e-8).id, 1);
   assert.equal(fishEvent(boundary + 1e-8).id, 2);
   assert.equal(fishEvent(0.9).id, 2);
+  eventSpawnPity = 99;
   rolls = [0, 0.99];
   assert.equal(ctx.rollSpawn('land', 'user').id, 3);
 
@@ -668,8 +697,10 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     assert.ok(Math.abs(selectedWeights[0] - weight) < 1e-12, `${tier} event shiny weight`);
     assert.equal(selectedWeights[1], 1, `${tier} regular event weight`);
     const ordinaryChance = (tier ? 0.002 : 0.001) * (1 + ordinaryPct / 100) / (1 - charm / 100);
+    eventSpawnPity = 99;
     rolls = [1 / 100, 0.5, ordinaryChance - 1e-10];
     assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true, `${tier} ordinary shiny below threshold`);
+    eventSpawnPity = 99;
     rolls = [1 / 100, 0.5, ordinaryChance + 1e-10];
     assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false, `${tier} ordinary shiny above threshold`);
   }
@@ -723,6 +754,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   ctx.HARD_RARITY_RATE_MULTIPLIER = 1;
 
   // A non-event encounter at the ordinary shiny threshold stays non-shiny.
+  eventSpawnPity = 99;
   rolls = [1 / 100, 0.5, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
   ticket = false;
@@ -737,11 +769,11 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).isShiny, false);
 
   eventSpawnPity = 0;
-  for (let encounter = 1; encounter < 100; encounter += 1) {
-    rolls = [0.5, 0.5, 1];
+  for (let encounter = 1; encounter < 250; encounter += 1) {
+    rolls = encounter < 100 ? [0.5, 1] : [0.5, 0.5, 1];
     assert.equal(ctx.rollSpawn('water', 'user', rod).id, 4);
   }
-  assert.equal(eventSpawnPity, 99);
+  assert.equal(eventSpawnPity, 249);
   rolls = [0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
   assert.equal(eventSpawnPity, 0);
@@ -751,7 +783,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     { name: 'Common', spawn_weight: 1, pokemon_count: 1 },
     { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
   ];
-  encounterPity = { legendary: 166, shiny: 749 };
+  encounterPity = { legendary: 166, shiny: 999 };
   ctx.rollEncounterLegendary = () => ({ id: 5, name: 'Legendary', speciesName: 'Legendary', rarity: 'Legendary' });
   rolls = [0.5];
   const guaranteedEncounter = ctx.rollSpawn('water', 'user', {

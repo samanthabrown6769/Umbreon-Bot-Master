@@ -326,6 +326,8 @@ const {
   resetEventSpawnPity,
   advanceEncounterPity,
   resetEncounterPity,
+  advanceWildShinyPity,
+  resetWildShinyPity,
   getUserEventProgress,
   getUserEventCatchCounts,
   getEventAnnouncementChannel,
@@ -481,6 +483,7 @@ const {
   isPlateItem,
 } = require('./held-item-effects');
 const { getGoldenSpriteUrl } = require('./golden-pokemon');
+const { CHEST_EMOJI, CHEST_SPAWN_CHANCE, spawnExploreChest, chooseExploreChestReward } = require('./exploreChests');
 const { getCurrentPromo, getActivePromos, getPastPromos, findPromoByItemName, rollPromoItemDrop } = require('./promo');
 const { EVOLUTION_ITEMS, findEvolutionItem } = require('./evolution-items');
 const { BOXES, VOTE_BOXES, LOOTBOX_EMOJI, findBox, findVoteBox } = require('./boxes');
@@ -489,6 +492,8 @@ const {
   EXPLORE_EXCLUSIVES,
   EXPLORE_GOLDENS,
   EXPLORE_EXCLUSIVE_SHINY_IDS,
+  selectExploreMap,
+  getExploreStepStatus,
   getExploreCatchRate,
 } = require('./exploreData');
 // Egg-exclusive species never spawn from catching, fishing, swapping or CatchBot.
@@ -583,7 +588,8 @@ function getSwapRewardExcludedSpecies(isShiny) {
 for (const event of ALL_EVENTS) registerEvent(event);
 
 const EVENT_SPAWN_ODDS = 100;
-const EVENT_SPAWN_PITY_LIMIT = 100;
+const EVENT_SPAWN_PITY_MIN = 100;
+const EVENT_SPAWN_PITY_LIMIT = 250;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
@@ -1685,6 +1691,11 @@ function getOverworldEncounterMultiplier(ability) {
   return 1;
 }
 
+function getExploreEncounterMultiplier(ability) {
+  if (['arena-trap', 'no-guard'].includes(ability)) return 1.1;
+  return getOverworldEncounterMultiplier(ability);
+}
+
 function getFishingAbilityMultiplier(ability) {
   return ['suction-cups', 'sticky-hold'].includes(ability) ? 2 : 1;
 }
@@ -2419,7 +2430,32 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   },
   banette: { normal: '<:Banette:1562183890972708964>' },
   whimsicott: { normal: '<:Whimsicott:1562183892574670859>' },
-  bulbasaur: { normal: '<:Bulbasaur:1562183894181089400>', golden: '<:goldenbulbasaur:1562255800372699228>' },
+  bulbasaur: { normal: '<:bulbasaur:1569731188774404146>', golden: '<:goldenbulbasaur:1562255800372699228>' },
+  charmander: { normal: '<:charmander:1569731185532215349>' },
+  squirtle: { normal: '<:squirtle:1569731183041052754>' },
+  chikorita: { normal: '<:chikorita:1569731181480513647>' },
+  cyndaquil: { normal: '<:cyndaquil:1569731179911839846>' },
+  totodile: { normal: '<:totodile:1569731177303113768>' },
+  treecko: { normal: '<:treecko:1569731174816022688>', golden: '<:GTreecko:1569731127269392447>' },
+  torchic: { normal: '<:torchic:1569731171347075092>' },
+  mudkip: { normal: '<:mudkip:1569731168088232066>' },
+  turtwig: { normal: '<:turtwig:1569731166573957222>' },
+  chimchar: { normal: '<:chimchar:1569731164971995176>' },
+  piplup: { normal: '<:piplup:1569731162727776287>', golden: '<:GPiplup:1569731123251122196>' },
+  snivy: { normal: '<:snivy:1569731160832082025>' },
+  tepig: { normal: '<:tepig:1569731158680543344>' },
+  oshawott: { normal: '<:oshawott:1569731157006753902>' },
+  chespin: { normal: '<:chespin:1569731154871844944>' },
+  fennekin: { normal: '<:fennekin:1569731151688368268>' },
+  froakie: { normal: '<:froakie:1569731145548046506>' },
+  rowlet: { normal: '<:rowlet:1569731143824052364>' },
+  litten: { normal: '<:litten:1569731141785755809>', golden: '<:GLitten:1569731124777717823>' },
+  popplio: { normal: '<:popplio:1569731140267548782>' },
+  grookey: { normal: '<:grookey:1569731138501611591>' },
+  scorbunny: { normal: '<:scorbunny:1569731136739876874>' },
+  sobble: { normal: '<:sobble:1569731134701707364>' },
+  chinchou: { golden: '<:GChinchou:1569731121153966200>' },
+  munchlax: { golden: '<:GMunchlax:1569731119342030888>' },
   moltres: {
     normal: '<:moltres:1562188397802684496>',
     shiny: '<:Smoltres:1562188396011458700>',
@@ -2487,7 +2523,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   impidimp: { shiny: '<:SImpidimp:1567588626458738768>' },
   marill: { shiny: '<:SMarill:1567575544793403543>' },
   cursola: { shiny: '<:SCursola:1567600535723442226>' },
-  fuecoco: { shiny: '<:SFuecoco:1567588644368162978>' },
+  fuecoco: { normal: '<:fuecoco:1569731131551649813>', shiny: '<:SFuecoco:1567588644368162978>' },
   crocalor: { shiny: '<:SCrocalor:1567588646268305508>' },
   skeledirge: { shiny: '<:SSkeledirge:1567588648533364736>' },
   tarountula: { shiny: '<:STarountula:1567588660273086564>' },
@@ -2518,10 +2554,10 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   frosmoth: { shiny: '<:SFrosmoth:1567588630283948266>' },
   sneasler: { shiny: '<:SSneasler:1567588631923658822>' },
   overqwil: { shiny: '<:SOverqwil:1567588633429680148>' },
-  sprigatito: { shiny: '<:SSprigatito:1567588638194409512>' },
+  sprigatito: { normal: '<:sprigatito:1569731132793163787>', shiny: '<:SSprigatito:1567588638194409512>' },
   floragato: { shiny: '<:SFloragato:1567588640270323753>' },
   meowscarada: { shiny: '<:SMeowscarada:1567588642329989221>' },
-  quaxly: { shiny: '<:SQuaxly:1567588650143842335>' },
+  quaxly: { normal: '<:quaxly:1569731130016407653>', shiny: '<:SQuaxly:1567588650143842335>' },
   quaxwell: { shiny: '<:SQuaxwell:1567588651880415282>' },
   quaquaval: { shiny: '<:SQuaquaval:1567588653302288394>' },
   lechonk: { shiny: '<:SLechonk:1567588654938067105>' },
@@ -3028,6 +3064,8 @@ const ICONS = {
 // Patreon doubles the base full-odds shiny rate; event tickets have separate boosted rates.
 const BASE_SHINY_RATE = 1 / 1000;
 const FULL_ODDS_SHINY_PITY_LIMIT = 750;
+const WILD_SHINY_PITY_MIN = 1000;
+const WILD_SHINY_PITY_LIMIT = 2000;
 // Incense: +10% shiny encounter rate and +10% promo item drop rate while server charges last.
 const INCENSE_BOOST = 1.1;
 const PATREON_SHINY_RATE = 1 / 500;
@@ -3502,7 +3540,7 @@ function rollSpawn(
   const eventSpawnPity = eventSpawnEligible
     ? advanceEventSpawnPity(halloweenEvent.id, userId)
     : 0;
-  if (eventSpawnEligible
+  if (eventSpawnEligible && eventSpawnPity >= EVENT_SPAWN_PITY_MIN
       && (eventSpawnPity >= EVENT_SPAWN_PITY_LIMIT
         || Math.random() < getEventSpawnChance(roleChanceBoost))) {
     const isPatreonUser = Boolean(getUser(userId).has_patreon);
@@ -3531,7 +3569,7 @@ function rollSpawn(
   const legendaryPityDue = legendaryPity >= LEGENDARY_SPAWN_PITY_LIMIT;
   const finalizeSpawn = (pokemon, isLegendarySpawn = false) => {
     if (userId !== null) {
-      if (pokemon.isShiny) resetEncounterPity(userId, 'shiny');
+      if (pokemon.isShiny && !catchbot && !pokemon.isEventSpawn) resetWildShinyPity(userId);
       if (isLegendarySpawn) resetEncounterPity(userId, 'legendary');
     }
     return pokemon;
@@ -3546,6 +3584,9 @@ function rollSpawn(
       roleChanceBoost
     );
     if (specialPokemon) {
+      const shinyPity = advanceWildShinyPity(userId);
+      specialPokemon.isShiny = shinyPity >= WILD_SHINY_PITY_MIN
+        && (specialPokemon.isShiny || shinyPity >= WILD_SHINY_PITY_LIMIT);
       return finalizeSpawn(
         specialPokemon,
         specialPokemon.rarity === 'Legendary' || specialPokemon.isLegendary || specialPokemon.isMythical
@@ -3675,6 +3716,7 @@ function rollSpawn(
     }
 
     if (catchbot && isEventOpen(halloweenEvent) && getEventPokemonKey(pokemon, false)) continue;
+    if (eventTicketActive && !isForcedEventSpawn && getEventPokemonKey(pokemon, false)) continue;
 
     if (
       roleChanceBoost > 0
@@ -3721,25 +3763,26 @@ function rollSpawn(
       * (incenseActive ? INCENSE_BOOST : 1)
       * (pokeradarActive ? 1.1 : 1);
     const shinySpeciesKey = String(pokemon.speciesName).toLowerCase();
-    const fullOddsShinyEligible = !catchbot
+    const wildShinyEligible = !catchbot
       && userId !== null
       && !isForcedEventSpawn
-      && !eventTicketActive
-      && baseShinyRate === (isPatreonUser ? PATREON_SHINY_RATE : BASE_SHINY_RATE)
+      && baseShinyRate > 0
       && !EXPLORE_EXCLUSIVE_SHINY_IDS.has(pokemon.speciesId)
       && !EGG_ONLY_SHINY_SPECIES_KEYS.has(shinySpeciesKey)
       && (!FISH_ONLY_SHINY_KEYS.has(shinySpeciesKey)
         || (rod && rod.enablesShiny
           && (!FISH_PATREON_ONLY_SHINY_KEYS.has(shinySpeciesKey) || isPatreonUser)))
       && !(isEventOpen(halloweenEvent) && isEventChecklistSpawn(pokemon));
-    const fullOddsShinyPity = fullOddsShinyEligible
-      ? advanceEncounterPity(userId, 'shiny')
+    const wildShinyPity = wildShinyEligible
+      ? advanceWildShinyPity(userId)
       : 0;
     pokemon.incenseActive = incenseActive;
     pokemon.isShiny = isForcedEventSpawn
       ? forcedShiny
-      : (Math.random() < shinyChance
-        || (fullOddsShinyEligible && fullOddsShinyPity >= FULL_ODDS_SHINY_PITY_LIMIT));
+      : catchbot
+        ? Math.random() < shinyChance
+        : wildShinyEligible && wildShinyPity >= WILD_SHINY_PITY_MIN
+          && (Math.random() < shinyChance || wildShinyPity >= WILD_SHINY_PITY_LIMIT);
     if (pokemon.isShiny && !isForcedEventSpawn
         && (EGG_ONLY_SHINY_SPECIES_KEYS.has(String(pokemon.speciesName).toLowerCase())
           || EXPLORE_EXCLUSIVE_SHINY_IDS.has(pokemon.speciesId))) {
@@ -3770,8 +3813,31 @@ function isEventChecklistSpawn(pokemon) {
   return Boolean(getEventPokemonKey(pokemon));
 }
 
+const exploreCatalogCache = new Map();
+function getExploreCatalogEntries(mapKey) {
+  if (!Object.hasOwn(EXPLORE_MAPS, mapKey)) throw new TypeError(`Unknown Explore map: ${mapKey}`);
+  const cached = exploreCatalogCache.get(mapKey);
+  let rows = cached?.rows;
+  if (!cached || Date.now() - cached.at >= 30000) {
+    const excluded = SPECIAL_SPAWN_RESERVED_SPECIES.map((name) => name.toLowerCase());
+    const exclusions = excluded.length ? `AND lower(species_name) NOT IN (${excluded.map(() => '?').join(', ')})` : '';
+    rows = db.prepare(`
+      SELECT id, species_id, species_name, name, rarity FROM pokemon_forms
+      WHERE is_default = 1 AND is_legendary = 0 AND is_mythical = 0
+        AND rarity IN ('Common', 'Uncommon', 'Rare', 'Super Rare')
+        AND EXISTS (SELECT 1 FROM json_each(pokemon_forms.types) WHERE lower(value) = ?)
+        ${exclusions}
+      ORDER BY species_id, id
+    `).all(mapKey, ...excluded);
+    exploreCatalogCache.set(mapKey, { at: Date.now(), rows });
+  }
+  return isEventOpen(halloweenEvent)
+    ? rows.filter((row) => !getEventPokemonKey(row, false))
+    : rows;
+}
+
 const EXPLORE_GOLDEN_CHANCE = 1 / 200;
-const EXPLORE_EXCLUSIVE_WEIGHTS = { Uncommon: 60, Rare: 30, 'Super Rare': 10 };
+const EXPLORE_EXCLUSIVE_WEIGHTS = { Common: 80, Uncommon: 60, Rare: 30, 'Super Rare': 10 };
 
 function formToSpawn(form) {
   return {
@@ -3795,7 +3861,14 @@ function formToSpawn(form) {
 }
 
 function rollExploreExclusive(mapKey) {
-  const entries = EXPLORE_EXCLUSIVES[mapKey];
+  const configured = EXPLORE_EXCLUSIVES[mapKey];
+  if (!configured?.length) throw new Error(`No Pokémon configured for Explore map "${mapKey}".`);
+  const configuredIds = new Set(configured.map(([id]) => id));
+  const entries = [
+    ...configured,
+    ...getExploreCatalogEntries(mapKey).filter((row) => !configuredIds.has(row.species_id))
+      .map((row) => [row.species_id, row.rarity, true]),
+  ];
   if (!entries?.length) throw new Error(`No Pokémon configured for Explore map "${mapKey}".`);
   const totalWeight = entries.reduce((sum, [, rarity]) => sum + EXPLORE_EXCLUSIVE_WEIGHTS[rarity], 0);
   let roll = Math.random() * totalWeight;
@@ -3810,9 +3883,11 @@ function rollExploreExclusive(mapKey) {
   return { pokemon: { ...formToSpawn(form), rarity: chosen[1] }, canShiny: chosen[2], dex: chosen[0] };
 }
 
-function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0) {
+function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0, ability = '') {
   const exclusive = rollExploreExclusive(mapKey);
   const pokemon = exclusive.pokemon;
+  if (pokemon.rarity.toLowerCase() === 'common'
+      && ['intimidate', 'keen-eye'].includes(ability) && Math.random() < 0.3) return null;
   const canShiny = exclusive.canShiny;
   const perks = getPatreonPerks(userId);
   if (EXPLORE_GOLDENS[mapKey] === exclusive.dex
@@ -3911,6 +3986,10 @@ const PREMIERBALL_RATES = {
   'Super Rare': 70,
   Legendary: 55,
 };
+
+function getEncounterCatchBonus(target, clanBonus, patreonBonus) {
+  return (target.isExplore ? 0 : clanBonus) + patreonBonus;
+}
 
 function getBallCatchRate(ballKey, ball, target, displayRarity, baseCatchChance, clanBonus, channelBoost) {
   if (ballKey === 'prb' && target.isShiny && target.isEventShiny) return 100;
@@ -4382,6 +4461,14 @@ async function sendPagedEmbeds(message, embeds, label) {
 
 function isBotAdmin(message) {
   return isConfiguredBotAdmin(message);
+}
+
+const EXPLORE_TESTER_IDS = new Set([
+  '1352997432929288194', '378623134816927745', '183625933041827840',
+]);
+
+function isExploreTester(message) {
+  return isBotAdmin(message) || EXPLORE_TESTER_IDS.has(message.author.id);
 }
 
 function hasCooldownExemption(userId) {
@@ -6281,6 +6368,7 @@ async function announceRareSpawn(guild, user, pokemon, source) {
         pokemon.isShiny ? (pokemon.shinyImg || pokemon.img) : pokemon.img
       );
     if (image) embed.setImage(image);
+    if (inline?.onSpawn) inline.onSpawn(embed);
     if (!await sendToChannels(rareChannels, { embeds: [embed] })) {
       throw new Error('No rare-spawn channel accepted the announcement.');
     }
@@ -6861,6 +6949,7 @@ async function askForBall(
   );
   const clanPerks = getClanPerkMultipliers(getPlayerClan(userId));
   const ninjaBonus = getPatreonPerks(userId).catchBoost;
+  const encounterCatchBonus = getEncounterCatchBonus(target, clanPerks.crBonus, ninjaBonus);
   const channelCatchRateBoost = getChannelCatchRateBoost(userId, message.guildId, message.channelId);
   const ninjaBoostText = ninjaBonus > 0 ? ` (+${ninjaBonus}% catch rate)` : '';
   const catchRateText = mode === 'catch' || isFishing
@@ -6869,7 +6958,7 @@ async function askForBall(
       const ball = BALL_CONFIG[key];
       const chance = guaranteedCatch || key === 'mb'
         ? 100
-        : getBallCatchRate(key, ball, target, catchDisplayRarity, rarityData.catchChance, clanPerks.crBonus + ninjaBonus,         channelCatchRateBoost);
+        : getBallCatchRate(key, ball, target, catchDisplayRarity, rarityData.catchChance, encounterCatchBonus, channelCatchRateBoost);
               return `${ball.emoji} ${Math.round(chance)}%`;
             }).join(' • ')}\n`;
   const tracksRarityStreak = !NON_STREAK_RARITIES.has(catchDisplayRarity.toLowerCase());
@@ -6918,7 +7007,7 @@ async function askForBall(
     );
   const rareAlert = buildRareEncounterAlert(target, {
     userId, isFishing, guaranteedCatch, catchDisplayRarity, rarityData,
-    catchBonus: clanPerks.crBonus + ninjaBonus, channelCatchRateBoost, allowAnyUserCatch,
+    catchBonus: encounterCatchBonus, channelCatchRateBoost, allowAnyUserCatch,
   });
   const heldItemAlert = buildHeldItemEncounterAlert(target, userId);
   const factionAlert = buildFactionEncounterAlert(target, userId);
@@ -7082,7 +7171,7 @@ async function askForBall(
     const playerRoll = Math.random() * 100;
     const targetRate = guaranteedCatch
       ? 100
-      : getBallCatchRate(selectedBall, ball, target, catchDisplayRarity,       rarityData.catchChance, clanPerks.crBonus + ninjaBonus, channelCatchRateBoost);
+      : getBallCatchRate(selectedBall, ball, target, catchDisplayRarity, rarityData.catchChance, encounterCatchBonus, channelCatchRateBoost);
     const rollMatchesRate = targetRate > 0 && Math.round(playerRoll) <= Math.round(targetRate);
     const criticalCatch = !guaranteedCatch && selectedBall !== 'mb' && playerRoll >= targetRate && !rollMatchesRate
       && Math.random() < getCatchingCharmCritChance(userId);
@@ -10337,8 +10426,8 @@ async function handleStatsCommand(message, args) {
     `${EMOJIS.megabracelet} **Mega Chambers won:** ${user.mega_chambers_won}\n` +
     `${WORLD_BOSS_EMOJI} **World Boss MVPs:** ${user.world_boss_mvps}`;
   const items =
-    `${EMOJIS.amuletcoin} **Amulet coins:** ${user.amulet_coins}\n` +
-    `${EMOJIS.shinyCharm} **Shiny charms:** ${user.shiny_charms}\n` +
+    `${EMOJIS.amuletcoin} **Amulet coins:** ${user.amulet_coins + (user.explore_amulet_coin ? 1 : 0)}\n` +
+    `${EMOJIS.shinyCharm} **Shiny charms:** ${user.shiny_charms + (user.explore_shiny_charm ? 1 : 0)}\n` +
     `${LOOTBOX_EMOJI} **Lootboxes opened:** ${user.lootboxes_opened}\n` +
     `${EMOJIS.goldenRazz} **Golden Razz's used:** ${user.golden_razz_used}\n` +
     `${EMOJIS.repel} **Repels used:** ${user.repels_used}\n` +
@@ -12376,7 +12465,7 @@ client.on('messageCreate', async (message) => {
         golden: {
           color: 0xffd700, emoji: EMOJIS.golden, name: 'Golden',
           benefits: [
-            `${EMOJIS.golden} +25% Golden-exclusive Fishing and PokeSwap odds, and Promo item rates`,
+            `${EMOJIS.golden} +25% Golden-exclusive Fishing, PokeSwap and Explore odds, and Promo item rates`,
             `${EMOJIS.cooldownMachine} 300 Cooldown Machines, ${EMOJIS.abilityCapsule} 10 Ability Capsules, ${EMOJIS.abilityPatch} 5 Ability Patches, 250 Eggs, and 75 Super Incubators monthly`,
             `${PT} +6,000 monthly bonus Patreon Tokens`,
             `${EMOJIS.bosscoin} 1 Boss Coin every month`,
@@ -12394,6 +12483,7 @@ client.on('messageCreate', async (message) => {
           `${page.emoji} **${page.name} Patreon Benefits**\n` +
           (lower ? '• ✅ Includes all lower-tier benefits\n' : '') +
           `\n✨ **Key Benefits**\n${page.benefits.map((line) => `• ${line}`).join('\n')}\n\n` +
+          `🗺️ **Explore:** ${perks.exploreSteps.toLocaleString()} steps per 24 hours, ${perks.exploreSeconds} seconds per session (bot admins and approved testers only during testing)\n\n` +
           `📅 **Daily Rewards**\n• ${PT} ${perks.dailyTokens.toLocaleString()} Patreon Tokens\n` +
           `• ${EMOJIS.pokecoin} ${perks.dailyCoins.toLocaleString()} PokeCoins\n\n` +
           `💰 **Monthly Rewards**\n${monthlyText(tierKey)}\n\n` +
@@ -12537,7 +12627,7 @@ client.on('messageCreate', async (message) => {
         embed = new EmbedBuilder()
           .setColor(0x78c850)
           .setTitle('🗺️ Explore Exclusives')
-          .setDescription('Explore is currently available to bot admins only while testing.')
+          .setDescription('Explore is currently available to bot admins and approved testers with Patreon while testing.')
           .addFields(...Object.entries(EXPLORE_EXCLUSIVES).map(([key, entries]) => ({
             name: `${EXPLORE_MAPS[key].emoji} ${EXPLORE_MAPS[key].name}`,
             value: `**Shiny:** ${entries.filter(([, , shiny]) => shiny).map(([id]) => nameFor(id)).join(', ')}\n` +
@@ -13431,7 +13521,7 @@ client.on('messageCreate', async (message) => {
         .setDescription(
           `• \`${PREFIX}gym [region]\` / \`${PREFIX}elitefour [region]\` (\`${PREFIX}e4\`) / \`${PREFIX}champion [region]\` — League hubs per region\n` +
           `• \`${PREFIX}challenges\` / \`${PREFIX}ch [name|id]\` — View challenger trainers and their progress\n` +
-          `• \`${PREFIX}explore [grass|fire|water]\` / \`${PREFIX}exp\` — Explore maps for exclusive Shinies and Goldens (bot admins only during testing)\n` +
+          `• \`${PREFIX}explore <gm 1|gm 2|fm 1|wm 1>\` / \`${PREFIX}exp\` — Explore maps for exclusive Shinies and Goldens (Patreon and approved testers only during testing)\n` +
           `• \`${PREFIX}bonus\` / \`${PREFIX}bo a <bonus>\` — Activate event voucher bonuses\n` +
           `• \`${PREFIX}ability\` / \`${PREFIX}ab [Pokémon]\` — Browse Pokémon abilities\n` +
           `• \`${PREFIX}cooldown [quantity]\` — Add Cooldown Machine charges\n` +
@@ -16418,14 +16508,10 @@ client.on('messageCreate', async (message) => {
         return message.reply(`🎣 You cast your line with the **${rod.name}**, but nothing bit.`);
       }
       const roleChanceBoost = await getRoleEncounterBoost(userId);
-      let fishingTarget = rollSpawn('water', userId, rod, {
-        channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
-        roleChanceBoost,
-        guildId: message.guildId,
-      });
       const goldenFishingChance =
         (1 / FISH_EXCLUSIVE_GOLDEN_DENOMINATOR) * (1 + getPatreonPerks(userId).goldenBoost)
         * (isPlayerBonusActive('fish') ? 1.25 : 1);
+      let fishingTarget;
       if (rod.name === 'Golden Rod' && Math.random() < goldenFishingChance) {
         const speciesName = FISH_EXCLUSIVE_GOLDENS[
           Math.floor(Math.random() * FISH_EXCLUSIVE_GOLDENS.length)
@@ -16438,6 +16524,12 @@ client.on('messageCreate', async (message) => {
           isEventShiny: false,
           encounterRateText: 'Fishing-exclusive Golden',
         };
+      } else {
+        fishingTarget = rollSpawn('water', userId, rod, {
+          channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
+          roleChanceBoost,
+          guildId: message.guildId,
+        });
       }
       return await askForBall(
         message,
@@ -20352,29 +20444,28 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'explore' || command === 'exp') {
-      if (!isBotAdmin(message)) return message.reply('Explore is currently in testing and is available to bot admins only.');
+      if (!isExploreTester(message)) return message.reply('Explore is currently in testing and is available to bot admins and approved testers only.');
+      const selectedMap = selectExploreMap(args);
+      if (!selectedMap) return message.reply(`Usage: \`${PREFIX}explore <gm 1|gm 2|fm 1|wm 1>\``);
+      const getStepLimit = () => getExploreStepStatus(getUser(userId), getPatreonPerks(userId)).limit;
+      if (!getStepLimit()) return message.reply('Explore requires an active Patreon tier.');
+      const sessionSeconds = getPatreonPerks(userId).exploreSeconds;
       const { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, renderExploreMap } = require('./exploreRenderer');
-      const DAILY_STEP_LIMIT = 500;
-      const PATREON_STEP_LIMIT = 1000;
-      const SEARCH_FIND_CHANCE = 0.4;
       const SEARCH_LOOT = [
-        { field: 'coins', label: 'PokéCoins', min: 500, max: 5000 },
-        { field: 'pokeballs', label: 'Poké Balls', min: 3, max: 10 },
-        { field: 'greatballs', label: 'Great Balls', min: 2, max: 6 },
-        { field: 'ultraballs', label: 'Ultra Balls', min: 1, max: 3 },
-        { field: 'rare_candies', label: 'Rare Candies', min: 1, max: 2 },
-        { field: 'repels', label: 'Repels', min: 1, max: 1 },
+        { field: 'coins', label: 'PokéCoins', emoji: EMOJIS.pokecoin, min: 500, max: 5000 },
+        { field: 'pokeballs', label: 'Poké Balls', emoji: EMOJIS.pokeball, min: 3, max: 10 },
+        { field: 'greatballs', label: 'Great Balls', emoji: EMOJIS.greatball, min: 2, max: 6 },
+        { field: 'ultraballs', label: 'Ultra Balls', emoji: EMOJIS.ultraball, min: 1, max: 3 },
+        { field: 'rare_candies', label: 'Rare Candies', emoji: EMOJIS.rarecandy, min: 1, max: 2 },
+        { field: 'repels', label: 'Repels', emoji: EMOJIS.repel, min: 1, max: 1 },
       ];
       const STEP = 32;
-      const mapKey = args[0]?.toLowerCase() || 'grass';
-      if (!Object.hasOwn(MAP_THEMES, mapKey) || args.length > 1) {
-        return message.reply(`Usage: \`${PREFIX}explore [${Object.keys(MAP_THEMES).join('|')}]\``);
-      }
+      const { mapKey } = selectedMap;
       if (activeExploreSessions.has(userId)) {
         return message.reply('You already have an active Explore session. Finish it before starting another.');
       }
       const theme = MAP_THEMES[mapKey];
-      const backgroundIndex = Math.floor(Math.random() * theme.images.length);
+      const backgroundIndex = selectedMap.backgroundIndex ?? Math.floor(Math.random() * theme.images.length);
       const mapTitle = `${theme.name} ${backgroundIndex + 1}`;
       const { width: mapWidth, height: mapHeight } = getExploreMapSize(mapKey, backgroundIndex);
       const background = theme.images[backgroundIndex];
@@ -20390,6 +20481,8 @@ client.on('messageCreate', async (message) => {
       let y = Math.floor((mapHeight - TRAINER_HEIGHT) * background.startY);
       const EXPLORE_ENCOUNTER_CHANCE = 0.6;
       let activeWild = null;
+      let chest = null;
+      let activeEncounterEmbed = null;
       const trainerUrl = getTrainerIconUrl(userId);
       let catchHandler = null;
       let cancelEncounter = null;
@@ -20426,7 +20519,7 @@ client.on('messageCreate', async (message) => {
       ];
       let statusText = '\n🌿 No Pokémon appeared.';
       const buildPayload = async (steps, finished = false) => {
-        const limit = getUser(userId).has_patreon ? PATREON_STEP_LIMIT : DAILY_STEP_LIMIT;
+        const limit = getStepLimit();
         const summarize = (entries) => {
           const text = entries.join(', ');
           return text.length > 600 ? `${text.slice(0, 597)}...` : text || 'None';
@@ -20436,9 +20529,11 @@ client.on('messageCreate', async (message) => {
           `\n🎁 Items found (${foundItems.length}): ${summarize(foundItems)}` +
           `\n🪙 Coins earned: **${sessionCoins.toLocaleString()}**`;
         return {
-          content: `🗺️ Map: ${theme.emoji} **${mapTitle}** — Steps today: **${steps}/${limit}**${finished ? summary : statusText}`,
-          files: [new AttachmentBuilder(await renderExploreMap(mapKey, x, y, trainerUrl, backgroundIndex), { name: 'explore.png' })],
+          content: `🗺️ Map: ${theme.emoji} **${mapTitle}** — Steps today: **${steps}/${limit}** — Session: **${sessionSeconds} seconds**${finished ? summary : statusText}` +
+            (!finished && chest ? `\n${CHEST_EMOJI} Chest on the map${chest.x === x && chest.y === y ? ' — press 🔍 to open it!' : '.'}` : ''),
+          files: [new AttachmentBuilder(await renderExploreMap(mapKey, x, y, trainerUrl, backgroundIndex, finished ? null : chest), { name: 'explore.png' })],
           attachments: [],
+          embeds: !finished && activeEncounterEmbed ? [activeEncounterEmbed] : [],
           components: finished ? [] : buildRows(steps >= limit || Boolean(activeWild)),
         };
       };
@@ -20448,7 +20543,7 @@ client.on('messageCreate', async (message) => {
       activeExploreSessions.add(userId);
       try {
         exploreMsg = await message.reply(await buildPayload(startSteps));
-        collector = exploreMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 180000 });
+        collector = exploreMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: sessionSeconds * 1000 });
       } catch (error) {
         activeExploreSessions.delete(userId);
         throw error;
@@ -20478,12 +20573,12 @@ client.on('messageCreate', async (message) => {
           return interaction.reply({ content: 'Catch the wild Pokémon or wait for it to leave before moving.', ephemeral: true });
         }
         const isSearch = interaction.customId === 'exp_search';
-        const limit = getUser(userId).has_patreon ? PATREON_STEP_LIMIT : DAILY_STEP_LIMIT;
+        const limit = getStepLimit();
+        if (!limit) return interaction.reply({ content: 'Explore requires an active Patreon tier.', ephemeral: true });
         const steps = readSteps();
         if (steps >= limit) {
           return interaction.reply({
-            content: `You have used all of your exploring steps for today (${limit}).` +
-              (limit === DAILY_STEP_LIMIT ? ' Patreon supporters get more steps.' : ''),
+            content: `You have used all of your exploring steps for today (${limit}).`,
             ephemeral: true,
           });
         }
@@ -20500,20 +20595,38 @@ client.on('messageCreate', async (message) => {
         let wild = null;
         let foundText = '';
         if (isSearch) {
-          if (Math.random() < SEARCH_FIND_CHANCE) {
-            const found = SEARCH_LOOT[Math.floor(Math.random() * SEARCH_LOOT.length)];
-            const qty = found.min + Math.floor(Math.random() * (found.max - found.min + 1));
-            incrementUser(userId, { [found.field]: qty });
-            if (found.field === 'coins') sessionCoins += qty;
-            else foundItems.push(`${qty}x ${found.label}`);
-            foundText = `\n🔍 You found **${qty.toLocaleString()}x ${found.label}** on the floor!`;
+          if (chest && chest.x === x && chest.y === y) {
+            const found = db.transaction(() => {
+              const reward = chooseExploreChestReward(getUser(userId), SEARCH_LOOT);
+              if (reward.special) {
+                const field = reward.special === 'shiny' ? 'explore_shiny_charm' : 'explore_amulet_coin';
+                updateUser(userId, { [field]: 1 });
+                return reward.special === 'shiny'
+                  ? { label: 'Shiny Charm', emoji: EMOJIS.shinyCharm, quantity: 1 }
+                  : { label: 'Amulet Coin', emoji: EMOJIS.amuletcoin, quantity: 1 };
+              }
+              incrementUser(userId, { [reward.field]: reward.quantity });
+              return reward;
+            }).immediate();
+            chest = null;
+            if (found.field === 'coins') sessionCoins += found.quantity;
+            else foundItems.push(`${found.emoji} ${found.quantity}x ${found.label}`);
+            foundText = `\n${CHEST_EMOJI} You opened a chest and found ${found.emoji} **${found.quantity.toLocaleString()}x ${found.label}**!`;
           } else {
-            foundText = '\n🔍 You searched the ground but found nothing.';
+            foundText = '\n🔍 There is no chest at your position.';
           }
         } else {
+          if (chest) {
+            chest.stepsRemaining -= 1;
+            if (chest.stepsRemaining <= 0) chest = null;
+          } else if (Math.random() < CHEST_SPAWN_CHANCE) {
+            chest = spawnExploreChest(x, y, mapWidth - TRAINER_WIDTH, mapHeight - TRAINER_HEIGHT, STEP);
+          }
           const ability = await resolveLeadOverworldAbility(userId);
-          if (Math.random() < Math.min(1, EXPLORE_ENCOUNTER_CHANCE * getOverworldEncounterMultiplier(ability))) {
-            wild = rollExploreEncounter(userId, mapKey, getChannelCatchRateBoost(userId, message.guildId, message.channelId));
+          if (Math.random() < Math.min(1, EXPLORE_ENCOUNTER_CHANCE * getExploreEncounterMultiplier(ability))) {
+            wild = rollExploreEncounter(userId, mapKey, getChannelCatchRateBoost(userId, message.guildId, message.channelId), ability);
+          }
+          if (wild) {
             wild.overworldAbility = ability;
             wild.friskReveal = ability === 'frisk';
             const heldItem = rollWildHeldItem(wild, userId);
@@ -20527,7 +20640,8 @@ client.on('messageCreate', async (message) => {
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
-          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden))}${factionLogoPrefix(wild)}**${wild.name}** appeared! ` +
+          const sprite = getPokemonSpriteEmoji(wild);
+          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden))}${factionLogoPrefix(wild)}${sprite ? `${sprite} ` : ''}**${wild.name}** appeared! ` +
             `(${getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden)} ${wildRarity}) — throw a ball with the buttons on the right.`;
         } else if (!catchHandler) {
           statusText = foundText || '\n🌿 No Pokémon appeared.';
@@ -20539,15 +20653,23 @@ client.on('messageCreate', async (message) => {
               timeoutMs: 45000,
               onHandler: (handler) => { catchHandler = handler; },
               inline: {
+                onSpawn: (embed) => {
+                  if (wild.isShiny || wild.isGolden || wild.is_golden
+                      || wild.isLegendary || String(wild.rarity).toLowerCase() === 'legendary') {
+                    activeEncounterEmbed = embed;
+                  }
+                },
                 onCancelReady: (cancel) => { cancelEncounter = cancel; },
                 onCatch: (pokemon, coins) => {
-                  caught.push(`${pokemon.isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : ''}${pokemon.name}`);
+                  const sprite = getPokemonSpriteEmoji(pokemon);
+                  caught.push(`${sprite ? `${sprite} ` : ''}${pokemon.isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : ''}${pokemon.name}`);
                   sessionCoins += coins;
-                  if (pokemon.heldItem) foundItems.push(`1x ${pokemon.heldItem}`);
+                  if (pokemon.heldItem) foundItems.push(`${pokemon.heldItemEmoji || getItemEmoji(pokemon.heldItem)} 1x ${pokemon.heldItem}`);
                 },
                 onEdit: async (text) => {
                   catchHandler = null;
                   activeWild = null;
+                  activeEncounterEmbed = null;
                   cancelEncounter = null;
                   statusText = `\n${text}`;
                   if (!ending) await exploreMsg.edit(await buildPayload(readSteps()));
@@ -20559,6 +20681,7 @@ client.on('messageCreate', async (message) => {
             if (cancelEncounter) cancelEncounter();
             catchHandler = null;
             activeWild = null;
+            activeEncounterEmbed = null;
             cancelEncounter = null;
             statusText = '\n❌ The encounter could not be started. Please try moving again.';
           }
@@ -21582,10 +21705,10 @@ client.on('messageCreate', async (message) => {
                 ...Object.entries(EXP_CANDY_EMOJIS).map(([name, emoji]) => line(emoji, owned(name), name)),
                 line('<:doupleexpticket:1563198670352949348>', bagUser.double_xp_charges.toLocaleString(), 'Double XP Ticket'),
                 '**Other Items**',
-                line(EMOJIS.shinyCharm, bagUser.shiny_charms, 'Shiny charms'),
+                line(EMOJIS.shinyCharm, bagUser.shiny_charms + (bagUser.explore_shiny_charm ? 1 : 0), 'Shiny charms'),
                 line('<:catchingcharm:1562495630201454752>', owned('Catching Charm'), 'Catching charms'),
                 line('<:teamboost:1562495631480848404>', owned('Team Boost'), 'Team boosts'),
-                line(EMOJIS.amuletcoin, amuletBoost.owned, 'Amulet coins'),
+                line(EMOJIS.amuletcoin, amuletBoost.owned + amuletBoost.explore, 'Amulet coins'),
                 line('<:questreset:1563198665408122970>', bagUser.quest_reset_scrolls.toLocaleString(), 'Quest reset scrolls'),
               ].join('\n'),
               inline: true,
@@ -22915,6 +23038,7 @@ client.on('messageCreate', async (message) => {
           .setDescription(
             `Provides a **+5% PokéCoin reward boost per effective Amulet Coin**.\n\n` +
             `**You currently own:** ${EMOJIS.amuletcoin} **${boost.owned}/10 Amulet Coins**\n` +
+            `**Explore bonus:** ${EMOJIS.amuletcoin} **${boost.explore}/1**\n` +
             `**Effective bonus:** **+${boost.percentBoost}%** ` +
             `(${boost.invisible} invisible bonus coin${boost.invisible === 1 ? '' : 's'} included)\n\n` +
             `**Usage**\nAutomatically active when you earn PokéCoins.\n\n` +
@@ -22922,6 +23046,7 @@ client.on('messageCreate', async (message) => {
             `• Buy for ${EMOJIS.pokecoin} **150,000 each** with \`${PREFIX}shop buy amulet coin [amount]\` (maximum 10 purchased).\n` +
             `• Gold and Amethyst clan perks provide invisible Amulet Coins (Amethyst includes both perk levels).\n` +
             `• Patreon perks provide +4 invisible Amulet Coins.\n\n` +
+            `• Find one extra Amulet Coin in Explore chests.\n\n` +
             `**Can be held by Pokémon?** ❌ No`
           )
           .setThumbnail('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/amulet-coin.png')
@@ -22937,9 +23062,10 @@ client.on('messageCreate', async (message) => {
             `Each charm adds **+1 percentage point** to your shiny encounter chance, up to **5 shop charms**. ` +
             `Clan Shiny Rate bonuses also apply.\n\n` +
             `**You own:** ${EMOJIS.shinyCharm} **${user.shiny_charms}/5 shop charms**\n` +
+            `**Explore bonus:** ${EMOJIS.shinyCharm} **${user.explore_shiny_charm ? 1 : 0}/1**\n` +
             `**Effective bonus:** **+${getTotalEffectiveShinyBonus(userId)}%** ` +
             '(includes applicable clan and account bonuses)\n\n' +
-            `Buy for **25 Vote Coins each** with \`${PREFIX}shop buy 8 [amount]\`.`
+            `Buy for **25 Vote Coins each** with \`${PREFIX}shop buy 8 [amount]\`, and find one extra in Explore chests.`
           )
           .setThumbnail('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/shiny-charm.png');
         return message.reply({ embeds: [embed] });
@@ -26962,6 +27088,10 @@ client.on('messageCreate', async (message) => {
       const huntStatus = huntActive
         ? `Daily Hunt: **${user.hunt_target_name}** (${user.hunt_progress}/${user.hunt_required})${huntClaimed ? ' — Complete!' : '.'}`
         : 'You can check your daily hunt target!';
+      const explore = getExploreStepStatus(user, getPatreonPerks(userId), now);
+      const exploreStatus = explore.limit
+        ? `Explore steps: **${explore.used}/${explore.limit}**${explore.resetAt ? ` — resets <t:${Math.floor(explore.resetAt / 1000)}:R>.` : '.'}`
+        : 'Explore requires an active Patreon tier.';
       const checklistBox = (checked) => checked ? '✅' : '⬜';
       const description =
         `${checklistBox(dailyClaimed)} 🕐 ${dailyStatus}\n` +
@@ -26969,7 +27099,8 @@ client.on('messageCreate', async (message) => {
         `${checklistBox(questsCompleted)} 📜 ${questStatus}\n` +
         `${checklistBox(catchbotNeedsClaim)} 🤖 ${catchbotStatus}\n` +
         `${checklistBox(swapTicketsClaimed)} 🎟️ ${swapStatus}\n` +
-        `${checklistBox(huntClaimed)} 🎯 ${huntStatus}\n\n` +
+        `${checklistBox(huntClaimed)} 🎯 ${huntStatus}\n` +
+        `${checklistBox(explore.limit > 0 && explore.used >= explore.limit)} 🗺️ ${exploreStatus}\n\n` +
         `\`${PREFIX}daily\`; \`${PREFIX}vote\`; \`${PREFIX}quest\`; ` +
         `\`${PREFIX}catchbot\`; \`${PREFIX}swap\`; \`${PREFIX}hunt\``;
       const embed = new EmbedBuilder()
