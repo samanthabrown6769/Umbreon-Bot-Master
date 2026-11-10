@@ -2249,8 +2249,10 @@ function rollCatchbotSpawn(userId, options) {
   throw new Error('CatchBot could not roll a Generation 1–3 Pokémon.');
 }
 
-function rollCatchbotGoldenExclusive(luckPercent) {
-  if (Math.random() >= CATCHBOT_GOLDEN_BASE_CHANCE * (1 + luckPercent / 100)) return null;
+function rollCatchbotGoldenExclusive(luckLevel) {
+  const boundedLuckLevel = Math.max(0, Math.min(CB_CONFIG.luck.maxLvl, luckLevel));
+  const chance = CATCHBOT_GOLDEN_BASE_CHANCE * (1 + boundedLuckLevel * 0.025);
+  if (Math.random() >= chance) return null;
   const pokemon = CATCHBOT_GOLDEN_EXCLUSIVES[
     Math.floor(Math.random() * CATCHBOT_GOLDEN_EXCLUSIVES.length)
   ];
@@ -3152,9 +3154,13 @@ const EVENT_TICKET_SHINY_RATES = Object.freeze({
   patreon: { event: 1 / 50, nonEvent: 1 / 250 },
   standard: { event: 1 / 100, nonEvent: 1 / 500 },
 });
-const CATCHBOT_BASE_SHINY_RATE = 1 / 100000;
-const CATCHBOT_GOLDEN_BASE_CHANCE = 1 / 2500;
-const CATCHBOT_LEGENDARY_BASE_CHANCE = 1 / 6666;
+const CATCHBOT_GOLDEN_BASE_CHANCE = 1 / 250000;
+const CATCHBOT_LEGENDARY_DENOMINATORS = Object.freeze([
+  6666, 6499, 6333, 6166, 5999, 5833, 5666, 5499, 5333, 5166, 5000,
+]);
+const CATCHBOT_SHINY_DENOMINATORS = Object.freeze([
+  100000, 97500, 95000, 92500, 90000, 87500, 85000, 82500, 80000, 77500, 75000,
+]);
 const CATCHBOT_RARITY_WEIGHTS = Object.freeze({
   Common: 55,
   Uncommon: 25,
@@ -3584,7 +3590,7 @@ function rollSpawn(
   rod = null,
   {
     catchbot = false,
-    catchbotLuckPercent = 0,
+    catchbotLuckLevel = 0,
     channelRateBoost = 0,
     roleChanceBoost = 0,
     goldenRazzActive = false,
@@ -3762,12 +3768,11 @@ function rollSpawn(
       if (!totalWeight) throw new Error('No Pokémon rarities have a positive spawn weight.');
       const legendaryChance = Math.min(1,
         (catchbot
-          ? CATCHBOT_LEGENDARY_BASE_CHANCE
+          ? 1 / CATCHBOT_LEGENDARY_DENOMINATORS[catchbotLuckLevel]
           : goldenRazzActive ? LEGENDARY_GOLDEN_RAZZ_CHANCE : LEGENDARY_BASE_CHANCE)
         * (1 + (catchbot ? 0 : channelRateBoost) / 100)
         * (1 + roleChanceBoost / 100)
         * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
-        * (catchbot ? 1 + catchbotLuckPercent / 100 : 1)
       );
       if (legendaryEnabled && (!rod || rod.enablesLegendary)
           && (legendaryPityDue || Math.random() < legendaryChance)) {
@@ -3822,7 +3827,7 @@ function rollSpawn(
     const baseShinyRate = rod && !rod.enablesShiny
       ? 0
       : catchbot
-        ? CATCHBOT_BASE_SHINY_RATE
+        ? 1 / CATCHBOT_SHINY_DENOMINATORS[catchbotLuckLevel]
       : isEventShinyTargetActive
         ? ticketShinyRates.event
         : eventTicketActive
@@ -3841,9 +3846,6 @@ function rollSpawn(
       * eventTicketShinyMultiplier;
     const shinyChance = baseShinyChance
       * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
-      * (catchbot
-        ? 1 + catchbotLuckPercent / 100
-        : 1)
       * (catchbot ? 1 : 1 + channelRateBoost / 100)
       * (incenseActive ? INCENSE_BOOST : 1)
       * (pokeradarActive ? 1.1 : 1);
@@ -12818,7 +12820,7 @@ client.on('messageCreate', async (message) => {
               const spriteEmoji = getPokemonSpriteEmoji({ name: `Golden ${pokemon.name}` });
               return `${spriteEmoji ? `${spriteEmoji} ` : ''}${EMOJIS.golden} ${pokemon.name}`;
             }).join('\n')}\n\n` +
-            'Each CatchBot Pokémon has a chance to be Golden at maximum Luck.'
+            'Each CatchBot encounter has a 1-in-250,000 base chance to be Golden; Luck increases this chance by 2.5% per level, up to 25%.'
           );
       } else {
         const formatPool = (names) => names.map((name) => `• ${name}`).join('\n');
@@ -18723,13 +18725,13 @@ client.on('messageCreate', async (message) => {
             return message.reply(`⚙️ Your legacy CatchBot run is still active. Available in **${minutes} minutes**.`);
           }
           const roleChanceBoost = await getRoleEncounterBoost(userId);
-          const legacyLuckPercent = CB_CONFIG.luck.getStat(cb.luck_lvl);
+          const legacyLuckLevel = CB_CONFIG.luck.getStat(cb.luck_lvl);
           const legacyRewards = Array.from(
             { length: 4 },
-            () => rollCatchbotGoldenExclusive(legacyLuckPercent)
+            () => rollCatchbotGoldenExclusive(legacyLuckLevel)
               || rollCatchbotSpawn(userId, {
                 catchbot: true,
-                catchbotLuckPercent: legacyLuckPercent,
+                catchbotLuckLevel: legacyLuckLevel,
                 roleChanceBoost,
               })
           );
@@ -18805,10 +18807,10 @@ client.on('messageCreate', async (message) => {
           for (let index = 0; index < totalPokemon; index += 1) {
             const spawnedPokemon = rollCatchbotSpawn(userId, {
               catchbot: true,
-              catchbotLuckPercent: run.luckPercent,
+              catchbotLuckLevel: run.luckLevel,
               roleChanceBoost,
             });
-            const pokemon = rollCatchbotGoldenExclusive(run.luckPercent) || spawnedPokemon;
+            const pokemon = rollCatchbotGoldenExclusive(run.luckLevel) || spawnedPokemon;
             if (pokemon.isGolden) saveCatch(userId, pokemon, false, true, true);
             else saveCatch(userId, pokemon, pokemon.isShiny, true);
             caughtPokemon.push({ ...pokemon });
@@ -18893,7 +18895,7 @@ client.on('messageCreate', async (message) => {
       const currentMonsPerHour = CB_CONFIG.pokemon.getStat(cb.pokemon_lvl);
       const duration = CB_CONFIG.duration.getStat(cb.duration_lvl);
       const costPerPokemon = CB_CONFIG.cost.getStat(cb.cost_lvl);
-      const luckPercent = CB_CONFIG.luck.getStat(cb.luck_lvl);
+      const luckLevel = CB_CONFIG.luck.getStat(cb.luck_lvl);
       const isRunning = cb.running_until > now || user.catchbot_end > now;
       const hasUnclaimedRun = Boolean(cb.running_until || user.catchbot_end);
       const timeRemaining = Math.max(cb.running_until, user.catchbot_end) - now;
@@ -18916,7 +18918,11 @@ client.on('messageCreate', async (message) => {
         `(${renderLevelBar(cb.cost_lvl, 10)}) • Next: ${nextUpgrade('cost')}\n` +
         `⏰ Duration: **${duration} hours** — Lv. ${cb.duration_lvl}/11 ` +
         `(${renderLevelBar(cb.duration_lvl, 11)}) • Next: ${nextUpgrade('duration')}\n` +
-        `🍀 Luck: **+${luckPercent}% Legendary, shiny & Golden odds** — Lv. ${cb.luck_lvl}/10 ` +
+        `🍀 Luck: **Legendary 1/${CATCHBOT_LEGENDARY_DENOMINATORS[luckLevel].toLocaleString()} • ` +
+        `Shiny 1/${CATCHBOT_SHINY_DENOMINATORS[luckLevel].toLocaleString()} • ` +
+        `Golden 1/${Math.round(
+          1 / (CATCHBOT_GOLDEN_BASE_CHANCE * (1 + luckLevel * 0.025))
+        ).toLocaleString()}** — Lv. ${cb.luck_lvl}/10 ` +
         `(${renderLevelBar(cb.luck_lvl, 10)}) • Next: ${nextUpgrade('luck')}\n\n` +
         `**Lifetime catches**\n` +
         `${getRarityEmojis('Common')} ${cb.c_caught} • ${getRarityEmojis('Uncommon')} ${cb.u_caught} • ` +

@@ -35,8 +35,8 @@ test('CatchBot Pokémon, cost, and duration upgrade prices double at every level
   assert.equal(ctx.testCB_CONFIG.cost.costForLvl(9), 512000);
   assert.equal(ctx.testCB_CONFIG.duration.costForLvl(0), 1500);
   assert.equal(ctx.testCB_CONFIG.duration.costForLvl(10), 1536000);
-  assert.equal(ctx.testCB_CONFIG.luck.getStat(1), 2.5);
-  assert.equal(ctx.testCB_CONFIG.luck.getStat(10), 25);
+  assert.equal(ctx.testCB_CONFIG.luck.getStat(1), 1);
+  assert.equal(ctx.testCB_CONFIG.luck.getStat(10), 10);
   assert.equal(ctx.testCB_CONFIG.luck.costForLvl(1), 2500000);
 });
 
@@ -551,9 +551,6 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
       { name: 'Common', spawn_weight: 1, pokemon_count: 1 },
       { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
     ],
-    CATCHBOT_RARITY_WEIGHTS: { Common: 55, Uncommon: 25, Rare: 17, 'Super Rare': 2 },
-    CATCHBOT_BASE_SHINY_RATE: 1 / 100000,
-    CATCHBOT_LEGENDARY_BASE_CHANCE: 1 / 6666,
     getRandomPokemon: (rarity) => ({ id: 1, speciesName: rarity, name: rarity, rarity, types: [] }),
     SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
     EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [],
@@ -567,15 +564,19 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
     EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
     FISH_PATREON_ONLY_SHINY_KEYS: new Set(),
   });
+  vm.runInContext(
+    extract(indexSource, 'const CATCHBOT_GOLDEN_BASE_CHANCE =', '\nconst GRAZZ_ENCOUNTERS_PER_BERRY'),
+    ctx,
+  );
   vm.runInContext(extract(indexSource, 'function rollSpawn(', '\nfunction isEventChecklistSpawn('), ctx);
   const rod = { enablesLegendary: true, enablesShiny: true, baseShinyRate: 1 / 1000 };
   rolls = [0.0015, 0.9];
   assert.equal(ctx.rollSpawn('water', 'user', rod).rarity, 'Legendary');
   rolls = [1 / 167, 0.9, 0.9];
   assert.equal(ctx.rollSpawn('water', 'user', rod).rarity, 'Common');
-  rolls = [0.00015, 0.9];
+  rolls = [1 / 6666 - 1e-9, 0.9];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).rarity, 'Legendary');
-  rolls = [1 / 1670 + 1e-10, 0.9, 0.9];
+  rolls = [1 / 6666 + 1e-9, 0.9, 0.9];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).rarity, 'Common');
 });
 
@@ -601,9 +602,6 @@ test('CatchBot uses configured rarity weights, odds, and per-level Luck bonuses'
       { name: 'Super Rare', spawn_weight: 1, pokemon_count: 1 },
       { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
     ],
-    CATCHBOT_RARITY_WEIGHTS: { Common: 55, Uncommon: 25, Rare: 17, 'Super Rare': 2 },
-    CATCHBOT_BASE_SHINY_RATE: 1 / 100000,
-    CATCHBOT_LEGENDARY_BASE_CHANCE: 1 / 6666,
     getRandomPokemon: (rarity) => ({ id: 1, speciesId: 1, speciesName: rarity, name: rarity, rarity, types: [] }),
     SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
     EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [], eventSpawnFormIds: [],
@@ -616,6 +614,10 @@ test('CatchBot uses configured rarity weights, odds, and per-level Luck bonuses'
     INCENSE_BOOST: 1.1, EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
     FISH_PATREON_ONLY_SHINY_KEYS: new Set(),
   });
+  vm.runInContext(
+    extract(indexSource, 'const CATCHBOT_GOLDEN_BASE_CHANCE =', '\nconst GRAZZ_ENCOUNTERS_PER_BERRY'),
+    ctx,
+  );
   vm.runInContext(extract(indexSource, 'function rollSpawn(', '\nfunction isEventChecklistSpawn('), ctx);
 
   for (const [weightRoll, expectedRarity] of [
@@ -632,17 +634,17 @@ test('CatchBot uses configured rarity weights, odds, and per-level Luck bonuses'
   assert.equal(ctx.rollSpawn('water', 'user', null, { catchbot: true }).rarity, 'Legendary');
   rolls = [1 / 6666 + 1e-9, 0.2, 0.9];
   assert.notEqual(ctx.rollSpawn('water', 'user', null, { catchbot: true }).rarity, 'Legendary');
-  rolls = [1 / 6666 + 1e-9, 0.2, 0.9];
+  rolls = [1 / 5000 - 1e-9, 0.9];
   assert.equal(
-    ctx.rollSpawn('water', 'user', null, { catchbot: true, catchbotLuckPercent: 25 }).rarity,
+    ctx.rollSpawn('water', 'user', null, { catchbot: true, catchbotLuckLevel: 10 }).rarity,
     'Legendary',
   );
 
-  rolls = [0.9, 0.2, 0.000011];
+  rolls = [0.9, 0.2, 0.000013];
   assert.equal(ctx.rollSpawn('water', 'user', null, { catchbot: true }).isShiny, false);
-  rolls = [0.9, 0.2, 0.000011];
+  rolls = [0.9, 0.2, 0.000013];
   assert.equal(
-    ctx.rollSpawn('water', 'user', null, { catchbot: true, catchbotLuckPercent: 25 }).isShiny,
+    ctx.rollSpawn('water', 'user', null, { catchbot: true, catchbotLuckLevel: 10 }).isShiny,
     true,
   );
 
@@ -651,18 +653,23 @@ test('CatchBot uses configured rarity weights, odds, and per-level Luck bonuses'
   goldenMath.random = () => goldenRolls.shift() ?? 0;
   const goldenCtx = vm.createContext({
     Math: goldenMath,
-    CB_CONFIG: { luck: { maxLvl: 10, getStat: (level) => level * 2.5 } },
-    CATCHBOT_GOLDEN_BASE_CHANCE: 1 / 2500,
     CATCHBOT_GOLDEN_EXCLUSIVES: [{ name: 'Aron', types: '[]' }],
   });
+  vm.runInContext(
+    extract(indexSource, 'const CATCHBOT_GOLDEN_BASE_CHANCE =', '\nconst GRAZZ_ENCOUNTERS_PER_BERRY'),
+    goldenCtx,
+  );
   vm.runInContext(
     extract(indexSource, 'function rollCatchbotGoldenExclusive(', '\nfunction getSwapMultiplier('),
     goldenCtx,
   );
-  goldenRolls.push(0.00045);
-  assert.equal(goldenCtx.rollCatchbotGoldenExclusive(0), null  );
-  goldenRolls.push(0.00045, 0);
-  assert.equal(goldenCtx.rollCatchbotGoldenExclusive(25).isGolden, true);
+  goldenCtx.CB_CONFIG = { luck: { maxLvl: 10 } };
+  goldenRolls.push(0.0000041);
+  assert.equal(goldenCtx.rollCatchbotGoldenExclusive(0), null);
+  goldenRolls.push(0.0000051);
+  assert.equal(goldenCtx.rollCatchbotGoldenExclusive(10), null);
+  goldenRolls.push(0.0000049, 0);
+  assert.equal(goldenCtx.rollCatchbotGoldenExclusive(10).isGolden, true);
 });
 
 test('checklist shiny bonus weights only eligible event spawns', () => {

@@ -610,7 +610,7 @@ const CB_CONFIG = Object.freeze({
   luck: Object.freeze({
     maxLvl: 10,
     costForLvl: () => 2500000,
-    getStat: (level) => level * 2.5,
+    getStat: (level) => level,
   }),
 });
 
@@ -2787,7 +2787,7 @@ function claimCatchbotRun(userId, now = Date.now()) {
       hours: data.hours_running,
       pokemonPerHour: CB_CONFIG.pokemon.getStat(data.pokemon_lvl),
       costPerPokemon: CB_CONFIG.cost.getStat(data.cost_lvl),
-      luckPercent: CB_CONFIG.luck.getStat(data.luck_lvl),
+      luckLevel: CB_CONFIG.luck.getStat(data.luck_lvl),
     };
   }).immediate();
 }
