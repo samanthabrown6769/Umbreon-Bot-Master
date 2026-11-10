@@ -1,5 +1,5 @@
 {
-  "_help": "Configure promos. Edits apply without a bot restart. Each promo: speciesId is the National Dex number of the BASE form (golden sprite auto-generated); itemName/itemEmoji is the promo currency; drops.<source>.oneIn sets the 1-in-N drop chance (set enabled to false to disable). Multiple promos run at once; ;promo shows buttons to switch between them.",
+  "_help": "Configure promos. Edits apply without a bot restart. Each promo: speciesId is the National Dex number of the BASE form (golden sprite auto-generated); itemName/itemEmoji is the promo currency; optional startsAt/endsAt ISO timestamps control when it is active; drops.<source>.oneIn sets the 1-in-N drop chance (set enabled to false to disable). Multiple promos run at once; ;promo shows buttons to switch between them.",
   "history": [
     {
       "name": "Golden Bulbasaur",
@@ -14,5 +14,24 @@
       "emoji": "<:goldenpumpkin:1559965616733950033>"
     }
   ],
-  "promos": []
+  "promos": [
+    {
+      "name": "Golden Munchlax",
+      "speciesId": 446,
+      "costCoins": 1000000,
+      "costItems": 3,
+      "itemName": "Golden Apple",
+      "itemEmoji": "<:goldenapple:1566807968509595819>",
+      "startsAt": "2026-11-24T05:00:00.000Z",
+      "endsAt": "2026-11-29T05:00:00.000Z",
+      "endsAtText": "November 28, 2026",
+      "endsAtFooter": "November 28, 2026",
+      "drops": {
+        "catch": { "oneIn": 1500 },
+        "fish": { "oneIn": 1000 },
+        "battle": { "oneIn": 500 },
+        "egg": { "oneIn": 250 }
+      }
+    }
+  ]
 }

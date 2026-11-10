@@ -5008,6 +5008,7 @@ function changePokemonAbility(userId, catchId, ability, itemName) {
 
 function resolveSpeciesEvolution(fromSpeciesId, toSpeciesId, catchRow) {
   if (['Mega', 'Gmax'].includes(catchRow.form_rarity)) return null;
+  if (catchRow.is_golden && fromSpeciesId === 446 && toSpeciesId === 143) return null;
   const defaultSlug = (speciesId) => db.prepare(
     'SELECT slug FROM pokemon_forms WHERE species_id = ? AND is_default = 1'
   ).get(speciesId)?.slug;

@@ -23,6 +23,13 @@ function normalizePromo(config) {
   };
 }
 
+function isPromoActive(promo, now = Date.now()) {
+  const startsAt = promo?.startsAt ? Date.parse(promo.startsAt) : NaN;
+  const endsAt = promo?.endsAt ? Date.parse(promo.endsAt) : NaN;
+  return (Number.isNaN(startsAt) || startsAt <= now)
+    && (Number.isNaN(endsAt) || endsAt > now);
+}
+
 // Reads promo.json on every call so promo changes apply without a restart.
 // Supports either a single promo object or { "promos": [ ... ] } for concurrent promos.
 function getActivePromos() {
@@ -34,13 +41,9 @@ function getActivePromos() {
     return [];
   }
   const list = Array.isArray(config.promos) ? config.promos : [config];
-  // Optional "endsAt" (ISO timestamp, e.g. "2026-11-04T05:00:00Z") hides a promo once it passes.
+  // Optional ISO timestamps gate promos before their start and after their end.
   return list
-    .filter((promo) => {
-      if (!promo?.endsAt) return true;
-      const endsAt = Date.parse(promo.endsAt);
-      return Number.isNaN(endsAt) || endsAt > Date.now();
-    })
+    .filter((promo) => isPromoActive(promo))
     .map(normalizePromo)
     .filter(Boolean);
 }

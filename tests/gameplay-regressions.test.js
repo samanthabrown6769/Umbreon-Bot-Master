@@ -10,6 +10,7 @@ const { pickWeighted } = require('../spawn-weights');
 
 const indexSource = fs.readFileSync(require.resolve('../index.js'), 'utf8');
 const dbSource = fs.readFileSync(require.resolve('../db.js'), 'utf8');
+const promoSource = fs.readFileSync(require.resolve('../promo.js'), 'utf8');
 
 function extract(source, start, end) {
   const first = source.indexOf(start);
@@ -21,6 +22,19 @@ function extract(source, start, end) {
 function mon(name, types) {
   return { name, types, hp: 100, max_hp: 100, atk: 50, def: 50, spd: 50, level: 50 };
 }
+
+test('promo scheduling respects its start and end timestamps', () => {
+  const ctx = vm.createContext({ Date });
+  vm.runInContext(extract(promoSource, 'function isPromoActive(', '\n// Reads promo.json'), ctx);
+  const promo = {
+    startsAt: '2026-11-24T05:00:00.000Z',
+    endsAt: '2026-11-29T05:00:00.000Z',
+  };
+  assert.equal(ctx.isPromoActive(promo, Date.parse('2026-11-24T04:59:59.999Z')), false);
+  assert.equal(ctx.isPromoActive(promo, Date.parse('2026-11-24T05:00:00.000Z')), true);
+  assert.equal(ctx.isPromoActive(promo, Date.parse('2026-11-29T04:59:59.999Z')), true);
+  assert.equal(ctx.isPromoActive(promo, Date.parse('2026-11-29T05:00:00.000Z')), false);
+});
 
 function battleContext() {
   const player = mon('Attacker', ['psychic']);
@@ -934,6 +948,23 @@ test('evolution keeps held items on original forms and preserves target-form ite
   assert.equal(remaining.level, 1);
   assert.equal(db.prepare('SELECT held_item FROM catches WHERE id = 1').get().held_item, 'Leftovers');
   assert.equal(db.prepare('SELECT held_item FROM catches WHERE id = 3').get().held_item, 'Leftovers');
+  db.close();
+});
+
+test('Golden Munchlax cannot evolve into Snorlax, while regular Munchlax can', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, species_id INTEGER, slug TEXT, is_default INTEGER);
+    INSERT INTO pokemon_forms VALUES (446, 446, 'munchlax', 1), (143, 143, 'snorlax', 1);
+  `);
+  const ctx = vm.createContext({ db });
+  vm.runInContext(extract(dbSource, 'function resolveSpeciesEvolution(', '\nfunction resolveItemEvolution('), ctx);
+  const goldenMunchlax = {
+    form_rarity: 'Golden', form_default: 1, form_slug: 'munchlax', is_golden: 1,
+  };
+  const regularMunchlax = { ...goldenMunchlax, form_rarity: 'Rare', is_golden: 0 };
+  assert.equal(ctx.resolveSpeciesEvolution(446, 143, goldenMunchlax), null);
+  assert.equal(ctx.resolveSpeciesEvolution(446, 143, regularMunchlax).slug, 'snorlax');
   db.close();
 });
 
