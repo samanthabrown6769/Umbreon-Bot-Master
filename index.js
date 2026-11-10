@@ -2879,6 +2879,7 @@ function getBallDexIconsForCatch(userId, pokemonFormId) {
 
 const HELD_ITEM_EMOJI = '<:helditem:1561412843272937472>';
 function factionLogoPrefix(pokemon) {
+  if (pokemon?.isExplore) return '';
   const emoji = getPokemonFactionTeam(pokemon?.speciesId ?? pokemon?.species_id)?.emoji;
   return emoji ? `${emoji} ` : '';
 }
@@ -2902,6 +2903,7 @@ function buildHeldItemEncounterAlert(pokemon, userId) {
 }
 
 function buildFactionEncounterAlert(pokemon, userId) {
+  if (pokemon?.isExplore) return null;
   const faction = getPokemonFactionTeam(pokemon?.speciesId ?? pokemon?.species_id);
   if (!faction) return null;
   return {
@@ -6912,7 +6914,7 @@ async function askForBall(
     target.researchToolBoosts = researchTools.boosts;
     target.researchToolsConsumed = researchTools.consumed;
   }
-  if (!target.heldItem && !target.heldItemRolled) {
+  if (!target.isExplore && !target.heldItem && !target.heldItemRolled) {
     const heldItem = rollWildHeldItem(
       target,
       userId,
@@ -6967,7 +6969,7 @@ async function askForBall(
     : null;
   const trainerLabel = `${getTrainerIconEmoji(userId)} **${message.author.username}**`;
   const spawnFoundText =
-    `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${getPokemonFactionTeam(target.speciesId)?.emoji ? `${getPokemonFactionTeam(target.speciesId).emoji} ` : ''}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!`;
+    `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${factionLogoPrefix(target)}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!`;
   let spawnBallDexIcons = '';
   try {
     spawnBallDexIcons = target.id
@@ -7303,7 +7305,7 @@ async function askForBall(
     const catchFaction = getUserFaction(userId);
     if (catchFaction) {
       addFactionPoints(userId, getFactionCatchPoints(catchFaction.faction_key, selectedBall, catchDisplayRarity), {
-        speciesId: target.speciesId,
+        speciesId: target.isExplore ? null : target.speciesId,
       });
     }
     trackClanActivity(userId, isFishing ? 'fish' : 'catch');
@@ -20491,8 +20493,15 @@ client.on('messageCreate', async (message) => {
       let ending = false;
       let sessionSteps = 0;
       let sessionCoins = 0;
-      const caught = [];
-      const foundItems = [];
+      const caught = new Map();
+      const foundItems = new Map();
+      let caughtCount = 0;
+      let foundItemCount = 0;
+      const addSummaryEntry = (entries, key, label, quantity) => {
+        const entry = entries.get(key);
+        if (entry) entry.quantity += quantity;
+        else entries.set(key, { label, quantity });
+      };
       const moveButton = (id, emoji, disabled) =>
         new ButtonBuilder().setCustomId(id).setEmoji(emoji).setStyle(ButtonStyle.Primary).setDisabled(disabled);
       const ballButton = (key) => {
@@ -20521,20 +20530,28 @@ client.on('messageCreate', async (message) => {
       const buildPayload = async (steps, finished = false) => {
         const limit = getStepLimit();
         const summarize = (entries) => {
-          const text = entries.join(', ');
-          return text.length > 600 ? `${text.slice(0, 597)}...` : text || 'None';
+          const digits = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+          const groups = [...entries.values()].map(({ label, quantity }) =>
+            `${label}${String(quantity).replace(/\d/g, (digit) => digits[Number(digit)])}`);
+          let text = '';
+          for (const group of groups) {
+            const next = text ? `${text} ${group}` : group;
+            if (next.length > 597) return `${text}...`;
+            text = next;
+          }
+          return text || 'None';
         };
         const summary = `\n🧭 Your Explore session has ended! You took **${sessionSteps}** steps, for a total of **${steps}** today.` +
-          `\n🔴 Pokémon caught (${caught.length}): ${summarize(caught)}` +
-          `\n🎁 Items found (${foundItems.length}): ${summarize(foundItems)}` +
-          `\n🪙 Coins earned: **${sessionCoins.toLocaleString()}**`;
+          `\n<:caught:1560340176713031711> Pokémon caught (${caughtCount}): ${summarize(caught)}` +
+          `\n${CHEST_EMOJI} Items found (${foundItemCount}): ${summarize(foundItems)}` +
+          `\n${EMOJIS.pokecoin} Coins earned: **${sessionCoins.toLocaleString()}**`;
         return {
           content: `🗺️ Map: ${theme.emoji} **${mapTitle}** — Steps today: **${steps}/${limit}** — Session: **${sessionSeconds} seconds**${finished ? summary : statusText}` +
             (!finished && chest ? `\n${CHEST_EMOJI} Chest on the map${chest.x === x && chest.y === y ? ' — press 🔍 to open it!' : '.'}` : ''),
           files: [new AttachmentBuilder(await renderExploreMap(mapKey, x, y, trainerUrl, backgroundIndex, finished ? null : chest), { name: 'explore.png' })],
           attachments: [],
           embeds: !finished && activeEncounterEmbed ? [activeEncounterEmbed] : [],
-          components: finished ? [] : buildRows(steps >= limit || Boolean(activeWild)),
+          components: finished ? [] : buildRows(steps >= limit),
         };
       };
       const startSteps = readSteps();
@@ -20569,9 +20586,6 @@ client.on('messageCreate', async (message) => {
         }
         const move = MOVES[interaction.customId];
         if (!move) return interaction.deferUpdate();
-        if (activeWild) {
-          return interaction.reply({ content: 'Catch the wild Pokémon or wait for it to leave before moving.', ephemeral: true });
-        }
         const isSearch = interaction.customId === 'exp_search';
         const limit = getStepLimit();
         if (!limit) return interaction.reply({ content: 'Explore requires an active Patreon tier.', ephemeral: true });
@@ -20586,6 +20600,13 @@ client.on('messageCreate', async (message) => {
         const nextY = Math.max(0, Math.min(mapHeight - TRAINER_HEIGHT, y + move[1] * STEP));
         if (!isSearch && nextX === x && nextY === y) {
           return interaction.reply({ content: 'You cannot move beyond the edge of the map.', ephemeral: true });
+        }
+        if (!isSearch && activeWild) {
+          if (cancelEncounter) cancelEncounter();
+          catchHandler = null;
+          cancelEncounter = null;
+          activeWild = null;
+          activeEncounterEmbed = null;
         }
         x = nextX;
         y = nextY;
@@ -20610,7 +20631,10 @@ client.on('messageCreate', async (message) => {
             }).immediate();
             chest = null;
             if (found.field === 'coins') sessionCoins += found.quantity;
-            else foundItems.push(`${found.emoji} ${found.quantity}x ${found.label}`);
+            else {
+              addSummaryEntry(foundItems, found.label, found.emoji || found.label, found.quantity);
+              foundItemCount += found.quantity;
+            }
             foundText = `\n${CHEST_EMOJI} You opened a chest and found ${found.emoji} **${found.quantity.toLocaleString()}x ${found.label}**!`;
           } else {
             foundText = '\n🔍 There is no chest at your position.';
@@ -20628,21 +20652,16 @@ client.on('messageCreate', async (message) => {
           }
           if (wild) {
             wild.overworldAbility = ability;
-            wild.friskReveal = ability === 'frisk';
-            const heldItem = rollWildHeldItem(wild, userId);
-            wild.heldItemRolled = true;
-            if (heldItem) {
-              wild.heldItem = heldItem.name;
-              wild.heldItemEmoji = heldItem.emoji;
-            }
           }
         }
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
           const sprite = getPokemonSpriteEmoji(wild);
-          statusText = `\n❗ A wild ${heldItemNameMarker(wild, getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden))}${factionLogoPrefix(wild)}${sprite ? `${sprite} ` : ''}**${wild.name}** appeared! ` +
+          statusText = `\n❗ A wild ${sprite ? `${sprite} ` : ''}**${wild.name}** appeared! ` +
             `(${getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden)} ${wildRarity}) — throw a ball with the buttons on the right.`;
+        } else if (isSearch && activeWild) {
+          statusText += foundText;
         } else if (!catchHandler) {
           statusText = foundText || '\n🌿 No Pokémon appeared.';
         }
@@ -20662,9 +20681,10 @@ client.on('messageCreate', async (message) => {
                 onCancelReady: (cancel) => { cancelEncounter = cancel; },
                 onCatch: (pokemon, coins) => {
                   const sprite = getPokemonSpriteEmoji(pokemon);
-                  caught.push(`${sprite ? `${sprite} ` : ''}${pokemon.isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : ''}${pokemon.name}`);
+                  const variant = pokemon.isGolden || pokemon.is_golden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
+                  addSummaryEntry(caught, JSON.stringify([pokemon.id, pokemon.name, variant]), sprite || `${variant}${pokemon.name}`, 1);
+                  caughtCount += 1;
                   sessionCoins += coins;
-                  if (pokemon.heldItem) foundItems.push(`${pokemon.heldItemEmoji || getItemEmoji(pokemon.heldItem)} 1x ${pokemon.heldItem}`);
                 },
                 onEdit: async (text) => {
                   catchHandler = null;

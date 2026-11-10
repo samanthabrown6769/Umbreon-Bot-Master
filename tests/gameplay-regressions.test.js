@@ -1583,6 +1583,7 @@ test('faction hunt alerts use the daily species mapping and mention the trainer'
   assert.deepEqual(Array.from(alert.allowedMentions.users), ['123']);
   assert.equal(ctx.buildFactionEncounterAlert({ species_id: 25 }, '123').content, alert.content);
   assert.equal(ctx.buildFactionEncounterAlert({ speciesId: 26 }, '123'), null);
+  assert.equal(ctx.buildFactionEncounterAlert({ speciesId: 25, isExplore: true }, '123'), null);
 });
 
 test('held-item list groups all owned Pokémon by item and pages without counting shared copies twice', async () => {

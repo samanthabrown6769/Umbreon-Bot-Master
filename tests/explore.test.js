@@ -81,6 +81,35 @@ test('Explore catch bonuses exclude clan perks but retain Patreon and channel bo
     ctx.getEncounterCatchBonus(ordinary, 20, 5), 3), 70);
 });
 
+test('Explore encounters skip held-item rolls and faction-hunt bonuses without removing base faction points', () => {
+  let rolls = 0;
+  const ctx = vm.createContext({
+    target: { isExplore: true, speciesId: 25 }, userId: 'trainer', mode: 'catch', counterSource: null,
+    rollWildHeldItem: () => { rolls += 1; return { name: 'Seed', emoji: '🌱' }; },
+    getPokemonFactionTeam: (id) => id === 25 ? { id: 'rocket', emoji: '🚀' } : null,
+    getUserFaction: () => ({ faction_key: 'rocket' }),
+    getFactionCatchPoints: () => 100,
+    selectedBall: 'pb', catchDisplayRarity: 'Common',
+    addFactionPoints: (_id, points, options) => { ctx.points = points; ctx.speciesId = options.speciesId; },
+  });
+  vm.runInContext(extract('  if (!target.isExplore && !target.heldItem && !target.heldItemRolled) {', '\n  const user = getUser(userId);'), ctx);
+  assert.equal(rolls, 0);
+  assert.equal(ctx.target.heldItem, undefined);
+  vm.runInContext(extract('function factionLogoPrefix(', '\nfunction heldItemEncounterHint('), ctx);
+  assert.equal(ctx.factionLogoPrefix(ctx.target), '');
+  const factionCatch = extract('    const catchFaction = getUserFaction(userId);', '\n    trackClanActivity(');
+  vm.runInContext(`{ ${factionCatch} }`, ctx);
+  assert.equal(ctx.points, 100);
+  assert.equal(ctx.speciesId, null);
+  ctx.target = { speciesId: 25 };
+  vm.runInContext(extract('  if (!target.isExplore && !target.heldItem && !target.heldItemRolled) {', '\n  const user = getUser(userId);'), ctx);
+  assert.equal(rolls, 1);
+  assert.equal(ctx.target.heldItem, 'Seed');
+  assert.equal(ctx.factionLogoPrefix(ctx.target), '🚀 ');
+  vm.runInContext(`{ ${factionCatch} }`, ctx);
+  assert.equal(ctx.speciesId, 25);
+});
+
 test('Explore map selectors choose the exact map and reject invalid choices', () => {
   for (const [args, mapKey, backgroundIndex] of [
     [['gm', '1'], 'grass', 0], [['GM', '2'], 'grass', 1],
@@ -728,7 +757,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     db: { transaction: (fn) => ({ immediate: fn }) },
     isExploreTester: (message) => message.isAdmin === true,
     EMOJIS: { pokecoin: 'coin', pokeball: 'pokeball', greatball: 'greatball', ultraball: 'ultraball', rarecandy: 'candy', repel: 'repel', shinyCharm: 'charm', amuletcoin: 'amulet' },
-    getPokemonSpriteEmoji: () => ':pokemon:', getItemEmoji: () => 'item',
+    getPokemonSpriteEmoji: (pokemon) => pokemon.isShiny ? ':shiny:' : pokemon.isGolden ? ':golden:' : ':pokemon:',
     activeExploreSessions: new Set(), BALL_CONFIG: Object.fromEntries(
       [['pb', 'pokeballs'], ['gb', 'greatballs'], ['ub', 'ultraballs'], ['prb', 'premierballs'], ['mb', 'masterballs']]
         .map(([key, column]) => [key, { column, buttonEmoji: '🔴' }])
@@ -743,13 +772,12 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
       shinyBoost = boost;
       return { name: 'Bulbasaur', rarity: 'Uncommon', isExplore: true, map, ...encounterVariant };
     },
-    rollWildHeldItem: () => ({ name: 'Seed', emoji: '🌱' }),
-    getDisplayRarity: (rarity) => rarity, heldItemNameMarker: () => '',
-    getRarityEmojis: () => '', factionLogoPrefix: () => '',
+    rollWildHeldItem: () => { throw new Error('Explore must not roll held items'); },
+    getDisplayRarity: (rarity) => rarity,
+    getRarityEmojis: () => '',
     askForBall: async (_message, _id, wild, _mode, options) => {
       assert.equal(wild.overworldAbility, 'frisk');
-      assert.equal(wild.friskReveal, true);
-      assert.equal(wild.heldItemRolled, true);
+      assert.equal(wild.heldItem, undefined);
       options.inline.onSpawn({ title: 'Encounter details' });
       options.inline.onCancelReady(() => { cancelled = true; });
       options.onHandler(async (interaction) => {
@@ -809,24 +837,63 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(rollAbility, 'frisk');
   assert.equal(shinyBoost, 5);
   assert.match(payloads.at(-1).content, /Bulbasaur/);
-  assert.match((await click('exp_down'))[0].content, /before moving/);
+  assert.equal(payloads.at(-1).components[0].components[1].data.disabled, false);
+  user.explore_steps_today = 500;
+  assert.match((await click('exp_down'))[0].content, /all of your exploring steps/);
+  assert.equal(cancelled, false);
+  user.explore_steps_today = 1;
+  await click('exp_search');
+  assert.match(payloads.at(-1).content, /no chest at your position/);
+  assert.equal(payloads.at(-1).components[0].components[3].data.disabled, false);
+  nextRolls = [0.9, 0.9];
+  await click('exp_down');
+  assert.equal(cancelled, true);
+  assert.match(payloads.at(-1).content, /No Pokémon appeared/);
+  assert.match((await click('exp_ball:pb'))[0].content, /no wild Pokémon/);
+  cancelled = false;
+  await click('exp_up');
   await click('exp_ball:pb');
   assert.match(payloads.at(-1).content, /Caught Bulbasaur/);
+  await click('exp_down');
+  await click('exp_ball:pb');
+  encounterVariant = { isShiny: true };
+  await click('exp_up');
+  await click('exp_ball:pb');
+  encounterVariant = {};
   await click('exp_run');
   await endPromise;
-  assert.match(payloads.at(-1).content, /Pokémon caught \(1\): :pokemon: Bulbasaur/);
-  assert.match(payloads.at(-1).content, /Items found \(1\): 🌱 1x Seed/);
-  assert.match(payloads.at(-1).content, /Coins earned: \*\*123\*\*/);
+  assert.ok(payloads.at(-1).content.includes('<:caught:1560340176713031711> Pokémon caught (3): :pokemon:² :shiny:¹'));
+  assert.ok(payloads.at(-1).content.includes(`${chests.CHEST_EMOJI} Items found (0): None`));
+  assert.ok(payloads.at(-1).content.includes('coin Coins earned: **369**'));
   assert.equal(payloads.at(-1).components.length, 0);
   assert.equal(ctx.activeExploreSessions.has('trainer'), false);
   assert.equal(cancelled, false);
+
+  const mockedSprite = ctx.getPokemonSpriteEmoji;
+  const spriteContext = vm.createContext({});
+  vm.runInContext(extract('const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), spriteContext);
+  ctx.getPokemonSpriteEmoji = spriteContext.getPokemonSpriteEmoji;
+  user.explore_steps_today = 0;
+  await ctx.run();
+  await click('exp_up');
+  await click('exp_ball:pb');
+  await click('exp_down');
+  await click('exp_ball:pb');
+  encounterVariant = { name: 'Unknown Pokémon' };
+  await click('exp_up');
+  await click('exp_ball:pb');
+  await click('exp_run');
+  await endPromise;
+  assert.ok(payloads.at(-1).content.includes('Pokémon caught (3): <:bulbasaur:1569731188774404146>² Unknown Pokémon¹'));
+  ctx.getPokemonSpriteEmoji = mockedSprite;
+  encounterVariant = {};
 
   for (const variant of [{ isShiny: true }, { isGolden: true }, { rarity: 'Legendary' }, {}]) {
     encounterVariant = variant;
     user.explore_steps_today = 0;
     await ctx.run();
     await click('exp_up');
-    assert.match(payloads.at(-1).content, /:pokemon: \*\*Bulbasaur\*\*/);
+    assert.match(payloads.at(-1).content, /:(?:pokemon|shiny|golden): \*\*Bulbasaur\*\*/);
     assert.equal(payloads.at(-1).embeds.length, Object.keys(variant).length ? 1 : 0);
     await click('exp_ball:pb');
     assert.equal(payloads.at(-1).embeds.length, 0);
@@ -863,6 +930,22 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(user.explore_amulet_coin, 1);
   assert.equal(user.shiny_charms, 5);
   assert.equal(user.amulet_coins, 10);
+  rewardChoice = 'basic';
+  ctx.chooseExploreChestReward = (_current, loot) => ({ ...loot[1], quantity: 3 });
+  user.explore_steps_today = 0;
+  await ctx.run();
+  for (let i = 0; i < 2; i += 1) {
+    ctx.CHEST_SPAWN_CHANCE = 0.1;
+    nextRolls = [0, 0.9];
+    await click('exp_up');
+    ctx.CHEST_SPAWN_CHANCE = 0;
+    nextRolls = [0.9];
+    await click('exp_up');
+    await click('exp_search');
+  }
+  await click('exp_run');
+  await endPromise;
+  assert.ok(payloads.at(-1).content.includes(`${chests.CHEST_EMOJI} Items found (6): pokeball⁶`));
   chestLifetime = 2;
   ctx.CHEST_SPAWN_CHANCE = 0.1;
   user.explore_steps_today = 0;
