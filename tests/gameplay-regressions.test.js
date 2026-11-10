@@ -23,6 +23,75 @@ function mon(name, types) {
   return { name, types, hp: 100, max_hp: 100, atk: 50, def: 50, spd: 50, level: 50 };
 }
 
+test('server-wide channel boosts apply automatically and stack with manual boosts', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`CREATE TABLE channel_catch_rate_boosts (
+      user_id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL,
+      PRIMARY KEY (user_id, guild_id, channel_id)
+    )`);
+    const ctx = vm.createContext({ db, assertUserId: (id) => assert.ok(id) });
+    vm.runInContext(extract(dbSource, 'const GUILD_CHANNEL_CATCH_RATE_BOOSTS =', '\nfunction getPokemonFormBySlug('), ctx);
+    const server = '1560102297198006274';
+    const otherBoostedServer = '1565161395496943709';
+    for (const channel of ['existing-channel', 'new-channel']) {
+      assert.equal(ctx.getChannelCatchRateBoost('user', server, channel), 5);
+      assert.equal(ctx.getChannelCatchRateBoost('another-user', server, channel), 5);
+    }
+    assert.equal(ctx.getChannelCatchRateBoost('user', otherBoostedServer, 'channel'), 5);
+    assert.equal(ctx.getChannelCatchRateBoost('user', 'other-server', 'channel'), 0);
+    assert.equal(ctx.addChannelCatchRateBoost('owner', server, 'existing-channel'), 'added');
+    assert.equal(ctx.getChannelCatchRateBoost('another-user', server, 'existing-channel'), 10);
+    assert.equal(ctx.getChannelCatchRateBoost('another-user', server, 'new-channel'), 5);
+    assert.equal(ctx.setChannelCatchRateBoost('owner', server, 'existing-channel', false), true);
+    assert.equal(ctx.getChannelCatchRateBoost('user', server, 'existing-channel'), 5);
+
+    const rateCtx = vm.createContext({
+      Math: Object.assign(Object.create(Math), { random: () => 1.02 / 167 }),
+      LEGENDARY_BASE_CHANCE: 1 / 167, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
+      HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
+      ENCOUNTER_RARITY_WEIGHTS: { normal: { Common: 1 } },
+    });
+    vm.runInContext(extract(indexSource, 'function chooseEncounterRarity(', '\nfunction getRandomLegendaryFromGenerations('), rateCtx);
+    vm.runInContext(extract(indexSource, 'function getCatchChance(', '\nfunction getCatchCoinReward('), rateCtx);
+    const boost = ctx.getChannelCatchRateBoost('user', server, 'new-channel');
+    assert.equal(rateCtx.getCatchChance(50, 0, 0, boost), 55);
+    assert.equal(rateCtx.chooseEncounterRarity('normal', false, boost), 'Legendary');
+    assert.equal(rateCtx.chooseEncounterRarity('normal', false, 0), 'Common');
+  } finally {
+    db.close();
+  }
+});
+
+test('channel boost command shows the current automatic boost separately from manual channels', async () => {
+  const source = extract(indexSource, "    if (command === 'channel') {", "\n    if (command === 'rarespawn')");
+  const ctx = vm.createContext({
+    EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType,
+    client: { guilds: { cache: new Map() } },
+    getBoostedChannels: () => [],
+    getChannelCatchRateBoost: (userId, guildId) => guildId === '1560102297198006274' ? 5 : 0,
+    UNLIMITED_CHANNEL_BOOSTER_IDS: new Set(),
+  });
+  vm.runInContext(`async function run(message, args) {
+    const command = 'channel'; const userId = 'user'; ${source}
+  }`, ctx);
+  const message = {
+    guildId: '1560102297198006274', channelId: 'channel',
+    author: { username: 'Trainer' }, reply: async (payload) => payload,
+  };
+  let payload = await ctx.run(message, ['boost']);
+  let embed = payload.embeds[0].toJSON();
+  assert.match(embed.description, /not manually boosted/);
+  assert.match(embed.fields.find((field) => field.name === 'Current channel').value, /\+5 percentage points.*\+5% relative.*server-wide/);
+  message.guildId = 'other-server';
+  payload = await ctx.run(message, ['boost']);
+  embed = payload.embeds[0].toJSON();
+  assert.match(embed.fields.find((field) => field.name === 'Current channel').value, /No channel or server-wide/);
+  message.guildId = null;
+  payload = await ctx.run(message, ['boost']);
+  assert.equal(payload.embeds[0].toJSON().fields.some((field) => field.name === 'Current channel'), false);
+});
+
 test('promo scheduling respects its start and end timestamps', () => {
   const ctx = vm.createContext({ Date });
   vm.runInContext(extract(promoSource, 'function isPromoActive(', '\n// Reads promo.json'), ctx);
@@ -208,7 +277,7 @@ test('repel all resolves to every owned Repel and is not accepted for other modi
   assert.ok(Number.isNaN(ctx.parseEncounterModifierAmount('super_repel', 'all', 4)));
 });
 
-test('wiping a trainer keeps catches and clan lifetime totals while clearing personal activity', () => {
+test('wiping a trainer clears catches, stats and snapshots while preserving clan lifetime totals', () => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE clans (
@@ -226,15 +295,23 @@ test('wiping a trainer keeps catches and clan lifetime totals while clearing per
       clan_id INTEGER, user_id TEXT, period TEXT, period_start INTEGER,
       catches INTEGER DEFAULT 0, fishes INTEGER DEFAULT 0
     );
-    CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT);
-    CREATE TABLE users (id TEXT PRIMARY KEY);
+    CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, rarity TEXT);
+    CREATE TABLE users (id TEXT PRIMARY KEY, total_catches INTEGER, unique_caught_base INTEGER,
+      shiny_catches INTEGER, legendaries_caught INTEGER);
     CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER);
+    CREATE TABLE user_pokemon_state_snapshots (user_id TEXT);
+    CREATE TRIGGER catch_snapshot BEFORE DELETE ON catches BEGIN
+      INSERT INTO user_pokemon_state_snapshots VALUES (OLD.user_id);
+    END;
+    CREATE TABLE pokemon_gifts (sender_id TEXT, recipient_id TEXT);
     INSERT INTO clans (id, name, clan_rank) VALUES (1, 'Test Clan', 'starter');
     INSERT INTO clan_members VALUES ('trainer', 1, 10, 3, 4, 5, 6, 7, 8);
     INSERT INTO clan_activity_periods VALUES (1, 'trainer', 'weekly', 1, 10, 0);
-    INSERT INTO catches VALUES (1, 'trainer');
-    INSERT INTO users VALUES ('trainer');
+    INSERT INTO catches VALUES (1, 'trainer', 1, 1, 'Legendary');
+    INSERT INTO catches VALUES (2, 'other', 2, 0, 'Common');
+    INSERT INTO users VALUES ('trainer', 10, 5, 2, 1), ('other', 1, 1, 0, 0);
     INSERT INTO user_items VALUES ('trainer', 'Candy', 2);
+    INSERT INTO pokemon_gifts VALUES ('other', 'trainer');
   `);
   const ctx = vm.createContext({ db });
   vm.runInContext(
@@ -260,14 +337,89 @@ test('wiping a trainer keeps catches and clan lifetime totals while clearing per
     [0, 0, 0, 0, 0, 0, 0]
   );
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM clan_activity_periods WHERE user_id = ?').get('trainer').count, 0);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM catches WHERE user_id = ?').get('trainer').count, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM catches WHERE user_id = ?').get('trainer').count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM catches WHERE user_id = ?').get('other').count, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM user_pokemon_state_snapshots WHERE user_id = ?').get('trainer').count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM pokemon_gifts').get().count, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users WHERE id = ?').get('trainer').count, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM user_items WHERE user_id = ?').get('trainer').count, 0);
+  ctx.getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id)
+    || { total_catches: 0, unique_caught_base: 0, shiny_catches: 0, legendaries_caught: 0 };
+  vm.runInContext(extract(dbSource, 'function getUserStatsSummary(', '\ntry {'), ctx);
+  const stats = ctx.getUserStatsSummary('trainer');
+  assert.deepEqual([stats.lifetimeCaught, stats.uniqueInBox, stats.shiniesCaught, stats.legendariesCaught], [0, 0, 0, 0]);
   assert.equal(ctx.getClanHighScores('catches')[0].score, 13);
   assert.equal(ctx.getClanHighScores('fishes')[0].score, 3);
   assert.equal(ctx.getClanHighScores('hatches')[0].score, 4);
   assert.equal(ctx.getClanHighScores('swaps')[0].score, 5);
   assert.equal(ctx.getClanHighScores('catchbot')[0].score, 6);
+  db.close();
+});
+
+test('trades retain held items for the sender without duplicating shared items', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER,
+      is_shiny INTEGER, is_golden INTEGER, held_item TEXT);
+    INSERT INTO catches VALUES
+      (1,'a',1,0,0,'Nugget'), (2,'a',1,0,0,'Nugget'),
+      (3,'a',1,1,0,'Leftovers'), (4,'b',1,0,0,'Silk Scarf'),
+      (5,'a',2,0,0,NULL);
+  `);
+  const returned = [];
+  const ctx = vm.createContext({ db, addUserItem: (user, item) => returned.push([user, item]) });
+  vm.runInContext(extract(indexSource, 'function prepareTradeHeldItems(', '\nasync function handleNameTrade('), ctx);
+  ctx.prepareTradeHeldItems([
+    { from: 'a', pokemon: { id: 1 } }, { from: 'a', pokemon: { id: 3 } },
+    { from: 'a', pokemon: { id: 5 } }, { from: 'b', pokemon: { id: 4 } },
+  ]);
+  assert.deepEqual(returned, [['a', 'Leftovers'], ['b', 'Silk Scarf']]);
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id = 2').get().held_item, 'Nugget');
+  for (const id of [1, 3, 4, 5]) {
+    assert.equal(db.prepare('SELECT held_item FROM catches WHERE id = ?').get(id).held_item, null);
+  }
+  db.prepare("UPDATE catches SET user_id = 'b' WHERE id = 1").run();
+  ctx.prepareTradeHeldItems([{ from: 'a', pokemon: { id: 2 } }]);
+  assert.deepEqual(returned, [['a', 'Leftovers'], ['b', 'Silk Scarf'], ['a', 'Nugget']]);
+  for (const start of ['async function handleNameTrade(', 'function executeMultiTrade(', 'async function handleTrade(']) {
+    const flow = extract(indexSource, start, '\nasync function ');
+    assert.match(flow, /prepareTradeHeldItems\(/);
+  }
+  db.close();
+});
+
+test('multi-trade returns the last shared item once and preserves recipient equipment', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER,
+      is_shiny INTEGER, is_golden INTEGER, held_item TEXT);
+    CREATE TABLE users (id TEXT PRIMARY KEY, buddy_catch_id INTEGER);
+    CREATE TABLE items (user_id TEXT, item TEXT);
+    INSERT INTO users VALUES ('a', NULL), ('b', NULL);
+    INSERT INTO catches VALUES (1,'a',1,0,0,'Nugget'), (2,'a',1,0,0,'Nugget'),
+      (3,'b',1,0,0,'Leftovers');
+  `);
+  const ctx = vm.createContext({
+    db, getTransferEligibilityError: () => null, getTradeBalances: () => ({ coins: 0, tokens: 0 }),
+    addUserItem: (id, item) => db.prepare('INSERT INTO items VALUES (?, ?)').run(id, item),
+    getTradeableCatchRows: (id) => db.prepare('SELECT * FROM catches WHERE user_id = ? ORDER BY id').all(id),
+    recordPokemonTradeStats: () => {}, rebaseTransferredPokemon: () => {},
+    syncNewCatchState: (id, catchId) => {
+      const copy = db.prepare('SELECT held_item FROM catches WHERE user_id = ? AND id != ? ORDER BY id LIMIT 1').get(id, catchId);
+      if (copy) db.prepare('UPDATE catches SET held_item = ? WHERE id = ?').run(copy.held_item, catchId);
+    },
+  });
+  vm.runInContext(extract(indexSource, 'function prepareTradeHeldItems(', '\nasync function handleNameTrade('), ctx);
+  vm.runInContext(extract(indexSource, 'function executeMultiTrade(', '\nasync function handleMultiTrade('), ctx);
+  const session = { sides: [
+    { user: { id: 'a', username: 'A' }, coins: 0, tokens: 0,
+      pokemon: new Map([['one', { name: 'One', amount: 2 }]]) },
+    { user: { id: 'b', username: 'B' }, coins: 0, tokens: 0, pokemon: new Map() },
+  ] };
+  assert.equal(ctx.executeMultiTrade(session), null);
+  assert.deepEqual(db.prepare('SELECT user_id, item FROM items').all(), [{ user_id: 'a', item: 'Nugget' }]);
+  assert.deepEqual(db.prepare('SELECT held_item FROM catches WHERE user_id = ? ORDER BY id').all('b'),
+    [{ held_item: 'Leftovers' }, { held_item: 'Leftovers' }, { held_item: 'Leftovers' }]);
   db.close();
 });
 
@@ -363,7 +515,8 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
       { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
     ],
     getRandomPokemon: (rarity) => ({ id: 1, speciesName: rarity, name: rarity, rarity, types: [] }),
-    SPECIAL_SPAWN_RESERVED_SPECIES: [], EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [],
+    SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
+    EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [],
     eventSpawnFormIds: [], getEventSpawnChance: () => 1 / 100,
     LEGENDARY_BASE_CHANCE: 1 / 167, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
     LEGENDARY_SPAWN_PITY_LIMIT: 167, FULL_ODDS_SHINY_PITY_LIMIT: 750,
@@ -451,7 +604,8 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
       const id = ids ? ids[0] : 4;
       return { id, name: names[id], speciesName: names[id], rarity: rarity || 'Common' };
     },
-    SPECIAL_SPAWN_RESERVED_SPECIES: [], EVENT_NON_FISH_SPECIES: [],
+    SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
+    EVENT_NON_FISH_SPECIES: [],
     EVENT_FISH_SPAWN_FORM_IDS: [], eventSpawnFormIds: [],
     LEGENDARY_BASE_CHANCE: 1 / 167,
     LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
@@ -467,7 +621,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   });
   vm.runInContext(
     extract(indexSource, 'const EVENT_SPAWN_ODDS =', '\nlet eventSpawnFormIds')
-      + '\n' + extract(indexSource, 'function rollSpawn(', '\nconst EXPLORE_EXCLUSIVE_CHANCE')
+      + '\n' + extract(indexSource, 'function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE')
       + '\n' + extract(indexSource, 'function getEventPokemonKey(', '\nfunction getRarityInfo('),
     ctx
   );
@@ -636,6 +790,49 @@ test('normal moves do not damage Ghost types unless Scrappy applies', () => {
   ctx.player.ability = 'Scrappy';
   battle.performMove(ctx, { mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' }, move, () => {});
   assert.ok(ctx.enemy.hp < 100);
+});
+
+test('Simple Beam affects world boss stat changes across switches and damaging moves', () => {
+  const math = Object.create(Math);
+  math.random = () => 0.5;
+  const acid = { name: 'Acid Spray', type: 'poison', power: 40, category: 'special' };
+  const pool = [{ id: 1, name: 'Boss', baseHp: 50, baseAtk: 50, baseDef: 50, baseSpd: 50 }];
+  const ctx = vm.createContext({
+    Math: math, battleFx: battle, WORLD_BOSS_POOL: pool, WORLD_BOSS_DUMMY_HP: 1600,
+    WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER: 0.5, EMOJIS: {},
+    db: { prepare: () => ({ get: () => ({ types: '["normal"]' }) }) },
+    createBattleField: battle.createField, combatStats: () => ({}),
+    getWorldBossTeamMoves: (team) => team.map((pokemon) => ({
+      pokemon, teamIndex: 0, types: ['poison'], moves: [acid],
+    })),
+    getHeldItemMoveType: (_name, type) => type, isPlateItem: () => false,
+    getHeldItemDamageMultiplier: () => 1, typeEffectiveness: () => 1,
+    CHOICE_ATTACK_ITEMS: new Set(), CHOICE_SPECIAL_ATTACK_ITEMS: new Set(),
+    applyWorldBossDamage: (_userId, _bossId, damage) => ({ damage, defeated: false, boss: { name: 'Boss' } }),
+  });
+  vm.runInContext(extract(indexSource, 'function getWorldBossBattle(', '\nconst WORLD_BOSS_PROGRESS_INTERVAL_MS'), ctx);
+  const teamStates = new Map();
+  const pokemon = { ...mon('Raider', ['poison']), id: 1, team_slot: 1 };
+  const state = { pokemon, hp: 100, types: ['poison'], moves: [acid], teamStates };
+  const boss = { id: 42, name: 'Boss' };
+  const bs = ctx.getWorldBossBattle(state, boss);
+  const moveCtx = { ...battleContext(), worldBoss: true, player: bs.mon, enemy: bs.boss, field: bs.field };
+  const logs = [];
+  battle.performMove(moveCtx, { mon: bs.mon, side: 'player' }, { mon: bs.boss, side: 'enemy' },
+    { name: 'Simple Beam', accuracy: 100, power: 0 }, (text) => logs.push(text));
+  assert.equal(bs.boss.ability, 'Simple');
+  const second = ctx.getWorldBossBattle({ ...state, pokemon: { ...pokemon, id: 2 } }, boss);
+  assert.equal(second.boss.ability, 'Simple');
+  const firstHit = ctx.runWorldBossMove('user', [pokemon], boss, 0, 0, 1, bs.mon, second.boss, moveCtx);
+  const secondHit = ctx.runWorldBossMove('user', [pokemon], boss, 0, 0, 1, bs.mon, second.boss, moveCtx);
+  assert.match(firstHit.battleLog[0], /harshly fell/);
+  assert.equal(secondHit.damage, firstHit.damage * 3);
+  assert.equal(vm.runInContext('worldBossDefenceDrops.get("42:user").spdef', ctx), -6);
+
+  const normal = battleContext();
+  battle.performMove(normal, { mon: normal.player, side: 'player' }, { mon: normal.enemy, side: 'enemy' },
+    { name: 'Simple Beam', accuracy: 100, power: 0 }, () => {});
+  assert.equal(normal.enemy.ability, undefined);
 });
 
 test('NPC coin rewards are halved for first clears, rematches, challengers and Volo', () => {

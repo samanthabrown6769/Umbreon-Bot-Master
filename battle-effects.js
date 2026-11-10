@@ -637,7 +637,9 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   if (eff.abilityTarget !== undefined || eff.abilityUser || eff.abilitySwap) {
     const locked = (mon) => UNCHANGEABLE_ABILITIES.has(AB.abilitySlug(mon.ability));
     const copying = eff.abilityTarget === 'copy' || eff.abilityUser === 'copy';
-    if (!t.ability || locked(t) || ((eff.abilityUser || eff.abilitySwap || copying) && (!m.ability || locked(m)))
+    const bossCanReceiveAbility = ctx.worldBoss && B.side === 'enemy'
+      && typeof eff.abilityTarget === 'string' && !copying;
+    if ((!t.ability && !bossCanReceiveAbility) || locked(t) || ((eff.abilityUser || eff.abilitySwap || copying) && (!m.ability || locked(m)))
         || (eff.abilityTarget === 'copy' && AB.abilitySlug(m.ability) === AB.abilitySlug(t.ability))
         || (typeof eff.abilityTarget === 'string' && eff.abilityTarget !== 'copy'
           && AB.abilitySlug(t.ability) === AB.abilitySlug(eff.abilityTarget))) {
@@ -1195,6 +1197,7 @@ const abilities = {
   absorb: (ctx, A, B, move, type, eff, L) => AB.absorb(AH, ctx, A, B, move, type, eff, L),
   afterHit: (ctx, A, B, move, dmg, info, L) => AB.afterHit(AH, ctx, A, B, move, dmg, info, L),
   damageMultiplier: AB.damageMultiplier,
+  adjustStageDelta: AB.adjustStageDelta,
   adjustMoveType: AB.adjustMoveType,
   adjustDefenderTypes: AB.adjustDefenderTypes,
   survivesLethal: AB.survivesLethal,

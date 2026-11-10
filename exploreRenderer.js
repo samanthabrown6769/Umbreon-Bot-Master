@@ -1,53 +1,64 @@
+const path = require('node:path');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-
 const { EXPLORE_MAPS: MAP_THEMES } = require('./exploreData');
 
 const MAP_WIDTH = 640;
-const MAP_HEIGHT = 320;
-const TRAINER_WIDTH = 64;
-const TRAINER_HEIGHT = 64;
+const TRAINER_WIDTH = 32;
+const TRAINER_HEIGHT = 32;
+const mapCache = new Map();
+const iconCache = new Map();
 
-const backgroundCache = new Map();
-
-async function loadBackground(url) {
-  if (!backgroundCache.has(url)) backgroundCache.set(url, loadImage(url).catch(() => null));
-  return backgroundCache.get(url);
+function getExploreMap(mapType, variant) {
+  if (!Object.hasOwn(MAP_THEMES, mapType)) throw new TypeError(`Unknown Explore map: ${mapType}`);
+  const map = MAP_THEMES[mapType].images[variant];
+  if (!Number.isInteger(variant) || !map) throw new RangeError(`Invalid Explore map variant: ${variant}`);
+  return map;
 }
 
-async function renderExploreMap(mapType, posX, posY, activeMon, trainerUrl, backgroundUrl) {
-  const canvas = createCanvas(MAP_WIDTH, MAP_HEIGHT);
+function getExploreMapSize(mapType, variant) {
+  const map = getExploreMap(mapType, variant);
+  return { width: MAP_WIDTH, height: Math.round(MAP_WIDTH * map.height / map.width) };
+}
+
+async function loadMap(map) {
+  if (!mapCache.has(map.file)) {
+    const pending = loadImage(path.join(__dirname, 'assets', 'explore', map.file)).then((image) => {
+      if (image.width !== map.width || image.height !== map.height) {
+        throw new Error(`Unexpected dimensions for Explore map ${map.file}.`);
+      }
+      return image;
+    });
+    mapCache.set(map.file, pending);
+    pending.catch(() => mapCache.delete(map.file));
+  }
+  return mapCache.get(map.file);
+}
+
+async function loadTrainerIcon(url) {
+  if (!url) throw new Error('No trainer icon is configured for Explore.');
+  if (!iconCache.has(url)) {
+    const pending = (async () => {
+      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!response.ok) throw new Error(`Trainer icon request failed with HTTP ${response.status}.`);
+      return loadImage(Buffer.from(await response.arrayBuffer()));
+    })();
+    iconCache.set(url, pending);
+    pending.catch(() => iconCache.delete(url));
+    if (iconCache.size > 100) iconCache.delete(iconCache.keys().next().value);
+  }
+  return iconCache.get(url);
+}
+
+async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0) {
+  const map = getExploreMap(mapType, variant);
+  const { width, height } = getExploreMapSize(mapType, variant);
+  const [background, trainer] = await Promise.all([loadMap(map), loadTrainerIcon(trainerUrl)]);
+  const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
-  const theme = MAP_THEMES[mapType] || MAP_THEMES.grass;
-
-  const background = backgroundUrl ? await loadBackground(backgroundUrl) : null;
-  if (background) {
-    ctx.drawImage(background, 0, 0, MAP_WIDTH, MAP_HEIGHT);
-  } else {
-    ctx.fillStyle = theme.bgColor;
-    ctx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-  }
-
-  if (activeMon?.img) {
-    try {
-      const monImg = await loadImage(activeMon.img);
-      ctx.drawImage(monImg, MAP_WIDTH - 180, 96, 96, 96);
-    } catch (_) {}
-  }
-
-  let drawn = false;
-  if (trainerUrl) {
-    try {
-      const trainer = await loadImage(trainerUrl);
-      ctx.drawImage(trainer, posX, posY, TRAINER_WIDTH, TRAINER_HEIGHT);
-      drawn = true;
-    } catch (_) {}
-  }
-  if (!drawn) {
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(posX + 16, posY + 8, 32, 48);
-  }
-
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(background, 0, 0, width, height);
+  ctx.drawImage(trainer, posX, posY, TRAINER_WIDTH, TRAINER_HEIGHT);
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { MAP_THEMES, MAP_WIDTH, MAP_HEIGHT, TRAINER_WIDTH, TRAINER_HEIGHT, renderExploreMap };
+module.exports = { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, renderExploreMap };

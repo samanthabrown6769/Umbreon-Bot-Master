@@ -1,29 +1,18 @@
-const CLOUDINARY = 'https://res.cloudinary.com/apffqia5/image/upload';
-
 const EXPLORE_MAPS = {
   grass: {
-    name: 'Grass Map', emoji: '🌿', bgColor: '#78C850',
+    name: 'Grass Map', emoji: '🌿',
     images: [
-      `${CLOUDINARY}/v1792179255/gm1.webp`,
-      `${CLOUDINARY}/v1792179256/gm2.webp`,
-      `${CLOUDINARY}/v1792179256/gm3.webp`,
-      `${CLOUDINARY}/v1792179255/gm4.webp`,
+      { file: 'grass-1.png', width: 1023, height: 768, startX: 0.65, startY: 0.48 },
+      { file: 'grass-2.png', width: 720, height: 624, startX: 0.5, startY: 0.5 },
     ],
   },
   fire: {
-    name: 'Fire Map', emoji: '🔥', bgColor: '#C03028',
-    images: [
-      `${CLOUDINARY}/v1792179255/fm1.webp`,
-      `${CLOUDINARY}/v1792179255/fm2.webp`,
-    ],
+    name: 'Fire Map', emoji: '🔥',
+    images: [{ file: 'fire-1.webp', width: 496, height: 320, startX: 0.38, startY: 0.14 }],
   },
   water: {
-    name: 'Water Map', emoji: '🌊', bgColor: '#6890F0',
-    images: [
-      `${CLOUDINARY}/v1792179255/wm1.webp`,
-      `${CLOUDINARY}/v1792179255/wm2.webp`,
-      `${CLOUDINARY}/v1792179256/wm3.webp`,
-    ],
+    name: 'Water Map', emoji: '🌊',
+    images: [{ file: 'water-1.webp', width: 1152, height: 320, startX: 0.3, startY: 0.5 }],
   },
 };
 
@@ -85,11 +74,15 @@ function getExploreCatchRate(ballKey, displayRarity) {
 const EXPLORE_EXCLUSIVE_SPECIES_IDS = Object.freeze(
   [...new Set(Object.values(EXPLORE_EXCLUSIVES).flat().map(([id]) => id))]
 );
+const EXPLORE_EXCLUSIVE_SHINY_IDS = new Set(
+  Object.values(EXPLORE_EXCLUSIVES).flat().filter(([, , shiny]) => shiny).map(([id]) => id)
+);
 
 module.exports = {
   EXPLORE_MAPS,
   EXPLORE_EXCLUSIVES,
   EXPLORE_GOLDENS,
   EXPLORE_EXCLUSIVE_SPECIES_IDS,
+  EXPLORE_EXCLUSIVE_SHINY_IDS,
   getExploreCatchRate,
 };

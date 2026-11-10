@@ -9091,13 +9091,15 @@ function wipeUserData(userId) {
       `).run(userId);
     }
 
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
     const deleted = {};
+    const catchCount = db.prepare('DELETE FROM catches WHERE user_id = ?').run(userId).changes;
+    if (catchCount) deleted.catches = catchCount;
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
     for (const { name } of tables) {
       if (keep.has(name)) continue;
       const columns = db.prepare(`PRAGMA table_info("${name}")`).all().map((c) => c.name);
       const idColumns = columns.filter((c) =>
-        (name === 'users' && c === 'id') || ['user_id', 'seller_id', 'sender_id', 'receiver_id'].includes(c)
+        (name === 'users' && c === 'id') || ['user_id', 'seller_id', 'sender_id', 'receiver_id', 'recipient_id'].includes(c)
       );
       for (const column of idColumns) {
         const { changes } = db.prepare(`DELETE FROM "${name}" WHERE "${column}" = ?`).run(userId);
