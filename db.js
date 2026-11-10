@@ -61,6 +61,22 @@ db.exec(`
     last_caught_at INTEGER,
     last_pokemon TEXT
   );
+  CREATE TABLE IF NOT EXISTS user_explore_encounter_counters (
+    user_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny', 'golden')),
+    encounters_since INTEGER NOT NULL DEFAULT 0,
+    last_caught_at INTEGER,
+    last_pokemon TEXT,
+    PRIMARY KEY (user_id, category)
+  );
+  CREATE TABLE IF NOT EXISTS user_held_item_counters (
+    user_id TEXT PRIMARY KEY,
+    encounters_since INTEGER NOT NULL DEFAULT 0,
+    last_found_at INTEGER,
+    last_pokemon TEXT,
+    last_rarity TEXT,
+    last_item TEXT
+  );
   CREATE TABLE IF NOT EXISTS encounter_spawn_pity (
     user_id TEXT NOT NULL,
     category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny')),
@@ -83,6 +99,10 @@ db.exec('DROP TABLE IF EXISTS user_event_spawn_catches');
 const initializeEncounterCounter = db.prepare(`
   INSERT OR IGNORE INTO user_encounter_counters (user_id, source, category)
   VALUES (?, ?, ?)
+`);
+const initializeExploreEncounterCounter = db.prepare(`
+  INSERT OR IGNORE INTO user_explore_encounter_counters (user_id, category)
+  VALUES (?, ?)
 `);
 
 // G-Max moves are exclusive to their matching Gigantamax forms (Bulbapedia: G-Max Move).
@@ -5795,7 +5815,7 @@ function recordPokemonSeen(userId, pokemonId, isShiny = false, isGolden = false)
   `).run(userId, pokemonId, isShiny ? 1 : 0, isGolden ? 1 : 0);
 }
 
-function getUserBuddyHistory(userId, sortBy = 'ivs') {
+function getUserBuddyHistory(userId, sortBy = 'exp') {
   assertUserId(userId);
   const rows = db.prepare(`
     SELECT * FROM catches WHERE user_id = ? AND ever_buddy = 1
@@ -5807,6 +5827,9 @@ function getUserBuddyHistory(userId, sortBy = 'ivs') {
   }));
   const compareIv = (a, b) => b.iv_percent - a.iv_percent || b.id - a.id;
   let compareRows = compareIv;
+  if (sortBy === 'exp') {
+    compareRows = (a, b) => b.experience - a.experience || compareIv(a, b);
+  }
   if (sortBy === 'num') {
     compareRows = (a, b) => a.pokemon_id - b.pokemon_id || compareIv(a, b);
   }
@@ -6524,8 +6547,8 @@ const STARTER_SPECIES_NAMES = Object.freeze([
   'Grookey', 'Scorbunny', 'Sobble',
   'Sprigatito', 'Fuecoco', 'Quaxly',
 ]);
-// Starter evolution lines are this many times likelier than other Pokémon of the same rarity to spawn.
-const STARTER_SPAWN_WEIGHT = 6;
+// Starter evolution-line spawn weight relative to other Pokémon of the same rarity.
+const STARTER_SPAWN_WEIGHT = 1;
 let starterChainIds = null;
 function getStarterChainIds() {
   if (!starterChainIds) {
@@ -7724,7 +7747,7 @@ function getMarketSaleHistory(pokemonId, variant = 'normal') {
   `).get(...params);
   const recent = db.prepare(`
     SELECT sale_price, quantity, sold_at FROM market_sales
-    WHERE ${where} ORDER BY id DESC LIMIT 10
+    WHERE ${where} ORDER BY id DESC LIMIT 1
   `).all(...params);
   return { ...totals, recent };
 }
@@ -8331,8 +8354,19 @@ function getDailyCatchLeaderboard(timestamp = Date.now()) {
 
 function recordWildEncounterCounter(userId, source) {
   assertUserId(userId);
-  if (!['pokemon', 'fishing'].includes(source)) {
-    throw new TypeError('Encounter counter source must be pokemon or fishing.');
+  if (!['pokemon', 'fishing', 'explore'].includes(source)) {
+    throw new TypeError('Encounter counter source must be pokemon, fishing, or explore.');
+  }
+  if (source === 'explore') {
+    for (const category of ['legendary', 'shiny', 'golden']) {
+      initializeExploreEncounterCounter.run(userId, category);
+    }
+    db.prepare(`
+      UPDATE user_explore_encounter_counters
+      SET encounters_since = encounters_since + 1
+      WHERE user_id = ?
+    `).run(userId);
+    return;
   }
   for (const category of ['legendary', 'shiny']) {
     initializeEncounterCounter.run(userId, source, category);
@@ -8351,11 +8385,14 @@ function recordWildEncounterCounter(userId, source) {
 
 function resetEncounterCounters(userId, source, categories, pokemonName, timestamp = Date.now()) {
   assertUserId(userId);
-  if (!['pokemon', 'fishing'].includes(source)) {
-    throw new TypeError('Encounter counter source must be pokemon or fishing.');
+  if (!['pokemon', 'fishing', 'explore'].includes(source)) {
+    throw new TypeError('Encounter counter source must be pokemon, fishing, or explore.');
   }
-  if (!Array.isArray(categories) || categories.some((category) => !['legendary', 'shiny'].includes(category))) {
-    throw new TypeError('Encounter counter categories must be legendary or shiny.');
+  const allowedCategories = source === 'explore'
+    ? ['legendary', 'shiny', 'golden']
+    : ['legendary', 'shiny'];
+  if (!Array.isArray(categories) || categories.some((category) => !allowedCategories.includes(category))) {
+    throw new TypeError(`Encounter counter categories must be ${allowedCategories.join(' or ')}.`);
   }
   if (typeof pokemonName !== 'string' || !pokemonName.trim()) {
     throw new TypeError('A Pokémon name is required to reset an encounter counter.');
@@ -8364,6 +8401,22 @@ function resetEncounterCounters(userId, source, categories, pokemonName, timesta
     throw new TypeError('Catch timestamp must be a non-negative safe integer.');
   }
   const uniqueCategories = [...new Set(categories)];
+  if (source === 'explore') {
+    const updateExplore = db.prepare(`
+      UPDATE user_explore_encounter_counters
+      SET encounters_since = 0, last_caught_at = ?, last_pokemon = ?
+      WHERE user_id = ? AND category = ?
+    `);
+    db.transaction(() => {
+      for (const category of uniqueCategories) {
+        initializeExploreEncounterCounter.run(userId, category);
+      }
+      for (const category of uniqueCategories) {
+        updateExplore.run(timestamp, pokemonName.trim(), userId, category);
+      }
+    }).immediate();
+    return uniqueCategories;
+  }
   const update = db.prepare(`
     UPDATE user_encounter_counters
     SET encounters_since = 0, last_caught_at = ?, last_pokemon = ?, last_catcher_id = ?
@@ -8378,6 +8431,58 @@ function resetEncounterCounters(userId, source, categories, pokemonName, timesta
     }
   }).immediate();
   return uniqueCategories;
+}
+
+function recordHeldItemEncounterCounter(userId) {
+  assertUserId(userId);
+  db.prepare(`
+    INSERT INTO user_held_item_counters (user_id, encounters_since)
+    VALUES (?, 1)
+    ON CONFLICT(user_id) DO UPDATE SET encounters_since = encounters_since + 1
+  `).run(userId);
+}
+
+function resetHeldItemEncounterCounter(userId, pokemonName, rarity, itemName, timestamp = Date.now()) {
+  assertUserId(userId);
+  if (typeof pokemonName !== 'string' || !pokemonName.trim()) {
+    throw new TypeError('A Pokémon name is required to reset the held item counter.');
+  }
+  if (typeof rarity !== 'string' || !rarity.trim()) {
+    throw new TypeError('A Pokémon rarity is required to reset the held item counter.');
+  }
+  if (typeof itemName !== 'string' || !itemName.trim()) {
+    throw new TypeError('An item name is required to reset the held item counter.');
+  }
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    throw new TypeError('Held item timestamp must be a non-negative safe integer.');
+  }
+  db.prepare(`
+    INSERT INTO user_held_item_counters (
+      user_id, encounters_since, last_found_at, last_pokemon, last_rarity, last_item
+    )
+    VALUES (?, 0, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      encounters_since = 0,
+      last_found_at = excluded.last_found_at,
+      last_pokemon = excluded.last_pokemon,
+      last_rarity = excluded.last_rarity,
+      last_item = excluded.last_item
+  `).run(userId, timestamp, pokemonName.trim(), rarity.trim(), itemName.trim());
+}
+
+function getHeldItemEncounterCounter(userId) {
+  assertUserId(userId);
+  return db.prepare(`
+    SELECT encounters_since, last_found_at, last_pokemon, last_rarity, last_item
+    FROM user_held_item_counters
+    WHERE user_id = ?
+  `).get(userId) || {
+    encounters_since: 0,
+    last_found_at: null,
+    last_pokemon: null,
+    last_rarity: null,
+    last_item: null,
+  };
 }
 
 function recordEventSpawnCatch(userId, pokemonName, timestamp = Date.now()) {
@@ -8409,12 +8514,23 @@ function getEncounterCounters(userId) {
       initializeEncounterCounter.run(userId, source, category);
     }
   }
-  return db.prepare(`
+  for (const category of ['legendary', 'shiny', 'golden']) {
+    initializeExploreEncounterCounter.run(userId, category);
+  }
+  return [
+    ...db.prepare(`
     SELECT source, category, encounters_since, last_caught_at, last_pokemon
     FROM user_encounter_counters
     WHERE user_id = ?
     ORDER BY source, category
-  `).all(userId);
+    `).all(userId),
+    ...db.prepare(`
+      SELECT 'explore' AS source, category, encounters_since, last_caught_at, last_pokemon
+      FROM user_explore_encounter_counters
+      WHERE user_id = ?
+      ORDER BY category
+    `).all(userId),
+  ];
 }
 
 function getNextDailyReset(timestamp = Date.now()) {
@@ -10745,6 +10861,9 @@ module.exports = {
   recordWildEncounterCounter,
   resetEncounterCounters,
   getEncounterCounters,
+  recordHeldItemEncounterCounter,
+  resetHeldItemEncounterCounter,
+  getHeldItemEncounterCounter,
   recordEventSpawnCatch,
   getEventSpawnCatch,
   resetChecklistIfNewDay,

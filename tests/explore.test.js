@@ -630,7 +630,7 @@ test('wild starter encounters retain Explore shiny exclusivity without consuming
     EVENT_SPAWN_PITY_MIN: 300, EVENT_SPAWN_PITY_LIMIT: 500, LEGENDARY_SPAWN_PITY_LIMIT: 167,
     LEGENDARY_BASE_CHANCE: 1 / 167, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
     FULL_ODDS_SHINY_PITY_LIMIT: 750, WILD_SHINY_PITY_MIN: 1000, WILD_SHINY_PITY_LIMIT: 2000,
-    DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.25,
+    DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.1,
     EVENT_TICKET_SHINY_RATES: { standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02, nonEvent: 0.002 } },
     BASE_SHINY_RATE: 0.001, PATREON_SHINY_RATE: 0.002, CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
   });
@@ -693,7 +693,7 @@ test('wild Shiny and event pity windows are independent and enforce exact bounda
     EVENT_SPAWN_PITY_MIN: 300, EVENT_SPAWN_PITY_LIMIT: 500,
     LEGENDARY_SPAWN_PITY_LIMIT: 167, LEGENDARY_BASE_CHANCE: 1 / 167,
     LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125, WILD_SHINY_PITY_MIN: 1000, WILD_SHINY_PITY_LIMIT: 2000,
-    DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.25,
+    DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.1,
     EVENT_TICKET_SHINY_RATES: { standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02, nonEvent: 0.002 } },
     BASE_SHINY_RATE: 0.001, PATREON_SHINY_RATE: 0.002, CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
   });
@@ -992,6 +992,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     askForBall: async (_message, _id, wild, _mode, options) => {
       assert.equal(wild.overworldAbility, 'frisk');
       assert.equal(wild.heldItem, undefined);
+      assert.equal(options.counterSource, 'explore');
       options.inline.onSpawn({ title: 'Encounter details' });
       options.inline.onCancelReady(() => { cancelled = true; });
       options.onHandler(async (interaction) => {
@@ -1051,7 +1052,8 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(user.repel_encounters, 7);
   assert.equal(rollAbility, 'frisk');
   assert.equal(shinyBoost, 5);
-  assert.match(payloads.at(-1).content, /Bulbasaur/);
+  assert.match(payloads.at(-1).content, /\*\*Uncommon\*\* :pokemon: \*\*Bulbasaur\*\* appeared!/);
+  assert.doesNotMatch(payloads.at(-1).content, /\([^)]*\)/);
   assert.doesNotMatch(payloads.at(-1).content, /throw a ball with the buttons on the right/i);
   assert.equal(payloads.at(-1).components[0].components[1].data.disabled, false);
   user.explore_steps_today = 500;
@@ -1177,6 +1179,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   nextRolls = [0.9];
   await click('exp_right');
   assert.doesNotMatch(payloads.at(-1).content, /Chest on the map/);
+  assert.match(payloads.at(-1).content, /The chest disappeared from the map/);
   await click('exp_run');
   await endPromise;
   chestLifetime = 5;

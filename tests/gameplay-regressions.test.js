@@ -40,6 +40,170 @@ test('CatchBot Pokémon, cost, and duration upgrade prices double at every level
   assert.equal(ctx.testCB_CONFIG.luck.costForLvl(1), 2500000);
 });
 
+test('Explore and held-item counters advance and reset independently', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE user_encounter_counters (
+        user_id TEXT NOT NULL, source TEXT NOT NULL, category TEXT NOT NULL,
+        encounters_since INTEGER NOT NULL DEFAULT 0, last_caught_at INTEGER,
+        last_pokemon TEXT, last_catcher_id TEXT,
+        PRIMARY KEY (user_id, source, category)
+      );
+      CREATE TABLE user_event_spawn_counters (
+        user_id TEXT PRIMARY KEY, encounters_since INTEGER NOT NULL DEFAULT 0,
+        last_caught_at INTEGER, last_pokemon TEXT
+      );
+      CREATE TABLE user_explore_encounter_counters (
+        user_id TEXT NOT NULL, category TEXT NOT NULL, encounters_since INTEGER NOT NULL DEFAULT 0,
+        last_caught_at INTEGER, last_pokemon TEXT, PRIMARY KEY (user_id, category)
+      );
+      CREATE TABLE user_held_item_counters (
+        user_id TEXT PRIMARY KEY, encounters_since INTEGER NOT NULL DEFAULT 0,
+        last_found_at INTEGER, last_pokemon TEXT, last_rarity TEXT, last_item TEXT
+      );
+    `);
+    const ctx = vm.createContext({
+      db,
+      assertUserId: (userId) => assert.equal(typeof userId, 'string'),
+      initializeEncounterCounter: db.prepare(`
+        INSERT OR IGNORE INTO user_encounter_counters (user_id, source, category) VALUES (?, ?, ?)
+      `),
+      initializeExploreEncounterCounter: db.prepare(`
+        INSERT OR IGNORE INTO user_explore_encounter_counters (user_id, category) VALUES (?, ?)
+      `),
+    });
+    vm.runInContext(
+      `${extract(dbSource, 'function recordWildEncounterCounter(', '\nfunction getNextDailyReset(')}
+       globalThis.testCounters = {
+         recordWildEncounterCounter, resetEncounterCounters, getEncounterCounters,
+         recordHeldItemEncounterCounter, resetHeldItemEncounterCounter, getHeldItemEncounterCounter,
+       };`,
+      ctx,
+    );
+
+    ctx.testCounters.recordWildEncounterCounter('trainer', 'explore');
+    ctx.testCounters.recordWildEncounterCounter('trainer', 'explore');
+    ctx.testCounters.resetEncounterCounters('trainer', 'explore', ['golden'], 'Treecko', 123);
+    const explore = ctx.testCounters.getEncounterCounters('trainer');
+    assert.equal(explore.find((counter) => counter.source === 'explore' && counter.category === 'golden').encounters_since, 0);
+    assert.equal(explore.find((counter) => counter.source === 'explore' && counter.category === 'golden').last_pokemon, 'Treecko');
+    assert.equal(explore.find((counter) => counter.source === 'explore' && counter.category === 'shiny').encounters_since, 2);
+
+    ctx.testCounters.recordHeldItemEncounterCounter('trainer');
+    ctx.testCounters.recordHeldItemEncounterCounter('trainer');
+    ctx.testCounters.resetHeldItemEncounterCounter('trainer', 'Spearow', 'Rare', 'Nugget', 456);
+    let heldItem = ctx.testCounters.getHeldItemEncounterCounter('trainer');
+    assert.equal(heldItem.encounters_since, 0);
+    assert.equal(heldItem.last_found_at, 456);
+    assert.equal(heldItem.last_pokemon, 'Spearow');
+    assert.equal(heldItem.last_item, 'Nugget');
+    ctx.testCounters.recordHeldItemEncounterCounter('trainer');
+    heldItem = ctx.testCounters.getHeldItemEncounterCounter('trainer');
+    assert.equal(heldItem.encounters_since, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test('.co renders aligned Pokémon, Fishing, Explore, and held-item columns', async () => {
+  const encounterCounters = [
+    { source: 'pokemon', category: 'legendary', encounters_since: 10, last_caught_at: 100, last_pokemon: 'Mewtwo' },
+    { source: 'pokemon', category: 'shiny', encounters_since: 20, last_caught_at: 200, last_pokemon: 'Pikachu' },
+    { source: 'fishing', category: 'legendary', encounters_since: 30, last_caught_at: 300, last_pokemon: 'Kyogre' },
+    { source: 'fishing', category: 'shiny', encounters_since: 40, last_caught_at: 400, last_pokemon: 'Magikarp' },
+    { source: 'explore', category: 'golden', encounters_since: 50, last_caught_at: 500, last_pokemon: 'Treecko' },
+    { source: 'explore', category: 'shiny', encounters_since: 60, last_caught_at: 600, last_pokemon: 'Bulbasaur' },
+    { source: 'explore', category: 'legendary', encounters_since: 70, last_caught_at: 700, last_pokemon: 'Mew' },
+  ];
+  const ctx = vm.createContext({
+    command: 'co',
+    userId: 'trainer',
+    EmbedBuilder,
+    HELD_ITEM_EMOJI: '🎒',
+    EMOJIS: { eventticket: '🎟️' },
+    getEncounterCounters: () => encounterCounters,
+    getHeldItemEncounterCounter: () => ({
+      encounters_since: 8, last_found_at: 800, last_pokemon: 'Smeargle', last_rarity: 'Rare', last_item: 'Nugget',
+    }),
+    getEventSpawnCatch: () => ({ encounters_since: 9, last_caught_at: 900, last_pokemon: 'Eevee' }),
+    getRarityEmojis: () => '⭐',
+    message: { author: { username: 'Trainer' }, reply: async (payload) => payload },
+  });
+  vm.runInContext(
+    `async function run() {
+      ${extract(indexSource, "    if (command === 'counters' || command === 'co') {", "\n    if (command === 'streak' || command === 'streaks') {")}
+    }`,
+    ctx,
+  );
+  const response = await ctx.run();
+  const embed = response.embeds[0].toJSON();
+  assert.equal(embed.fields.length, 3);
+  assert.match(embed.description, /<:magnifyingglass:1569838771791466546> - Explore Counters/);
+  assert.match(embed.fields[0].value, /Item found/);
+  assert.match(embed.fields[1].value, /8 - ⭐ Smeargle \(Nugget\)/);
+  assert.match(embed.fields[0].value, /Golden spawn/);
+  assert.equal(embed.fields[0].value.split('\n').length, embed.fields[1].value.split('\n').length);
+  assert.equal(embed.fields[1].value.split('\n').length, embed.fields[2].value.split('\n').length);
+});
+
+test('buddy history defaults to descending EXP', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE catches (
+        user_id TEXT, id INTEGER, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER,
+        hp_iv INTEGER, atk_iv INTEGER, def_iv INTEGER, spa_iv INTEGER, spdef_iv INTEGER, spd_iv INTEGER,
+        level INTEGER, experience INTEGER, ever_buddy INTEGER
+      );
+      INSERT INTO catches VALUES
+        ('trainer', 1, 1, 0, 0, 10, 10, 10, 10, 10, 10, 100, 10, 1),
+        ('trainer', 2, 2, 0, 0, 10, 10, 10, 10, 10, 10, 10, 100, 1),
+        ('trainer', 3, 3, 0, 0, 10, 10, 10, 10, 10, 10, 50, 50, 1);
+    `);
+    const ctx = vm.createContext({
+      db,
+      assertUserId: (userId) => assert.equal(typeof userId, 'string'),
+      getUser: () => ({ buddy_catch_id: null }),
+    });
+    vm.runInContext(
+      `${extract(dbSource, 'function getUserBuddyHistory(', '\nfunction getUserTeam(')}
+       globalThis.testBuddyHistory = getUserBuddyHistory;`,
+      ctx,
+    );
+    assert.deepEqual([...ctx.testBuddyHistory('trainer').map((pokemon) => pokemon.experience)], [100, 50, 10]);
+  } finally {
+    db.close();
+  }
+});
+
+test('market sale history returns only the latest sale', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE market_sales (
+        id INTEGER PRIMARY KEY, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER,
+        sale_price INTEGER, quantity INTEGER, sold_at TEXT
+      );
+      INSERT INTO market_sales VALUES
+        (1, 25, 0, 0, 100, 1, '2026-11-08'),
+        (2, 25, 0, 0, 200, 2, '2026-11-09'),
+        (3, 25, 0, 0, 450, 3, '2026-11-10');
+    `);
+    const ctx = vm.createContext({ db });
+    vm.runInContext(
+      `${extract(dbSource, 'function getMarketSaleHistory(', '\nfunction getUserMarketSaleSummary(')}
+       globalThis.testMarketHistory = getMarketSaleHistory;`,
+      ctx,
+    );
+    const history = ctx.testMarketHistory(25);
+    assert.equal(history.sale_count, 3);
+    assert.deepEqual([...history.recent], [{ sale_price: 450, quantity: 3, sold_at: '2026-11-10' }]);
+  } finally {
+    db.close();
+  }
+});
+
 test('CatchBot reset clears only CatchBot fields for an existing user', () => {
   const db = new Database(':memory:');
   try {
@@ -548,7 +712,7 @@ test('spawn selection applies chamber weights and Legendary Box exclusions', () 
   db.close();
 });
 
-test('starter and Daily Hunt encounters use their increased spawn chances', () => {
+test('starter and Daily Hunt encounters use their configured spawn chances', () => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE pokemon_forms (
@@ -574,7 +738,7 @@ test('starter and Daily Hunt encounters use their increased spawn chances', () =
   vm.runInContext(extract(dbSource, 'function getRandomPokemon(', '\nlet raritySettingsCache'), ctx);
   roll = 0.1;
   assert.equal(ctx.getRandomPokemon('Uncommon').name, 'Ordinary');
-  roll = 0.2;
+  roll = 0.6;
   assert.equal(ctx.getRandomPokemon('Uncommon').name, 'Litten');
 
   const huntChanceContext = vm.createContext({});
@@ -582,7 +746,7 @@ test('starter and Daily Hunt encounters use their increased spawn chances', () =
     extract(indexSource, 'const DAILY_HUNT_SPAWN_BOOST_CHANCE =', '\nfunction getActiveHuntTarget'),
     huntChanceContext
   );
-  assert.equal(vm.runInContext('DAILY_HUNT_SPAWN_BOOST_CHANCE', huntChanceContext), 0.25);
+  assert.equal(vm.runInContext('DAILY_HUNT_SPAWN_BOOST_CHANCE', huntChanceContext), 0.1);
   db.close();
 });
 

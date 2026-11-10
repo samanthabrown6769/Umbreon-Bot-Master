@@ -386,6 +386,9 @@ const {
   recordWildEncounterCounter,
   resetEncounterCounters,
   getEncounterCounters,
+  recordHeldItemEncounterCounter,
+  resetHeldItemEncounterCounter,
+  getHeldItemEncounterCounter,
   recordEventSpawnCatch,
   getEventSpawnCatch,
   resetChecklistIfNewDay,
@@ -3572,7 +3575,7 @@ function rollSpecialLegendarySpawn(
 }
 
 // Chance that a land encounter is replaced by the user's active Daily Hunt target.
-const DAILY_HUNT_SPAWN_BOOST_CHANCE = 0.25;
+const DAILY_HUNT_SPAWN_BOOST_CHANCE = 0.1;
 
 function getActiveHuntTarget(userId) {
   const user = getUser(userId);
@@ -7052,7 +7055,10 @@ async function askForBall(
     }
   );
   const isFishing = mode === 'fish';
-  if (counterSource) recordWildEncounterCounter(userId, counterSource);
+  if (counterSource) {
+    recordWildEncounterCounter(userId, counterSource);
+    if (counterSource !== 'explore') recordHeldItemEncounterCounter(userId);
+  }
   const catchDisplayRarity = getDisplayRarity(target.rarity, target.name, target.isShiny);
   const rarityData = getRarityInfo(
     target.rarity,
@@ -7347,6 +7353,9 @@ async function askForBall(
     `).get(userId, target.id, target.isShiny ? 1 : 0, target.isGolden ? 1 : 0);
     saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden), selectedBall, !allowAnyUserCatch);
     if (target.heldItem) addUserItem(userId, target.heldItem);
+    if (target.heldItem && counterSource && counterSource !== 'explore') {
+      resetHeldItemEncounterCounter(userId, target.name, catchDisplayRarity, target.heldItem);
+    }
     if (!guaranteedCatch) recordDailyCatch(userId, catcher.username);
     const resetCounterCategories = counterSource
       ? resetEncounterCounters(
@@ -7355,6 +7364,7 @@ async function askForBall(
         [
           ...(String(target.rarity).toLowerCase() === 'legendary' ? ['legendary'] : []),
           ...(target.isShiny ? ['shiny'] : []),
+          ...(counterSource === 'explore' && (target.isGolden || target.is_golden) ? ['golden'] : []),
         ],
         target.name
       )
@@ -17703,6 +17713,7 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'counters' || command === 'co') {
       const counters = getEncounterCounters(userId);
+      const heldItemCounter = getHeldItemEncounterCounter(userId);
       const counterByKey = new Map(counters.map((counter) => [
         `${counter.source}:${counter.category}`,
         counter,
@@ -17712,60 +17723,59 @@ client.on('messageCreate', async (message) => {
         { source: 'pokemon', category: 'shiny', label: 'Shiny spawn', rarity: 'Shiny' },
         { source: 'fishing', category: 'legendary', label: 'Legendary spawn', rarity: 'Legendary' },
         { source: 'fishing', category: 'shiny', label: 'Shiny spawn', rarity: 'Shiny' },
+        { source: 'explore', category: 'golden', label: 'Golden spawn', rarity: 'Golden' },
+        { source: 'explore', category: 'shiny', label: 'Shiny spawn', rarity: 'Shiny' },
+        { source: 'explore', category: 'legendary', label: 'Legendary spawn', rarity: 'Legendary' },
       ];
+      const sourceEmojis = {
+        pokemon: '<:caught:1560340176713031711>',
+        fishing: '<:oldrod:1560319797265301534>',
+        explore: '<:magnifyingglass:1569838771791466546>',
+      };
+      const displayRows = rows.map(({ source, category, label, rarity }) => {
+        const counter = counterByKey.get(`${source}:${category}`);
+        if (!counter) throw new Error(`Missing ${source} ${category} encounter counter for user ${userId}.`);
+        return {
+          category: `${sourceEmojis[source]} ${getRarityEmojis(rarity)} ${label}`,
+          counter: `${counter.encounters_since.toLocaleString()} - ${counter.last_pokemon
+            ? `${getRarityEmojis(rarity, counter.last_pokemon)} ${counter.last_pokemon}`
+            : 'N/A'}`,
+          reset: counter.last_caught_at
+            ? `<t:${Math.floor(counter.last_caught_at / 1000)}:d>`
+            : 'Never',
+        };
+      });
+      displayRows.push({
+        category: `${sourceEmojis.pokemon} ${HELD_ITEM_EMOJI} Item found`,
+        counter: `${heldItemCounter.encounters_since.toLocaleString()} - ` +
+          `${heldItemCounter.last_pokemon
+            ? `${getRarityEmojis(heldItemCounter.last_rarity, heldItemCounter.last_pokemon)} ` +
+              `${heldItemCounter.last_pokemon} (${heldItemCounter.last_item})`
+            : 'N/A'}`,
+        reset: heldItemCounter.last_found_at
+          ? `<t:${Math.floor(heldItemCounter.last_found_at / 1000)}:d>`
+          : 'Never',
+      });
+      const eventCatch = getEventSpawnCatch(userId);
+      displayRows.push({
+        category: `${EMOJIS.eventticket} Event spawn`,
+        counter: `${eventCatch.encounters_since.toLocaleString()} - ${eventCatch.last_pokemon || 'N/A'}`,
+        reset: eventCatch.last_caught_at
+          ? `<t:${Math.floor(eventCatch.last_caught_at / 1000)}:d>`
+          : 'Never',
+      });
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle(`${message.author.username}'s Counters`)
-        .setDescription('<:caught:1560340176713031711> - Pokémon Counters\n<:oldrod:1560319797265301534> - Fishing Counters')
+        .setDescription(
+          '<:caught:1560340176713031711> - Pokémon Counters\n' +
+          '<:oldrod:1560319797265301534> - Fishing Counters\n' +
+          '<:magnifyingglass:1569838771791466546> - Explore Counters'
+        )
         .addFields(
-          { name: 'Category', value: '\u200b', inline: true },
-          { name: 'Counter — Pokémon', value: '\u200b', inline: true },
-          { name: 'Last reset', value: '\u200b', inline: true },
-          ...rows.flatMap(({ source, category, label, rarity }) => {
-            const counter = counterByKey.get(`${source}:${category}`);
-            if (!counter) throw new Error(`Missing ${source} ${category} encounter counter for user ${userId}.`);
-            const sourceEmoji = source === 'pokemon'
-              ? '<:caught:1560340176713031711>'
-              : '<:oldrod:1560319797265301534>';
-            const lastReset = counter.last_caught_at
-              ? `<t:${Math.floor(counter.last_caught_at / 1000)}:d>`
-              : 'Never';
-            return [
-              {
-                name: '\u200b',
-                value: `${sourceEmoji} ${getRarityEmojis(rarity)} ${label}`,
-                inline: true,
-              },
-              {
-                name: '\u200b',
-                value: `${counter.encounters_since.toLocaleString()} - ${counter.last_pokemon || 'N/A'}`,
-                inline: true,
-              },
-              {
-                name: '\u200b',
-                value: lastReset,
-                inline: true,
-              },
-            ];
-          }),
-          ...(() => {
-            const eventCatch = getEventSpawnCatch(userId);
-            return [
-              { name: '\u200b', value: `${EMOJIS.eventticket} Event spawn`, inline: true },
-              {
-                name: '\u200b',
-                value: `${eventCatch.encounters_since.toLocaleString()} - ${eventCatch.last_pokemon || 'N/A'}`,
-                inline: true,
-              },
-              {
-                name: '\u200b',
-                value: eventCatch.last_caught_at
-                  ? `<t:${Math.floor(eventCatch.last_caught_at / 1000)}:d>`
-                  : 'Never',
-                inline: true,
-              },
-            ];
-          })()
+          { name: 'Category', value: displayRows.map((row) => row.category).join('\n'), inline: true },
+          { name: 'Counter — Pokémon/Thing', value: displayRows.map((row) => row.counter).join('\n'), inline: true },
+          { name: 'Last reset', value: displayRows.map((row) => row.reset).join('\n'), inline: true },
         );
       return message.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     }
@@ -19343,7 +19353,7 @@ client.on('messageCreate', async (message) => {
       }
 
       if (action === 'list') {
-        const sortKey = args[1]?.toLowerCase() || 'ivs';
+        const sortKey = args[1]?.toLowerCase() || 'exp';
         const buddies = getUserBuddyHistory(userId, sortKey);
         if (!buddies.length) {
           return message.reply(`You have not set any Pokémon as your buddy yet! Use \`${PREFIX}buddy set <Pokémon>\`.`);
@@ -19371,11 +19381,15 @@ client.on('messageCreate', async (message) => {
           return new EmbedBuilder()
             .setColor(0x0099ff)
             .setAuthor({
-              name: `${message.author.username}'s Buddy Profiles — Sorted by ${sortKey === 'num' ? 'Number' : sortKey === 'stats' || sortKey === 'evs' ? 'Level/XP' : 'IVs'}`,
+              name: `${message.author.username}'s Buddy Profiles — Sorted by ${
+                sortKey === 'num' ? 'Number'
+                  : sortKey === 'stats' || sortKey === 'evs' ? 'Level/XP'
+                    : sortKey === 'ivs' ? 'IVs' : 'EXP'
+              }`,
               iconURL: message.author.displayAvatarURL(),
             })
             .setDescription(`Current buddy: ${current ? `**${currentBuddy?.display_name || current.name}** Lvl. ${current.level}` : '*None*'}\n\n${lines.join('\n')}`)
-            .setFooter({ text: `Page ${page}/${totalPages} • ${PREFIX}buddy list [ivs/stats/num]` });
+            .setFooter({ text: `Page ${page}/${totalPages} • ${PREFIX}buddy list [exp/ivs/stats/num]` });
         };
         const buildRow = () => new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('budlist_first').setEmoji('⏪').setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
@@ -20631,6 +20645,7 @@ client.on('messageCreate', async (message) => {
       const EXPLORE_ENCOUNTER_CHANCE = 0.6;
       let activeWild = null;
       let chest = null;
+      let chestExpirationText = '';
       let activeEncounterEmbed = null;
       const trainerUrl = getTrainerIconUrl(userId);
       let catchHandler = null;
@@ -20762,6 +20777,7 @@ client.on('messageCreate', async (message) => {
         await interaction.deferUpdate();
         let wild = null;
         let foundText = '';
+        chestExpirationText = '';
         if (isSearch) {
           if (chest && chest.x === x && chest.y === y) {
             const found = db.transaction(() => {
@@ -20789,7 +20805,10 @@ client.on('messageCreate', async (message) => {
         } else {
           if (chest) {
             chest.stepsRemaining -= 1;
-            if (chest.stepsRemaining <= 0) chest = null;
+            if (chest.stepsRemaining <= 0) {
+              chest = null;
+              chestExpirationText = `\n${CHEST_EMOJI} The chest disappeared from the map.`;
+            }
           } else if (Math.random() < CHEST_SPAWN_CHANCE) {
             chest = spawnExploreChest(x, y, mapWidth - TRAINER_WIDTH, mapHeight - TRAINER_HEIGHT, STEP);
           }
@@ -20804,19 +20823,25 @@ client.on('messageCreate', async (message) => {
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
+          const rarityEmoji = getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden);
           const sprite = getPokemonSpriteEmoji(wild);
-          statusText = `\n❗ A wild ${sprite ? `${sprite} ` : ''}**${wild.name}** appeared! ` +
-            `(${getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden)} ${wildRarity})`;
+          const encounterLabel = [
+            rarityEmoji,
+            sprite,
+            `**${wild.name}**`,
+          ].filter(Boolean).join(' ');
+          statusText = `${chestExpirationText}\n❗ **${wildRarity}** ${encounterLabel} appeared!`;
         } else if (isSearch && activeWild) {
           statusText += foundText;
         } else if (!catchHandler) {
-          statusText = foundText || '\n🌿 No Pokémon appeared.';
+          statusText = `${chestExpirationText}${foundText || '\n🌿 No Pokémon appeared.'}`;
         }
         if (wild) {
           try {
             await askForBall(message, userId, wild, 'catch', {
               guaranteedCatch: false,
               timeoutMs: 45000,
+              counterSource: 'explore',
               onHandler: (handler) => { catchHandler = handler; },
               inline: {
                 onSpawn: (embed) => {
@@ -20838,7 +20863,7 @@ client.on('messageCreate', async (message) => {
                   activeWild = null;
                   activeEncounterEmbed = null;
                   cancelEncounter = null;
-                  statusText = `\n${text}`;
+                  statusText = `${chestExpirationText}\n${text}`;
                   if (!ending) await exploreMsg.edit(await buildPayload(readSteps()));
                 },
               },
@@ -26381,7 +26406,7 @@ client.on('messageCreate', async (message) => {
             `${sale.quantity > 1 ? `${sale.quantity.toLocaleString()}x ` : ''}${EMOJIS.pokecoin} ` +
             `**${unitPrice(sale).toLocaleString()}** each • ${sale.sold_at}`
           ).join('\n'))
-          .setFooter({ text: 'Showing the 10 most recent sales. Average is per copy across all sales.' });
+          .setFooter({ text: 'Showing the most recent sale. Average is per copy across all sales.' });
       };
       const pageEmbed = () => {
         if (showingHistory) return historyEmbed();
