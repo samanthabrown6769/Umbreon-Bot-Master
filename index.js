@@ -2250,8 +2250,7 @@ function rollCatchbotSpawn(userId, options) {
 }
 
 function rollCatchbotGoldenExclusive(luckPercent) {
-  const maxLuckPercent = CB_CONFIG.luck.getStat(CB_CONFIG.luck.maxLvl);
-  if (luckPercent < maxLuckPercent || Math.random() >= 1 / 2500) return null;
+  if (Math.random() >= CATCHBOT_GOLDEN_BASE_CHANCE * (1 + luckPercent / 100)) return null;
   const pokemon = CATCHBOT_GOLDEN_EXCLUSIVES[
     Math.floor(Math.random() * CATCHBOT_GOLDEN_EXCLUSIVES.length)
   ];
@@ -3153,7 +3152,15 @@ const EVENT_TICKET_SHINY_RATES = Object.freeze({
   patreon: { event: 1 / 50, nonEvent: 1 / 250 },
   standard: { event: 1 / 100, nonEvent: 1 / 500 },
 });
-const CATCHBOT_SHINY_MULTIPLIER = 0.25;
+const CATCHBOT_BASE_SHINY_RATE = 1 / 100000;
+const CATCHBOT_GOLDEN_BASE_CHANCE = 1 / 2500;
+const CATCHBOT_LEGENDARY_BASE_CHANCE = 1 / 6666;
+const CATCHBOT_RARITY_WEIGHTS = Object.freeze({
+  Common: 55,
+  Uncommon: 25,
+  Rare: 17,
+  'Super Rare': 2,
+});
 const GRAZZ_ENCOUNTERS_PER_BERRY = 50;
 const SPECIAL_SPAWN_EST_OFFSET_MS = 5 * 60 * 60 * 1000;
 const ENCOUNTER_RARITY_WEIGHTS = Object.freeze({
@@ -3744,15 +3751,9 @@ function rollSpawn(
           && entry.pokemon_count > 0
       ).map((entry) => ({
         ...entry,
-        spawn_weight: entry.spawn_weight
-          * (catchbot
-            ? ({
-              common: 1,
-              uncommon: 0.75,
-              rare: 0.5,
-              'super rare': 0.25,
-            }[entry.name.toLowerCase()] ?? 0.1)
-            : 1)
+        spawn_weight: (catchbot
+          ? (CATCHBOT_RARITY_WEIGHTS[entry.name] || 0)
+          : entry.spawn_weight)
           * (userId !== null && HARD_RARITY_USER_IDS.has(userId) && entry.name.toLowerCase() !== 'common'
             ? HARD_RARITY_RATE_MULTIPLIER
             : 1),
@@ -3760,11 +3761,13 @@ function rollSpawn(
       const totalWeight = rarityPool.reduce((total, entry) => total + entry.spawn_weight, 0);
       if (!totalWeight) throw new Error('No Pokémon rarities have a positive spawn weight.');
       const legendaryChance = Math.min(1,
-        (goldenRazzActive ? LEGENDARY_GOLDEN_RAZZ_CHANCE : LEGENDARY_BASE_CHANCE)
+        (catchbot
+          ? CATCHBOT_LEGENDARY_BASE_CHANCE
+          : goldenRazzActive ? LEGENDARY_GOLDEN_RAZZ_CHANCE : LEGENDARY_BASE_CHANCE)
         * (1 + (catchbot ? 0 : channelRateBoost) / 100)
         * (1 + roleChanceBoost / 100)
         * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
-        * (catchbot ? 0.1 : 1)
+        * (catchbot ? 1 + catchbotLuckPercent / 100 : 1)
       );
       if (legendaryEnabled && (!rod || rod.enablesLegendary)
           && (legendaryPityDue || Math.random() < legendaryChance)) {
@@ -3818,6 +3821,8 @@ function rollSpawn(
     const ticketShinyRates = isPatreonUser ? EVENT_TICKET_SHINY_RATES.patreon : EVENT_TICKET_SHINY_RATES.standard;
     const baseShinyRate = rod && !rod.enablesShiny
       ? 0
+      : catchbot
+        ? CATCHBOT_BASE_SHINY_RATE
       : isEventShinyTargetActive
         ? ticketShinyRates.event
         : eventTicketActive
@@ -3837,7 +3842,7 @@ function rollSpawn(
     const shinyChance = baseShinyChance
       * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
       * (catchbot
-        ? CATCHBOT_SHINY_MULTIPLIER * (1 + catchbotLuckPercent / 100)
+        ? 1 + catchbotLuckPercent / 100
         : 1)
       * (catchbot ? 1 : 1 + channelRateBoost / 100)
       * (incenseActive ? INCENSE_BOOST : 1)
@@ -18911,7 +18916,7 @@ client.on('messageCreate', async (message) => {
         `(${renderLevelBar(cb.cost_lvl, 10)}) • Next: ${nextUpgrade('cost')}\n` +
         `⏰ Duration: **${duration} hours** — Lv. ${cb.duration_lvl}/11 ` +
         `(${renderLevelBar(cb.duration_lvl, 11)}) • Next: ${nextUpgrade('duration')}\n` +
-        `🍀 Luck: **+${luckPercent}% shiny odds** — Lv. ${cb.luck_lvl}/10 ` +
+        `🍀 Luck: **+${luckPercent}% Legendary, shiny & Golden odds** — Lv. ${cb.luck_lvl}/10 ` +
         `(${renderLevelBar(cb.luck_lvl, 10)}) • Next: ${nextUpgrade('luck')}\n\n` +
         `**Lifetime catches**\n` +
         `${getRarityEmojis('Common')} ${cb.c_caught} • ${getRarityEmojis('Uncommon')} ${cb.u_caught} • ` +

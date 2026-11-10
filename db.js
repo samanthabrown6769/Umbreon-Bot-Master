@@ -594,23 +594,23 @@ const catchbotUpgradeCost = (baseCost, level) => {
 const CB_CONFIG = Object.freeze({
   pokemon: Object.freeze({
     maxLvl: 10,
-    costForLvl: (level) => catchbotUpgradeCost(10000, level),
+    costForLvl: (level) => catchbotUpgradeCost(5000, level),
     getStat: (level) => 1 + level * 3,
   }),
   cost: Object.freeze({
     maxLvl: 10,
-    costForLvl: (level) => catchbotUpgradeCost(2000, level),
+    costForLvl: (level) => catchbotUpgradeCost(1000, level),
     getStat: (level) => Math.max(100, 500 - level * 40),
   }),
   duration: Object.freeze({
     maxLvl: 11,
-    costForLvl: (level) => catchbotUpgradeCost(3000, level),
+    costForLvl: (level) => catchbotUpgradeCost(1500, level),
     getStat: (level) => 1 + level,
   }),
   luck: Object.freeze({
     maxLvl: 10,
     costForLvl: () => 2500000,
-    getStat: (level) => level,
+    getStat: (level) => level * 2.5,
   }),
 });
 

@@ -23,19 +23,20 @@ function mon(name, types) {
   return { name, types, hp: 100, max_hp: 100, atk: 50, def: 50, spd: 50, level: 50 };
 }
 
-test('CatchBot Pokémon, cost, and duration upgrade prices double from their configured starts', () => {
+test('CatchBot Pokémon, cost, and duration upgrade prices double at every level', () => {
   const ctx = vm.createContext({});
   vm.runInContext(
     `${extract(dbSource, 'const catchbotUpgradeCost =', '\nconst userDefinitions =')}\nglobalThis.testCB_CONFIG = CB_CONFIG;`,
     ctx,
   );
-  assert.equal(ctx.testCB_CONFIG.pokemon.costForLvl(0), 10000);
-  assert.equal(ctx.testCB_CONFIG.pokemon.costForLvl(1), 20000);
-  assert.equal(ctx.testCB_CONFIG.pokemon.costForLvl(2), 40000);
-  assert.equal(ctx.testCB_CONFIG.cost.costForLvl(0), 2000);
-  assert.equal(ctx.testCB_CONFIG.cost.costForLvl(1), 4000);
-  assert.equal(ctx.testCB_CONFIG.duration.costForLvl(0), 3000);
-  assert.equal(ctx.testCB_CONFIG.duration.costForLvl(1), 6000);
+  assert.equal(ctx.testCB_CONFIG.pokemon.costForLvl(0), 5000);
+  assert.equal(ctx.testCB_CONFIG.pokemon.costForLvl(9), 2560000);
+  assert.equal(ctx.testCB_CONFIG.cost.costForLvl(0), 1000);
+  assert.equal(ctx.testCB_CONFIG.cost.costForLvl(9), 512000);
+  assert.equal(ctx.testCB_CONFIG.duration.costForLvl(0), 1500);
+  assert.equal(ctx.testCB_CONFIG.duration.costForLvl(10), 1536000);
+  assert.equal(ctx.testCB_CONFIG.luck.getStat(1), 2.5);
+  assert.equal(ctx.testCB_CONFIG.luck.getStat(10), 25);
   assert.equal(ctx.testCB_CONFIG.luck.costForLvl(1), 2500000);
 });
 
@@ -550,6 +551,9 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
       { name: 'Common', spawn_weight: 1, pokemon_count: 1 },
       { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
     ],
+    CATCHBOT_RARITY_WEIGHTS: { Common: 55, Uncommon: 25, Rare: 17, 'Super Rare': 2 },
+    CATCHBOT_BASE_SHINY_RATE: 1 / 100000,
+    CATCHBOT_LEGENDARY_BASE_CHANCE: 1 / 6666,
     getRandomPokemon: (rarity) => ({ id: 1, speciesName: rarity, name: rarity, rarity, types: [] }),
     SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
     EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [],
@@ -573,12 +577,92 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).rarity, 'Legendary');
   rolls = [1 / 1670 + 1e-10, 0.9, 0.9];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).rarity, 'Common');
-  rolls = [1 / 1670 + 1e-10, 0.9, 0.9];
-  assert.equal(ctx.rollSpawn('land', 'user', null, { catchbot: true }).rarity, 'Common');
-  rolls = [0.5, 0.5, 0.000999];
-  assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true);
-  rolls = [0.5, 0.5, 0.001];
-  assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
+});
+
+test('CatchBot uses configured rarity weights, odds, and per-level Luck bonuses', () => {
+  let rolls = [];
+  const math = Object.create(Math);
+  math.random = () => rolls.shift() ?? 0.9;
+  const ctx = vm.createContext({
+    Math: math, consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
+    isEventOpen: () => false, halloweenEvent: {}, eventSpawnEntries: [],
+    getUser: () => ({ has_patreon: 0 }), getPlayerClan: () => null,
+    getClanPerkMultipliers: () => ({ erBonus: 0 }), getTotalEffectiveShinyBonus: () => 0,
+    getChamberSpawnSpecies: () => [], getEventPokemonKey: () => null,
+    isEventShinyTarget: () => false, isEventChecklistSpawn: () => false,
+    getPatreonPerks: () => ({ shinyRatePct: 0, eventShinyPct: 0 }),
+    isPlayerBonusActive: () => false, HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
+    advanceEncounterPity: () => 0, resetEncounterPity: () => {},
+    advanceWildShinyPity: () => 0, resetWildShinyPity: () => {},
+    getRaritySettings: () => [
+      { name: 'Common', spawn_weight: 1, pokemon_count: 1 },
+      { name: 'Uncommon', spawn_weight: 1, pokemon_count: 1 },
+      { name: 'Rare', spawn_weight: 1, pokemon_count: 1 },
+      { name: 'Super Rare', spawn_weight: 1, pokemon_count: 1 },
+      { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
+    ],
+    CATCHBOT_RARITY_WEIGHTS: { Common: 55, Uncommon: 25, Rare: 17, 'Super Rare': 2 },
+    CATCHBOT_BASE_SHINY_RATE: 1 / 100000,
+    CATCHBOT_LEGENDARY_BASE_CHANCE: 1 / 6666,
+    getRandomPokemon: (rarity) => ({ id: 1, speciesId: 1, speciesName: rarity, name: rarity, rarity, types: [] }),
+    SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
+    EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [], eventSpawnFormIds: [],
+    getEventSpawnChance: () => 1 / 500,
+    LEGENDARY_BASE_CHANCE: 1 / 167, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
+    LEGENDARY_SPAWN_PITY_LIMIT: 167, FULL_ODDS_SHINY_PITY_LIMIT: 750,
+    WILD_SHINY_PITY_MIN: 1000, WILD_SHINY_PITY_LIMIT: 2000,
+    EVENT_TICKET_SHINY_RATES: { standard: { event: 0, nonEvent: 0 }, patreon: { event: 0, nonEvent: 0 } },
+    BASE_SHINY_RATE: 1 / 1000, PATREON_SHINY_RATE: 1 / 500,
+    INCENSE_BOOST: 1.1, EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
+    FISH_PATREON_ONLY_SHINY_KEYS: new Set(),
+  });
+  vm.runInContext(extract(indexSource, 'function rollSpawn(', '\nfunction isEventChecklistSpawn('), ctx);
+
+  for (const [weightRoll, expectedRarity] of [
+    [0.54, 'Common'],
+    [0.56, 'Uncommon'],
+    [0.82, 'Rare'],
+    [0.99, 'Super Rare'],
+  ]) {
+    rolls = [0.9, weightRoll, 0.9];
+    assert.equal(ctx.rollSpawn('water', 'user', null, { catchbot: true }).rarity, expectedRarity);
+  }
+
+  rolls = [1 / 6666 - 1e-9, 0.9];
+  assert.equal(ctx.rollSpawn('water', 'user', null, { catchbot: true }).rarity, 'Legendary');
+  rolls = [1 / 6666 + 1e-9, 0.2, 0.9];
+  assert.notEqual(ctx.rollSpawn('water', 'user', null, { catchbot: true }).rarity, 'Legendary');
+  rolls = [1 / 6666 + 1e-9, 0.2, 0.9];
+  assert.equal(
+    ctx.rollSpawn('water', 'user', null, { catchbot: true, catchbotLuckPercent: 25 }).rarity,
+    'Legendary',
+  );
+
+  rolls = [0.9, 0.2, 0.000011];
+  assert.equal(ctx.rollSpawn('water', 'user', null, { catchbot: true }).isShiny, false);
+  rolls = [0.9, 0.2, 0.000011];
+  assert.equal(
+    ctx.rollSpawn('water', 'user', null, { catchbot: true, catchbotLuckPercent: 25 }).isShiny,
+    true,
+  );
+
+  const goldenRolls = [];
+  const goldenMath = Object.create(Math);
+  goldenMath.random = () => goldenRolls.shift() ?? 0;
+  const goldenCtx = vm.createContext({
+    Math: goldenMath,
+    CB_CONFIG: { luck: { maxLvl: 10, getStat: (level) => level * 2.5 } },
+    CATCHBOT_GOLDEN_BASE_CHANCE: 1 / 2500,
+    CATCHBOT_GOLDEN_EXCLUSIVES: [{ name: 'Aron', types: '[]' }],
+  });
+  vm.runInContext(
+    extract(indexSource, 'function rollCatchbotGoldenExclusive(', '\nfunction getSwapMultiplier('),
+    goldenCtx,
+  );
+  goldenRolls.push(0.00045);
+  assert.equal(goldenCtx.rollCatchbotGoldenExclusive(0), null  );
+  goldenRolls.push(0.00045, 0);
+  assert.equal(goldenCtx.rollCatchbotGoldenExclusive(25).isGolden, true);
 });
 
 test('checklist shiny bonus weights only eligible event spawns', () => {
