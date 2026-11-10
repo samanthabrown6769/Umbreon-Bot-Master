@@ -204,6 +204,7 @@ const {
   startCatchbotRun,
   claimCatchbotRun,
   recordCatchbotResults,
+  resetCatchbotData,
   CHAMBER_CONFIG,
   getUserChambers,
   getMegaStones,
@@ -14620,6 +14621,31 @@ client.on('messageCreate', async (message) => {
       const subtype = args[0]?.toLowerCase();
       const action = args[1]?.toLowerCase();
 
+      if (command === 'admin' && subtype === 'catchbot' && action === 'reset') {
+        const targetId = args[2]?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
+        const resetTargetId = '1514082847609061541';
+        if (args.length !== 4 || !targetId || (targetId[1] || targetId[2]) !== resetTargetId) {
+          return message.reply(
+            `This one-time reset is restricted to <@${resetTargetId}>. ` +
+            `Usage: \`${PREFIX}admin catchbot reset ${resetTargetId} confirm\`.`
+          );
+        }
+        if (args[3]?.toLowerCase() !== 'confirm') {
+          return message.reply(
+            `⚠️ This resets CatchBot upgrades, catch counters, run timers, lifetime run count, ` +
+            `and clan CatchBot activity for <@${resetTargetId}>. Pokémon and other account data are kept. ` +
+            `Run \`${PREFIX}admin catchbot reset ${resetTargetId} confirm\` to proceed.`
+          );
+        }
+        if (!resetCatchbotData(resetTargetId)) {
+          return message.reply(`❌ No account found for <@${resetTargetId}>.`);
+        }
+        return message.reply(
+          `✅ CatchBot has been reset for <@${resetTargetId}>. Upgrades, CatchBot catches, run timers, ` +
+          `lifetime run count, and clan CatchBot activity were cleared; Pokémon and other account data were kept.`
+        );
+      }
+
       if (command === 'admin' && args.length >= 2
           && (args[args.length - 2]?.toLowerCase() === 'emoji' || action === 'emoji' || subtype === 'emoji'
             || args[args.length - 1]?.toLowerCase() === 'emoji')) {
@@ -18895,7 +18921,6 @@ client.on('messageCreate', async (message) => {
       const currentMonsPerHour = CB_CONFIG.pokemon.getStat(cb.pokemon_lvl);
       const duration = CB_CONFIG.duration.getStat(cb.duration_lvl);
       const costPerPokemon = CB_CONFIG.cost.getStat(cb.cost_lvl);
-      const luckLevel = CB_CONFIG.luck.getStat(cb.luck_lvl);
       const isRunning = cb.running_until > now || user.catchbot_end > now;
       const hasUnclaimedRun = Boolean(cb.running_until || user.catchbot_end);
       const timeRemaining = Math.max(cb.running_until, user.catchbot_end) - now;
@@ -18918,11 +18943,7 @@ client.on('messageCreate', async (message) => {
         `(${renderLevelBar(cb.cost_lvl, 10)}) • Next: ${nextUpgrade('cost')}\n` +
         `⏰ Duration: **${duration} hours** — Lv. ${cb.duration_lvl}/11 ` +
         `(${renderLevelBar(cb.duration_lvl, 11)}) • Next: ${nextUpgrade('duration')}\n` +
-        `🍀 Luck: **Legendary 1/${CATCHBOT_LEGENDARY_DENOMINATORS[luckLevel].toLocaleString()} • ` +
-        `Shiny 1/${CATCHBOT_SHINY_DENOMINATORS[luckLevel].toLocaleString()} • ` +
-        `Golden 1/${Math.round(
-          1 / (CATCHBOT_GOLDEN_BASE_CHANCE * (1 + luckLevel * 0.025))
-        ).toLocaleString()}** — Lv. ${cb.luck_lvl}/10 ` +
+        `🍀 Luck: Lv. ${cb.luck_lvl}/10 ` +
         `(${renderLevelBar(cb.luck_lvl, 10)}) • Next: ${nextUpgrade('luck')}\n\n` +
         `**Lifetime catches**\n` +
         `${getRarityEmojis('Common')} ${cb.c_caught} • ${getRarityEmojis('Uncommon')} ${cb.u_caught} • ` +

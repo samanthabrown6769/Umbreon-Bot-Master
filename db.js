@@ -2816,6 +2816,27 @@ function recordCatchbotResults(userId, counts) {
     .run(...Object.keys(columns).map((key) => counts[key]), userId);
 }
 
+function resetCatchbotData(userId) {
+  assertUserId(userId);
+  return db.transaction(() => {
+    if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(userId)) return false;
+
+    db.prepare('UPDATE users SET catchbot_runs = 0, catchbot_end = 0 WHERE id = ?').run(userId);
+    db.prepare('INSERT OR IGNORE INTO catchbot_data (user_id) VALUES (?)').run(userId);
+    db.prepare(`
+      UPDATE catchbot_data
+      SET spent_upgrades = 0, pokemon_lvl = 0, cost_lvl = 0, duration_lvl = 0, luck_lvl = 0,
+          c_caught = 0, u_caught = 0, r_caught = 0, sr_caught = 0, l_caught = 0, s_caught = 0,
+          g_caught = 0, golden_caught = 0, running_until = 0, hours_running = 0,
+          completion_notified_until = 0
+      WHERE user_id = ?
+    `).run(userId);
+    db.prepare('UPDATE clan_members SET catchbot = 0 WHERE user_id = ?').run(userId);
+    db.prepare('UPDATE clan_activity_periods SET catchbot = 0 WHERE user_id = ?').run(userId);
+    return true;
+  }).immediate();
+}
+
 const questTemplatesPath = path.join(__dirname, 'data', 'quest-templates.json');
 const screenshotQuestTemplatesPath = path.join(__dirname, 'data', 'screenshot-quest-templates.json');
 const QUEST_TEMPLATES = [
@@ -10622,6 +10643,7 @@ module.exports = {
   startCatchbotRun,
   claimCatchbotRun,
   recordCatchbotResults,
+  resetCatchbotData,
   getLeagueProgress,
   clearLeagueChallenge,
   unlockBattleIcon,

@@ -40,6 +40,60 @@ test('CatchBot Pokémon, cost, and duration upgrade prices double at every level
   assert.equal(ctx.testCB_CONFIG.luck.costForLvl(1), 2500000);
 });
 
+test('CatchBot reset clears only CatchBot fields for an existing user', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY, catchbot_runs INTEGER, catchbot_end INTEGER,
+        coins INTEGER, total_catches INTEGER
+      );
+      CREATE TABLE catchbot_data (
+        user_id TEXT PRIMARY KEY, spent_upgrades INTEGER, pokemon_lvl INTEGER, cost_lvl INTEGER,
+        duration_lvl INTEGER, luck_lvl INTEGER, c_caught INTEGER, u_caught INTEGER,
+        r_caught INTEGER, sr_caught INTEGER, l_caught INTEGER, s_caught INTEGER,
+        g_caught INTEGER, golden_caught INTEGER, running_until INTEGER, hours_running INTEGER,
+        completion_notified_until INTEGER
+      );
+      CREATE TABLE clan_members (user_id TEXT PRIMARY KEY, catches INTEGER, catchbot INTEGER);
+      CREATE TABLE clan_activity_periods (user_id TEXT, catches INTEGER, catchbot INTEGER);
+      INSERT INTO users VALUES ('target', 19, 123, 5000, 40), ('other', 7, 456, 9000, 80);
+      INSERT INTO catchbot_data VALUES ('target', 10, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 123, 2, 123);
+      INSERT INTO catchbot_data VALUES ('other', 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 456, 1, 456);
+      INSERT INTO clan_members VALUES ('target', 31, 2), ('other', 41, 3);
+      INSERT INTO clan_activity_periods VALUES ('target', 15, 5), ('other', 16, 6);
+    `);
+    const ctx = vm.createContext({ db, assertUserId: (id) => assert.equal(typeof id, 'string') });
+    vm.runInContext(
+      extract(dbSource, 'function resetCatchbotData(', '\nconst questTemplatesPath ='),
+      ctx,
+    );
+
+    assert.equal(ctx.resetCatchbotData('target'), true);
+    assert.deepEqual(db.prepare('SELECT * FROM users WHERE id = ?').get('target'), {
+      id: 'target', catchbot_runs: 0, catchbot_end: 0, coins: 5000, total_catches: 40,
+    });
+    assert.deepEqual(db.prepare('SELECT * FROM catchbot_data WHERE user_id = ?').get('target'), {
+      user_id: 'target', spent_upgrades: 0, pokemon_lvl: 0, cost_lvl: 0, duration_lvl: 0,
+      luck_lvl: 0, c_caught: 0, u_caught: 0, r_caught: 0, sr_caught: 0, l_caught: 0,
+      s_caught: 0, g_caught: 0, golden_caught: 0, running_until: 0, hours_running: 0,
+      completion_notified_until: 0,
+    });
+    assert.deepEqual(db.prepare('SELECT * FROM clan_members WHERE user_id = ?').get('target'), {
+      user_id: 'target', catches: 31, catchbot: 0,
+    });
+    assert.deepEqual(db.prepare('SELECT * FROM clan_activity_periods WHERE user_id = ?').get('target'), {
+      user_id: 'target', catches: 15, catchbot: 0,
+    });
+    assert.equal(ctx.resetCatchbotData('missing'), false);
+    assert.deepEqual(db.prepare('SELECT * FROM users WHERE id = ?').get('other'), {
+      id: 'other', catchbot_runs: 7, catchbot_end: 456, coins: 9000, total_catches: 80,
+    });
+  } finally {
+    db.close();
+  }
+});
+
 test('server-wide channel boosts apply automatically and stack with manual boosts', () => {
   const db = new Database(':memory:');
   try {
