@@ -589,26 +589,22 @@ function getTimeOfDayPhase(date = new Date()) {
 }
 
 const catchbotUpgradeCost = (baseCost, level) => {
-  let cost = baseCost;
-  for (let currentLevel = 0; currentLevel < level; currentLevel += 1) {
-    cost = Math.ceil(cost * 1.25);
-  }
-  return cost;
+  return baseCost * (2 ** level);
 };
 const CB_CONFIG = Object.freeze({
   pokemon: Object.freeze({
     maxLvl: 10,
-    costForLvl: (level) => catchbotUpgradeCost(5000, level),
+    costForLvl: (level) => catchbotUpgradeCost(10000, level),
     getStat: (level) => 1 + level * 3,
   }),
   cost: Object.freeze({
     maxLvl: 10,
-    costForLvl: (level) => catchbotUpgradeCost(1000, level),
+    costForLvl: (level) => catchbotUpgradeCost(2000, level),
     getStat: (level) => Math.max(100, 500 - level * 40),
   }),
   duration: Object.freeze({
     maxLvl: 11,
-    costForLvl: (level) => catchbotUpgradeCost(1500, level),
+    costForLvl: (level) => catchbotUpgradeCost(3000, level),
     getStat: (level) => 1 + level,
   }),
   luck: Object.freeze({

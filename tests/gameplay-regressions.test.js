@@ -23,6 +23,22 @@ function mon(name, types) {
   return { name, types, hp: 100, max_hp: 100, atk: 50, def: 50, spd: 50, level: 50 };
 }
 
+test('CatchBot Pokémon, cost, and duration upgrade prices double from their configured starts', () => {
+  const ctx = vm.createContext({});
+  vm.runInContext(
+    `${extract(dbSource, 'const catchbotUpgradeCost =', '\nconst userDefinitions =')}\nglobalThis.testCB_CONFIG = CB_CONFIG;`,
+    ctx,
+  );
+  assert.equal(ctx.testCB_CONFIG.pokemon.costForLvl(0), 10000);
+  assert.equal(ctx.testCB_CONFIG.pokemon.costForLvl(1), 20000);
+  assert.equal(ctx.testCB_CONFIG.pokemon.costForLvl(2), 40000);
+  assert.equal(ctx.testCB_CONFIG.cost.costForLvl(0), 2000);
+  assert.equal(ctx.testCB_CONFIG.cost.costForLvl(1), 4000);
+  assert.equal(ctx.testCB_CONFIG.duration.costForLvl(0), 3000);
+  assert.equal(ctx.testCB_CONFIG.duration.costForLvl(1), 6000);
+  assert.equal(ctx.testCB_CONFIG.luck.costForLvl(1), 2500000);
+});
+
 test('server-wide channel boosts apply automatically and stack with manual boosts', () => {
   const db = new Database(':memory:');
   try {
