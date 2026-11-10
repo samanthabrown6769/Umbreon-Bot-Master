@@ -627,7 +627,7 @@ test('wild starter encounters retain Explore shiny exclusivity without consuming
     FISH_PATREON_ONLY_SHINY_KEYS: new Set(),
     HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
     isPlayerBonusActive: () => false, getEventSpawnChance: () => 1,
-    EVENT_SPAWN_PITY_MIN: 100, EVENT_SPAWN_PITY_LIMIT: 250, LEGENDARY_SPAWN_PITY_LIMIT: 167,
+    EVENT_SPAWN_PITY_MIN: 300, EVENT_SPAWN_PITY_LIMIT: 500, LEGENDARY_SPAWN_PITY_LIMIT: 167,
     LEGENDARY_BASE_CHANCE: 1 / 167, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
     FULL_ODDS_SHINY_PITY_LIMIT: 750, WILD_SHINY_PITY_MIN: 1000, WILD_SHINY_PITY_LIMIT: 2000,
     DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.25,
@@ -652,7 +652,7 @@ test('wild starter encounters retain Explore shiny exclusivity without consuming
   ctx.rollSpawn('land', 'user', null, { catchbot: true });
   assert.deepEqual([...selections.at(-1).excluded], ['Other exclusive']);
   forcedEvent = true;
-  ctx.advanceEventSpawnPity = () => 100;
+  ctx.advanceEventSpawnPity = () => 300;
   assert.equal(ctx.rollSpawn('land', 'user').isShiny, true);
 });
 
@@ -689,8 +689,8 @@ test('wild Shiny and event pity windows are independent and enforce exact bounda
     EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [], eventSpawnFormIds: [],
     EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
     FISH_PATREON_ONLY_SHINY_KEYS: new Set(), HARD_RARITY_USER_IDS: new Set(),
-    HARD_RARITY_RATE_MULTIPLIER: 1, isPlayerBonusActive: () => false, getEventSpawnChance: () => 0.01,
-    EVENT_SPAWN_PITY_MIN: 100, EVENT_SPAWN_PITY_LIMIT: 250,
+    HARD_RARITY_RATE_MULTIPLIER: 1, isPlayerBonusActive: () => false, getEventSpawnChance: () => 1 / 500,
+    EVENT_SPAWN_PITY_MIN: 300, EVENT_SPAWN_PITY_LIMIT: 500,
     LEGENDARY_SPAWN_PITY_LIMIT: 167, LEGENDARY_BASE_CHANCE: 1 / 167,
     LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125, WILD_SHINY_PITY_MIN: 1000, WILD_SHINY_PITY_LIMIT: 2000,
     DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.25,
@@ -719,15 +719,15 @@ test('wild Shiny and event pity windows are independent and enforce exact bounda
   assert.equal(shinyCount, 999);
   shinyCount = 10;
   eventActive = true;
-  eventCount = 98;
+  eventCount = 298;
   random = 0;
   assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, undefined);
-  assert.equal(eventCount, 99);
+  assert.equal(eventCount, 299);
   assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, true);
   assert.equal(eventCount, 0);
   assert.equal(shinyCount, 11);
   shinyCount = 10;
-  eventCount = 249;
+  eventCount = 499;
   random = 0.9;
   const event = ctx.rollSpawn('water', 'user', rod);
   assert.equal(event.isEventSpawn, true);
@@ -865,6 +865,7 @@ test('Explore uses map data, configured shiny eligibility and Patreon rates', ()
     advanceEncounterPity: () => 1, resetEncounterPity: () => {},
     FULL_ODDS_SHINY_PITY_LIMIT: 750,
   });
+  assert.match(source, /const EXPLORE_GOLDEN_CHANCE = 1 \/ 5000;/);
   vm.runInContext(extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), ctx);
   for (const [map, expected] of [['grass', 1], ['fire', 4], ['water', 7]]) {
     rolls = [0, 0.5];
@@ -880,14 +881,14 @@ test('Explore uses map data, configured shiny eligibility and Patreon rates', ()
   rolls = [0, 0.014];
   assert.equal(ctx.rollExploreEncounter('user', 'grass').isShiny, true);
   // Select Treecko, then use a roll between the normal and boosted Golden chances.
-  rolls = [0.26, 0.0055];
+  rolls = [0.26, 0.00024];
   const golden = ctx.rollExploreEncounter('user', 'grass');
   assert.equal(golden.speciesId, 252);
   assert.equal(golden.isGolden, true);
-  rolls = [0.26, 0.00625, 0.9];
+  rolls = [0.26, 0.00026, 0.9];
   assert.equal(Boolean(ctx.rollExploreEncounter('user', 'grass').isGolden), false);
   perks = { shinyRatePct: 0, goldenBoost: 0 };
-  rolls = [0.26, 0.005, 0.9];
+  rolls = [0.26, 0.0002, 0.9];
   assert.equal(Boolean(ctx.rollExploreEncounter('user', 'grass').isGolden), false);
   perks = { shinyRatePct: 50, goldenBoost: 0.25 };
   const weights = { Uncommon: 60, Rare: 30, 'Super Rare': 10 };

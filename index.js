@@ -591,9 +591,9 @@ function getSwapRewardExcludedSpecies(isShiny) {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
-const EVENT_SPAWN_ODDS = 100;
-const EVENT_SPAWN_PITY_MIN = 100;
-const EVENT_SPAWN_PITY_LIMIT = 250;
+const EVENT_SPAWN_ODDS = 500;
+const EVENT_SPAWN_PITY_MIN = 300;
+const EVENT_SPAWN_PITY_LIMIT = 500;
 function getEventSpawnChance(roleChanceBoost = 0) {
   return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
 }
@@ -3934,7 +3934,7 @@ function getExploreCatalogEntries(mapKey) {
     : rows;
 }
 
-const EXPLORE_GOLDEN_CHANCE = 1 / 200;
+const EXPLORE_GOLDEN_CHANCE = 1 / 5000;
 const EXPLORE_EXCLUSIVE_WEIGHTS = { Common: 80, Uncommon: 60, Rare: 30, 'Super Rare': 10 };
 
 function formToSpawn(form) {
