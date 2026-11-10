@@ -4122,7 +4122,34 @@ db.exec(`
     last_fought_at DATETIME,
     PRIMARY KEY (user_id, npc_index)
   );
+  CREATE TABLE IF NOT EXISTS battle_icon_trainer_wins (
+    user_id TEXT NOT NULL,
+    npc_index INTEGER NOT NULL,
+    wins INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, npc_index)
+  );
 `);
+
+function recordBattleIconTrainerWin(userId, npcIndex) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(npcIndex) || npcIndex < 0) {
+    throw new TypeError('A valid NPC index is required.');
+  }
+  db.prepare(`
+    INSERT INTO battle_icon_trainer_wins (user_id, npc_index, wins)
+    VALUES (?, ?, 1)
+    ON CONFLICT(user_id, npc_index) DO UPDATE SET wins = wins + 1
+  `).run(userId, npcIndex);
+}
+
+function getBattleIconTrainerWins(userId, npcIndex) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(npcIndex) || npcIndex < 0) {
+    throw new TypeError('A valid NPC index is required.');
+  }
+  return db.prepare('SELECT wins FROM battle_icon_trainer_wins WHERE user_id = ? AND npc_index = ?')
+    .get(userId, npcIndex)?.wins || 0;
+}
 
 const ICON_DROP_TEST_USER_ID = '1514082847609061541';
 db.prepare(`
@@ -10554,6 +10581,8 @@ module.exports = {
   getLeagueProgress,
   clearLeagueChallenge,
   unlockBattleIcon,
+  recordBattleIconTrainerWin,
+  getBattleIconTrainerWins,
   grantGuaranteedBattleIconDrop,
   getUnlockedBattleIcons,
   getBattleIconRank,

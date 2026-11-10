@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { EventEmitter } = require('node:events');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder } = require('discord.js');
 const Database = require('better-sqlite3');
 const data = require('../exploreData');
 const renderer = require('../exploreRenderer');
@@ -110,6 +110,62 @@ test('Explore encounters skip held-item rolls and faction-hunt bonuses without r
   assert.equal(ctx.speciesId, 25);
 });
 
+test('rare spawn announcements forward caught Explore rarities and describe swaps accurately', async () => {
+  const sent = [];
+  const logged = [];
+  const adminSources = [];
+  const errors = [];
+  let hidden = false;
+  const ctx = vm.createContext({
+    EmbedBuilder, Date,
+    console: { error: (...args) => errors.push(args) },
+    getEventPokemonKey: () => null,
+    notifyAdminOfRareSpawn: async (_guild, _user, _pokemon, source) => { adminSources.push(source); },
+    logRareSpawn: (entry) => logged.push(entry),
+    resolveAnnouncementChannels: async () => ['channel'],
+    getAllRareSpawnAnnouncementChannels: () => ['channel'],
+    getDisplayRarity: (rarity) => rarity,
+    getPokemonSpriteEmoji: () => ':sprite:',
+    getRarityEmojis: () => ':rarity:',
+    EMOJIS: { golden: ':golden:' }, EVENT_EMBED_COLOR: 1, RARITY_COLORS: { shiny: 2 },
+    getRarityColor: () => 3,
+    db: { prepare: () => ({ get: () => ({ count: 2 }) }) },
+    client: { user: { username: 'Bot', displayAvatarURL: () => 'https://example.com/avatar.png' } },
+    getRareSpawnNameHidden: () => hidden,
+    getGoldenSpriteUrl: (id) => `https://example.com/${id}.png`,
+    getPokemonShowdownSprite: () => null,
+    sendToChannels: async (_channels, payload) => { sent.push(payload.embeds[0].toJSON()); return true; },
+  });
+  vm.runInContext(extract('async function announceRareSpawn(', '\nasync function announceBattleIconDrop('), ctx);
+  const guild = { id: 'guild' };
+  const user = { id: 'trainer', username: 'Ash' };
+  const pokemon = { id: 5, speciesId: 25, name: 'Pikachu', rarity: 'Uncommon', slug: 'pikachu', isExplore: true };
+  for (const variant of [{ isShiny: true }, { rarity: 'Legendary' }, { isGolden: true }]) {
+    await ctx.announceRareSpawn(guild, user, { ...pokemon, ...variant }, '.explore', { activity: 'explore' });
+    assert.match(sent.at(-1).title, /Ash explored and found/);
+  }
+  assert.equal(sent.length, 3);
+  assert.equal(logged.length, 3);
+  assert.deepEqual(adminSources, ['.explore', '.explore', '.explore']);
+  assert.equal(sent[2].image.url, 'https://example.com/25.png');
+  hidden = true;
+  await ctx.announceRareSpawn(guild, user, { ...pokemon, isShiny: true }, '.swap', { activity: 'swap' });
+  assert.match(sent.at(-1).title, /somebody swapped for a/);
+  hidden = false;
+  await ctx.announceRareSpawn(guild, user, { ...pokemon, isShiny: true }, '.p');
+  assert.match(sent.at(-1).title, /Ash has found a/);
+  await ctx.announceRareSpawn(guild, user, pokemon, '.explore', { activity: 'explore' });
+  assert.equal(sent.length, 5);
+  assert.equal(errors.length, 0);
+
+  const catchFlow = extract('async function askForBall(', '\nconst TYPE_EFFECTIVENESS');
+  assert.match(catchFlow, /target\.isExplore \? '\.explore'/);
+  assert.match(catchFlow, /activity: target\.isExplore \? 'explore' : 'found'/);
+  assert.match(catchFlow, /if \(inline\?\.onSpawn\) inline\.onSpawn\(embed\)/);
+  const swapFlow = extract("    if (command === 'swap'", "\n    if (command === 'collection'");
+  assert.match(swapFlow, /activity: 'swap'/);
+});
+
 test('Explore map selectors choose the exact map and reject invalid choices', () => {
   for (const [args, mapKey, backgroundIndex] of [
     [['gm', '1'], 'grass', 0], [['GM', '2'], 'grass', 1],
@@ -164,6 +220,101 @@ test('Explore catalog pools use matching types and exclude special and event-onl
   eventActive = false;
   assert.deepEqual(ids('grass'), [1, 2, 8]);
   assert.throws(() => context.getExploreCatalogEntries('invalid'), /Unknown Explore map/);
+  db.close();
+});
+
+test('Explore Legendary pools use matching default forms from Generations 1–4', () => {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE pokemon_forms (
+    id INTEGER, species_id INTEGER, species_name TEXT, name TEXT, rarity TEXT, types TEXT,
+    is_default INTEGER, is_legendary INTEGER, is_mythical INTEGER
+  )`);
+  const insert = db.prepare('INSERT INTO pokemon_forms VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  for (const row of require('../data/pokemon-catalog.json')) {
+    insert.run(row.id, row.species_id, row.species_name, row.name, row.rarity, row.types,
+      row.is_default, row.is_legendary, row.is_mythical);
+  }
+  const context = vm.createContext({
+    db, Date, EXPLORE_MAPS: data.EXPLORE_MAPS, SPECIAL_SPAWN_RESERVED_SPECIES: [],
+    isEventOpen: () => false, halloweenEvent: {}, getEventPokemonKey: () => null,
+  });
+  vm.runInContext(extract('const exploreCatalogCache =', '\nconst EXPLORE_GOLDEN_CHANCE'), context);
+  const entries = (map) => Array.from(context.getExploreLegendaryEntries(map));
+  assert.deepEqual(entries('grass'), []);
+  assert.deepEqual(entries('fire').map((row) => row.species_id), [146, 244, 250, 485]);
+  assert.deepEqual(entries('water').map((row) => row.species_id), [245, 382, 484]);
+  for (const map of ['fire', 'water']) {
+    for (const row of entries(map)) {
+      assert.equal(row.is_default, 1);
+      assert.equal(row.is_mythical, 0);
+      assert.ok(row.species_id <= 493 && JSON.parse(row.types).includes(map));
+    }
+  }
+  assert.throws(() => context.getExploreLegendaryEntries('invalid'), /Unknown Explore map/);
+  db.close();
+});
+
+test('Explore Legendary roll has a 1/167 boundary and allows eligible Shinies', () => {
+  const math = Object.create(Math);
+  let rolls = [];
+  math.random = () => { assert.ok(rolls.length); return rolls.shift(); };
+  const legendary = { id: 146, species_id: 146, name: 'Moltres', species_name: 'Moltres',
+    rarity: 'Legendary', types: '["fire","flying"]', is_default: 1, is_legendary: 1 };
+  const ctx = vm.createContext({
+    Math: math, EXPLORE_EXCLUSIVES: { fire: [[4, 'Uncommon', false]] },
+    getExploreLegendaryEntries: () => [legendary], getExploreCatalogEntries: () => [],
+    EXPLORE_GOLDENS: {}, LEGENDARY_BASE_CHANCE: 1 / 167,
+    db: { prepare: () => ({ get: () => ({ id: 4, species_id: 4, name: 'Charmander',
+      species_name: 'Charmander', rarity: 'Uncommon', types: '["fire"]', is_default: 1 }) }) },
+    getUser: () => ({ has_patreon: 0 }), getPatreonPerks: () => ({ shinyRatePct: 0, goldenBoost: 0 }),
+    getTotalEffectiveShinyBonus: () => 0, BASE_SHINY_RATE: 0.01, PATREON_SHINY_RATE: 0.02,
+    HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
+    EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
+    advanceEncounterPity: () => 1, resetEncounterPity: () => {}, FULL_ODDS_SHINY_PITY_LIMIT: 2000,
+  });
+  vm.runInContext(extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), ctx);
+  rolls = [1 / 167 - 0.0000001, 0, 0];
+  const shiny = ctx.rollExploreEncounter('user', 'fire');
+  assert.equal(shiny.speciesId, 146);
+  assert.equal(shiny.rarity, 'Legendary');
+  assert.equal(shiny.isShiny, true);
+  assert.equal(shiny.isExplore, true);
+  rolls = [1 / 167, 0];
+  assert.equal(ctx.rollExploreEncounter('user', 'fire').speciesId, 4);
+});
+
+test('battle icon announcements use persisted trainer win counts', async () => {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE battle_icon_trainer_wins (
+    user_id TEXT NOT NULL, npc_index INTEGER NOT NULL, wins INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, npc_index)
+  )`);
+  const dbSource = fs.readFileSync(require.resolve('../db.js'), 'utf8');
+  const start = dbSource.indexOf('function recordBattleIconTrainerWin(');
+  const end = dbSource.indexOf('\nconst ICON_DROP_TEST_USER_ID', start);
+  const ctx = vm.createContext({ db, assertUserId: (id) => assert.ok(id), Number });
+  vm.runInContext(dbSource.slice(start, end), ctx);
+  ctx.recordBattleIconTrainerWin('user', 3);
+  ctx.recordBattleIconTrainerWin('user', 3);
+  ctx.recordBattleIconTrainerWin('user', 4);
+  assert.equal(ctx.getBattleIconTrainerWins('user', 3), 2);
+  assert.equal(ctx.getBattleIconTrainerWins('user', 4), 1);
+  assert.equal(ctx.getBattleIconTrainerWins('other', 3), 0);
+  const payloads = [];
+  Object.assign(ctx, {
+    EmbedBuilder, Date, console, getAllRareSpawnAnnouncementChannels: () => ['channel'],
+    resolveAnnouncementChannels: async () => ['channel'], getNpcTrainerName: () => 'Brock',
+    getNpcIconEmojiOrBlank: () => '🪨', getRareSpawnNameHidden: () => false,
+    client: { user: { username: 'Bot', displayAvatarURL: () => 'https://example.com/icon.png' } },
+    getNpcIconUrl: () => null, sendToChannels: async (_channels, payload) => payloads.push(payload),
+  });
+  vm.runInContext(extract('async function announceBattleIconDrop(', '\nasync function sendRareSpawnChannelEmbed('), ctx);
+  await ctx.announceBattleIconDrop({ id: 'guild' }, { id: 'user', username: 'Ash' }, 3);
+  assert.match(payloads[0].embeds[0].toJSON().description, /tracked since this update: \*\*2\*\*/);
+  const chamber = extract('async function runMegaChamberGauntlet(', '\nasync function run');
+  assert.match(chamber, /recordBattleIconTrainerWin\(userId, iconIndex\)/);
+  const league = extract('async function runLeagueChallenge(', '\nasync function ');
+  assert.match(league, /recordBattleIconTrainerWin\(userId, challengeIconIndex\)/);
   db.close();
 });
 
@@ -252,7 +403,7 @@ test('Explore overworld abilities apply their own rates and repel only Common en
   math.random = () => { assert.ok(rolls.length); return rolls.shift(); };
   const context = vm.createContext({
     Math: math, EXPLORE_EXCLUSIVES: { grass: [[1, 'Common', false], [2, 'Uncommon', false]] },
-    getExploreCatalogEntries: () => [],
+    getExploreCatalogEntries: () => [], getExploreLegendaryEntries: () => [],
     EXPLORE_GOLDENS: {}, db: { prepare: () => ({ get: (id) => ({
       id, species_id: id, slug: `pokemon-${id}`, name: `Pokemon ${id}`, species_name: `Pokemon ${id}`,
       rarity: 'Common', types: '["normal"]', is_default: 1,
@@ -642,7 +793,7 @@ test('Explore uses map data, configured shiny eligibility and Patreon rates', ()
   let perks = { shinyRatePct: 0, goldenBoost: 0 };
   const ctx = vm.createContext({
     Math: math, EXPLORE_EXCLUSIVES: data.EXPLORE_EXCLUSIVES, EXPLORE_GOLDENS: data.EXPLORE_GOLDENS,
-    getExploreCatalogEntries: () => [],
+    getExploreCatalogEntries: () => [], getExploreLegendaryEntries: () => [],
     db: { prepare: () => ({ get: (id) => ({
       id, species_id: id, slug: `pokemon-${id}`, name: `Pokemon ${id}`, species_name: `Pokemon ${id}`,
       rarity: 'Common', types: '["normal"]', is_default: 1,

@@ -183,6 +183,8 @@ const {
   getLeagueProgress,
   clearLeagueChallenge,
   unlockBattleIcon,
+  recordBattleIconTrainerWin,
+  getBattleIconTrainerWins,
   grantGuaranteedBattleIconDrop,
   getUnlockedBattleIcons,
   getBattleIconRank,
@@ -3816,6 +3818,24 @@ function isEventChecklistSpawn(pokemon) {
 }
 
 const exploreCatalogCache = new Map();
+const exploreLegendaryCache = new Map();
+function getExploreLegendaryEntries(mapKey) {
+  if (!Object.hasOwn(EXPLORE_MAPS, mapKey)) throw new TypeError(`Unknown Explore map: ${mapKey}`);
+  let rows = exploreLegendaryCache.get(mapKey);
+  if (!rows) {
+    rows = db.prepare(`
+      SELECT * FROM pokemon_forms
+      WHERE is_default = 1 AND is_legendary = 1 AND is_mythical = 0 AND species_id <= 493
+        AND EXISTS (SELECT 1 FROM json_each(pokemon_forms.types) WHERE lower(value) = ?)
+      ORDER BY species_id, id
+    `).all(mapKey);
+    exploreLegendaryCache.set(mapKey, rows);
+  }
+  return isEventOpen(halloweenEvent)
+    ? rows.filter((row) => !getEventPokemonKey(row, false))
+    : rows;
+}
+
 function getExploreCatalogEntries(mapKey) {
   if (!Object.hasOwn(EXPLORE_MAPS, mapKey)) throw new TypeError(`Unknown Explore map: ${mapKey}`);
   const cached = exploreCatalogCache.get(mapKey);
@@ -3886,7 +3906,13 @@ function rollExploreExclusive(mapKey) {
 }
 
 function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0, ability = '') {
-  const exclusive = rollExploreExclusive(mapKey);
+  const legends = getExploreLegendaryEntries(mapKey);
+  const legendary = legends.length && Math.random() < LEGENDARY_BASE_CHANCE
+    ? legends[Math.floor(Math.random() * legends.length)]
+    : null;
+  const exclusive = legendary
+    ? { pokemon: { ...formToSpawn(legendary), rarity: 'Legendary' }, canShiny: true, dex: legendary.species_id }
+    : rollExploreExclusive(mapKey);
   const pokemon = exclusive.pokemon;
   if (pokemon.rarity.toLowerCase() === 'common'
       && ['intimidate', 'keen-eye'].includes(ability) && Math.random() < 0.3) return null;
@@ -6300,7 +6326,7 @@ async function notifyAdminIfRareGrant(guild, user, pokemon, source, isShiny, isG
   await notifyAdminOfRareSpawn(guild, user, { ...pokemon, isShiny }, source, isGolden);
 }
 
-async function announceRareSpawn(guild, user, pokemon, source) {
+async function announceRareSpawn(guild, user, pokemon, source, { activity = 'found' } = {}) {
   if (!guild || !pokemon) return;
   const eventPokemonKey = getEventPokemonKey(pokemon);
   const rarity = `${pokemon.rarity}`.toLowerCase();
@@ -6331,6 +6357,7 @@ async function announceRareSpawn(guild, user, pokemon, source) {
       ? `${getPokemonSpriteEmoji(pokemon)} ${EMOJIS.golden}`.trim()
       : getRarityEmojis(displayRarity, pokemon.name, Boolean(pokemon.isShiny));
     const shinyPrefix = isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
+    const action = activity === 'swap' ? 'swapped for a' : activity === 'explore' ? 'explored and found' : 'has found a';
     const count = db.prepare(`
       SELECT COUNT(*) AS count FROM (
         SELECT id FROM catches WHERE pokemon_id = ? AND is_shiny = ? AND is_golden = ?
@@ -6355,7 +6382,7 @@ async function announceRareSpawn(guild, user, pokemon, source) {
         iconURL: client.user.displayAvatarURL(),
       })
       .setTitle(
-        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} has found a ` +
+        `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} ${action} ` +
         `${rarityEmoji} ${shinyPrefix}${pokemon.name}!`
       )
       .setFooter({
@@ -6363,14 +6390,13 @@ async function announceRareSpawn(guild, user, pokemon, source) {
       })
       .setTimestamp();
     const image = isGolden
-      ? getGoldenSpriteUrl(pokemon.species_id ?? pokemon.id, pokemon.slug)
+      ? getGoldenSpriteUrl(pokemon.speciesId ?? pokemon.species_id ?? pokemon.id, pokemon.slug)
       : getPokemonShowdownSprite(
         pokemon.slug,
         Boolean(pokemon.isShiny),
         pokemon.isShiny ? (pokemon.shinyImg || pokemon.img) : pokemon.img
       );
     if (image) embed.setImage(image);
-    if (inline?.onSpawn) inline.onSpawn(embed);
     if (!await sendToChannels(rareChannels, { embeds: [embed] })) {
       throw new Error('No rare-spawn channel accepted the announcement.');
     }
@@ -6382,6 +6408,7 @@ async function announceRareSpawn(guild, user, pokemon, source) {
 async function announceBattleIconDrop(guild, user, iconIndex) {
   if (!guild) return;
   try {
+    const wins = getBattleIconTrainerWins(user.id, iconIndex);
     const rareChannels = await resolveAnnouncementChannels(getAllRareSpawnAnnouncementChannels());
     if (!rareChannels.length) return;
     const trainerName = getNpcTrainerName(iconIndex);
@@ -6396,6 +6423,7 @@ async function announceBattleIconDrop(guild, user, iconIndex) {
         `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} has unlocked ` +
         `${emoji} ${trainerName}'s battle icon!`.replace('  ', ' ')
       )
+      .setDescription(`Trainer wins tracked since this update: **${wins.toLocaleString()}**`)
       .setFooter({ text: `Battle icon drop • Today at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}` })
       .setTimestamp();
     const iconUrl = getNpcIconUrl(iconIndex);
@@ -7021,6 +7049,7 @@ async function askForBall(
       target.isShiny ? (target.shinyImg || target.img) : target.img
     );
   if (image) embed.setImage(image);
+  if (inline?.onSpawn) inline.onSpawn(embed);
   const ballOrder = getBallButtonOrder(userId);
   let ballEntries = Object.entries(BALL_CONFIG)
     .filter(([, ball]) => !ball.fishingOnly || isFishing)
@@ -7354,7 +7383,9 @@ async function askForBall(
       }
       await announceEventCatch(message.guild, catcher, target, eventCatch);
     }
-    await announceRareSpawn(message.guild, catcher, target, `${isFishing ? '.fish' : 'Spawn catch'} (${(message.content || 'catch button/message').slice(0, 100)})`);
+    await announceRareSpawn(message.guild, catcher, target,
+      `${target.isExplore ? '.explore' : isFishing ? '.fish' : 'Spawn catch'} (${(message.content || 'catch button/message').slice(0, 100)})`,
+      { activity: target.isExplore ? 'explore' : 'found' });
     if (target.rarity === 'Legendary') {
       incrementUser(userId, { legendaries_caught: 1 });
     }
@@ -8472,8 +8503,13 @@ async function runMegaChamberGauntlet(message, userId, config) {
       applyGuaranteedPveBattleWin(userId, party[partyIndex], opponents, log);
       if (enemy.hp <= 0) {
         log.push(`🏅 ${enemy.trainer}'s ${enemy.name} was defeated!`);
+        const previousOpponentIndex = opponentIndex;
         opponentIndex += 1;
         while (opponentIndex < opponents.length && opponents[opponentIndex].hp <= 0) opponentIndex += 1;
+        for (let completed = Math.floor(previousOpponentIndex / 3) * 3 + 3; completed <= opponentIndex; completed += 3) {
+          const iconIndex = getChamberIconIndex(opponents[completed - 1].trainerName);
+          if (iconIndex !== null) recordBattleIconTrainerWin(userId, iconIndex);
+        }
         if (opponentIndex < opponents.length) {
           const nextEnemy = opponents[opponentIndex];
           if (opponentIndex % 3 === 0) {
@@ -9077,6 +9113,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
             && challengeIconIndex >= 0;
           let unlockedIconIndex = null;
           if (canDropIcon) {
+            recordBattleIconTrainerWin(userId, challengeIconIndex);
             unlockedIconIndex = grantGuaranteedBattleIconDrop(
               userId,
               challengeIconIndex,
@@ -25181,7 +25218,7 @@ client.on('messageCreate', async (message) => {
           id: result.reward.id,
           isShiny: result.receivedShiny,
           isGolden: result.receivedGolden,
-        }, `.swap (${(message.content || '').slice(0, 100)})`);
+        }, `.swap (${(message.content || '').slice(0, 100)})`, { activity: 'swap' });
         return;
       }
     }
