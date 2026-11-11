@@ -20832,14 +20832,16 @@ client.on('messageCreate', async (message) => {
         activeWild = wild || (catchHandler ? activeWild : null);
         if (wild) {
           const wildRarity = getDisplayRarity(wild.rarity, wild.name, wild.isShiny);
-          const rarityEmoji = getRarityEmojis(wildRarity, wild.name, wild.isShiny, wild.isGolden || wild.is_golden);
+          const rarityEmoji = wild.isGolden || wild.is_golden
+            ? EMOJIS.golden
+            : RARITY_EMOJIS[wildRarity.toLowerCase()] || '';
           const sprite = getPokemonSpriteEmoji(wild);
           const encounterLabel = [
             rarityEmoji,
             sprite,
             `**${wild.name}**`,
           ].filter(Boolean).join(' ');
-          statusText = `${chestExpirationText}\n❗ **${wildRarity}** ${encounterLabel} appeared!`;
+          statusText = `${chestExpirationText}\n❗ ${encounterLabel} appeared!`;
         } else if (isSearch && activeWild) {
           statusText += foundText;
         } else if (!catchHandler) {

@@ -1060,6 +1060,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
       [['pb', 'pokeballs'], ['gb', 'greatballs'], ['ub', 'ultraballs'], ['prb', 'premierballs'], ['mb', 'masterballs']]
         .map(([key, column]) => [key, { column, buttonEmoji: '🔴' }])
     ),
+    RARITY_EMOJIS: { uncommon: ':uncommon:', rare: ':rare:', shiny: ':shiny-rarity:' },
     getUser: () => user, updateUser: (_id, fields) => Object.assign(user, fields),
     getPatreonPerks: () => tierPerks.tiers[user.patreon_tier] || tierPerks.none,
     incrementUser: (_id, fields) => { for (const [key, amount] of Object.entries(fields)) user[key] += amount; },
@@ -1136,7 +1137,8 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(user.repel_encounters, 7);
   assert.equal(rollAbility, 'frisk');
   assert.equal(shinyBoost, 5);
-  assert.match(payloads.at(-1).content, /\*\*Uncommon\*\* :pokemon: \*\*Bulbasaur\*\* appeared!/);
+  assert.match(payloads.at(-1).content, /❗ :uncommon: :pokemon: \*\*Bulbasaur\*\* appeared!/);
+  assert.doesNotMatch(payloads.at(-1).content, /\*\*Uncommon\*\*/);
   assert.doesNotMatch(payloads.at(-1).content, /\([^)]*\)/);
   assert.doesNotMatch(payloads.at(-1).content, /throw a ball with the buttons on the right/i);
   assert.equal(payloads.at(-1).components[0].components[1].data.disabled, false);

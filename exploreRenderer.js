@@ -7,6 +7,7 @@ const MAP_WIDTH = 640;
 const TRAINER_WIDTH = 32;
 const TRAINER_HEIGHT = 32;
 const mapCache = new Map();
+const backgroundCache = new Map();
 const iconCache = new Map();
 
 function getExploreMap(mapType, variant) {
@@ -59,6 +60,21 @@ async function loadMap(map) {
   return mapCache.get(map.file);
 }
 
+async function loadBackground(map, width, height) {
+  if (!backgroundCache.has(map.file)) {
+    const pending = loadMap(map).then((image) => {
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(image, 0, 0, width, height);
+      return canvas;
+    });
+    backgroundCache.set(map.file, pending);
+    pending.catch(() => backgroundCache.delete(map.file));
+  }
+  return backgroundCache.get(map.file);
+}
+
 async function loadTrainerIcon(url) {
   if (!url) throw new Error('No trainer icon is configured for Explore.');
   if (!iconCache.has(url)) {
@@ -78,12 +94,12 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   const map = getExploreMap(mapType, variant);
   const { width, height } = getExploreMapSize(mapType, variant);
   const [background, trainer, chestIcon] = await Promise.all([
-    loadMap(map), loadTrainerIcon(trainerUrl), chest ? loadTrainerIcon(CHEST_IMAGE_URL) : null,
+    loadBackground(map, width, height), loadTrainerIcon(trainerUrl), chest ? loadTrainerIcon(CHEST_IMAGE_URL) : null,
   ]);
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(background, 0, 0, width, height);
+  ctx.drawImage(background, 0, 0);
   if (chestIcon) {
     ctx.drawImage(chestIcon, chest.x, chest.y, TRAINER_WIDTH, TRAINER_HEIGHT);
   }
