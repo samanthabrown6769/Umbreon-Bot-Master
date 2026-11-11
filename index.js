@@ -13,7 +13,7 @@ function rebuildPokemonDatabaseFiles() {
 
 function getTopggVoteUrl() {
   const configuredUrl = process.env.TOPGG_VOTE_URL?.trim();
-  if (!configuredUrl) return 'https://top.gg/discord/servers/901828626048847872/vote';
+  if (!configuredUrl) return 'https://top.gg/bot/1558819535551860857/vote';
   const parsedUrl = new URL(configuredUrl);
   if (parsedUrl.protocol !== 'https:') {
     throw new TypeError('TOPGG_VOTE_URL must use HTTPS.');
@@ -12887,7 +12887,7 @@ client.on('messageCreate', async (message) => {
           `📅 | Every vote adds to your vote streak, which never resets!\n` +
           `⏰ | Remember to vote once every 12 hours for rewards!\n` +
           `🆕 | Voting provides a hidden +1 ${EMOJIS.shinyCharm} Shiny Charm bonus!\n` +
-          `| [Click here to vote for the Umbreon Official Server](${voteUrl})\n\n` +
+          `| [Click here to vote for Umbreon](${voteUrl})\n\n` +
           `${EMOJIS.votecoin} **Your Vote Coins**: ${voter.vote_coins.toLocaleString()}\n` +
           `💰 Spend your vote coins at \`${PREFIX}shop\`\n\n` +
           `To open ${LOOTBOX_EMOJI} Lootboxes, type \`${PREFIX}lootbox\` or \`${PREFIX}lootbox all\`\n` +
