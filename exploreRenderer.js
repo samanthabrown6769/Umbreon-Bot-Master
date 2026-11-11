@@ -21,6 +21,30 @@ function getExploreMapSize(mapType, variant) {
   return { width: MAP_WIDTH, height: Math.round(MAP_WIDTH * map.height / map.width) };
 }
 
+function isExploreMoveBlocked(mapType, variant, x, y, nextX, nextY) {
+  const map = getExploreMap(mapType, variant);
+  const { width, height } = getExploreMapSize(mapType, variant);
+  return (map.blockedAreas || []).some(([left, top, right, bottom]) => {
+    const bounds = [
+      [left * width / map.width - TRAINER_WIDTH, right * width / map.width, x, nextX - x],
+      [top * height / map.height - TRAINER_HEIGHT, bottom * height / map.height, y, nextY - y],
+    ];
+    let enter = 0;
+    let exit = 1;
+    for (const [min, max, start, delta] of bounds) {
+      if (delta === 0) {
+        if (start <= min || start >= max) return false;
+      } else {
+        const first = (min - start) / delta;
+        const last = (max - start) / delta;
+        enter = Math.max(enter, Math.min(first, last));
+        exit = Math.min(exit, Math.max(first, last));
+      }
+    }
+    return enter < exit;
+  });
+}
+
 async function loadMap(map) {
   if (!mapCache.has(map.file)) {
     const pending = loadImage(path.join(__dirname, 'assets', 'explore', map.file)).then((image) => {
@@ -63,8 +87,12 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   if (chestIcon) {
     ctx.drawImage(chestIcon, chest.x, chest.y, TRAINER_WIDTH, TRAINER_HEIGHT);
   }
-  ctx.drawImage(trainer, posX, posY, TRAINER_WIDTH, TRAINER_HEIGHT);
+  const scale = Math.min(TRAINER_WIDTH / trainer.width, TRAINER_HEIGHT / trainer.height);
+  const trainerWidth = trainer.width * scale;
+  const trainerHeight = trainer.height * scale;
+  ctx.drawImage(trainer, posX + (TRAINER_WIDTH - trainerWidth) / 2,
+    posY + TRAINER_HEIGHT - trainerHeight, trainerWidth, trainerHeight);
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, renderExploreMap };
+module.exports = { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, isExploreMoveBlocked, renderExploreMap };

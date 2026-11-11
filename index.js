@@ -389,6 +389,7 @@ const {
   recordHeldItemEncounterCounter,
   resetHeldItemEncounterCounter,
   getHeldItemEncounterCounter,
+  incrementEventSpawnCatchCounter,
   recordEventSpawnCatch,
   getEventSpawnCatch,
   resetChecklistIfNewDay,
@@ -7370,6 +7371,7 @@ async function askForBall(
       )
       : [];
     if (target.isEventSpawn) recordEventSpawnCatch(userId, target.name);
+    else if (counterSource === 'pokemon') incrementEventSpawnCatchCounter(userId);
     const eggAbilityBoost = await hasEggBoostAbility(userId);
     advanceEggCatchProgress(userId, 1, message.channel, eggAbilityBoost);
     // The hatch bonus combined with an egg ability is capped at +4 progress per catch.
@@ -17770,7 +17772,8 @@ client.on('messageCreate', async (message) => {
         .setDescription(
           '<:caught:1560340176713031711> - Pokémon Counters\n' +
           '<:oldrod:1560319797265301534> - Fishing Counters\n' +
-          '<:magnifyingglass:1569838771791466546> - Explore Counters'
+          '<:magnifyingglass:1569838771791466546> - Explore Counters\n' +
+          'Event spawn counts successful `.p` catches; older counts may include encounters.'
         )
         .addFields(
           { name: 'Category', value: displayRows.map((row) => row.category).join('\n'), inline: true },
@@ -20609,7 +20612,7 @@ client.on('messageCreate', async (message) => {
       ).limit;
       if (!getStepLimit()) return message.reply('Explore requires an active Patreon tier.');
       const sessionSeconds = getPatreonPerks(userId).exploreSeconds;
-      const { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, renderExploreMap } = require('./exploreRenderer');
+      const { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, isExploreMoveBlocked, renderExploreMap } = require('./exploreRenderer');
       const SEARCH_LOOT = [
         { field: 'coins', label: 'PokéCoins', emoji: EMOJIS.pokecoin, min: 500, max: 5000 },
         { field: 'pokeballs', label: 'Poké Balls', emoji: EMOJIS.pokeball, min: 3, max: 10 },
@@ -20763,6 +20766,9 @@ client.on('messageCreate', async (message) => {
         if (!isSearch && nextX === x && nextY === y) {
           return interaction.reply({ content: 'You cannot move beyond the edge of the map.', ephemeral: true });
         }
+        if (!isSearch && isExploreMoveBlocked(mapKey, backgroundIndex, x, y, nextX, nextY)) {
+          return interaction.reply({ content: 'You cannot walk into lava.', ephemeral: true });
+        }
         if (!isSearch && activeWild) {
           if (cancelEncounter) cancelEncounter();
           catchHandler = null;
@@ -20810,7 +20816,10 @@ client.on('messageCreate', async (message) => {
               chestExpirationText = `\n${CHEST_EMOJI} The chest disappeared from the map.`;
             }
           } else if (Math.random() < CHEST_SPAWN_CHANCE) {
-            chest = spawnExploreChest(x, y, mapWidth - TRAINER_WIDTH, mapHeight - TRAINER_HEIGHT, STEP);
+            const isMoveAllowed = background.blockedAreas
+              ? (fromX, fromY, toX, toY) => !isExploreMoveBlocked(mapKey, backgroundIndex, fromX, fromY, toX, toY)
+              : null;
+            chest = spawnExploreChest(x, y, mapWidth - TRAINER_WIDTH, mapHeight - TRAINER_HEIGHT, STEP, Math.random, isMoveAllowed);
           }
           const ability = await resolveLeadOverworldAbility(userId);
           if (Math.random() < Math.min(1, EXPLORE_ENCOUNTER_CHANCE * getExploreEncounterMultiplier(ability))) {

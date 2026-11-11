@@ -40,7 +40,7 @@ test('CatchBot Pokémon, cost, and duration upgrade prices double at every level
   assert.equal(ctx.testCB_CONFIG.luck.costForLvl(1), 2500000);
 });
 
-test('Explore and held-item counters advance and reset independently', () => {
+test('Explore, held-item and event catch counters advance and reset independently', () => {
   const db = new Database(':memory:');
   try {
     db.exec(`
@@ -78,6 +78,7 @@ test('Explore and held-item counters advance and reset independently', () => {
        globalThis.testCounters = {
          recordWildEncounterCounter, resetEncounterCounters, getEncounterCounters,
          recordHeldItemEncounterCounter, resetHeldItemEncounterCounter, getHeldItemEncounterCounter,
+         incrementEventSpawnCatchCounter, recordEventSpawnCatch, getEventSpawnCatch,
        };`,
       ctx,
     );
@@ -101,6 +102,32 @@ test('Explore and held-item counters advance and reset independently', () => {
     ctx.testCounters.recordHeldItemEncounterCounter('trainer');
     heldItem = ctx.testCounters.getHeldItemEncounterCounter('trainer');
     assert.equal(heldItem.encounters_since, 1);
+
+    db.prepare('INSERT INTO user_event_spawn_counters (user_id, encounters_since) VALUES (?, ?)').run('trainer', 552);
+    ctx.testCounters.recordWildEncounterCounter('trainer', 'pokemon');
+    ctx.testCounters.recordWildEncounterCounter('trainer', 'fishing');
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 552);
+    const recordCatch = extract(indexSource,
+      '    if (target.isEventSpawn) recordEventSpawnCatch(userId, target.name);',
+      '\n    const eggAbilityBoost');
+    ctx.userId = 'trainer';
+    ctx.target = { name: 'Pikachu', isEventSpawn: false };
+    ctx.counterSource = 'pokemon';
+    vm.runInContext(recordCatch, ctx);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 553);
+    for (const source of ['fishing', 'explore', null]) {
+      ctx.counterSource = source;
+      vm.runInContext(recordCatch, ctx);
+      assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 553);
+    }
+    ctx.target = { name: 'Event Pokémon', isEventSpawn: true };
+    ctx.counterSource = 'pokemon';
+    vm.runInContext(recordCatch, ctx);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 0);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').last_pokemon, 'Event Pokémon');
+    ctx.target = { name: 'Pikachu', isEventSpawn: false };
+    vm.runInContext(recordCatch, ctx);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 1);
   } finally {
     db.close();
   }
@@ -140,6 +167,7 @@ test('.co renders aligned Pokémon, Fishing, Explore, and held-item columns', as
   const embed = response.embeds[0].toJSON();
   assert.equal(embed.fields.length, 3);
   assert.match(embed.description, /<:magnifyingglass:1569838771791466546> - Explore Counters/);
+  assert.match(embed.description, /Event spawn counts successful `.p` catches; older counts may include encounters/);
   assert.match(embed.fields[0].value, /Item found/);
   assert.match(embed.fields[1].value, /8 - ⭐ Smeargle \(Nugget\)/);
   assert.match(embed.fields[0].value, /Golden spawn/);

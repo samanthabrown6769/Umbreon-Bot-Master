@@ -8,7 +8,13 @@ const EXPLORE_MAPS = {
   },
   fire: {
     name: 'Fire Map', emoji: '🔥',
-    images: [{ file: 'fire-1.png', width: 1191, height: 768, startX: 0.16, startY: 0.22 }],
+    images: [{
+      file: 'fire-1.png', width: 1191, height: 768, startX: 0.16, startY: 0.22,
+      blockedAreas: [
+        [1007, 108, 1108, 168], [582, 297, 646, 358],
+        [472, 374, 532, 399], [862, 605, 936, 633],
+      ],
+    }],
   },
   water: {
     name: 'Water Map', emoji: '🌊',

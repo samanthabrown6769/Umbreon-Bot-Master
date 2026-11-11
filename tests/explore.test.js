@@ -843,6 +843,90 @@ test('Explore draws each supplied map at its aspect ratio with the selected trai
   }
 });
 
+test('Explore preserves trainer icon proportions within the movement tile', async () => {
+  const originalFetch = global.fetch;
+  const icons = {
+    'https://example.test/tall.png': [4, 8],
+    'https://example.test/wide.png': [8, 4],
+  };
+  global.fetch = async (url) => {
+    const [width, height] = icons[url];
+    const icon = createCanvas(width, height);
+    const ctx = icon.getContext('2d');
+    ctx.fillStyle = '#ff00ff';
+    ctx.fillRect(0, 0, width, height);
+    return { ok: true, arrayBuffer: async () => icon.toBuffer('image/png') };
+  };
+  try {
+    for (const [url, inside, outside] of [
+      ['https://example.test/tall.png', [[56, 64], [71, 95]], [[55, 64], [72, 95]]],
+      ['https://example.test/wide.png', [[48, 80], [79, 95]], [[48, 79], [79, 79]]],
+    ]) {
+      const image = await loadImage(await renderer.renderExploreMap('grass', 48, 64, url));
+      const canvas = createCanvas(image.width, image.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      for (const [x, y] of inside) {
+        assert.deepEqual([...ctx.getImageData(x, y, 1, 1).data], [255, 0, 255, 255]);
+      }
+      for (const [x, y] of outside) {
+        assert.notDeepEqual([...ctx.getImageData(x, y, 1, 1).data], [255, 0, 255, 255]);
+      }
+    }
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('Fire Map 1 blocks lava pools and movement across them', () => {
+  const { width, height } = renderer.getExploreMapSize('fire', 0);
+  const map = data.EXPLORE_MAPS.fire.images[0];
+  for (const [sourceX, sourceY] of [[1055, 135], [615, 325], [502, 385], [900, 618]]) {
+    const x = sourceX * width / map.width - 16;
+    const y = sourceY * height / map.height - 16;
+    assert.equal(renderer.isExploreMoveBlocked('fire', 0, x - 32, y, x, y), true);
+    assert.equal(renderer.isExploreMoveBlocked('fire', 0, x - 80, y, x + 80, y), true);
+  }
+  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 270, 145, 270, 145), false);
+  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 302, 113, 302, 113), false);
+  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 270, 145, 302, 113), true);
+  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 97, 83, 129, 83), false);
+  assert.equal(renderer.isExploreMoveBlocked('grass', 0, 300, 160, 332, 192), false);
+  assert.equal(renderer.isExploreMoveBlocked('water', 0, 300, 160, 332, 192), false);
+});
+
+test('Explore chests only spawn in positions reachable around lava within four moves', () => {
+  const canMove = (x, y, nextX, nextY) =>
+    !renderer.isExploreMoveBlocked('fire', 0, x, y, nextX, nextY);
+  const start = { x: 289, y: 115 };
+  const { width, height } = renderer.getExploreMapSize('fire', 0);
+  let frontier = [start];
+  const reachable = new Set([`${start.x},${start.y}`]);
+  for (let distance = 0; distance < 4; distance += 1) {
+    const next = [];
+    for (const point of frontier) {
+      for (const dx of [-32, 0, 32]) {
+        for (const dy of [-32, 0, 32]) {
+          const x = point.x + dx;
+          const y = point.y + dy;
+          const key = `${x},${y}`;
+          if (x < 0 || x > width - 32 || y < 0 || y > height - 32
+              || reachable.has(key) || !canMove(point.x, point.y, x, y)) continue;
+          reachable.add(key);
+          next.push({ x, y });
+        }
+      }
+    }
+    frontier = next;
+  }
+  for (let i = 0; i < 100; i += 1) {
+    const chest = chests.spawnExploreChest(start.x, start.y, width - 32, height - 32, 32, () => i / 100, canMove);
+    assert.ok(reachable.has(`${chest.x},${chest.y}`));
+    assert.equal(canMove(chest.x, chest.y, chest.x, chest.y), true);
+    assert.notDeepEqual({ x: chest.x, y: chest.y }, start);
+  }
+});
+
 test('Explore uses map data, configured shiny eligibility and Patreon rates', () => {
   const math = Object.create(Math);
   let rolls = [];
@@ -1204,6 +1288,24 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(cancelled, true);
   assert.equal(ctx.activeExploreSessions.has('trainer'), false);
   assert.match(payloads.at(-1).content, /session has ended/);
+
+  ctx.args = ['fm', '1'];
+  user.explore_steps_today = 0;
+  cancelled = false;
+  await ctx.run();
+  for (let i = 0; i < 6; i += 1) await click('exp_right');
+  await click('exp_down');
+  cancelled = false;
+  const stepsBeforeLava = user.explore_steps_today;
+  assert.match((await click('exp_down'))[0].content, /cannot walk into lava/);
+  assert.equal(user.explore_steps_today, stepsBeforeLava);
+  assert.equal(cancelled, false);
+  await click('exp_search');
+  assert.equal(user.explore_steps_today, stepsBeforeLava + 1);
+  await click('exp_run');
+  await endPromise;
+
+  ctx.args = ['wm', '1'];
   for (const [tier, [steps, seconds]] of Object.entries({
     common: [500, 90], uncommon: [2500, 100], rare: [4000, 120], superRare: [4500, 150],
     legendary: [5000, 180], shiny: [5500, 210], golden: [6000, 240],

@@ -8376,11 +8376,6 @@ function recordWildEncounterCounter(userId, source) {
     SET encounters_since = encounters_since + 1
     WHERE user_id = ? AND source = ?
   `).run(userId, source);
-  db.prepare(`
-    INSERT INTO user_event_spawn_counters (user_id, encounters_since)
-    VALUES (?, 1)
-    ON CONFLICT(user_id) DO UPDATE SET encounters_since = encounters_since + 1
-  `).run(userId);
 }
 
 function resetEncounterCounters(userId, source, categories, pokemonName, timestamp = Date.now()) {
@@ -8483,6 +8478,15 @@ function getHeldItemEncounterCounter(userId) {
     last_rarity: null,
     last_item: null,
   };
+}
+
+function incrementEventSpawnCatchCounter(userId) {
+  assertUserId(userId);
+  db.prepare(`
+    INSERT INTO user_event_spawn_counters (user_id, encounters_since)
+    VALUES (?, 1)
+    ON CONFLICT(user_id) DO UPDATE SET encounters_since = encounters_since + 1
+  `).run(userId);
 }
 
 function recordEventSpawnCatch(userId, pokemonName, timestamp = Date.now()) {
@@ -10864,6 +10868,7 @@ module.exports = {
   recordHeldItemEncounterCounter,
   resetHeldItemEncounterCounter,
   getHeldItemEncounterCounter,
+  incrementEventSpawnCatchCounter,
   recordEventSpawnCatch,
   getEventSpawnCatch,
   resetChecklistIfNewDay,
