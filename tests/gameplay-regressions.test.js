@@ -23,6 +23,36 @@ function mon(name, types) {
   return { name, types, hp: 100, max_hp: 100, atk: 50, def: 50, spd: 50, level: 50 };
 }
 
+test('ordinary admin catches use normal rates while shared admin spawns stay guaranteed', async () => {
+  const ctx = vm.createContext({
+    command: 'p', args: [], userId: '1514082847609061541',
+    message: { author: { id: '1514082847609061541', username: 'Admin' }, guildId: 'guild', channelId: 'channel' },
+    isBotAdmin: () => true, isConfiguredBotAdmin: () => true, isEncounterCooldownExempt: () => true,
+    getUser: () => ({ grazz_buff_encounters: 0 }), getRoleEncounterBoost: async () => 0,
+    getChannelCatchRateBoost: () => 0, rollSpawn: () => ({ name: 'Test' }),
+    getFishingRod: () => ({ name: 'Rod', baseSpawnChance: 0, pullWaitMs: 20000 }),
+    getPatreonPerks: () => ({ fishingBoost: 0, goldenBoost: 0 }),
+    resolveLeadOverworldAbility: async () => null, getFishingAbilityMultiplier: () => 1,
+    FISH_EXCLUSIVE_GOLDEN_DENOMINATOR: 1000, isPlayerBonusActive: () => false,
+    resolvePokemonForm: () => ({ id: 1, name: 'Test', rarity: 'Common', types: '[]' }),
+    askForBall: async (_message, _userId, _target, _mode, options) => options,
+  });
+  vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'pokemon' || command === 'p') {", "\n    if (command === 'clan') {")} }`, ctx);
+  assert.notEqual((await ctx.run()).guaranteedCatch, true);
+  ctx.command = 'fish';
+  assert.notEqual((await ctx.run()).guaranteedCatch, true);
+  ctx.command = 'p';
+  ctx.args = ['admin', 'Test'];
+  const shared = await ctx.run();
+  assert.equal(shared.guaranteedCatch, true);
+  assert.equal(shared.allowAnyUserCatch, true);
+
+  const prefix = extract(indexSource, 'async function askForBall(', '\n  const overworldAbility =');
+  vm.runInContext(`${prefix}\n  return guaranteedCatch;\n}`, ctx);
+  assert.equal(await ctx.askForBall(null, ctx.userId, {}, 'catch'), false);
+  assert.equal(await ctx.askForBall(null, ctx.userId, {}, 'catch', { guaranteedCatch: true, allowAnyUserCatch: true }), true);
+});
+
 test('collection commands resolve normal, shiny and Golden Dex numbers to the correct variants', async () => {
   const { getPokemonDexNumbers, getGoldenDexNumber } = require('../pokemon-dex-numbers');
   const { parseAmount } = require('../amounts');
@@ -339,6 +369,8 @@ test('World Boss reminder is scheduled 20 seconds before battle and is sent only
   await ctx.remindWorldBossRegistrationClosing(boss);
   assert.equal(sent.length, 1);
   assert.match(sent[0].content, /<@&boss-role> <@&eternamax-role>/);
+  assert.ok(sent[0].content.includes(`The battle against **${boss.name}** begins <t:${Math.floor(boss.registration_ends_at / 1000)}:R>!`));
+  assert.doesNotMatch(sent[0].content, /registration closes/i);
   assert.deepEqual(Array.from(sent[0].allowedMentions.roles), ['boss-role', 'eternamax-role']);
   activeBoss = null;
   await ctx.remindWorldBossRegistrationClosing({ ...boss, id: 8 });

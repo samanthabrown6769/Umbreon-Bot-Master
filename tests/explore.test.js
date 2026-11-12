@@ -807,7 +807,7 @@ test('checklist displays Explore usage, reset and access status', async () => {
   assert.match(payloads.at(-1).embeds[0].data.description, /Explore requires an active Patreon tier/);
 });
 
-test('Explore draws each supplied map at its aspect ratio with the selected trainer icon', async () => {
+test('Explore draws each supplied map zoomed at its aspect ratio with the selected trainer icon', async () => {
   const originalFetch = global.fetch;
   const icon = createCanvas(4, 4);
   const iconCtx = icon.getContext('2d');
@@ -833,12 +833,17 @@ test('Explore draws each supplied map at its aspect ratio with the selected trai
         const result = createCanvas(image.width, image.height);
         const context = result.getContext('2d');
         context.drawImage(image, 0, 0);
-        assert.deepEqual([...context.getImageData(70, 66, 1, 1).data], [255, 0, 255, 255]);
+        assert.deepEqual([...context.getImageData(87, 82, 1, 1).data], [255, 0, 255, 255]);
         const original = await loadImage(require('node:path').join(__dirname, '..', 'assets', 'explore', theme.images[variant].file));
+        const background = createCanvas(image.width, image.height);
+        const backgroundCtx = background.getContext('2d');
+        backgroundCtx.imageSmoothingEnabled = false;
+        backgroundCtx.drawImage(original, 0, 0, image.width, image.height);
         const expected = createCanvas(image.width, image.height);
         const expectedCtx = expected.getContext('2d');
         expectedCtx.imageSmoothingEnabled = false;
-        expectedCtx.drawImage(original, 0, 0, image.width, image.height);
+        expectedCtx.scale(1.25, 1.25);
+        expectedCtx.drawImage(background, 0, 0);
         assert.deepEqual([...context.getImageData(5, 5, 1, 1).data], [...expectedCtx.getImageData(5, 5, 1, 1).data]);
       }
     }
@@ -847,21 +852,24 @@ test('Explore draws each supplied map at its aspect ratio with the selected trai
     const chestCanvas = createCanvas(chestMap.width, chestMap.height);
     const chestContext = chestCanvas.getContext('2d');
     chestContext.drawImage(chestMap, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(85, 68, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(106, 85, 1, 1).data], [0, 255, 0, 255]);
     const occupiedMap = await loadImage(await renderer.renderExploreMap('grass', 48, 64, 'https://example.test/icon.png', 0, { x: 48, y: 64 }));
     chestContext.drawImage(occupiedMap, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(50, 66, 1, 1).data], [0, 255, 0, 255]);
-    assert.deepEqual([...chestContext.getImageData(70, 66, 1, 1).data], [255, 0, 255, 255]);
-    assert.deepEqual([...chestContext.getImageData(48, 95, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(62, 82, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(87, 82, 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(60, 118, 1, 1).data], [0, 255, 0, 255]);
     const emptyMap = await loadImage(await renderer.renderExploreMap('grass', 48, 64, 'https://example.test/icon.png', 0));
     const emptyCanvas = createCanvas(emptyMap.width, emptyMap.height);
     const emptyContext = emptyCanvas.getContext('2d');
     emptyContext.drawImage(emptyMap, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(80, 64, 1, 1).data], [...emptyContext.getImageData(80, 64, 1, 1).data]);
+    assert.deepEqual([...chestContext.getImageData(100, 80, 1, 1).data], [...emptyContext.getImageData(100, 80, 1, 1).data]);
     const rightEdge = await loadImage(await renderer.renderExploreMap('grass', 608, 64, 'https://example.test/icon.png', 0, { x: 608, y: 64 }));
     chestContext.drawImage(rightEdge, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(610, 66, 1, 1).data], [0, 255, 0, 255]);
-    assert.deepEqual([...chestContext.getImageData(630, 66, 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(602, 82, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(627, 82, 1, 1).data], [255, 0, 255, 255]);
+    const centered = await loadImage(await renderer.renderExploreMap('grass', 304, 200, 'https://example.test/icon.png', 0));
+    chestContext.drawImage(centered, 0, 0);
+    assert.deepEqual([...chestContext.getImageData(328, Math.floor(centered.height / 2), 1, 1).data], [255, 0, 255, 255]);
     assert.equal(fetches, 2);
     await assert.rejects(renderer.renderExploreMap('missing', 0, 0, 'x'), /Unknown Explore map/);
     await assert.rejects(renderer.renderExploreMap('grass', 0, 0, null), /No trainer icon/);
@@ -890,8 +898,8 @@ test('Explore preserves trainer icon proportions within the movement tile', asyn
   };
   try {
     for (const [url, inside, outside] of [
-      ['https://example.test/tall.png', [[56, 64], [71, 95]], [[55, 64], [72, 95]]],
-      ['https://example.test/wide.png', [[48, 80], [79, 95]], [[48, 79], [79, 79]]],
+      ['https://example.test/tall.png', [[71, 81], [88, 118]], [[67, 82], [92, 118]]],
+      ['https://example.test/wide.png', [[61, 101], [98, 118]], [[61, 96], [98, 96]]],
     ]) {
       const image = await loadImage(await renderer.renderExploreMap('grass', 48, 64, url));
       const canvas = createCanvas(image.width, image.height);
@@ -926,13 +934,12 @@ test('Fire Map 1 blocks lava pools and movement across them', () => {
   assert.equal(renderer.isExploreMoveBlocked('water', 0, 300, 160, 332, 192), false);
 });
 
-test('all Fire Maps block their lava and ladders while leaving their starts accessible', () => {
+test('Fire Maps block lava and actual ladders while leaving their starts accessible', () => {
   const targets = [
     { lava: [[1055, 135], [615, 325], [502, 385], [900, 618]], ladder: [[57, 135], [211, 730], [750, 713]] },
     { lava: [[380, 389], [435, 417], [590, 240], [570, 281], [540, 365], [749, 290], [719, 386], [555, 704], [605, 665], [661, 666]],
       ladder: [[121, 86]] },
-    { lava: [[65, 75], [177, 86], [210, 248], [145, 312], [250, 312], [200, 330]],
-      ladder: [[120, 144], [328, 208]] },
+    { lava: [[65, 75], [177, 86], [210, 248], [145, 312], [250, 312], [200, 330]] },
   ];
   for (const [variant, target] of targets.entries()) {
     const map = data.EXPLORE_MAPS.fire.images[variant];
@@ -951,6 +958,18 @@ test('all Fire Maps block their lava and ladders while leaving their starts acce
       .some(([dx, dy]) => !renderer.isExploreMoveBlocked('fire', variant, startX, startY, startX + dx, startY + dy)));
   }
   assert.equal(renderer.getExploreMoveBlockReason('grass', 0, 300, 160, 332, 192), null);
+});
+
+test('Fire Map 3 stairs can be crossed in both directions', () => {
+  const map = data.EXPLORE_MAPS.fire.images[2];
+  const { width, height } = renderer.getExploreMapSize('fire', 2);
+  for (const [sourceX, top, bottom] of [[120, 129, 159], [328, 193, 223]]) {
+    const x = sourceX * width / map.width - 16;
+    const y1 = top * height / map.height - 32;
+    const y2 = bottom * height / map.height;
+    assert.equal(renderer.getExploreMoveBlockReason('fire', 2, x, y1, x, y2), null);
+    assert.equal(renderer.getExploreMoveBlockReason('fire', 2, x, y2, x, y1), null);
+  }
 });
 
 test('Explore chests only spawn in positions reachable around lava within four moves', () => {
@@ -1403,7 +1422,9 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     throw new Error(`No reachable ${reason} on Fire Map ${variant + 1}`);
   };
   for (const variant of [1, 2]) {
-    for (const [reason, text] of [['lava', "That's too spicy for a swim"], ['ladder', "It's too dark down there"]]) {
+    const obstacles = [['lava', "That's too spicy for a swim"]];
+    if (variant === 1) obstacles.push(['ladder', "It's too dark down there"]);
+    for (const [reason, text] of obstacles) {
       ctx.args = ['fm', String(variant + 1)];
       user.explore_steps_today = 0;
       ctx.CHEST_SPAWN_CHANCE = 0;

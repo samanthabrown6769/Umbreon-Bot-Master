@@ -953,10 +953,6 @@ const NON_STREAK_RARITIES = new Set([
   'gmax', 'g', 'shiny gmax', 'sg',
   'gem',
 ]);
-const GUARANTEED_CATCH_EXCLUDED_USER_IDS = new Set([
-  '426946381098254336',
-]);
-const GUARANTEED_CATCH_USER_IDS = new Set(['1514082847609061541']);
 const COOLDOWN_EXEMPT_USER_IDS = new Set([
   '1514082847609061541',
   '426946381098254336',
@@ -5355,8 +5351,8 @@ async function remindWorldBossRegistrationClosing(boss) {
       }
       const roles = getWorldBossPingRoles(announcement.guild_id, boss.name);
       await channel.send({
-        content: `${roles.map((roleId) => `<@&${roleId}>`).join(' ')} ⚔️ **${boss.name}** registration closes ` +
-          `<t:${Math.floor(boss.registration_ends_at / 1000)}:R>; the battle starts afterward.`,
+        content: `${roles.map((roleId) => `<@&${roleId}>`).join(' ')} ⚔️ The battle against **${boss.name}** begins ` +
+          `<t:${Math.floor(boss.registration_ends_at / 1000)}:R>!`,
         allowedMentions: { roles },
       });
       db.prepare(`
@@ -7077,9 +7073,6 @@ async function askForBall(
     cooldownState = null,
   } = {}
 ) {
-  guaranteedCatch = guaranteedCatch
-    && (allowAnyUserCatch || !GUARANTEED_CATCH_EXCLUDED_USER_IDS.has(userId));
-  guaranteedCatch = guaranteedCatch || GUARANTEED_CATCH_USER_IDS.has(userId);
   const overworldAbility = target.overworldAbility ?? await resolveLeadOverworldAbility(userId);
   target = {
     ...target,
@@ -16712,7 +16705,6 @@ client.on('messageCreate', async (message) => {
           allowAnyUserCatch: true,
         });
       }
-      const isAdmin = isConfiguredBotAdmin(message);
       const cooldownExempt = isEncounterCooldownExempt(message, userId);
       if (!cooldownExempt && catchCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'p', catchCooldowns)) {
@@ -16744,7 +16736,6 @@ client.on('messageCreate', async (message) => {
         goldenRazzActive: grazzActive,
         guildId: message.guildId,
       }), 'catch', {
-        guaranteedCatch: isAdmin,
         counterSource: 'pokemon',
         cooldownState,
       });
@@ -16825,7 +16816,7 @@ client.on('messageCreate', async (message) => {
         userId,
         fishingTarget,
         'fish',
-        { guaranteedCatch: isAdmin, timeoutMs: rod.pullWaitMs, counterSource: 'fishing', cooldownState }
+        { timeoutMs: rod.pullWaitMs, counterSource: 'fishing', cooldownState }
       );
     }
 
