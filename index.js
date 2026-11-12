@@ -106,6 +106,8 @@ const {
 } = require('discord.js');
 const {
   db,
+  auctions,
+  backfillBannedAuctions,
   getCooldownNotificationMode,
   setCooldownNotificationMode,
   getRareSpawnNameHidden,
@@ -121,7 +123,7 @@ const {
   setBuddyNickname,
   rerollBuddyIv,
   renamePokemonForm,
-  updatePokemonSpriteLinks,
+  updatePokemonSpriteVariants,
   setPokemonSpriteEmoji,
   getPokemonSpriteEmojiOverrides,
   SPECIAL_SPAWN_RESERVED_SPECIES: BASE_SPAWN_RESERVED_SPECIES,
@@ -227,6 +229,8 @@ const {
   useExpCandy,
   rollExpCandy,
   EXP_CANDY_VALUES,
+  VITAMIN_ITEMS,
+  useBuddyVitamin,
   getChallengerInvites,
   addChallengerInvite,
   removeChallengerInvite,
@@ -327,12 +331,6 @@ const {
   setAutoSpawnProgress,
   disableAutoSpawnChannel,
   markAutoSpawnHourlyTier,
-  advanceEventSpawnPity,
-  resetEventSpawnPity,
-  advanceEncounterPity,
-  resetEncounterPity,
-  advanceWildShinyPity,
-  resetWildShinyPity,
   getUserEventProgress,
   getUserEventCatchCounts,
   getEventAnnouncementChannel,
@@ -596,11 +594,12 @@ function getSwapRewardExcludedSpecies(isShiny) {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
-const EVENT_SPAWN_ODDS = 500;
-const EVENT_SPAWN_PITY_MIN = 300;
-const EVENT_SPAWN_PITY_LIMIT = 500;
-function getEventSpawnChance(roleChanceBoost = 0) {
-  return Math.min(1, (1 + roleChanceBoost / 100) / EVENT_SPAWN_ODDS);
+const EVENT_SPAWN_ODDS = 1000;
+function getEventSpawnChance(roleChanceBoost = 0, eventShinyPct = 0, shinyBonusActive = false) {
+  // Scale the existing tier perks so Legendary (+30%) and the shiny bonus reach 1/450.
+  const tierMultiplier = 1 + (eventShinyPct / 100) * (70 / 27);
+  return Math.min(1 / 450, (1 + roleChanceBoost / 100) * tierMultiplier
+    * (shinyBonusActive ? 1.25 : 1) / EVENT_SPAWN_ODDS);
 }
 let eventSpawnFormIds = [];
 let eventSpawnEntries = [];
@@ -738,7 +737,7 @@ const BONUS_ANNOUNCEMENT_CHANNEL_ID = '1565712507287371846';
 const BONUS_ANNOUNCEMENT_ROLE_ID = '1565712717833052180';
 const BONUS_EFFECT_TEXT = Object.freeze({
   swap: '+25% increased Golden and Shiny swap rates.',
-  shiny: '+25% selection weight for shiny event checklist Pokémon within event spawns.',
+  shiny: '+25% event spawn roll and selection weight for shiny event checklist Pokémon (event roll capped at 1/450).',
   wb: '+25% World Boss Pokémon drop rate.',
   dxp: 'Double EXP from catches.',
   fish: '+25% Golden Fishing spawn rate.',
@@ -898,7 +897,7 @@ async function autoHatchReadyEggs(userId, channel) {
   });
   if (channel.guild) {
     for (const pokemon of hatchedPokemon) {
-      await announceRareSpawn(channel.guild, discordUser, pokemon, 'Egg auto-hatch');
+      await announceRareSpawn(channel.guild, discordUser, pokemon, `${PREFIX}egg auto-hatch`);
     }
   }
 }
@@ -1593,7 +1592,7 @@ function getNpcIconUrl(index) {
   return `https://play.pokemonshowdown.com/sprites/trainers/${NPC_ICON_ALIASES[id] || id}.png`;
 }
 
-function scheduleCooldownNotification(cooldowns, userId, username, channel, duration, command) {
+function scheduleCooldownNotification(cooldowns, userId, username, channel, duration, command, sourceMessage) {
   const action = {
     p: 'catching',
     f: 'fishing',
@@ -1605,18 +1604,20 @@ function scheduleCooldownNotification(cooldowns, userId, username, channel, dura
   const stateMap = pokemonCooldownStates[command];
   const previousState = stateMap?.get(userId);
   if (previousState) clearTimeout(previousState.timer);
-  const state = stateMap
-    ? { startedAt: Date.now(), duration, timer: null }
-    : null;
-  if (state) stateMap.set(userId, state);
+  const state = { startedAt: Date.now(), duration, timer: null, notificationMessage: sourceMessage };
+  if (stateMap) stateMap.set(userId, state);
   const finish = () => {
     cooldowns.delete(userId);
     if (cooldownEndsAt[command].get(userId) === endsAt) cooldownEndsAt[command].delete(userId);
-    if (state && stateMap.get(userId) === state) stateMap.delete(userId);
+    if (stateMap && stateMap.get(userId) === state) stateMap.delete(userId);
   };
   const notify = async (usesMachine) => {
     try {
       const mode = getCooldownNotificationMode(userId);
+      if (mode === 'react') {
+        await state.notificationMessage.react('✅');
+        return;
+      }
       await channel.send({
         content: `✅ ${mode === 'ping' ? `<@${userId}>` : `**${username}**`}, ` +
           (usesMachine
@@ -1632,19 +1633,20 @@ function scheduleCooldownNotification(cooldowns, userId, username, channel, dura
   };
   // With Cooldown Machine charges loaded for this command, remind at half the cooldown.
   const chargeField = { p: 'cooldown_machine_catch_charges', f: 'cooldown_machine_fish_charges' }[command];
-  const halved = Boolean(state && chargeField && getUser(userId)[chargeField] > 0);
+  const halved = Boolean(stateMap && chargeField && getUser(userId)[chargeField] > 0);
   if (halved) {
     state.timer = setTimeout(() => {
       void notify(true);
       state.timer = setTimeout(finish, duration - Math.floor(duration / 2));
     }, Math.floor(duration / 2));
-    return;
+    return state;
   }
   const timer = setTimeout(() => {
     finish();
     void notify(false);
   }, duration);
-  if (state) state.timer = timer;
+  state.timer = timer;
+  return state;
 }
 function getCooldownReadyTimestamp(command, userId, duration) {
   const endsAt = cooldownEndsAt[command]?.get(userId) ?? Date.now() + duration;
@@ -1957,7 +1959,8 @@ function startLeagueChallengeWithCooldown(message, userId, challengeIndex, chall
       message.author.username,
       message.channel,
       BATTLE_COOLDOWN_MS,
-      'battle'
+      'battle',
+      message
     );
   }
   return runLeagueChallenge(message, userId, challengeIndex, challenges)
@@ -2066,6 +2069,12 @@ const EMOJIS = {
   hondewberry: '<:hondewberry:1562495622337003560>',
   grepaberry: '<:grepaberry:1562495625210368010>',
   tamatoberry: '<:tamatoberry:1562495620986699786>',
+  zinc: '<:zinc:1570475125441298512>',
+  protein: '<:protein:1570475127999701092>',
+  iron: '<:iron:1570475129954246786>',
+  hpup: '<:hpup:1570475121913888838>',
+  carbos: '<:carbos:1570475131846004836>',
+  calcium: '<:calcium:1570475133347303565>',
   fullrestore: '<:fullrestore:1562495619161919589>',
   auxguard: '<:auxguard:1562495637356810360>',
   auxpower: '<:auxpower:1562495636014895234>',
@@ -3002,6 +3011,7 @@ function heldItemNameMarker(pokemon, rarityEmoji = '') {
 }
 
 const WILD_HELD_ITEM_SPAWN_CHANCE = 0.1;
+const STANDARD_WILD_HELD_ITEM_SPAWN_CHANCE = 0.05;
 const RESEARCH_RELIC_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 const RESEARCH_TOOL_CONSUMPTION_CHANCE = 0.01;
 const RESEARCH_TOOL_EFFECTS = [
@@ -3073,7 +3083,9 @@ function applyResearchTools(userId) {
   return { boosts, consumed };
 }
 
-function rollWildHeldItem(target, userId = null, researchPokemonEncounter = false) {
+function rollWildHeldItem(target, userId = null, researchPokemonEncounter = false, counterSource = null) {
+  const spawnChance = ['pokemon', 'fishing'].includes(counterSource)
+    ? STANDARD_WILD_HELD_ITEM_SPAWN_CHANCE : WILD_HELD_ITEM_SPAWN_CHANCE;
   const speciesName = target.speciesName
     || target.species_name
     || db.prepare('SELECT species_name FROM pokemon_forms WHERE id = ?').get(target.id)?.species_name;
@@ -3087,7 +3099,7 @@ function rollWildHeldItem(target, userId = null, researchPokemonEncounter = fals
   const eligibleItem = speciesItems.length
     ? speciesItems[Math.floor(Math.random() * speciesItems.length)]
     : null;
-  const heldItemChance = WILD_HELD_ITEM_SPAWN_CHANCE
+  const heldItemChance = spawnChance
     * (target.overworldAbility === 'compound-eyes' ? 1.2 : 1)
     * (target.researchToolBoosts?.fluffyTail ? 1.3 : 1)
     * (target.researchToolBoosts?.pokeDoll && eligibleItem?.requiresRelicExchange ? 1.3 : 1);
@@ -3096,12 +3108,12 @@ function rollWildHeldItem(target, userId = null, researchPokemonEncounter = fals
 
   const eligibleResearchItems = speciesItems.filter((item) => item.requiresRelicExchange);
   if (relicExchangeActive && eligibleResearchItems.length
-      && Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
+      && Math.random() < spawnChance
         * (target.researchToolBoosts?.pokeDoll ? 1.3 : 1)) {
     return eligibleResearchItems[Math.floor(Math.random() * eligibleResearchItems.length)];
   }
 
-  if (Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
+  if (Math.random() < spawnChance
       * (target.researchToolBoosts?.pokeDoll ? 1.3 : 1)) {
     const ownedItems = new Map(getUserItems(userId).map((item) => [item.item_name, item.amount]));
     const availableRelics = RESEARCH_RELICS.filter((item) => !ownedItems.get(item.name));
@@ -3110,7 +3122,7 @@ function rollWildHeldItem(target, userId = null, researchPokemonEncounter = fals
     }
   }
 
-  if (Math.random() < WILD_HELD_ITEM_SPAWN_CHANCE
+  if (Math.random() < spawnChance
       * (target.researchToolBoosts?.fluffyTail ? 1.3 : 1)) {
     const valuableName = RESEARCH_DROP_VALUABLES[
       Math.floor(Math.random() * RESEARCH_DROP_VALUABLES.length)
@@ -3147,14 +3159,10 @@ const ICONS = {
   box: '📦',
 };
 
-// Patreon doubles the base full-odds shiny rate; event tickets have separate boosted rates.
-const BASE_SHINY_RATE = 1 / 1000;
-const FULL_ODDS_SHINY_PITY_LIMIT = 750;
-const WILD_SHINY_PITY_MIN = 1000;
-const WILD_SHINY_PITY_LIMIT = 2000;
+// Event tickets and fishing rods have separate boosted shiny rates.
+const BASE_SHINY_RATE = 1 / 1500;
 // Incense: +10% shiny encounter rate and +10% promo item drop rate while server charges last.
 const INCENSE_BOOST = 1.1;
-const PATREON_SHINY_RATE = 1 / 500;
 const EVENT_TICKET_SHINY_RATES = Object.freeze({
   patreon: { event: 1 / 50, nonEvent: 1 / 250 },
   standard: { event: 1 / 100, nonEvent: 1 / 500 },
@@ -3187,9 +3195,8 @@ const LEGENDARY_GENERATION_ORDER = Object.freeze([
   { generation: 'generation-vi', rollChance: 1 / 5 },
   { generation: 'generation-vii', rollChance: 1 / 5 },
 ]);
-const LEGENDARY_BASE_CHANCE = 1 / 167;
-const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 / 125;
-const LEGENDARY_SPAWN_PITY_LIMIT = 167;
+const LEGENDARY_BASE_CHANCE = 1 / 666;
+const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 / 500;
 // A hunt targets one specific Pokémon; the catches needed depend on its rarity.
 const DAILY_HUNT_CONFIG = Object.freeze({
   Common: { chance: 1, required: 5, rewards: { pokeballs: 2, greatballs: 1 } },
@@ -3559,7 +3566,7 @@ function rollSpecialLegendarySpawn(
       ? Math.random() < 0.1
       : entry.shinyMode === 'one-in-two'
         ? Math.random() < 0.5
-        : Math.random() < (getUser(userId).has_patreon ? PATREON_SHINY_RATE : BASE_SHINY_RATE)
+        : Math.random() < BASE_SHINY_RATE
           * (1 / (1 - shinyBonus / 100))
           * (1 + getPatreonPerks(userId).shinyRatePct / 100)
           * (1 + channelRateBoost / 100);
@@ -3635,12 +3642,9 @@ function rollSpawn(
     ? eventSpawnEntries.filter((entry) => entry.fish)
     : eventSpawnEntries;
   const eventSpawnEligible = eventTicketActive && forcedEventPool.length > 0;
-  const eventSpawnPity = eventSpawnEligible
-    ? advanceEventSpawnPity(halloweenEvent.id, userId)
-    : 0;
-  if (eventSpawnEligible && eventSpawnPity >= EVENT_SPAWN_PITY_MIN
-      && (eventSpawnPity >= EVENT_SPAWN_PITY_LIMIT
-        || Math.random() < getEventSpawnChance(roleChanceBoost))) {
+  if (eventSpawnEligible && Math.random() < getEventSpawnChance(
+    roleChanceBoost, getPatreonPerks(userId).eventShinyPct, isPlayerBonusActive('shiny')
+  )) {
     const isPatreonUser = Boolean(getUser(userId).has_patreon);
     const eventShinyWeight = (isPatreonUser
       ? EVENT_TICKET_SHINY_RATES.patreon.event / EVENT_TICKET_SHINY_RATES.standard.event
@@ -3654,26 +3658,9 @@ function rollSpawn(
       * (incenseActive ? INCENSE_BOOST : 1)
       * (pokeradarActive ? 1.1 : 1);
     forcedEvent = pickWeighted(forcedEventPool, (entry) => entry.shiny ? eventShinyWeight : 1);
-    resetEventSpawnPity(halloweenEvent.id, userId);
   }
 
-  const legendaryPityEligible = !forcedEvent
-    && !catchbot
-    && userId !== null
-    && (poolName === 'land' || fallbackLegendaryEnabled);
-  const legendaryPity = legendaryPityEligible
-    ? advanceEncounterPity(userId, 'legendary')
-    : 0;
-  const legendaryPityDue = legendaryPity >= LEGENDARY_SPAWN_PITY_LIMIT;
-  const finalizeSpawn = (pokemon, isLegendarySpawn = false) => {
-    if (userId !== null) {
-      if (pokemon.isShiny && !catchbot && !pokemon.isEventSpawn) resetWildShinyPity(userId);
-      if (isLegendarySpawn) resetEncounterPity(userId, 'legendary');
-    }
-    return pokemon;
-  };
-
-  if (!forcedEvent && !legendaryPityDue && !catchbot && poolName === 'land' && userId !== null) {
+  if (!forcedEvent && !catchbot && poolName === 'land' && userId !== null) {
     const specialPokemon = rollSpecialLegendarySpawn(
       userId,
       goldenRazzActive,
@@ -3682,20 +3669,13 @@ function rollSpawn(
       roleChanceBoost
     );
     if (specialPokemon) {
-      const shinyPity = advanceWildShinyPity(userId);
-      specialPokemon.isShiny = shinyPity >= WILD_SHINY_PITY_MIN
-        && (specialPokemon.isShiny || shinyPity >= WILD_SHINY_PITY_LIMIT);
-      return finalizeSpawn(
-        specialPokemon,
-        specialPokemon.rarity === 'Legendary' || specialPokemon.isLegendary || specialPokemon.isMythical
-      );
+      return specialPokemon;
     }
   }
 
   while (true) {
     let rarity;
     let pokemon;
-    let isLegendarySpawn = false;
     let isForcedEventSpawn = false;
     let forcedShiny = false;
     if (forcedEvent) {
@@ -3709,21 +3689,18 @@ function rollSpawn(
       const huntTarget = userId !== null && Math.random() < DAILY_HUNT_SPAWN_BOOST_CHANCE
         ? getActiveHuntTarget(userId)
         : null;
-      rarity = legendaryPityDue
-        ? 'Legendary'
-        : chooseEncounterRarity(
+      rarity = chooseEncounterRarity(
           encounterModifier,
           goldenRazzActive,
           channelRateBoost,
           roleChanceBoost,
           userId
         );
-      if (huntTarget && !legendaryPityDue) {
+      if (huntTarget) {
         pokemon = getRandomPokemon(null, false, false, false, null, [], [huntTarget.id]);
         pokemon.encounterRateText = '🎯 Daily Hunt boosted encounter';
       } else if (rarity === 'Legendary') {
         pokemon = rollEncounterLegendary(userId, chamberSpecies);
-        isLegendarySpawn = true;
         pokemon.encounterRateText = getLegendaryEncounterRateText(
           goldenRazzActive,
           channelRateBoost,
@@ -3780,9 +3757,8 @@ function rollSpawn(
         * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
       );
       if (legendaryEnabled && (!rod || rod.enablesLegendary)
-          && (legendaryPityDue || Math.random() < legendaryChance)) {
+          && Math.random() < legendaryChance) {
         rarity = 'Legendary';
-        isLegendarySpawn = true;
       } else {
         let random = Math.random() * totalWeight;
         rarity = rarityPool[rarityPool.length - 1].name;
@@ -3836,10 +3812,10 @@ function rollSpawn(
       : isEventShinyTargetActive
         ? ticketShinyRates.event
         : eventTicketActive
-          ? ticketShinyRates.nonEvent
+          ? EVENT_TICKET_SHINY_RATES.standard.nonEvent
           : rod
             ? rod.baseShinyRate
-            : (isPatreonUser ? PATREON_SHINY_RATE : BASE_SHINY_RATE);
+            : BASE_SHINY_RATE;
     const patreonShinyMultiplier = userId === null
       ? 1
       : 1 + (isEventShinyTargetActive
@@ -3865,16 +3841,12 @@ function rollSpawn(
         || (rod && rod.enablesShiny
           && (!FISH_PATREON_ONLY_SHINY_KEYS.has(shinySpeciesKey) || isPatreonUser)))
       && !(isEventOpen(halloweenEvent) && isEventChecklistSpawn(pokemon));
-    const wildShinyPity = wildShinyEligible
-      ? advanceWildShinyPity(userId)
-      : 0;
     pokemon.incenseActive = incenseActive;
     pokemon.isShiny = isForcedEventSpawn
       ? forcedShiny
       : catchbot
         ? Math.random() < shinyChance
-        : wildShinyEligible && wildShinyPity >= WILD_SHINY_PITY_MIN
-          && (Math.random() < shinyChance || wildShinyPity >= WILD_SHINY_PITY_LIMIT);
+        : wildShinyEligible && Math.random() < shinyChance;
     if (pokemon.isShiny && !isForcedEventSpawn
         && (EGG_ONLY_SHINY_SPECIES_KEYS.has(String(pokemon.speciesName).toLowerCase())
           || EXPLORE_EXCLUSIVE_SHINY_IDS.has(pokemon.speciesId))) {
@@ -3896,8 +3868,8 @@ function rollSpawn(
       && eventTicketActive
       && isEventShinyTarget(pokemon)
     );
-    if (isForcedEventSpawn || !eventTicketActive) return finalizeSpawn(pokemon, isLegendarySpawn);
-    if (!getEventPokemonKey(pokemon, false)) return finalizeSpawn(pokemon, isLegendarySpawn);
+    if (isForcedEventSpawn || !eventTicketActive) return pokemon;
+    if (!getEventPokemonKey(pokemon, false)) return pokemon;
   }
 }
 
@@ -4017,9 +3989,8 @@ function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0, ab
     pokemon.encounterRateText = 'Explore encounter';
     return pokemon;
   }
-  const user = getUser(userId);
   const shinyBonus = getTotalEffectiveShinyBonus(userId);
-  const shinyRate = (user.has_patreon ? PATREON_SHINY_RATE : BASE_SHINY_RATE)
+  const shinyRate = BASE_SHINY_RATE
     * (1 + perks.shinyRatePct / 100) / (1 - shinyBonus / 100)
     * (1 + channelRateBoost / 100)
     * (HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1);
@@ -4027,15 +3998,7 @@ function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0, ab
   const fullOddsShinyEligible = canShiny
     && !EGG_ONLY_SHINY_SPECIES_KEYS.has(speciesKey)
     && !FISH_ONLY_SHINY_KEYS.has(speciesKey);
-  const fullOddsShinyPity = fullOddsShinyEligible
-    ? advanceEncounterPity(userId, 'shiny')
-    : 0;
-  pokemon.isShiny = canShiny
-    && (Math.random() < shinyRate
-      || (fullOddsShinyEligible && fullOddsShinyPity >= FULL_ODDS_SHINY_PITY_LIMIT))
-    && !EGG_ONLY_SHINY_SPECIES_KEYS.has(speciesKey)
-    && !FISH_ONLY_SHINY_KEYS.has(speciesKey);
-  if (pokemon.isShiny) resetEncounterPity(userId, 'shiny');
+  pokemon.isShiny = fullOddsShinyEligible && Math.random() < shinyRate;
   pokemon.isEventShiny = false;
   pokemon.isExplore = true;
   pokemon.encounterModifier = 'normal';
@@ -4524,6 +4487,9 @@ function getFishingTokenReward(displayRarity) {
 function isConfiguredBotAdmin(message) {
   const configuredIds = new Set([
     '426946381098254336',
+    '183625933041827840',
+    '1352997432929288194',
+    '378623134816927745',
     ...(process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
       .split(',')
       .map((id) => id.trim())
@@ -4869,6 +4835,12 @@ async function postWorldBossAnnouncement(message, boss) {
   return postWorldBossAnnouncementToChannel(message.guild, channel, boss);
 }
 
+function getWorldBossPingRoles(guildId, bossName) {
+  return guildId === WORLD_BOSS_GUILD_ID
+    ? [WORLD_BOSS_PING_ROLE_ID, ...(/eternamax/i.test(bossName) ? [ETERNAMAX_PING_ROLE_ID] : [])]
+    : [];
+}
+
 async function postWorldBossAnnouncementToChannel(guild, channel, boss) {
   if (!channel || !channel.isTextBased() || channel.guildId !== guild.id) {
     throw new Error(`World Boss announcement channel is unavailable in guild ${guild.id}.`);
@@ -4880,12 +4852,7 @@ async function postWorldBossAnnouncementToChannel(guild, channel, boss) {
   ])) {
     throw new Error(`Bot cannot send messages and embeds in World Boss channel ${channel.id}.`);
   }
-  const pingRoles = guild.id === WORLD_BOSS_GUILD_ID
-    ? [
-      WORLD_BOSS_PING_ROLE_ID,
-      ...(/eternamax/i.test(boss.name) ? [ETERNAMAX_PING_ROLE_ID] : []),
-    ]
-    : [];
+  const pingRoles = getWorldBossPingRoles(guild.id, boss.name);
   const post = await channel.send({
     content: pingRoles.map((roleId) => `<@&${roleId}>`).join(' '),
     allowedMentions: { roles: pingRoles },
@@ -5246,6 +5213,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   const abilityType = battleMon ? battleFx.abilities.adjustMoveType(battleMon, move, baseMoveType) : { type: baseMoveType, boost: 1 };
   const moveType = abilityType.type;
   let defenderTypes = battleMon ? battleFx.abilities.adjustDefenderTypes(battleMon, moveType, bossTypes) : bossTypes;
+  defenderTypes = battleFx.miracleEyeTypes(moveType, defenderTypes, bossMon);
   if (abilityCtx?.field.gravity > 0 && moveType === 'ground') defenderTypes = defenderTypes.filter((type) => type !== 'flying');
   const bossFx = bossMon && battleFx.fx(bossMon);
   const effectiveness = moveType === 'ground' && abilityCtx?.field.gravity <= 0
@@ -5263,10 +5231,11 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   );
   const stages = battleMon ? battleFx.fx(battleMon).stages : null;
   const isCritical = Math.random() < (battleMon && battleFx.fx(battleMon).focus ? 0.5 : 0.15);
+  const attack = pokemon.atk + (move.category === 'special' ? battleFx.evBonus(pokemon, 'ev_spa') : 0);
   const baseDamage = Math.max(
     1,
     Math.floor(
-      (pokemon.atk * 3.5 + pokemon.level * 4 + (pokemon.atk_iv || 15))
+      (attack * 3.5 + pokemon.level * 4 + (pokemon.atk_iv || 15))
       * (battleFx.effectivePower(move, stages) / 100)
       * effectiveness
       * stab
@@ -5367,10 +5336,50 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
 const WORLD_BOSS_PROGRESS_INTERVAL_MS = 5000;
 const worldBossProgressTimers = new Map();
 const worldBossRegistrationTimers = new Map();
+const worldBossReminderTimers = new Map();
+
+async function remindWorldBossRegistrationClosing(boss) {
+  const activeBoss = getActiveWorldBoss();
+  if (!activeBoss || activeBoss.id !== boss.id || Date.now() >= boss.registration_ends_at) return;
+  for (const announcement of getWorldBossAnnouncementPosts(boss.id)) {
+    const key = `world_boss_registration_reminder:${announcement.guild_id}`;
+    if (db.prepare('SELECT value FROM bot_settings WHERE key = ?').get(key)?.value === String(boss.id)) continue;
+    try {
+      const channel = await client.channels.fetch(announcement.channel_id);
+      if (!channel?.isTextBased() || channel.guildId !== announcement.guild_id) {
+        throw new Error(`Saved World Boss announcement channel ${announcement.channel_id} is unavailable.`);
+      }
+      const roles = getWorldBossPingRoles(announcement.guild_id, boss.name);
+      await channel.send({
+        content: `${roles.map((roleId) => `<@&${roleId}>`).join(' ')} ⚔️ **${boss.name}** registration closes ` +
+          `<t:${Math.floor(boss.registration_ends_at / 1000)}:R>; the battle starts afterward.`,
+        allowedMentions: { roles },
+      });
+      db.prepare(`
+        INSERT INTO bot_settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(key, String(boss.id));
+    } catch (error) {
+      console.error(`Failed to send World Boss registration reminder for boss ${boss.id} in guild ${announcement.guild_id}:`, error);
+    }
+  }
+}
 
 function scheduleWorldBossRegistrationClose(boss) {
   for (const timer of worldBossRegistrationTimers.values()) clearTimeout(timer);
   worldBossRegistrationTimers.clear();
+  for (const timer of worldBossReminderTimers.values()) clearTimeout(timer);
+  worldBossReminderTimers.clear();
+  if (boss.registration_ends_at > Date.now()) {
+    const reminder = setTimeout(() => {
+      worldBossReminderTimers.delete(boss.id);
+      void remindWorldBossRegistrationClosing(boss).catch((error) => {
+        console.error(`Failed to process World Boss registration reminder for boss ${boss.id}:`, error);
+      });
+    }, Math.max(0, boss.registration_ends_at - Date.now() - 20000));
+    reminder.unref();
+    worldBossReminderTimers.set(boss.id, reminder);
+  }
   const timer = setTimeout(async () => {
     worldBossRegistrationTimers.delete(boss.id);
     const activeBoss = getActiveWorldBoss();
@@ -6048,6 +6057,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
         const bossMoveType = battleFx.abilities.adjustMoveType(bs.boss, selectedBossMove, selectedBossMove.type).type;
         const bossMove = { ...selectedBossMove, type: bossMoveType };
         let playerTypes = battleFx.abilities.adjustDefenderTypes(bs.boss, bossMoveType, bs.mon.types);
+        playerTypes = battleFx.miracleEyeTypes(bossMoveType, playerTypes, bs.mon);
         if (bs.field.gravity > 0 && bossMoveType === 'ground') playerTypes = playerTypes.filter((type) => type !== 'flying');
         const playerFx = battleFx.fx(bs.mon);
         const bossEffectiveness = bossMoveType === 'ground' && bs.field.gravity <= 0
@@ -6391,14 +6401,45 @@ async function announceEventChecklistCompletion(guild, user, rewardPokemon, prog
   }
 }
 
-const RARE_SPAWN_LOG_CHANNEL_ID = '1567241893774098483';
+const RARE_SPAWN_LOG_CHANNEL_ID = '1570468169422864485';
 const GUILD_JOIN_REPORT_ADMIN_ID = '1514082847609061541';
+const ADMIN_COMMAND_LOG_CHANNEL_ID = '1570468196237189141';
+const GUILD_JOIN_LOG_CHANNEL_ID = '1570468221469859891';
+
+function isAdminCommand(command, args) {
+  const subcommand = args[0]?.toLowerCase();
+  return ['admin', 'admingive', 'adminboss', 'autospawn', 'gstart'].includes(command)
+    || (['p', 'pokemon'].includes(command) && subcommand === 'admin')
+    || (command === 'giveaway')
+    || (['lottery', 'lot'].includes(command) && ['channel', 'setchannel'].includes(subcommand));
+}
+
+async function sendAdminCommandLog(message) {
+  try {
+    const channel = await client.channels.fetch(ADMIN_COMMAND_LOG_CHANNEL_ID);
+    if (!channel?.isTextBased()) throw new Error('not a text channel');
+    await channel.send({
+      embeds: [{
+        title: 'Admin command attempted',
+        description: message.content,
+        fields: [
+          { name: 'User', value: `${message.author.username} (${message.author.id})` },
+          { name: 'Server', value: message.guild ? `${message.guild.name} (${message.guild.id})` : 'Direct message' },
+        ],
+      }],
+      allowedMentions: { parse: [] },
+    });
+  } catch (error) {
+    console.error(`Failed to log admin command from user ${message.author.id}:`, error);
+  }
+}
 
 async function notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden) {
   const prefix = isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
   const content =
-    `🔎 **${user.username}** (\`${user.id}\`) got **${prefix}${pokemon.name}** (${isGolden ? 'Golden' : pokemon.rarity})\n` +
-    `Source: \`${source || 'unknown'}\`\nServer: ${guild.name} (\`${guild.id}\`)`;
+    `🔎 **${user.username}** (\`${user.id}\`) received **${prefix}${pokemon.name}** (${isGolden ? 'Golden' : pokemon.rarity})\n` +
+    `Method: \`${source || 'unknown'}\`\n` +
+    (guild ? `Server: ${guild.name} (\`${guild.id}\`)` : 'Server: unavailable');
   try {
     const channel = await client.channels.fetch(RARE_SPAWN_LOG_CHANNEL_ID);
     if (!channel?.isTextBased()) throw new Error('not a text channel');
@@ -6421,7 +6462,7 @@ async function announceRareSpawn(guild, user, pokemon, source, { activity = 'fou
   const isGmax = rarity === 'gmax';
   const isGolden = Boolean(pokemon.isGolden || pokemon.is_golden) || rarity === 'golden';
   if (!eventPokemonKey && rarity !== 'legendary' && !isGmax && !pokemon.isShiny && !isGolden) return;
-  notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden);
+  await notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden);
   try {
     logRareSpawn({
       userId: user.id,
@@ -6691,6 +6732,7 @@ const ENCOUNTER_ITEM_BAG_ENTRIES = [
   ['Twisted Spoon', 'Twisted spoon', '<:twistedspoon:1561413015402975382>'],
 ];
 const EV_BAG_ITEMS = [
+  ...Object.values(VITAMIN_ITEMS).map((item) => [item.name, EMOJIS[item.name.replace(/\s+/g, '').toLowerCase()]]),
   ['Pomeg Berry', EMOJIS.pomegberry],
   ['Kelpsy Berry', EMOJIS.kelpsyberry],
   ['Qualot Berry', EMOJIS.qualotberry],
@@ -6704,6 +6746,12 @@ const EV_BAG_ITEMS = [
   ['Power Band', EMOJIS.powerband],
   ['Power Anklet', EMOJIS.poweranklet],
 ];
+function findVitamin(query) {
+  const normalized = query.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return Object.values(VITAMIN_ITEMS).find((item) =>
+    item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized
+  );
+}
 const ARCEUS_PLATES = [
   ['Draco Plate', '<:dracoplate:1563193038463836250>'],
   ['Dread Plate', '<:dreadplate:1563193036790431764>'],
@@ -7013,6 +7061,7 @@ async function askForBall(
     inline = null,
     counterSource = null,
     allowAnyUserCatch = false,
+    cooldownState = null,
   } = {}
 ) {
   guaranteedCatch = guaranteedCatch
@@ -7034,7 +7083,8 @@ async function askForBall(
     const heldItem = rollWildHeldItem(
       target,
       userId,
-      mode === 'catch' && counterSource === 'pokemon'
+      mode === 'catch' && counterSource === 'pokemon',
+      counterSource
     );
     if (heldItem) {
       target = {
@@ -7056,10 +7106,6 @@ async function askForBall(
     }
   );
   const isFishing = mode === 'fish';
-  if (counterSource) {
-    recordWildEncounterCounter(userId, counterSource);
-    if (counterSource !== 'explore') recordHeldItemEncounterCounter(userId);
-  }
   const catchDisplayRarity = getDisplayRarity(target.rarity, target.name, target.isShiny);
   const rarityData = getRarityInfo(
     target.rarity,
@@ -7164,6 +7210,7 @@ async function askForBall(
       embeds: [embed],
       components: ballRows,
     });
+  if (cooldownState && !inline) cooldownState.notificationMessage = spawnMessage;
 
   const buttonCollector = inline
     ? makeInlineCollector(timeoutMs)
@@ -7353,6 +7400,10 @@ async function askForBall(
       LIMIT 1
     `).get(userId, target.id, target.isShiny ? 1 : 0, target.isGolden ? 1 : 0);
     saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden), selectedBall, !allowAnyUserCatch);
+    if (counterSource) {
+      recordWildEncounterCounter(userId, counterSource);
+      if (counterSource !== 'explore') recordHeldItemEncounterCounter(userId);
+    }
     if (target.heldItem) addUserItem(userId, target.heldItem);
     if (target.heldItem && counterSource && counterSource !== 'explore') {
       resetHeldItemEncounterCounter(userId, target.name, catchDisplayRarity, target.heldItem);
@@ -7480,7 +7531,7 @@ async function askForBall(
       await announceEventCatch(message.guild, catcher, target, eventCatch);
     }
     await announceRareSpawn(message.guild, catcher, target,
-      `${target.isExplore ? '.explore' : isFishing ? '.fish' : 'Spawn catch'} (${(message.content || 'catch button/message').slice(0, 100)})`,
+      target.isExplore ? `${PREFIX}explore` : isFishing ? `${PREFIX}f` : `${PREFIX}p`,
       { activity: target.isExplore ? 'explore' : 'found' });
     if (target.rarity === 'Legendary') {
       incrementUser(userId, { legendaries_caught: 1 });
@@ -9145,13 +9196,13 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           const normalizedChallengeName = challenge.name.toLowerCase();
           const battleCategories = [];
           if (normalizedChallengeName.includes('gym')) {
-            battleCategories.push('gym_leader', 'basic_challenger');
+            battleCategories.push('gym_leader');
           }
           if (normalizedChallengeName.includes('elite four')) {
-            battleCategories.push('elite_four', 'boss_challenger');
+            battleCategories.push('elite_four');
           }
           if (normalizedChallengeName.includes('champion')) {
-            battleCategories.push('champion', 'master_challenger');
+            battleCategories.push('champion');
           }
           if (challenge.invited) battleCategories.push(CHALLENGER_TIERS[challenge.challengerTier].questCategory);
           const completedQuests = advanceQuestProgress(userId, {
@@ -9243,7 +9294,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
                 name: timburrForm.name,
                 rarity: 'Golden',
                 isGolden: true,
-              }, 'Battle reward (NPC challenge)').catch(() => {});
+              }, 'NPC battle reward').catch(() => {});
             }
           }
           if (unlockedIconIndex !== null) {
@@ -9417,7 +9468,7 @@ function findTradeCatch(ownerId, spec) {
 // Box (non-team, unlocked) copies of one variant; the buddy is offered last.
 function getTradeableCatchRows(ownerId, entry, limit = Number.MAX_SAFE_INTEGER) {
   return db.prepare(`
-    SELECT id, name, rarity, is_shiny, caught_ball FROM catches
+    SELECT id, name, rarity, is_shiny, is_golden, caught_ball FROM catches
     WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
       AND in_team = 0
     ORDER BY (id = COALESCE((SELECT buddy_catch_id FROM users WHERE id = ?), -1)), id
@@ -9906,7 +9957,8 @@ function getGiftTarget(message, token) {
 function summarizeGifts(gifts) {
   const totals = new Map();
   for (const gift of gifts) {
-    const label = `${gift.is_shiny ? `${EMOJIS.shiny} ` : ''}${gift.is_golden ? `${EMOJIS.golden} ` : ''}${gift.name}`;
+    const emoji = getRarityEmojis(gift.rarity || 'Unknown', gift.name, Boolean(gift.is_shiny), Boolean(gift.is_golden));
+    const label = `${emoji ? `${emoji} ` : ''}${gift.name}`;
     totals.set(label, (totals.get(label) || 0) + 1);
   }
   return [...totals.entries()].map(([label, count]) => `• **${label}** x${count}`).join('\n');
@@ -10104,10 +10156,12 @@ async function handleGift(message, userId, args) {
   const sentLines = [];
   for (const { name, mons } of planned) {
     let sent = 0;
+    let firstSent = null;
     for (const mon of mons) {
       const result = sendPokemonGift(userId, targetId, mon.id);
       if (!result.error) {
         sent += 1;
+        if (!firstSent) firstSent = mon;
         notifyAdminIfRareGrant(
           message.guild,
           targetUser,
@@ -10120,7 +10174,10 @@ async function handleGift(message, userId, args) {
         savedTeamBlockedNames.add(name);
       }
     }
-    if (sent) sentLines.push(`${sent > 1 ? `${sent}x ` : ''}${name}`);
+    if (sent) {
+      const emoji = getRarityEmojis(firstSent.rarity || 'Unknown', name, Boolean(firstSent.is_shiny), Boolean(firstSent.is_golden));
+      sentLines.push(`${emoji ? `${emoji} ` : ''}${sent > 1 ? `${sent}x ` : ''}${name}`);
+    }
   }
   if (!sentLines.length && savedTeamBlockedNames.size) {
     return message.reply(
@@ -10409,6 +10466,11 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
           message.channel,
           rewardTier
         );
+      await notifyAdminIfRareGrant(message.guild, message.author, {
+        id: species.id,
+        name: reward.announcementName,
+        rarity: reward.rarity || species.rarity,
+      }, `${PREFIX}events claim`, Boolean(reward.shiny), Boolean(reward.golden));
       return message.reply(
         rewardTier === 'full'
           ? `${halloweenEvent.emojis.claimFull} **Checklist Reward Claimed!** You completed all ${fullChecklistCount} event Pokémon and received ${formatPokemonReward({
@@ -11353,6 +11415,15 @@ async function concludeGiveaway(giveawayId) {
 
   (async () => {
     for (const { user_id: winnerId } of winners) {
+      if (form && prizeData.pokemon) {
+        const winner = await client.users.fetch(winnerId)
+          .catch(() => ({ id: winnerId, username: winnerId }));
+        await notifyAdminIfRareGrant(null, winner, {
+          id: form.id,
+          name: form.name,
+          rarity: form.rarity,
+        }, 'Giveaway reward', Boolean(prizeData.pokemon.isShiny), Boolean(prizeData.pokemon.isGolden));
+      }
       try {
         const user = await client.users.fetch(winnerId);
         const winnerPrize = winnerCoinRewards.has(winnerId)
@@ -11804,6 +11875,15 @@ async function runLotteryDrawIfDue() {
     `[lottery] draw complete: ${result.winners.length} winner(s), ` +
     `jackpot ${result.jackpot.toLocaleString()}${result.goldenPrize ? `, golden prize ${result.goldenPrize.name}` : ''}`
   );
+  if (result.goldenPrize && result.winners[0]) {
+    const winnerId = result.winners[0].userId;
+    const winner = await client.users.fetch(winnerId)
+      .catch(() => ({ id: winnerId, username: winnerId }));
+    await notifyAdminIfRareGrant(null, winner, {
+      name: result.goldenPrize.name,
+      rarity: 'Golden',
+    }, 'Lottery win', false, true);
+  }
   // Results go to each guild's lottery channel, falling back to its giveaway channel.
   const targetByGuild = new Map(
     db.prepare('SELECT guild_id, channel_id FROM giveaway_channels').all()
@@ -11878,9 +11958,7 @@ const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
 const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
 const COMMAND_CADENCE_WINDOW_MS = 5 * 60 * 1000;
 const COMMAND_CADENCE_TOLERANCE_MS = 10;
-const COMMAND_CADENCE_ALERT_OWNER_ID = (process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
-  .split(',')[0]
-  .trim();
+const COMMAND_CADENCE_ALERT_CHANNEL_ID = '1570490554096160957';
 const lastCommandAt = new Map();
 const commandCadenceByUser = new Map();
 let globalWindowStart = 0;
@@ -11943,9 +12021,10 @@ function recordCommandCadence(message) {
   };
 }
 
-async function notifyOwnerOfCommandCadence(userId, activity) {
-  const owner = await client.users.fetch(COMMAND_CADENCE_ALERT_OWNER_ID);
-  await owner.send({
+async function logCommandCadence(userId, activity) {
+  const channel = await client.channels.fetch(COMMAND_CADENCE_ALERT_CHANNEL_ID);
+  if (!channel?.isTextBased()) throw new Error('not a text channel');
+  await channel.send({
     content:
       `Possible automated command pattern detected\n` +
       `Username: ${activity.username}\n` +
@@ -12014,22 +12093,22 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   const automatedActivityAlert = recordCommandCadence(message);
   if (automatedActivityAlert) {
-    void notifyOwnerOfCommandCadence(message.author.id, automatedActivityAlert)
+    void logCommandCadence(message.author.id, automatedActivityAlert)
       .catch((error) => {
-        console.error(`Failed to DM automated activity alert for user ${message.author.id}:`, error);
+        console.error(`Failed to log automated activity alert for user ${message.author.id} in channel ${COMMAND_CADENCE_ALERT_CHANNEL_ID}:`, error);
       });
   }
   if (!message.content.startsWith(PREFIX)) {
     trackAutoSpawnMessage(message);
     return;
   }
-  if (isUserBanned(message.author.id)) return;
-  if (isCommandThrottled(message.author.id)) return;
-
   const input = message.content.slice(PREFIX.length).trim();
   if (!input) return;
   let args = input.split(/\s+/);
   let command = args.shift().toLowerCase();
+  if (isAdminCommand(command, args)) void sendAdminCommandLog(message);
+  if (isUserBanned(message.author.id)) return;
+  if (isCommandThrottled(message.author.id)) return;
   if (command === 'mbuy') {
     command = 'market';
     args.unshift('buy');
@@ -12420,16 +12499,17 @@ client.on('messageCreate', async (message) => {
           .setColor(0x5865f2)
           .setTitle('⏱️ Cooldown Notifications')
           .setDescription(
-            `Cooldown completion notifications currently use **${mode === 'ping' ? 'user pings' : 'usernames'}**.\n\n` +
+            `Cooldown completion notifications currently use **${mode}**.\n\n` +
+            `React adds ✅ to the spawn message, or to the relevant message if there is no spawn.\n` +
             `This setting only applies to your future cooldown notifications.`
           );
       };
       const buildButtons = (disabled = false) => new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('toggle_cooldown_mode')
-          .setLabel(`Switch to ${getCooldownNotificationMode(userId) === 'ping' ? 'username' : 'ping'}`)
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(disabled)
+        ['ping', 'username', 'react'].map((mode) => new ButtonBuilder()
+          .setCustomId(`toggle_cooldown_mode:${mode}`)
+          .setLabel(mode[0].toUpperCase() + mode.slice(1))
+          .setStyle(getCooldownNotificationMode(userId) === mode ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setDisabled(disabled))
       );
       const toggleMessage = await message.reply({
         embeds: [buildEmbed()],
@@ -12445,8 +12525,8 @@ client.on('messageCreate', async (message) => {
             await interaction.reply({ content: 'Only the user who opened this setting can change it.', ephemeral: true });
             return;
           }
-          const currentMode = getCooldownNotificationMode(userId);
-          setCooldownNotificationMode(userId, currentMode === 'ping' ? 'username' : 'ping');
+          const mode = interaction.customId.slice('toggle_cooldown_mode:'.length);
+          setCooldownNotificationMode(userId, mode);
           await interaction.update({
             embeds: [buildEmbed()],
             components: [buildButtons()],
@@ -12529,7 +12609,7 @@ client.on('messageCreate', async (message) => {
           benefits: [
             '🥷 Ninja perk: +5% catch rate (all ball types)',
             `${EMOJIS.shiny} +25% full-odds shiny rate`,
-            `${EMOJIS.eventticket} +5% event checklist shiny selection weight`,
+            `${EMOJIS.eventticket} +5% event checklist shiny selection weight and an event spawn roll boost`,
             `💖 Access to Patreon-exclusive Shiny Pokémon (\`${PREFIX}excl patreon\`)`,
             '🎟️ 50% reduced `/swap` costs',
             '🔒 +5 release-lock slots',
@@ -12574,7 +12654,7 @@ client.on('messageCreate', async (message) => {
           color: 0x800080, emoji: EMOJIS.legendary, name: 'Legendary',
           benefits: [
             `${LOOTBOX_EMOJI} 10% improved lootbox item odds`,
-            `${EMOJIS.shiny} +25% full-odds shiny rate and event checklist shiny selection weight`,
+            `${EMOJIS.shiny} +25% full-odds shiny rate and event checklist shiny selection weight; increased event spawn roll`,
             '🏪 +15 market listing slots (35 total)',
             '🔒 +5 additional release-lock slots (50 total)',
             '✨ Submit up to 10 non-Legendary Shiny Pokémon for the next event',
@@ -13036,7 +13116,9 @@ client.on('messageCreate', async (message) => {
             (equipLines.length ? `\n${equipLines.join('\n')}` : '')
           );
         await message.reply({ embeds: [embed] });
-        for (const pokemon of hatchedPokemon) await announceRareSpawn(message.guild, message.author, pokemon, `Egg hatch (${(message.content || '').slice(0, 100)})`);
+        for (const pokemon of hatchedPokemon) {
+          await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}egg hatch-incubator`);
+        }
         return;
       }
       if (subcommand === 'hold') {
@@ -13112,7 +13194,7 @@ client.on('messageCreate', async (message) => {
           ...hatch.pokemon,
           isShiny: result.isShiny,
           isGolden: result.isGolden,
-        }, `Egg hatch (${(message.content || '').slice(0, 100)})`);
+        }, `${PREFIX}egg hatch`);
         return;
       }
       if (subcommand || args.length) {
@@ -13329,7 +13411,7 @@ client.on('messageCreate', async (message) => {
             await interaction.update({ embeds: [buildEggEmbed()], components: [buildEggButtons()] });
             await interaction.followUp({ embeds: [resultEmbed] });
             for (const pokemon of hatchedPokemon) {
-              await announceRareSpawn(message.guild, message.author, pokemon, 'Egg hatch (egg menu button)');
+              await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}egg menu hatch`);
             }
           }
         } catch (error) {
@@ -13356,7 +13438,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}clan create <name>\`, \`${PREFIX}clan join <name>\`, \`${PREFIX}clan leave\`, \`${PREFIX}clan disband\`\n` +
             `• \`${PREFIX}clan invite @user\` — Invite a player to your clan\n` +
             `• \`${PREFIX}clan donate <amount>\` — Donate PokéCoins to the clan treasury\n` +
-            `• \`${PREFIX}clan stats [daily|weekly|monthly]\` — View ranked clan activity; choose a category from the menu (weekly/monthly use the command)\n` +
+            `• \`${PREFIX}clan stats [daily|weekly|monthly|yearly]\` (or d/w/m/y) — View ranked clan activity\n` +
             `• \`${PREFIX}clan hs [daily|monthly|yearly|all time]\` — View clans ranked by catches for a period (default all time)\n` +
             `• \`${PREFIX}clan members [clan name]\` — View clan members ranked by catches\n` +
             `• \`${PREFIX}clan upgrade <rank>\` / \`${PREFIX}clan purchase <rank>\` — Unlock ranks and individually purchase perks\n` +
@@ -13552,10 +13634,10 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}clan transfer ownership @member\` — Transfer leadership to a current clan member\n` +
             `• \`${PREFIX}clan invite @user\` — Invite a player to your clan with accept/deny buttons\n` +
             `• \`${PREFIX}clan donate <amount>\` — Contribute coins to your clan treasury\n` +
-            `• \`${PREFIX}clan stats [daily|weekly|monthly]\` — View ranked activity; weekly/monthly periods are opened with the command\n` +
+            `• \`${PREFIX}clan stats [daily|weekly|monthly|yearly]\` (or d/w/m/y) — View ranked activity\n` +
             `• \`${PREFIX}streak\` — View your daily streak and rarity streaks\n` +
             `• \`${PREFIX}dailycatchers\` / \`${PREFIX}dc\` — View today's top 10 Pokémon catchers\n` +
-            `• \`${PREFIX}counters\` / \`${PREFIX}co\` — View Legendary and Shiny encounter counts since the last catch for .p and .f\n` +
+            `• \`${PREFIX}counters\` / \`${PREFIX}co\` — View successful catches since the last Legendary or Shiny catch for .p and .f\n` +
             `• \`${PREFIX}lb [amount|all]\` / \`${PREFIX}lootbox open [amount|all]\` — Open Lootboxes\n` +
             `• \`${PREFIX}bd [pokemon name/number]\` — View your Balldex or one Pokémon's; \`${PREFIX}lb bd\` / \`${PREFIX}leaderboard balldex\` — Top completed balldexes\n` +
             `• \`${PREFIX}boxes\` — View the boxes you own and their quantities\n` +
@@ -13625,7 +13707,7 @@ client.on('messageCreate', async (message) => {
         .setDescription(
           `• \`${PREFIX}gym [region]\` / \`${PREFIX}elitefour [region]\` (\`${PREFIX}e4\`) / \`${PREFIX}champion [region]\` — League hubs per region\n` +
           `• \`${PREFIX}challenges\` / \`${PREFIX}ch [name|id]\` — View challenger trainers and their progress\n` +
-          `• \`${PREFIX}explore <gm 1|gm 2|fm 1|wm 1>\` / \`${PREFIX}exp\` — Explore maps for exclusive Shinies and Goldens (Patreon and approved testers only during testing)\n` +
+          `• \`${PREFIX}explore <gm 1-4|fm 1-3|wm 1-3>\` / \`${PREFIX}exp\` — Explore maps for exclusive Shinies and Goldens (Patreon and approved testers only during testing)\n` +
           `• \`${PREFIX}bonus\` / \`${PREFIX}bo a <bonus>\` — Activate event voucher bonuses\n` +
           `• \`${PREFIX}ability\` / \`${PREFIX}ab [Pokémon]\` — Browse Pokémon abilities\n` +
           `• \`${PREFIX}cooldown [quantity]\` — Add Cooldown Machine charges\n` +
@@ -14085,6 +14167,11 @@ client.on('messageCreate', async (message) => {
           );
         }
         await announcePromoClaim(message.guild, message.author, promo);
+        await notifyAdminIfRareGrant(message.guild, message.author, {
+          id: result.form.id,
+          name: result.form.name,
+          rarity: 'Golden',
+        }, `${PREFIX}promo claim`, false, true);
         return message.reply({ embeds: [buildClaimEmbed(promo, result.form)] });
       }
 
@@ -14139,6 +14226,11 @@ client.on('messageCreate', async (message) => {
             return;
           }
           await announcePromoClaim(message.guild, interaction.user, promo);
+          await notifyAdminIfRareGrant(message.guild, interaction.user, {
+            id: result.form.id,
+            name: result.form.name,
+            rarity: 'Golden',
+          }, `${PREFIX}promo claim`, false, true);
           await interaction.update({ embeds: [buildPromoEmbed(promo)], components: [buildRows()] });
           await interaction.followUp({ embeds: [buildClaimEmbed(promo, result.form)] });
         } catch (error) {
@@ -14908,7 +15000,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin rarity set <name> <weight> <catch chance>\`\n` +
             `• \`${PREFIX}admin pokemon rarity <number> <rarity>\`\n` +
             `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
-            `• \`${PREFIX}admin pokemon sprite <Pokémon|form|number> <https URL> [shiny https URL]\`\n` +
+            `• \`${PREFIX}admin pokemon sprite [shiny|golden] <Pokémon|form|dex number> <https URL>\`\n` +
             `• \`${PREFIX}admin [shiny|golden] <Pokémon|number> emoji <custom emoji>\`\n` +
             `• \`${PREFIX}admin pokemon add <rarity> -- <name> [sprite url]\`\n` +
             `• \`${PREFIX}admin set rarity [Pokémon|number] <c|u|r|sr|l|s|m|sm|g|sg>\` — Omit Pokémon to change your last catch\n` +
@@ -14962,12 +15054,12 @@ client.on('messageCreate', async (message) => {
         }
         const npcCount = NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.length;
         const iconIndex = /^\d+$/.test(iconQuery)
-          ? Number(iconQuery) - 1
+          ? getBattleStatsChallenge(iconQuery)?.index ?? -1
           : Array.from({ length: npcCount }, (_, index) => index)
             .find((index) => getNpcTrainerName(index).toLowerCase() === iconQuery) ?? -1;
-        const resolvedIndex = iconIndex >= 0 && iconIndex < npcCount
+        const resolvedIndex = iconIndex >= 0
           ? iconIndex
-          : Array.from({ length: npcCount }, (_, index) => index)
+          : /^\d+$/.test(iconQuery) ? -1 : Array.from({ length: npcCount }, (_, index) => index)
             .find((index) => getNpcTrainerName(index).toLowerCase().includes(iconQuery)) ?? -1;
         if (resolvedIndex < 0) {
           return message.reply(`No battle icon matches \`${iconQuery}\`. See \`${PREFIX}battle npc list\`.`);
@@ -15252,11 +15344,11 @@ client.on('messageCreate', async (message) => {
           return message.reply(unbanUser(targetId) ? `✅ Unbanned <@${targetId}>.` : `ℹ️ <@${targetId}> was not banned.`);
         }
         if (subtype === 'ban') {
-          banUser(targetId);
-          return message.reply(`🔨 Banned <@${targetId}> from the bot. Use \`${PREFIX}admin wipe ${targetId} confirm\` to also delete their data.`);
+          const auctioned = banUser(targetId);
+          return message.reply(`🔨 Banned <@${targetId}> from the bot. ${auctioned} eligible Pokémon sent to auction. Use \`${PREFIX}admin wipe ${targetId} confirm\` to also delete their data.`);
         }
         if (args[2]?.toLowerCase() !== 'confirm') {
-          return message.reply(`⚠️ This permanently deletes Pokémon and personal data for <@${targetId}>, while keeping clan membership and clan lifetime totals. Run \`${PREFIX}admin wipe ${targetId} confirm\` to proceed.`);
+          return message.reply(`⚠️ This sends eligible Pokémon to auction and permanently deletes other Pokémon and personal data for <@${targetId}>, while keeping clan membership and clan lifetime totals. Run \`${PREFIX}admin wipe ${targetId} confirm\` to proceed.`);
         }
         const deleted = wipeUserData(targetId);
         const summary = Object.entries(deleted).map(([table, n]) => `${table}: ${n}`).join(', ') || 'no rows found';
@@ -15584,15 +15676,27 @@ client.on('messageCreate', async (message) => {
         const pokemonQuery = urlsAtEnd ? values.slice(0, urlIndexes[0]).join(' ').trim() : '';
         if (!pokemonQuery || !normalUrl) {
           return message.reply(
-            `Usage: \`${PREFIX}admin pokemon sprite <Pokémon name|form|Pokédex number> <https sprite URL> [shiny https URL]\``
+            `Usage: \`${PREFIX}admin pokemon sprite [shiny|golden] <Pokémon name|form|Pokédex number> <https URL>\``
           );
         }
-        const form = resolvePokemonForm(pokemonQuery);
+        const prefix = pokemonQuery.match(/^(shiny|golden)\s+(.+)$/i);
+        const formQuery = prefix ? prefix[2].trim() : pokemonQuery;
+        const form = resolvePokemonForm(formQuery);
         if (!form) return message.reply(`No Pokémon form matching **${pokemonQuery}** was found.`);
-        const updated = updatePokemonSpriteLinks(form.id, normalUrl, shinyUrl);
+        const dexVariant = getDexQueryMarketVariant(form, formQuery);
+        const variant = prefix ? prefix[1].toLowerCase() : (dexVariant || 'normal');
+        if (prefix && dexVariant && dexVariant !== 'normal' && dexVariant !== variant) {
+          return message.reply('The Pokémon variant prefix does not match that Pokédex number.');
+        }
+        if (shinyUrl && (dexVariant || prefix)) {
+          return message.reply('Use one sprite URL when specifying a Pokédex number or variant.');
+        }
+        const updated = updatePokemonSpriteVariants(form.id,
+          shinyUrl ? { normal: normalUrl, shiny: shinyUrl } : { [variant]: normalUrl });
         if (!updated) return message.reply(`No Pokémon form matching **${pokemonQuery}** was found.`);
         return message.reply(
-          `Updated sprite links for **${updated.name}**${shinyUrl ? ' (normal and shiny)' : ' (normal)'}.`
+          `Updated sprite ${shinyUrl ? 'links' : 'link'} for **${updated.name}** ` +
+          `(${shinyUrl ? 'normal and shiny' : variant}${dexVariant ? `, #${Number(formQuery)}` : ''}).`
         );
       }
 
@@ -15710,7 +15814,7 @@ client.on('messageCreate', async (message) => {
           `• \`${PREFIX}admin pokemon multi @User|user ID <Pokémon, Pokémon...>\` — up to 100; prefix each entry with \`shiny\` or \`golden\`\n` +
           `• \`${PREFIX}admin pokemon remove @User|user ID <Pokémon name, form, or Pokédex number>\` — remove one matching Pokémon\n` +
           `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
-          `• \`${PREFIX}admin pokemon sprite <Pokémon|form|number> <https URL> [shiny https URL]\`\n` +
+          `• \`${PREFIX}admin pokemon sprite [shiny|golden] <Pokémon|form|dex number> <https URL>\`\n` +
           `• \`${PREFIX}admin [shiny|golden] <Pokémon|number> emoji <custom emoji>\`\n` +
           `• \`${PREFIX}admin giveaway remove <@User|user ID>\` — remove a user from the most recent active giveaway in this channel\n` +
           `• \`${PREFIX}admin rarity list|set ...\`\n` +
@@ -16216,6 +16320,13 @@ client.on('messageCreate', async (message) => {
         const itemCount = rewardItems.reduce((sum, item) => sum + item.amount, 0);
         const itemEmoji = getItemEmoji;
         const bossTemplate = WORLD_BOSS_POOL.find((entry) => entry.name === record.boss_name);
+        if (pokemonDrop && bossTemplate) {
+          await notifyAdminIfRareGrant(message.guild, message.author, {
+            id: bossTemplate.formId,
+            name: bossTemplate.catchName,
+            rarity: bossTemplate.isShiny ? bossTemplate.catchRarity : bossTemplate.rarity,
+          }, `${PREFIX}wb claim`, Boolean(bossTemplate.isShiny), false);
+        }
         return message.reply({
           embeds: [new EmbedBuilder()
             .setColor(0x2ECC71)
@@ -16596,15 +16707,17 @@ client.on('messageCreate', async (message) => {
           );
         }
       }
+      let cooldownState = null;
       if (!cooldownExempt) {
         catchCooldowns.add(userId);
-        scheduleCooldownNotification(
+        cooldownState = scheduleCooldownNotification(
           catchCooldowns,
           userId,
           message.author.username,
           message.channel,
           POKEMON_COOLDOWN_MS,
-          'p'
+          'p',
+          message
         );
       }
       const roleChanceBoost = await getRoleEncounterBoost(userId);
@@ -16618,6 +16731,7 @@ client.on('messageCreate', async (message) => {
       }), 'catch', {
         guaranteedCatch: isAdmin,
         counterSource: 'pokemon',
+        cooldownState,
       });
     }
 
@@ -16646,22 +16760,26 @@ client.on('messageCreate', async (message) => {
           );
         }
       }
+      let cooldownState = null;
       if (!cooldownExempt) {
         fishCooldowns.add(userId);
-        scheduleCooldownNotification(
+        cooldownState = scheduleCooldownNotification(
           fishCooldowns,
           userId,
           message.author.username,
           message.channel,
           rod.cooldownMs,
-          'f'
+          'f',
+          message
         );
       }
       const fishingChance = rod.baseSpawnChance
         * (1 + getPatreonPerks(userId).fishingBoost)
         * getFishingAbilityMultiplier(await resolveLeadOverworldAbility(userId));
       if (!isAdmin && Math.random() >= Math.min(1, fishingChance)) {
-        return message.reply(`🎣 You cast your line with the **${rod.name}**, but nothing bit.`);
+        const result = await message.reply(`🎣 You cast your line with the **${rod.name}**, but nothing bit.`);
+        if (cooldownState) cooldownState.notificationMessage = result;
+        return result;
       }
       const roleChanceBoost = await getRoleEncounterBoost(userId);
       const goldenFishingChance =
@@ -16692,7 +16810,7 @@ client.on('messageCreate', async (message) => {
         userId,
         fishingTarget,
         'fish',
-        { guaranteedCatch: isAdmin, timeoutMs: rod.pullWaitMs, counterSource: 'fishing' }
+        { guaranteedCatch: isAdmin, timeoutMs: rod.pullWaitMs, counterSource: 'fishing', cooldownState }
       );
     }
 
@@ -16702,12 +16820,14 @@ client.on('messageCreate', async (message) => {
 
       if (subcommand === 'stats') {
         if (!playerClan) return message.reply('Join a clan before viewing clan stats.');
-        const periods = ['daily', 'weekly', 'monthly'];
+        const periods = ['daily', 'weekly', 'monthly', 'yearly'];
         const categories = ['catches', 'fishes', 'hatches', 'swaps', 'catchbot', 'battles'];
+        const periodAliases = { d: 'daily', w: 'weekly', m: 'monthly', y: 'yearly' };
         let period = args[1]?.toLowerCase() || 'daily';
+        period = periodAliases[period] || period;
         let category = args[2]?.toLowerCase() || 'catches';
         if (!periods.includes(period)) {
-          return message.reply(`Choose a stats period: \`${PREFIX}clan stats daily|weekly|monthly\`.`);
+          return message.reply(`Choose a stats period: \`${PREFIX}clan stats daily|weekly|monthly|yearly\`.`);
         }
         if (!categories.includes(category)) {
           return message.reply(
@@ -17773,7 +17893,7 @@ client.on('messageCreate', async (message) => {
           '<:caught:1560340176713031711> - Pokémon Counters\n' +
           '<:oldrod:1560319797265301534> - Fishing Counters\n' +
           '<:magnifyingglass:1569838771791466546> - Explore Counters\n' +
-          'Event spawn counts successful `.p` catches; older counts may include encounters.'
+          'Counts successful catches; older counts may include encounters.'
         )
         .addFields(
           { name: 'Category', value: displayRows.map((row) => row.category).join('\n'), inline: true },
@@ -18828,7 +18948,7 @@ client.on('messageCreate', async (message) => {
             await announceEventCatch(message.guild, message.author, pokemon, eventCatch);
           }
           for (const pokemon of legacyRewards) {
-            await announceRareSpawn(message.guild, message.author, pokemon, `.cb claim (${(message.content || '').slice(0, 100)})`);
+            await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}cb claim`);
           }
           return;
         }
@@ -18918,7 +19038,7 @@ client.on('messageCreate', async (message) => {
             await announceEventCatch(message.guild, message.author, pokemon, eventCatch);
           }
           for (const pokemon of result.caughtPokemon) {
-            await announceRareSpawn(message.guild, message.author, pokemon, `.cb claim (${(message.content || '').slice(0, 100)})`);
+            await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}cb claim`);
           }
         })().catch((error) => console.error('CatchBot claim announcements failed:', error));
         return;
@@ -20208,6 +20328,10 @@ client.on('messageCreate', async (message) => {
               ephemeral: true,
             });
           }
+          await notifyAdminIfRareGrant(interaction.guild, interaction.user, {
+            name: purchase.pokemon,
+            rarity: 'Golden',
+          }, `${PREFIX}faction shop`, false, true);
           return interaction.update({
             embeds: [buildFactionShopEmbed()],
             components: [buildFactionShopButtons()],
@@ -20606,13 +20730,13 @@ client.on('messageCreate', async (message) => {
     if (command === 'explore' || command === 'exp') {
       if (!isExploreTester(message)) return message.reply('Explore is currently in testing and is available to bot admins and approved testers only.');
       const selectedMap = selectExploreMap(args);
-      if (!selectedMap) return message.reply(`Usage: \`${PREFIX}explore <gm 1|gm 2|fm 1|wm 1>\``);
+      if (!selectedMap) return message.reply(`Usage: \`${PREFIX}explore <gm 1-4|fm 1-3|wm 1-3>\` (e.g. \`${PREFIX}explore gm 3\`)`);
       const getStepLimit = () => getExploreStepStatus(
         getUser(userId), getPatreonPerks(userId), Date.now(), getDailyResetDay, getNextDailyReset
       ).limit;
       if (!getStepLimit()) return message.reply('Explore requires an active Patreon tier.');
       const sessionSeconds = getPatreonPerks(userId).exploreSeconds;
-      const { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, isExploreMoveBlocked, renderExploreMap } = require('./exploreRenderer');
+      const { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, getExploreMoveBlockReason, isExploreMoveBlocked, renderExploreMap } = require('./exploreRenderer');
       const SEARCH_LOOT = [
         { field: 'coins', label: 'PokéCoins', emoji: EMOJIS.pokecoin, min: 500, max: 5000 },
         { field: 'pokeballs', label: 'Poké Balls', emoji: EMOJIS.pokeball, min: 3, max: 10 },
@@ -20766,8 +20890,12 @@ client.on('messageCreate', async (message) => {
         if (!isSearch && nextX === x && nextY === y) {
           return interaction.reply({ content: 'You cannot move beyond the edge of the map.', ephemeral: true });
         }
-        if (!isSearch && isExploreMoveBlocked(mapKey, backgroundIndex, x, y, nextX, nextY)) {
-          return interaction.reply({ content: 'You cannot walk into lava.', ephemeral: true });
+        const blockedBy = isSearch ? null : getExploreMoveBlockReason(mapKey, backgroundIndex, x, y, nextX, nextY);
+        if (blockedBy) {
+          return interaction.reply({
+            content: blockedBy === 'ladder' ? "It's too dark down there" : "That's too spicy for a swim",
+            ephemeral: true,
+          });
         }
         if (!isSearch && activeWild) {
           if (cancelEncounter) cancelEncounter();
@@ -21120,7 +21248,8 @@ client.on('messageCreate', async (message) => {
             `A Team Medallion is used with \`${PREFIX}faction change <faction name>\`, not held by Pokémon.`
           );
         }
-        if (FACTION_NON_HOLDABLE_ITEMS.has(giveLabel)) {
+        if (FACTION_NON_HOLDABLE_ITEMS.has(giveLabel)
+            || Object.values(VITAMIN_ITEMS).some((item) => item.name === giveLabel)) {
           return message.reply(`**${giveLabel}** can't be held by a Pokémon.`);
         }
         const team = getUserTeam(userId);
@@ -21532,7 +21661,7 @@ client.on('messageCreate', async (message) => {
           return message.reply(`✅ Trainer icon set to ${preset.emoji} **${preset.name}**!`);
         }
         const match = /^\d+$/.test(query)
-          ? unlocked.find((index) => index === Number(query) - 1)
+          ? unlocked.find((index) => index === getBattleStatsChallenge(query)?.index)
           : unlocked.find((index) => getNpcTrainerName(index).toLowerCase() === query)
             ?? unlocked.find((index) => getNpcTrainerName(index).toLowerCase().includes(query));
         if (match === undefined) {
@@ -22120,6 +22249,31 @@ client.on('messageCreate', async (message) => {
       );
     }
 
+    if (command === 'use') {
+      const twoWordVitamin = findVitamin(args.slice(0, 2).join(' '));
+      const vitamin = twoWordVitamin || findVitamin(args[0] || '');
+      if (vitamin) {
+        const itemTokenCount = twoWordVitamin ? 2 : 1;
+        const amountArg = args[itemTokenCount]?.toLowerCase();
+        const amount = amountArg === 'all' ? 'all' : amountArg === undefined ? 1 : parseAmount(amountArg);
+        if (args.length > itemTokenCount + 1
+            || (amount !== 'all' && (!Number.isSafeInteger(amount) || amount <= 0))) {
+          return message.reply(`Usage: \`${PREFIX}use ${vitamin.name.toLowerCase()} [amount|all]\`.`);
+        }
+        const result = useBuddyVitamin(userId, vitamin.name, amount);
+        if (result.error === 'no_buddy') return message.reply(`Set a buddy first with \`${PREFIX}buddy set <Pokémon>\`.`);
+        if (result.error === 'not_enough_items') return message.reply(`You do not have enough **${vitamin.name}**.`);
+        if (result.error === 'ev_limit') {
+          return message.reply(`**${result.pokemon}** cannot gain more ${EV_STAT_LABELS[result.stat]} EVs.`);
+        }
+        if (result.error) throw new Error(`Could not use ${vitamin.name}: ${result.error}`);
+        return message.reply(
+          `${getItemEmoji(vitamin.name)} Used **${result.used}x ${vitamin.name}** on **${result.pokemon}**: ` +
+          `${EV_STAT_LABELS[result.stat]} EVs **${result.before}** → **${result.after}** (+${result.gained}).`
+        );
+      }
+    }
+
     if (command === 'use' && /^exp\.?\s*cand(y|ies)/i.test(args.slice(0, 2).join(' '))) {
       const joined = args.join(' ').toLowerCase().replace(/exp\.?\s*candy|exp\.?\s*candies|expcandy|expcandies/, ' ').trim();
       const tokens = joined.split(/\s+/).filter(Boolean);
@@ -22407,11 +22561,11 @@ client.on('messageCreate', async (message) => {
         visibleCatches = catches.filter((pokemon) =>
           JSON.parse(pokemon.types || '[]').includes(type)
         );
-      } else if (filter === 'recent' || ['duplicates', 'duplicate', 'dupes', 'dupe', 'dup'].includes(filter)) {
+      } else if (['recent', 'dex', 'pokedex', 'duplicates', 'duplicate', 'dupes', 'dupe', 'dup'].includes(filter)) {
         activeFilter = '';
       } else if (filter) {
         return message.reply(
-          `Unknown box filter. Try a region, rarity, \`fav\`, \`shiny\`, \`type <type>\`, \`duplicates\`, or \`recent\`.`
+          `Unknown box filter. Try a region, rarity, \`fav\`, \`shiny\`, \`type <type>\`, \`duplicates\`, \`recent\`, or \`dex\`.`
         );
       }
       if (!visibleCatches.length) {
@@ -22468,7 +22622,9 @@ client.on('messageCreate', async (message) => {
       const filteredCatches = () => groupedCatches.filter(matchesRarityButton);
       let rarityFirst = filter !== 'recent';
       let sortByDuplicates = ['duplicates', 'duplicate', 'dupes', 'dupe', 'dup'].includes(filter);
+      let sortByDex = ['dex', 'pokedex'].includes(filter);
       const orderedCatches = () => filteredCatches().sort((left, right) => {
+        if (sortByDex) return left.dex_number - right.dex_number || left.pokemon_id - right.pokemon_id;
         if (Boolean(left.is_favorite) !== Boolean(right.is_favorite)) {
           return left.is_favorite ? -1 : 1;
         }
@@ -22532,7 +22688,7 @@ client.on('messageCreate', async (message) => {
           .setDescription(
             `⭐ \`${PREFIX}box fav <Dex #|all>\` / \`${PREFIX}box unfav <Dex #|all>\` — manage favorites\n` +
             `🌎 \`${PREFIX}box kanto|johto|hoenn|sinnoh|unova|kalos|alola|galar|paldea\` — region\n` +
-            `🏅 \`${PREFIX}box <rarity>\` • \`${PREFIX}box shiny\` • \`${PREFIX}box golden\` • \`${PREFIX}box type <type>\` • \`${PREFIX}box recent\`\n` +
+            `🏅 \`${PREFIX}box <rarity>\` • \`${PREFIX}box shiny\` • \`${PREFIX}box golden\` • \`${PREFIX}box type <type>\` • \`${PREFIX}box recent|dex\`\n` +
             `🔒 Lock/unlock Pokémon by species name, Dex #, Mega line, Egg, rarity, event, or starters with \`${PREFIX}release lock|unlock <category>\`\n` +
             `🔎 \`${PREFIX}box @user [filter]\` — view another trainer\'s box` +
             (activeFilter ? `\n\n**Filter:** ${activeFilter}` : '')
@@ -22543,7 +22699,7 @@ client.on('messageCreate', async (message) => {
           )
           .setFooter({
             text: `Page ${currentPage}/${totalPages} • Total mons: ${filteredCatches().reduce((sum, entry) => sum + entry.count, 0)} • ` +
-              `Sorted by: ${sortByDuplicates ? 'Duplicates' : rarityFirst ? 'Rarity' : 'Recent'}` +
+              `Sorted by: ${sortByDex ? 'Dex' : sortByDuplicates ? 'Duplicates' : rarityFirst ? 'Rarity' : 'Recent'}` +
               (rarityButton === 'all' ? '' : ` • Showing: ${rarityButtonOptions.find(([key]) => key === rarityButton)[1]}`),
           });
         return embed;
@@ -22554,7 +22710,7 @@ client.on('messageCreate', async (message) => {
           new ButtonBuilder().setCustomId('box:prev').setEmoji('⬅️').setStyle(ButtonStyle.Primary).setDisabled(currentPage === 1),
           new ButtonBuilder().setCustomId('box:next').setEmoji('➡️').setStyle(ButtonStyle.Primary).setDisabled(currentPage === totalPages),
           new ButtonBuilder().setCustomId('box:last').setEmoji('⏩').setStyle(ButtonStyle.Secondary).setDisabled(currentPage === totalPages),
-          new ButtonBuilder().setCustomId('box:sort').setLabel(sortByDuplicates ? 'Duplicates' : rarityFirst ? 'Rarity' : 'Recent').setEmoji('🔄').setStyle(ButtonStyle.Primary)
+          new ButtonBuilder().setCustomId('box:sort').setLabel(sortByDex ? 'Dex' : sortByDuplicates ? 'Duplicates' : rarityFirst ? 'Rarity' : 'Recent').setEmoji('🔄').setStyle(ButtonStyle.Primary)
         ),
         ...[rarityButtonOptions.slice(0, 5), rarityButtonOptions.slice(5, 10), rarityButtonOptions.slice(10)]
           .filter((group) => group.length)
@@ -22585,9 +22741,10 @@ client.on('messageCreate', async (message) => {
         else if (interaction.customId === 'box:next') currentPage = Math.min(totalPages, currentPage + 1);
         else if (interaction.customId === 'box:last') currentPage = totalPages;
         else if (interaction.customId === 'box:sort') {
-          if (sortByDuplicates) { sortByDuplicates = false; rarityFirst = false; }
+          if (sortByDex) { sortByDex = false; rarityFirst = true; }
+          else if (sortByDuplicates) { sortByDuplicates = false; rarityFirst = false; }
           else if (rarityFirst) { sortByDuplicates = true; }
-          else rarityFirst = true;
+          else sortByDex = true;
           currentPage = 1;
         }
         else if (interaction.customId.startsWith('box:rarity:')) {
@@ -22622,6 +22779,21 @@ client.on('messageCreate', async (message) => {
     if ((command === 'item' || command === 'i') && args[0]?.toLowerCase() === 'info') {
       const query = args.slice(1).join(' ').toLowerCase().trim();
       if (query) {
+        const vitamin = findVitamin(query);
+        if (vitamin) {
+          const owned = getUserItems(userId).find((item) => item.item_name === vitamin.name)?.amount || 0;
+          return message.reply({
+            embeds: [new EmbedBuilder()
+              .setColor(0x0099ff)
+              .setAuthor({ name: `${vitamin.name} — Item information` })
+              .setDescription(
+                `Raises your buddy's **${EV_STAT_LABELS[vitamin.stat]} EVs by 10**, up to ${EV_STAT_LIMIT} per stat and ${EV_TOTAL_LIMIT} total.\n\n` +
+                `**You currently own:** ${getItemEmoji(vitamin.name)} **${owned.toLocaleString()}x ${vitamin.name}**\n\n` +
+                `**Usage**\n\`${PREFIX}use ${vitamin.name.toLowerCase()} [amount|all]\`\n\n` +
+                `**Method to obtain**\n• Patreon shop: 20 ${EMOJIS.patreonToken} each`
+              )],
+          });
+        }
         const plateQuery = query.replace(/[^a-z0-9]/g, '').replace(/plates?$/, '');
         const plate = plateQuery && ARCEUS_PLATES.find(([name]) =>
           name.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/plate$/, '') === plateQuery
@@ -23473,6 +23645,9 @@ client.on('messageCreate', async (message) => {
             `\`102\` ${EMOJIS.rarecandy} **Rare Candy** — 1 ${EMOJIS.patreonToken}\n` +
             `\`103\` ${EMOJIS.expcandyl} **Exp. Candy L** (10,000 EXP) — 2 ${EMOJIS.patreonToken}\n` +
             `\`104\` ${EMOJIS.expcandyxl} **Exp. Candy XL** (30,000 EXP) — 5 ${EMOJIS.patreonToken}\n` +
+            Object.entries(VITAMIN_ITEMS).map(([id, vitamin]) =>
+              `\`${id}\` ${getItemEmoji(vitamin.name)} **${vitamin.name}** (+10 ${EV_STAT_LABELS[vitamin.stat]} EVs) — 20 ${EMOJIS.patreonToken}`
+            ).join('\n') + '\n' +
             `\`50\` ${EMOJIS.bosscoin} **Boss Coin** — 1,000 ${EMOJIS.patreonToken}\n` +
             `\`51\` ${EMOJIS.eventvoucher} **Event voucher** — 100 ${EMOJIS.patreonToken}\n` +
             `\`101\` <:teammedallion:1562201734435045579> **Team Medallion** — 1,000 ${EMOJIS.patreonToken}\n\n` +
@@ -23634,6 +23809,35 @@ client.on('messageCreate', async (message) => {
         return message.reply(
           `✅ Purchased **${amount.toLocaleString()}x ${researchPurchaseItem.emoji} ` +
           `${researchPurchaseItem.name}** for **${pointCost.toLocaleString()} ${RESEARCH_POINT_EMOJI} Research Points**.`
+        );
+      }
+      const vitaminById = Object.hasOwn(VITAMIN_ITEMS, purchaseArgs[0]) ? VITAMIN_ITEMS[purchaseArgs[0]] : null;
+      const twoWordVitamin = findVitamin(purchaseArgs.slice(0, 2).join(' '));
+      const vitamin = vitaminById || twoWordVitamin || findVitamin(purchaseArgs[0]);
+      if (vitamin) {
+        const itemTokenCount = !vitaminById && twoWordVitamin ? 2 : 1;
+        const amount = purchaseArgs[itemTokenCount] === undefined ? 1 : parseAmount(purchaseArgs[itemTokenCount]);
+        const tokenPrice = 20 * amount;
+        if (purchaseArgs.length > itemTokenCount + 1 || !Number.isSafeInteger(amount) || amount <= 0
+            || !Number.isSafeInteger(tokenPrice)) {
+          return message.reply('Specify a valid positive purchase amount.');
+        }
+        const bought = db.transaction(() => {
+          if (getUser(userId).patreon_tokens < tokenPrice) return false;
+          incrementUser(userId, { patreon_tokens: -tokenPrice });
+          addUserItem(userId, vitamin.name, amount);
+          return true;
+        }).immediate();
+        if (!bought) {
+          return message.reply(
+            `❌ That costs **${tokenPrice.toLocaleString()} ${EMOJIS.patreonToken} Patreon Tokens**. ` +
+            `You have **${getUser(userId).patreon_tokens.toLocaleString()}**.`
+          );
+        }
+        return message.reply(
+          `✅ Purchased **${amount.toLocaleString()}x ${getItemEmoji(vitamin.name)} ${vitamin.name}** for ` +
+          `**${tokenPrice.toLocaleString()} ${EMOJIS.patreonToken} Patreon Tokens**. ` +
+          `Use \`${PREFIX}use ${vitamin.name.toLowerCase()} [amount|all]\` on your buddy.`
         );
       }
       const threeWordItem = purchaseArgs.slice(0, 3).join(' ').toLowerCase();
@@ -25372,11 +25576,19 @@ client.on('messageCreate', async (message) => {
     if (command === 'collection' || command === 'collections' || command === 'coll') {
       const sub = args[0]?.toLowerCase();
       const parseCollectionPokemon = (query) => {
-        const isGolden = /^golden\s+/i.test(query.trim());
-        const isShiny = !isGolden && /^shiny\s+/i.test(query.trim());
+        const explicitGolden = /^golden\s+/i.test(query.trim());
+        const explicitShiny = !explicitGolden && /^shiny\s+/i.test(query.trim());
         const pokemonQuery = query.trim().replace(/^(?:shiny|golden)\s+/i, '').trim();
         const form = resolvePokemonForm(pokemonQuery);
-        return form ? { form, isShiny, isGolden } : null;
+        if (!form) return null;
+        const dexVariant = !explicitGolden && !explicitShiny
+          ? getDexQueryMarketVariant(form, pokemonQuery)
+          : null;
+        return {
+          form,
+          isShiny: explicitShiny || dexVariant === 'shiny',
+          isGolden: explicitGolden || dexVariant === 'golden',
+        };
       };
       const variantLabel = (isShiny, isGolden) => (isGolden ? 'Golden ' : isShiny ? 'Shiny ' : '');
       const recentFilter = "gc.updated_at >= datetime('now', '-3 months')";
@@ -25570,6 +25782,7 @@ client.on('messageCreate', async (message) => {
           `\`${PREFIX}coll update all\` — Refresh all of your entries\n` +
           `\`${PREFIX}coll delete [shiny|golden] <Pokémon name|Pokédex number>\`\n` +
           `\`${PREFIX}coll private|unprivate [shiny|golden] <Pokémon name|Pokédex number|all>\`\n` +
+          'Variant Pokédex numbers select the matching Shiny or Golden Pokémon.\n' +
           '*These entries do not affect your actual box Pokémon.*\n\n' +
           '**Browsing collections**\n' +
           `\`${PREFIX}collection\` — Recent public collections\n` +
@@ -25606,7 +25819,8 @@ client.on('messageCreate', async (message) => {
         }
         const values = args.slice(1);
         let buyPrice = null;
-        if (values.length > 1) {
+        const hasVariantPrefix = /^(?:shiny|golden)$/i.test(values[0]);
+        if (values.length > (hasVariantPrefix ? 2 : 1)) {
           const possiblePrice = parseAmount(values[values.length - 1]);
           if (Number.isSafeInteger(possiblePrice)) {
             buyPrice = possiblePrice;
@@ -25840,6 +26054,7 @@ client.on('messageCreate', async (message) => {
         const embed = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`🪙 Patreon Token Market — ${view === 'info' ? 'Information' : view === 'orders' ? 'Your orders' : `${view === 'buy' ? 'Buy' : 'Sell'} orders`}`)
+          .setThumbnail('https://cdn.discordapp.com/emojis/1560376902374522980.png')
           .addFields({
             name: `📊 Total tokens traded in ${monthName}`,
             value: `${EMOJIS.patreonToken} ${stats.volume.toLocaleString()}\n• Average price: ${EMOJIS.pokecoin} ${Math.round(stats.average_price).toLocaleString()} per token`,
@@ -25915,6 +26130,93 @@ client.on('messageCreate', async (message) => {
         tokenMessage.edit({ components: [buildTokenButtons(true)] }).catch((error) => {
           console.error(`Failed to disable token market buttons for user ${userId}:`, error);
         });
+      });
+      return;
+    }
+
+    if (command === 'auction' || command === 'auc') {
+      auctions.settle();
+      const action = args[0]?.toLowerCase();
+      if (action === 'bid') {
+        if (args.length !== 3 || !/^\d+$/.test(args[1]) || !/^\d+$/.test(args[2])) {
+          return message.reply(`Usage: \`${PREFIX}auction bid {ID} {amount}\` (whole Patreon tokens).`);
+        }
+        const result = auctions.bid(userId, Number(args[1]), Number(args[2]));
+        if (result.error === 'invalid') return message.reply('Enter a valid auction ID and positive whole-token bid.');
+        if (result.error === 'closed') return message.reply('That auction does not exist or has ended.');
+        if (result.error === 'too_low') return message.reply(`The minimum bid is ${result.minimum.toLocaleString()} Patreon tokens.`);
+        if (result.error === 'insufficient') return message.reply(`You need ${result.needed.toLocaleString()} available Patreon tokens; you have ${result.balance.toLocaleString()}.`);
+        return message.reply(`✅ Bid ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}** on auction **#${args[1]}**. Your leading bid is reserved until you are outbid or the auction ends.`);
+      }
+
+      const history = action === 'history';
+      const sortOptions = [
+        ['default', 'Default'], ['outbid', 'Can outbid'], ['lowest', 'Lowest bid'],
+        ['highest', 'Highest bid'], ['golden', 'Goldens only'],
+        ['bids', 'Bids received'], ['recent', 'Recently bid'],
+      ];
+      const sortArg = history ? args[1]?.toLowerCase() : action;
+      if (sortArg && !sortOptions.some(([key]) => key === sortArg)) {
+        return message.reply(`Use \`${PREFIX}auction\`, \`${PREFIX}auction history\`, or \`${PREFIX}auction bid {ID} {amount}\`. Sorts: ${sortOptions.map(([key]) => `\`${key}\``).join(', ')}.`);
+      }
+      let sortIndex = Math.max(0, sortOptions.findIndex(([key]) => key === (sortArg || 'default')));
+      let page = 0;
+      const pageSize = 8;
+      const render = () => {
+        auctions.settle();
+        const [sortKey, sortLabel] = sortOptions[sortIndex];
+        const { rows, count, page: currentPage, pages } = auctions.list(userId, sortKey, history, page, pageSize);
+        page = currentPage;
+        const lines = rows.map((row) => {
+          const time = Math.floor((history ? row.ended_at : row.ends_at) / 1000);
+          const details = row.bidder_id
+            ? `${history ? 'Winner' : 'Bid'}: ${EMOJIS.patreonToken} **${row.bid_amount.toLocaleString()}** by <@${row.bidder_id}>`
+            : history ? 'No winner; relisted.' : 'No bids yet.';
+          const variant = row.pokemon.is_golden ? 'Golden ' : row.pokemon.is_shiny ? 'Shiny ' : '';
+          return `\`ID: ${row.id}\` ${getMarketListingEmojis(row.pokemon)}**${variant}${row.pokemon.name}** • ${history ? 'Ended' : 'Ends'} <t:${time}:R>\n` +
+            `• ${details} • Bids: ${row.bid_count}` +
+            (history ? '' : ` • Minimum bid: ${EMOJIS.patreonToken} **${row.minimum_bid.toLocaleString()}**`);
+        });
+        const embed = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(history ? '⚖️ Completed Auctions' : '⚖️ Pokémon Auctions')
+          .setDescription(`**${count.toLocaleString()}** ${history ? 'completed' : 'active'} auctions\n\n` +
+            `${lines.join('\n\n') || 'No auctions found.'}\n\n` +
+            `${EMOJIS.patreonToken} Your Patreon tokens: **${getUser(userId).patreon_tokens.toLocaleString()}**\n` +
+            `Bid with \`${PREFIX}auction bid {ID} {amount}\` • History: \`${PREFIX}auction history\``)
+          .setFooter({ text: `Page ${page + 1}/${pages} • Sort: ${sortLabel}` });
+        const buttons = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('auction:first').setLabel('⏮').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+          new ButtonBuilder().setCustomId('auction:prev').setLabel('Back').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+          new ButtonBuilder().setCustomId('auction:next').setLabel('Next').setStyle(ButtonStyle.Primary).setDisabled(page >= pages - 1),
+          new ButtonBuilder().setCustomId('auction:last').setLabel('⏭').setStyle(ButtonStyle.Secondary).setDisabled(page >= pages - 1),
+          new ButtonBuilder().setCustomId('auction:sort').setLabel('Sort').setStyle(ButtonStyle.Secondary)
+        );
+        return { embeds: [embed], components: [buttons], pages, allowedMentions: { parse: [] } };
+      };
+      const initial = render();
+      delete initial.pages;
+      const auctionMessage = await message.reply(initial);
+      const collector = auctionMessage.createMessageComponentCollector({ componentType: ComponentType.Button, time: 120000 });
+      collector.on('collect', async (interaction) => {
+        try {
+          if (interaction.user.id !== userId) return interaction.reply({ content: `Run \`${PREFIX}auction\` to open your own view.`, ephemeral: true });
+          const selected = interaction.customId.split(':')[1];
+          if (selected === 'sort') { sortIndex = (sortIndex + 1) % sortOptions.length; page = 0; }
+          else if (selected === 'first') page = 0;
+          else if (selected === 'prev') page = Math.max(0, page - 1);
+          else if (selected === 'next') page++;
+          else if (selected === 'last') page = Number.MAX_SAFE_INTEGER;
+          const payload = render();
+          delete payload.pages;
+          await interaction.update(payload);
+        } catch (error) {
+          console.error(`Failed to update auctions for user ${userId}:`, error);
+          if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: 'Could not update auctions.', ephemeral: true });
+        }
+      });
+      collector.on('end', () => {
+        auctionMessage.edit({ components: [] }).catch((error) => console.error(`Failed to close auction controls for user ${userId}:`, error));
       });
       return;
     }
@@ -26117,6 +26419,14 @@ client.on('messageCreate', async (message) => {
         }
         const result = buyMarketItem(userId, listingId, buyAmount);
         if (result.error) return message.reply(`❌ ${result.error}`);
+        await notifyAdminIfRareGrant(
+          message.guild,
+          message.author,
+          result.item,
+          `${PREFIX}market buy`,
+          Boolean(result.item.is_shiny),
+          Boolean(result.item.is_golden)
+        );
         if (result.sale && getMarketCompletionNotificationsEnabled(result.item.seller_id)) {
           try {
             const seller = await client.users.fetch(result.item.seller_id);
@@ -26153,6 +26463,14 @@ client.on('messageCreate', async (message) => {
             continue;
           }
           totalSpent += result.item.price;
+          await notifyAdminIfRareGrant(
+            message.guild,
+            message.author,
+            result.item,
+            `${PREFIX}market multibuy`,
+            Boolean(result.item.is_shiny),
+            Boolean(result.item.is_golden)
+          );
           bought.push(
             `**#${listingId}** — ${formatMarketPokemon(result.item)} for ${EMOJIS.pokecoin} **${result.item.price.toLocaleString()}**`
             + (result.remainingAmount ? ` (${result.remainingAmount.toLocaleString()} remain)` : '')
@@ -26603,7 +26921,8 @@ client.on('messageCreate', async (message) => {
             .setColor(0x0099ff)
             .setTitle('Evolution Stones')
             .setDescription(
-              `Use with \`${PREFIX}evolve <Pokémon> <stone>\` or \`${PREFIX}use <stone> <Pokémon>\`.\n\n${stoneText}`
+              `Use with \`${PREFIX}evolve <Pokémon> <stone>\` or \`${PREFIX}use <stone> <Pokémon>\`. ` +
+              `Stones can also be held with \`${PREFIX}hold <stone> <Pokémon>\` and removed with \`${PREFIX}unhold <Pokémon>\`.\n\n${stoneText}`
             )
             .setFooter({ text: 'Find them in Lootboxes and giveaways.' }),
           new EmbedBuilder()
@@ -26676,6 +26995,11 @@ client.on('messageCreate', async (message) => {
       const parsed = command === 'use'
         ? parseEvolutionArguments(args, true)
         : parseEvolutionArguments(args, false);
+      if (command === 'evolve' && !args.length) {
+        const buddy = getUserBuddy(userId);
+        if (!buddy) return message.reply(`Choose a buddy first with \`${PREFIX}buddy set <Pokémon>\`.`);
+        parsed.pokemon = `${buddy.is_golden ? 'golden ' : buddy.is_shiny ? 'shiny ' : ''}${buddy.name}`;
+      }
       if (!parsed.pokemon) {
         return message.reply(
           `Usage: \`${PREFIX}evolve <Pokémon> [item]\` to evolve with an item or when level requirements are met, ` +
@@ -26728,7 +27052,7 @@ client.on('messageCreate', async (message) => {
       }
       const result = holdEvolutionItem(userId, parsed.itemName, parsed.pokemon);
       const failures = {
-        not_holdable: `**${parsed.itemName}** is a stone — use it directly with \`${PREFIX}evolve\`.`,
+        not_holdable: `**${parsed.itemName}** cannot be held by Pokémon.`,
         pokemon_not_owned: `You do not own a **${parsed.pokemon}**.`,
         item_held: `Your **${parsed.pokemon}** is already holding an item.`,
         no_item: `You do not have a **${parsed.itemName}**.`,
@@ -26910,7 +27234,7 @@ client.on('messageCreate', async (message) => {
         displayLines.push(`*...and ${lines.length - displayLines.length} more Pokémon.*`);
       }
       for (const pokemon of opened.results) {
-        await announceRareSpawn(message.guild, message.author, pokemon, `Box/pack open (${(message.content || '').slice(0, 100)})`);
+        await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}open`);
       }
       return message.reply({
         embeds: [makeEmbed(
@@ -27425,25 +27749,56 @@ async function leaveIfBlockedGuild(guild) {
   }
 }
 
-client.on('guildCreate', leaveIfBlockedGuild);
+async function reportGuildJoin(guild) {
+  let adder = 'Unknown (no recent bot-add audit log entry)';
+  try {
+    let entry;
+    for (let attempt = 0; attempt < 2 && !entry; attempt += 1) {
+      if (attempt) await new Promise((resolve) => setTimeout(resolve, 1500));
+      const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.BotAdd, limit: 10 });
+      entry = logs.entries.find((item) =>
+        item.target?.id === client.user.id
+        && item.createdTimestamp >= Date.now() - 5 * 60 * 1000
+        && item.createdTimestamp <= Date.now() + 15000
+      );
+    }
+    if (entry?.executor) adder = `${entry.executor.username} (\`${entry.executor.id}\`)`;
+  } catch (error) {
+    adder = 'Unknown (audit log unavailable)';
+    console.warn(`Could not read bot-add audit log in server ${guild.id}:`, error);
+  }
+  const content =
+    `📥 Bot joined **${guild.name}** (\`${guild.id}\`)${BLOCKED_GUILD_IDS.has(guild.id) ? ' — BLOCKED, leaving' : ''}\n` +
+    `Added by: ${adder}\nMembers: ${guild.memberCount}`;
+  try {
+    const channel = await client.channels.fetch(GUILD_JOIN_LOG_CHANNEL_ID);
+    if (!channel?.isTextBased()) throw new Error('not a text channel');
+    await channel.send({ content, allowedMentions: { parse: [] } });
+  } catch (error) {
+    console.error(`Failed to send guild join log for server ${guild.id}:`, error);
+  }
+  let ownerText = 'unknown';
+  try {
+    const owner = await guild.fetchOwner();
+    ownerText = `${owner.user.username} (\`${owner.id}\`)`;
+  } catch (error) {
+    console.warn(`Could not fetch owner of server ${guild.id}:`, error);
+  }
+  try {
+    const admin = await client.users.fetch(GUILD_JOIN_REPORT_ADMIN_ID);
+    await admin.send({ content: `${content}\nOwner: ${ownerText}`, allowedMentions: { parse: [] } });
+  } catch (error) {
+    console.error(`Failed to DM guild join report for server ${guild.id}:`, error);
+  }
+}
 
 client.on('guildCreate', async (guild) => {
   try {
-    let adder = 'unknown (bot lacks View Audit Log permission)';
-    try {
-      const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.BotAdd, limit: 5 });
-      const entry = logs.entries.find((item) => item.target?.id === client.user.id);
-      if (entry?.executor) adder = `${entry.executor.username} (\`${entry.executor.id}\`)`;
-    } catch {}
-    const owner = await guild.fetchOwner().catch(() => null);
-    const admin = await client.users.fetch(GUILD_JOIN_REPORT_ADMIN_ID);
-    await admin.send(
-      `📥 Bot joined **${guild.name}** (\`${guild.id}\`)${BLOCKED_GUILD_IDS.has(guild.id) ? ' — BLOCKED, leaving' : ''}\n` +
-      `Added by: ${adder}\nOwner: ${owner ? `${owner.user.username} (\`${owner.id}\`)` : 'unknown'}\n` +
-      `Members: ${guild.memberCount}`
-    );
+    await reportGuildJoin(guild);
   } catch (error) {
-    console.error('Failed to report guild join:', error.message);
+    console.error(`Failed to report guild join for server ${guild.id}:`, error);
+  } finally {
+    await leaveIfBlockedGuild(guild);
   }
 });
 
@@ -27511,6 +27866,12 @@ client.once('clientReady', () => {
   const safely = (name, job) => () => {
     Promise.resolve().then(job).catch((error) => console.error(`[${name}] failed:`, error));
   };
+  const processAuctions = safely('auctions', () => {
+    backfillBannedAuctions();
+    auctions.settle();
+  });
+  processAuctions();
+  setInterval(processAuctions, 60 * 1000);
   safely('daily-giveaways', runDailyGiveaways)();
   setInterval(safely('daily-giveaways', runDailyGiveaways), 60 * 1000);
   const sendVoteReminders = async () => {

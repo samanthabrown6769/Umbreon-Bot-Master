@@ -22,10 +22,15 @@ function getExploreMapSize(mapType, variant) {
   return { width: MAP_WIDTH, height: Math.round(MAP_WIDTH * map.height / map.width) };
 }
 
-function isExploreMoveBlocked(mapType, variant, x, y, nextX, nextY) {
+function getExploreMoveBlockReason(mapType, variant, x, y, nextX, nextY) {
   const map = getExploreMap(mapType, variant);
   const { width, height } = getExploreMapSize(mapType, variant);
-  return (map.blockedAreas || []).some(([left, top, right, bottom]) => {
+  const areas = [
+    ...(map.blockedAreas || []).map((area) => ({ area, reason: 'lava' })),
+    ...(map.ladderAreas || []).map((area) => ({ area, reason: 'ladder' })),
+  ];
+  let first = null;
+  for (const { area: [left, top, right, bottom], reason } of areas) {
     const bounds = [
       [left * width / map.width - TRAINER_WIDTH, right * width / map.width, x, nextX - x],
       [top * height / map.height - TRAINER_HEIGHT, bottom * height / map.height, y, nextY - y],
@@ -34,7 +39,7 @@ function isExploreMoveBlocked(mapType, variant, x, y, nextX, nextY) {
     let exit = 1;
     for (const [min, max, start, delta] of bounds) {
       if (delta === 0) {
-        if (start <= min || start >= max) return false;
+        if (start <= min || start >= max) { exit = -1; break; }
       } else {
         const first = (min - start) / delta;
         const last = (max - start) / delta;
@@ -42,8 +47,13 @@ function isExploreMoveBlocked(mapType, variant, x, y, nextX, nextY) {
         exit = Math.min(exit, Math.max(first, last));
       }
     }
-    return enter < exit;
-  });
+    if (enter < exit && (!first || enter < first.enter)) first = { enter, reason };
+  }
+  return first?.reason || null;
+}
+
+function isExploreMoveBlocked(mapType, variant, x, y, nextX, nextY) {
+  return getExploreMoveBlockReason(mapType, variant, x, y, nextX, nextY) !== null;
 }
 
 async function loadMap(map) {
@@ -111,4 +121,7 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, isExploreMoveBlocked, renderExploreMap };
+module.exports = {
+  MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize,
+  getExploreMoveBlockReason, isExploreMoveBlocked, renderExploreMap,
+};

@@ -23,6 +23,843 @@ function mon(name, types) {
   return { name, types, hp: 100, max_hp: 100, atk: 50, def: 50, spd: 50, level: 50 };
 }
 
+test('collection commands resolve normal, shiny and Golden Dex numbers to the correct variants', async () => {
+  const { getPokemonDexNumbers, getGoldenDexNumber } = require('../pokemon-dex-numbers');
+  const { parseAmount } = require('../amounts');
+  const forms = require('../data/pokemon-catalog.json')
+    .filter((pokemon) => ['bulbasaur', 'vulpix-alola'].includes(pokemon.slug));
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (
+      id INTEGER PRIMARY KEY, species_id INTEGER, species_name TEXT, name TEXT, slug TEXT,
+      is_default INTEGER, rarity TEXT
+    );
+    CREATE TABLE catches (user_id TEXT, pokemon_id INTEGER, name TEXT, is_shiny INTEGER, is_golden INTEGER);
+    CREATE TABLE global_collections (
+      id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER,
+      pokemon_name TEXT, buy_price INTEGER, is_private INTEGER, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, pokemon_id, is_shiny, is_golden)
+    );
+  `);
+  const insertForm = db.prepare('INSERT INTO pokemon_forms VALUES (?, ?, ?, ?, ?, ?, ?)');
+  for (const form of forms) {
+    insertForm.run(form.id, form.species_id, form.species_name, form.name, form.slug, form.is_default, form.rarity);
+  }
+  db.prepare('INSERT INTO catches VALUES (?, ?, ?, ?, ?)').run('user', 1, 'Bulbasaur', 0, 1);
+  const replies = [];
+  const ctx = vm.createContext({
+    db, command: 'coll', args: [], userId: 'user', PREFIX: '.', EmbedBuilder, parseAmount,
+    EMOJIS: { pokecoin: 'coin' }, getPokemonDexNumbers, getGoldenDexNumber,
+    marketDexNumbersByFormId: null, assertUserId: () => {},
+    findPokemonForms: (query) => forms.filter((form) => form.name.toLowerCase().includes(query.toLowerCase())),
+    getRarityEmojis: () => '',
+    message: { author: { id: 'user', username: 'Trainer' }, mentions: { users: { first: () => null } },
+      reply: async (payload) => { replies.push(payload); return payload; } },
+  });
+  vm.runInContext(extract(indexSource, 'function resolvePokemonForm(', '\nfunction getHuntTargetSprite(')
+    + '\n' + extract(indexSource, 'function getDexQueryMarketVariant(', '\nfunction getPokemonFormDexNumber(')
+    + '\n' + extract(indexSource, 'function getCollectionDexNumber(', '\nfunction '), ctx);
+  vm.runInContext(extract(dbSource, 'function getUserRegisteredCollections(', '\nfunction setGiveawayChannel('), ctx);
+  vm.runInContext(`async function collection() { ${extract(indexSource, "    if (command === 'collection' ||", "\n    if (command === 'token'")} }`, ctx);
+  const run = async (...args) => { ctx.args = args; await ctx.collection(); return replies.at(-1); };
+  await run('register', '9001');
+  assert.match(replies.at(-1), /Golden Bulbasaur/);
+  await run('register', 'golden', 'bulbasaur');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM global_collections').get().n, 1);
+  await run('register', '001');
+  await run('register', '1001');
+  await run('register', '7719');
+  const rows = db.prepare('SELECT pokemon_id, is_shiny, is_golden FROM global_collections ORDER BY id').all();
+  assert.deepEqual(rows, [
+    { pokemon_id: 1, is_shiny: 0, is_golden: 1 },
+    { pokemon_id: 1, is_shiny: 0, is_golden: 0 },
+    { pokemon_id: 1, is_shiny: 1, is_golden: 0 },
+    { pokemon_id: 10103, is_shiny: 0, is_golden: 1 },
+  ]);
+  await run('register', 'golden', '9001');
+  await run('register', 'golden', '9001', '20k');
+  assert.equal(db.prepare('SELECT buy_price FROM global_collections WHERE pokemon_id = 1 AND is_golden = 1').get().buy_price, 20000);
+  await run('register', 'shiny', '1001');
+  assert.match(replies.at(-1), /Shiny Bulbasaur/);
+  await run('update', '9001', '25k');
+  assert.equal(db.prepare('SELECT buy_price FROM global_collections WHERE pokemon_id = 1 AND is_golden = 1').get().buy_price, 25000);
+  const viewed = await run('view', '9001');
+  const description = viewed.embeds[0].toJSON().description;
+  assert.match(description, /#9001 Golden Bulbasaur/);
+  assert.match(description, /Count: `1`/);
+  await run('private', '9001');
+  assert.equal(db.prepare('SELECT is_private FROM global_collections WHERE pokemon_id = 1 AND is_golden = 1').get().is_private, 1);
+  await run('delete', '9001');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM global_collections WHERE pokemon_id = 1').get().n, 2);
+  db.close();
+});
+
+test('sent and claimed gifts display each Pokémon rarity and variant emblem', async () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE users (id TEXT PRIMARY KEY, buddy_catch_id INTEGER);
+    INSERT INTO users VALUES ('sender', NULL);
+    CREATE TABLE saved_teams (user_id TEXT, pokemon_ids TEXT);
+    CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT,
+      rarity TEXT, is_shiny INTEGER, is_golden INTEGER, caught_ball TEXT, in_team INTEGER);
+    INSERT INTO catches VALUES
+      (1, 'sender', 1, 'Bulbasaur', 'Common', 0, 0, 'pb', 0),
+      (2, 'sender', 2, 'Mewtwo', 'Legendary', 0, 0, 'pb', 0),
+      (3, 'sender', 1, 'Bulbasaur', 'Common', 1, 0, 'pb', 0),
+      (4, 'sender', 1, 'Bulbasaur', 'Common', 0, 1, 'pb', 0);
+  `);
+  const gifts = [
+    { id: 1, name: 'Bulbasaur', rarity: 'Common', is_shiny: 0, is_golden: 0 },
+    { id: 2, name: 'Mewtwo', rarity: 'Legendary', is_shiny: 0, is_golden: 0 },
+    { id: 3, name: 'Bulbasaur', rarity: 'Common', is_shiny: 1, is_golden: 0 },
+    { id: 4, name: 'Bulbasaur', rarity: 'Common', is_shiny: 0, is_golden: 1 },
+  ];
+  const replies = [];
+  const recipient = { id: 'recipient', username: 'Recipient', bot: false };
+  const ctx = vm.createContext({
+    db, PREFIX: '.', console, parseAmount: Number,
+    client: { users: { fetch: async () => recipient } },
+    getTransferEligibilityError: () => null,
+    parseTradeMonInput: (query) => ({ index: Number(query) - 1 }),
+    resolveTradeSpec: (spec) => {
+      const gift = gifts[spec.index];
+      return { form: { id: gift.id === 2 ? 2 : 1, name: gift.name },
+        isShiny: Boolean(gift.is_shiny), isGolden: Boolean(gift.is_golden) };
+    },
+    sendPokemonGift: () => ({}), notifyAdminIfRareGrant: async () => {},
+    getRarityEmojis: (rarity, _name, shiny, golden) => golden ? '[golden]' : shiny ? '[shiny]' : `[${rarity}]`,
+    claimPokemonGifts: () => gifts.map((gift) => ({ ...gift, sender_id: 'sender' })),
+    makeEmbed: (title, description) => ({ title, description }),
+    message: { author: { username: 'Sender' }, guild: {},
+      mentions: { users: { first: () => recipient } }, reply: async (value) => { replies.push(value); return value; } },
+  });
+  vm.runInContext(extract(indexSource, 'function getTradeableCatchRows(', '\n// Splits')
+    + '\n' + extract(indexSource, 'function getGiftTarget(', '\nasync function handleTrade('), ctx);
+  await ctx.handleGift(ctx.message, 'sender',
+    ['recipient', '1', 'x', '1', '2', 'x', '1', '3', 'x', '1', '4', 'x', '1']);
+  assert.match(replies.at(-1).content, /\[Common\] Bulbasaur/);
+  assert.match(replies.at(-1).content, /\[Legendary\] Mewtwo/);
+  assert.match(replies.at(-1).content, /\[shiny\] Bulbasaur/);
+  assert.match(replies.at(-1).content, /\[golden\] Bulbasaur/);
+  await ctx.handleGift(ctx.message, 'recipient', ['claim']);
+  const claimed = replies.at(-1).embeds[0].description;
+  assert.match(claimed, /\[Common\] Bulbasaur/);
+  assert.match(claimed, /\[Legendary\] Mewtwo/);
+  assert.match(claimed, /\[shiny\] Bulbasaur/);
+  assert.match(claimed, /\[golden\] Bulbasaur/);
+  db.close();
+});
+
+function challengerContext(extra = {}) {
+  const ctx = vm.createContext({
+    NPC_CAMPAIGN: Array.from({ length: 120 }, (_, index) => ({ name: `Campaign ${index + 1}` })),
+    NPC_SPECIAL_BATTLES: Array.from({ length: 100 }, (_, index) => ({ name: `Special ${index + 1}` })),
+    CHAMBER_ICON_ENTRIES: [], CHAMBER_NPC_ID_START: 600,
+    resolvePokemonForm: () => ({ id: 1 }), ...extra,
+  });
+  vm.runInContext(extract(indexSource, 'const CHALLENGER_STAT_MULTIPLIERS', '\nconst GOLDEN_TIMBURR_EMOJI'), ctx);
+  vm.runInContext(extract(indexSource, 'function getNpcChallenge(', '\nfunction formatBattleStatsDate('), ctx);
+  return ctx;
+}
+
+test('admin grants and trainers equip challenger icons by displayed NPC number', async () => {
+  const unlocked = new Set();
+  const replies = [];
+  let selected = null;
+  const user = { id: 'target' };
+  const ctx = challengerContext({
+    command: 'admin', subtype: 'icon', args: [], userId: 'target', battleSub: 'set-icon', PREFIX: '.',
+    message: { mentions: { users: { first: () => user } }, reply: async (payload) => replies.push(payload) },
+    client: { users: { fetch: async () => user } }, EmbedBuilder, DEFAULT_TRAINER_ICONS: {},
+    unlockBattleIcon: (_id, index) => { const added = !unlocked.has(index); unlocked.add(index); return added; },
+    getUnlockedBattleIcons: () => [...unlocked],
+    setSelectedBattleIcon: (_id, index) => { selected = index; },
+    getNpcIconUrl: () => 'https://example.com/icon.png',
+  });
+  vm.runInContext(`async function grant() { ${extract(indexSource, "      if (command === 'admin' && (subtype === 'icon'", "\n      if (command === 'admin' && subtype === 'giveaway'")} }`, ctx);
+  vm.runInContext(`async function equip() { ${extract(indexSource, "      if (battleSub === 'set-icon'", "\n      if (battleSub === 'exp'")} }`, ctx);
+  const definitions = vm.runInContext('CHALLENGER_DEFINITION_LIST', ctx);
+  for (const challenge of definitions) {
+    ctx.args = ['icon', 'target', String(challenge.challengerId)];
+    await ctx.grant();
+    const expected = ctx.getBattleStatsChallenge(String(challenge.challengerId)).index;
+    assert.ok(unlocked.has(expected), `grant ${challenge.challengerId}`);
+    assert.match(replies.at(-1).embeds[0].toJSON().description, new RegExp(challenge.name));
+    ctx.args = ['set-icon', String(challenge.challengerId)];
+    await ctx.equip();
+    assert.equal(selected, expected, `equip ${challenge.challengerId}`);
+  }
+  const challenger = definitions.find((entry) => entry.challengerId === 200);
+  ctx.args = ['icon', 'target', challenger.name];
+  await ctx.grant();
+  assert.match(replies.at(-1).embeds[0].toJSON().description, /already has/);
+  ctx.args = ['icon', 'target', '9999'];
+  await ctx.grant();
+  assert.match(replies.at(-1), /No battle icon matches/);
+});
+
+test('challenger quest wins count only their specified invited NPC tiers', () => {
+  const recorded = [];
+  const ctx = challengerContext({
+    challenge: null, userId: 'user', message: { channel: {} },
+    advanceQuestProgress: (_id, event) => { recorded.push(event); return []; },
+    announceQuestCompletions: () => {},
+  });
+  vm.runInContext(`function recordVictory() { ${extract(indexSource, '          const normalizedChallengeName =', '\n          log.push(challenge.expBattle')} }`, ctx);
+  const definitions = vm.runInContext('CHALLENGER_DEFINITION_LIST', ctx);
+  const groups = {
+    basic_challenger: [208, 207, 206, 210, 209],
+    boss_challenger: [202, 203, 204, 205, 200, 201],
+    master_challenger: [211, 212, 213],
+  };
+  for (const [category, ids] of Object.entries(groups)) {
+    for (const id of ids) {
+      ctx.challenge = definitions.find((entry) => entry.challengerId === id);
+      assert.ok(ctx.challenge, `missing challenger ${id}`);
+      ctx.recordVictory();
+      assert.deepEqual(Array.from(recorded.at(-1).battleCategories), [category], `challenger ${id}`);
+    }
+  }
+  for (const [name, category] of [['Gym Leader Brock', 'gym_leader'], ['Elite Four Lorelei', 'elite_four'], ['Champion Lance', 'champion']]) {
+    ctx.challenge = { name };
+    ctx.recordVictory();
+    assert.deepEqual(Array.from(recorded.at(-1).battleCategories), [category]);
+  }
+});
+
+test('cooldown notification modes persist and react to the encounter instead of sending a message', async () => {
+  const db = new Database(':memory:');
+  db.exec('CREATE TABLE bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  const timers = [];
+  const reactions = [];
+  const sent = [];
+  const ctx = vm.createContext({
+    db, assertUserId: () => {}, console, PREFIX: '.', EMOJIS: { cooldownMachine: 'machine' },
+    cooldownEndsAt: { p: new Map(), f: new Map(), battle: new Map() },
+    pokemonCooldownStates: { p: new Map(), f: new Map() },
+    getUser: () => ({ cooldown_machine_catch_charges: 0 }),
+    setTimeout: (callback, delay) => { const timer = { callback, delay }; timers.push(timer); return timer; },
+    clearTimeout: () => {},
+  });
+  vm.runInContext(extract(dbSource, 'function getCooldownNotificationMode(', '\nfunction getRareSpawnNameHidden('), ctx);
+  vm.runInContext(extract(indexSource, 'function scheduleCooldownNotification(', '\nfunction getCooldownReadyTimestamp('), ctx);
+  assert.equal(ctx.getCooldownNotificationMode('u'), 'ping');
+  ctx.setCooldownNotificationMode('u', 'react');
+  assert.equal(ctx.getCooldownNotificationMode('u'), 'react');
+  assert.throws(() => ctx.setCooldownNotificationMode('u', 'invalid'), /notification mode/);
+  const cooldowns = new Set(['u']);
+  const source = { react: async () => reactions.push('command') };
+  const spawn = { react: async (emoji) => reactions.push(emoji) };
+  const state = ctx.scheduleCooldownNotification(cooldowns, 'u', 'Trainer',
+    { send: async (payload) => sent.push(payload) }, 1000, 'p', source);
+  const encounter = vm.createContext({
+    cooldownState: state, inline: null, message: { channel: { send: async () => spawn } },
+    spawnFoundText: 'spawn', spawnBallDexIcons: '', embed: {}, ballRows: [],
+  });
+  vm.runInContext(`async function postSpawn() { ${extract(indexSource, '  const spawnMessage = inline', '\n  const buttonCollector = inline')} }`, encounter);
+  await encounter.postSpawn();
+  assert.equal(timers[0].delay, 1000);
+  timers[0].callback();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(reactions, ['✅']);
+  assert.equal(cooldowns.has('u'), false);
+  assert.equal(sent.length, 0);
+  ctx.getUser = () => ({ cooldown_machine_catch_charges: 1 });
+  const machine = ctx.scheduleCooldownNotification(new Set(['u']), 'u', 'Trainer',
+    { send: async (payload) => sent.push(payload) }, 1000, 'p', source);
+  machine.notificationMessage = spawn;
+  assert.equal(timers.at(-1).delay, 500);
+  timers.at(-1).callback();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(reactions, ['✅', '✅']);
+  assert.equal(timers.at(-1).delay, 500);
+  ctx.setCooldownNotificationMode('u', 'username');
+  ctx.scheduleCooldownNotification(new Set(['u']), 'u', 'Trainer',
+    { send: async (payload) => sent.push(payload) }, 1000, 'battle', source);
+  timers.at(-1).callback();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(sent[0].content, /\*\*Trainer\*\*/);
+  assert.deepEqual(Array.from(sent[0].allowedMentions.parse), []);
+  db.close();
+});
+
+test('cooldown toggle offers all three modes and only its owner can change them', async () => {
+  let mode = 'ping';
+  const events = {};
+  const replies = [];
+  const ctx = vm.createContext({
+    command: 'toggle', args: ['cooldown'], userId: 'u', PREFIX: '.',
+    getCooldownNotificationMode: () => mode,
+    setCooldownNotificationMode: (_id, selected) => { mode = selected; },
+    ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, console,
+    message: { reply: async (payload) => {
+      replies.push(payload);
+      return { createMessageComponentCollector: () => ({ on: (name, fn) => { events[name] = fn; } }),
+        edit: async () => {} };
+    } },
+  });
+  vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'toggle') {", "\n    if (command === 'perks'")} }`, ctx);
+  await ctx.run();
+  assert.deepEqual(replies[0].components[0].toJSON().components.map((button) => button.label), ['Ping', 'Username', 'React']);
+  const denied = [];
+  await events.collect({ user: { id: 'other' }, customId: 'toggle_cooldown_mode:react',
+    reply: async (payload) => denied.push(payload) });
+  assert.equal(mode, 'ping');
+  assert.match(denied[0].content, /Only the user/);
+  let updated;
+  await events.collect({ user: { id: 'u' }, customId: 'toggle_cooldown_mode:react',
+    update: async (payload) => { updated = payload; } });
+  assert.equal(mode, 'react');
+  assert.match(updated.embeds[0].toJSON().description, /\*\*react\*\*/);
+});
+
+test('World Boss reminder is scheduled 20 seconds before battle and is sent only once per server', async () => {
+  const db = new Database(':memory:');
+  db.exec('CREATE TABLE bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  const timers = [];
+  const sent = [];
+  const boss = { id: 7, name: 'Eternamax Eternatus', registration_ends_at: Date.now() + 120000 };
+  let activeBoss = boss;
+  const ctx = vm.createContext({
+    db, console, Date, WORLD_BOSS_GUILD_ID: 'guild', WORLD_BOSS_PING_ROLE_ID: 'boss-role',
+    ETERNAMAX_PING_ROLE_ID: 'eternamax-role',
+    client: { channels: { fetch: async () => ({ guildId: 'guild', isTextBased: () => true,
+      send: async (payload) => sent.push(payload) }) } },
+    getActiveWorldBoss: () => activeBoss,
+    getWorldBossAnnouncementPosts: () => [{ guild_id: 'guild', channel_id: 'channel' }],
+    setTimeout: (callback, delay) => { const timer = { callback, delay, unref() {} }; timers.push(timer); return timer; },
+    clearTimeout: () => {}, updateWorldBossAnnouncement: async () => {}, createWorldBossEmbed: () => ({}),
+  });
+  vm.runInContext(extract(indexSource, 'function getWorldBossPingRoles(', '\nasync function postWorldBossAnnouncementToChannel('), ctx);
+  vm.runInContext(extract(indexSource, 'const WORLD_BOSS_PROGRESS_INTERVAL_MS', '\n// Coalesces boss HP refreshes'), ctx);
+  ctx.scheduleWorldBossRegistrationClose(boss);
+  assert.ok(timers[0].delay <= 100000 && timers[0].delay > 99000);
+  timers[0].callback();
+  await new Promise((resolve) => setImmediate(resolve));
+  await ctx.remindWorldBossRegistrationClosing(boss);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].content, /<@&boss-role> <@&eternamax-role>/);
+  assert.deepEqual(Array.from(sent[0].allowedMentions.roles), ['boss-role', 'eternamax-role']);
+  activeBoss = null;
+  await ctx.remindWorldBossRegistrationClosing({ ...boss, id: 8 });
+  assert.equal(sent.length, 1);
+  db.close();
+});
+
+test('PC dex sort orders displayed numbers across favorites and variants and works with rarity buttons', async () => {
+  const entries = [
+    { id: 3, pokemon_id: 25, name: 'Pikachu', rarity: 'Common', dex_number: 25, is_favorite: 1, is_shiny: 0, is_golden: 0 },
+    { id: 2, pokemon_id: 1, name: 'Bulbasaur', rarity: 'Common', dex_number: 1, is_favorite: 0, is_shiny: 0, is_golden: 0 },
+    { id: 1, pokemon_id: 1, name: 'Bulbasaur', rarity: 'Shiny', dex_number: 1001, is_favorite: 0, is_shiny: 1, is_golden: 0 },
+  ];
+  const events = {};
+  const replies = [];
+  const edits = [];
+  const user = { id: 'u', username: 'Trainer', displayAvatarURL: () => 'https://example.com/avatar.png' };
+  const panel = { createMessageComponentCollector: () => ({ on: (name, fn) => { events[name] = fn; } }),
+    edit: async (payload) => edits.push(payload) };
+  const ctx = vm.createContext({
+    command: 'pc', args: ['dex'], userId: 'u', adminPcLookup: false, PREFIX: '.',
+    message: { author: user, mentions: { users: { first: () => null } },
+      reply: async (payload) => { replies.push(payload); return panel; } },
+    db: { prepare: (sql) => ({ all: () => sql.includes('FROM catches c') ? entries.map((entry) => ({ ...entry })) : [] }) },
+    getDexIndexOffset: () => 1000, getPokemonDexNumbers: () => new Map(),
+    getRaritySettings: () => [{ name: 'Common' }, { name: 'Shiny' }],
+    getDisplayRarity: (rarity) => rarity, getPokemonSpriteEmoji: () => '',
+    RARITY_EMOJIS: {}, MEGA_SPECIES_EMOJIS: {}, EMOJIS: {},
+    ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, console,
+  });
+  vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'box' || command === 'pc') {", "\n    if ((command === 'item'")} }`, ctx);
+  await ctx.run();
+  const initial = replies[0].embeds[0].toJSON();
+  assert.match(initial.footer.text, /Sorted by: Dex/);
+  assert.ok(initial.fields[0].value.indexOf('0001') < initial.fields[0].value.indexOf('0025'));
+  assert.ok(initial.fields[0].value.indexOf('0025') < initial.fields[0].value.indexOf('1001'));
+  await events.collect({ user, customId: 'box:rarity:shiny', deferUpdate: async () => {} });
+  assert.match(edits[0].embeds[0].toJSON().fields[0].value, /1001/);
+  assert.doesNotMatch(edits[0].embeds[0].toJSON().fields[0].value, /0025/);
+  await events.collect({ user, customId: 'box:sort', deferUpdate: async () => {} });
+  assert.match(edits[1].embeds[0].toJSON().footer.text, /Sorted by: Rarity/);
+});
+
+test('clan stats shortcuts select the same periods as their full names', async () => {
+  const seen = [];
+  const ctx = vm.createContext({
+    args: [], userId: 'user', PREFIX: '.', playerClan: { id: 1, name: 'Clan' },
+    client: { emojis: { cache: { find: () => null } } },
+    EMOJIS: { oldrod: ':rod:', pokeEgg: ':egg:' }, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
+    getClanActivityStats: (_clan, period, category) => {
+      seen.push([period, category]);
+      return { rows: [], totals: { catches: 0, fishes: 0, hatches: 0, swaps: 0, catchbot: 0, battles: 0 }, end: Date.now(), memberCount: 0 };
+    },
+    message: { reply: async () => ({ createMessageComponentCollector: () => ({ on: () => {} }) }) },
+  });
+  vm.runInContext(`async function statsCommand() {
+    const subcommand = 'stats';
+    ${extract(indexSource, "      if (subcommand === 'stats') {", "\n      if (subcommand === 'members') {")}
+  }`, ctx);
+  for (const [short, full] of [['d', 'daily'], ['w', 'weekly'], ['m', 'monthly'], ['y', 'yearly']]) {
+    ctx.args = ['stats', short, 'fishes'];
+    await ctx.statsCommand();
+    ctx.args = ['stats', full, 'fishes'];
+    await ctx.statsCommand();
+    assert.deepEqual(seen.slice(-2), [[full, 'fishes'], [full, 'fishes']]);
+  }
+});
+
+test('counters advance and reset only after a successful catch', async () => {
+  const calls = [];
+  const ctx = vm.createContext({
+    isSuccess: false, userId: 'user', catcher: { username: 'Trainer' }, guaranteedCatch: false,
+    target: { id: 1, name: 'Test', rarity: 'Common', isShiny: false },
+    counterSource: 'pokemon', catchDisplayRarity: 'Common', selectedBall: 'pb',
+    ball: { name: 'Pokéball', emoji: ':ball:', column: 'pokeballs', image: 'poke.png' },
+    rarityData: { rateText: 'rate' }, playerRoll: 99, targetRate: 1, baseCoinsEarned: 1, image: null, allowAnyUserCatch: false,
+    EmbedBuilder, EMOJIS: {}, HELD_ITEM_EMOJI: ':held:', halloweenEvent: {}, EVENT_EMBED_COLOR: 1,
+    isEventOpen: () => false, isEventChecklistSpawn: () => false, getRarityColor: () => 1,
+    getRarityEmojis: () => '', factionLogoPrefix: () => '', heldItemEncounterHint: () => '',
+    getRemainingBalls: () => '', editEncounter: async () => {},
+    recordPokemonSeen: () => {}, resetRarityStreaks: () => {}, getCatchCoinReward: () => 1,
+    awardCoinsWithBoost: () => ({ finalAmount: 1 }), getPatreonPerks: () => ({ quickHands: 0 }),
+    db: { prepare: () => ({ get: () => null }) }, saveCatch: () => {},
+    recordDailyCatch: () => {}, addUserItem: () => {},
+    recordWildEncounterCounter: (_id, source) => calls.push(`catch:${source}`),
+    recordHeldItemEncounterCounter: () => calls.push('item:advance'),
+    resetHeldItemEncounterCounter: () => calls.push('item:reset'),
+    resetEncounterCounters: (_id, source, categories) => { calls.push(`reset:${source}:${categories.join(',')}`); return []; },
+    recordEventSpawnCatch: () => calls.push('event:reset'),
+    incrementEventSpawnCatchCounter: () => calls.push('event:advance'),
+  });
+  vm.runInContext(`async function catchOutcome() {
+    ${extract(indexSource, '    if (!isSuccess) {', '\n    const eggAbilityBoost =')}
+  }`, ctx);
+  await ctx.catchOutcome();
+  assert.deepEqual(calls, []);
+  ctx.isSuccess = true;
+  await ctx.catchOutcome();
+  assert.deepEqual(calls, ['catch:pokemon', 'item:advance', 'reset:pokemon:', 'event:advance']);
+  calls.length = 0;
+  ctx.counterSource = 'explore';
+  ctx.target = { id: 1, name: 'Test', rarity: 'Legendary', isShiny: true, isGolden: true };
+  await ctx.catchOutcome();
+  assert.deepEqual(calls, ['catch:explore', 'reset:explore:legendary,shiny,golden']);
+  calls.length = 0;
+  ctx.counterSource = 'fishing';
+  ctx.target = { id: 1, name: 'Test', rarity: 'Common', heldItem: 'Item', isEventSpawn: true };
+  await ctx.catchOutcome();
+  assert.deepEqual(calls, ['catch:fishing', 'item:advance', 'item:reset', 'reset:fishing:', 'event:reset']);
+});
+
+test('Role Play is available to Bulbapedia level, egg and tutor learners, including form overrides', () => {
+  const pokemonMovesData = require('../data/pokemon-moves.json');
+  const pokemonCatalog = require('../data/pokemon-catalog.json');
+  const moveInfoData = require('../data/move-info.json');
+  const ctx = vm.createContext({ pokemonMovesData, pokemonCatalog, moveInfoData });
+  vm.runInContext(extract(dbSource, 'const FORM_EXTRA_MOVES =', '\nfunction setBuddyMoves('), ctx);
+  vm.runInContext(extract(dbSource, 'function findMoveInfo(', '\n// Admin tool:'), ctx);
+  for (const [species, form] of [[64, 64], [96, 96], [35, 35], [37, 10103], [386, 10001], [899, 899]]) {
+    assert.ok(ctx.getSpeciesLearnset(species, form).includes('role-play'));
+  }
+  assert.ok(!ctx.getSpeciesLearnset(133, 133).includes('role-play'));
+  assert.ok(ctx.findMoveInfo('role play').learners.includes('Clefairy'));
+  assert.ok(ctx.findMoveInfo('roleplay').learners.includes('Wyrdeer'));
+  assert.ok(pokemonMovesData.moves['role-play']);
+});
+
+test('Eevee evolves with every specified stone from inventory or while held', async () => {
+  const { EVOLUTION_ITEMS, findEvolutionItem } = require('../evolution-items');
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE users (id TEXT PRIMARY KEY, buddy_catch_id INTEGER);
+    INSERT INTO users VALUES ('user',1);
+    CREATE TABLE pokemon_forms (
+      id INTEGER PRIMARY KEY, species_id INTEGER, species_name TEXT, name TEXT, slug TEXT,
+      rarity TEXT, is_default INTEGER, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER
+    );
+    CREATE TABLE catches (
+      id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, is_shiny INTEGER, is_golden INTEGER,
+      rarity TEXT, held_item TEXT, friendship INTEGER, level INTEGER, experience INTEGER, hp_iv INTEGER, atk_iv INTEGER,
+      def_iv INTEGER, spa_iv INTEGER, spdef_iv INTEGER, spd_iv INTEGER, ev_hp INTEGER, ev_atk INTEGER,
+      ev_def INTEGER, ev_spa INTEGER, ev_spdef INTEGER, ev_spe INTEGER, hp INTEGER, max_hp INTEGER,
+      atk INTEGER, def INTEGER, spd INTEGER, moves TEXT, sketched_moves TEXT, in_team INTEGER DEFAULT 0, team_slot INTEGER
+    );
+    CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER, PRIMARY KEY (user_id, item_name));
+    CREATE TABLE user_pokemon_state_snapshots (user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER);
+  `);
+  const targets = [
+    ['Water Stone', 134, 'Vaporeon'], ['Thunder Stone', 135, 'Jolteon'],
+    ['Fire Stone', 136, 'Flareon'], ['Grass Stone', 470, 'Leafeon'],
+    ['Ice Stone', 471, 'Glaceon'], ['Dusk Stone', 197, 'Umbreon'],
+    ['Dawn Stone', 196, 'Espeon'], ['Shiny Stone', 700, 'Sylveon'],
+  ];
+  const insertForm = db.prepare('INSERT INTO pokemon_forms VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+  for (const [id, name] of [[133, 'Eevee'], ...targets.map(([, id, name]) => [id, name])]) {
+    insertForm.run(id, id, name, name, name.toLowerCase(), 'Common', 1, 50, 50, 50, 50);
+  }
+  const ctx = vm.createContext({
+    db, EVOLUTION_ITEMS, findEvolutionItem, BATTLE_HELD_ITEM_NAMES: new Set(),
+    findBattleHeldItem: () => null, assertUserId: () => {}, calculateStat: () => 10,
+    syncDuplicateCatchState: () => {}, carryOverEvolutionMoves: () => {}, recordPokemonSeen: () => {},
+    addUserItem: (id, name) => db.prepare(`
+      INSERT INTO user_items VALUES (?,?,1)
+      ON CONFLICT(user_id,item_name) DO UPDATE SET amount=amount+1
+    `).run(id, name),
+    sortedNameWords: (name) => String(name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).sort().join(' '),
+    friendshipEvolutionRules: new Map(require('../data/pokemon-friendship-evolutions.json')
+      .filter((rule) => rule.fromSpeciesId === 133).map((rule) => [133, [rule]])),
+    levelEvolutionRules: new Map([[133, require('../data/pokemon-evolution-rules.json')
+      .filter((rule) => rule.fromSpeciesId === 133)]]), TIME_LEVEL_EVOLUTIONS: {},
+  });
+  vm.runInContext(extract(dbSource, 'function takeUserItem(', '\nconst PLAYER_BONUSES'), ctx);
+  vm.runInContext(extract(dbSource, 'function resolveSpeciesEvolution(', '\n// Equipped moves'), ctx);
+  vm.runInContext(extract(dbSource, 'function prepareEvolutionHeldItems(', '\nfunction findUserPokemonMatches('), ctx);
+  vm.runInContext(extract(dbSource, 'function holdEvolutionItem(', '\n// Compact next-step evolution options'), ctx);
+  vm.runInContext(extract(dbSource, 'function evolvePokemonByLevel(', '\nconst moveInfoData'), ctx);
+  const reset = () => {
+    db.exec(`DELETE FROM catches; DELETE FROM user_items;
+      INSERT INTO catches (id,user_id,pokemon_id,name,is_shiny,is_golden,rarity,friendship,level,experience,
+        hp_iv,atk_iv,def_iv,spa_iv,spdef_iv,spd_iv,ev_hp,ev_atk,ev_def,ev_spa,ev_spdef,ev_spe,
+        hp,max_hp,atk,def,spd,moves,sketched_moves,in_team,team_slot)
+      VALUES (1,'user',133,'Eevee',0,0,'Common',255,30,0,0,0,0,0,0,0,0,0,0,0,0,0,10,10,10,10,10,'[]','[]',1,1);`);
+  };
+  for (const [query, , name] of targets) {
+    const item = findEvolutionItem(query);
+    reset();
+    assert.equal(ctx.evolvePokemonByLevel('user', 'eevee').error, 'cannot_evolve_by_level');
+    assert.equal(ctx.evolvePokemonWithItem('user', 'eevee', query).error, 'no_item');
+    db.prepare('INSERT INTO user_items VALUES (?,?,1)').run('user', item);
+    assert.equal(ctx.evolvePokemonWithItem('user', 'eevee', query).to, name);
+    assert.equal(db.prepare('SELECT amount FROM user_items WHERE item_name=?').get(item).amount, 0);
+
+    reset();
+    db.prepare('INSERT INTO user_items VALUES (?,?,1)').run('user', item);
+    assert.equal(ctx.holdEvolutionItem('user', query, 'eevee').itemName, item);
+    assert.equal(db.prepare('SELECT held_item FROM catches WHERE id=1').get().held_item, item);
+    assert.equal(ctx.unholdEvolutionItem('user', 'eevee', query).itemName, item);
+    assert.equal(db.prepare('SELECT amount FROM user_items WHERE item_name=?').get(item).amount, 1);
+    ctx.holdEvolutionItem('user', query, 'eevee');
+    assert.equal(ctx.evolvePokemonWithItem('user', 'eevee').to, name);
+    const evolved = db.prepare('SELECT held_item, level, in_team, team_slot FROM catches WHERE id=1').get();
+    assert.deepEqual(evolved, { held_item: null, level: 30, in_team: 1, team_slot: 1 });
+    assert.equal(db.prepare('SELECT amount FROM user_items WHERE item_name=?').get(item).amount, 0);
+  }
+
+  reset();
+  db.prepare('INSERT INTO user_items VALUES (?,?,1)').run('user', 'Leaf Stone');
+  Object.assign(ctx, {
+    userId: 'user', PREFIX: '.', action: 'give', args: ['give', 'grass', 'stone', '1'],
+    findUserItemName: findEvolutionItem, findBox: () => null,
+    TEAM_MEDALLION_ITEM: 'Team Medallion', FACTION_NON_HOLDABLE_ITEMS: new Set(), VITAMIN_ITEMS: {},
+    getUserTeam: () => db.prepare('SELECT * FROM catches WHERE user_id=? AND in_team=1').all('user'),
+    findUserPokemonMatches: () => [],
+    teamPokemonLabel: (pokemon) => pokemon.name, message: { reply: (content) => content },
+  });
+  vm.runInContext(`async function teamItemCommand() {
+    ${extract(indexSource, "      if (action === 'take') {", "\n      if (action === 'add' || action === 'remove') {")}
+  }`, ctx);
+  assert.match(await ctx.teamItemCommand(), /Gave \*\*1x Leaf Stone\*\*/);
+  ctx.action = 'take';
+  ctx.args = ['take', 'grass', 'stone', 'eevee'];
+  assert.match(await ctx.teamItemCommand(), /Took \*\*Leaf Stone\*\*/);
+  assert.equal(db.prepare('SELECT amount FROM user_items').get().amount, 1);
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id=1').get().held_item, null);
+
+  ctx.action = 'give';
+  ctx.args = ['give', 'grass', 'stone', '1'];
+  await ctx.teamItemCommand();
+  Object.assign(ctx, {
+    command: 'evolve', args: [], getUserBuddy: () => db.prepare('SELECT * FROM catches WHERE id=1').get(),
+    getRarityEmojis: () => '', getRarityColor: () => 0, getGoldenSpriteUrl: () => null,
+    getPokemonShowdownSprite: () => null, EmbedBuilder,
+  });
+  vm.runInContext(extract(indexSource, '    const parseEvolutionArguments =', '\n    const parseMegaStoneArguments'), ctx);
+  vm.runInContext(`async function evolutionCommand() {
+    ${extract(indexSource, "    if (command === 'evolve' ||", "\n    if (command === 'hold') {")}
+  }`, ctx);
+  await ctx.evolutionCommand();
+  assert.equal(db.prepare('SELECT name, held_item FROM catches WHERE id=1').get().name, 'Leafeon');
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id=1').get().held_item, null);
+
+  reset();
+  db.prepare('INSERT INTO user_items VALUES (?,?,1)').run('user', 'Dusk Stone');
+  ctx.command = 'use';
+  ctx.args = ['dusk', 'stone', 'eevee'];
+  await ctx.evolutionCommand();
+  assert.equal(db.prepare('SELECT name FROM catches WHERE id=1').get().name, 'Umbreon');
+  assert.equal(db.prepare('SELECT amount FROM user_items').get().amount, 0);
+  db.close();
+});
+
+test('vitamins raise the correct buddy EV, refresh stats and sync copies without power-item bonuses', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER);
+    INSERT INTO pokemon_forms VALUES (1, 50, 50, 50, 50);
+    CREATE TABLE catches (
+      id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, rarity TEXT, is_shiny INTEGER,
+      is_golden INTEGER, level INTEGER, experience INTEGER, hp_iv INTEGER, atk_iv INTEGER, def_iv INTEGER,
+      spa_iv INTEGER, spdef_iv INTEGER, spd_iv INTEGER, ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER,
+      ev_spa INTEGER, ev_spdef INTEGER, ev_spe INTEGER, hp INTEGER, max_hp INTEGER, atk INTEGER, def INTEGER,
+      spd INTEGER, moves TEXT, sketched_moves TEXT, friendship INTEGER, held_item TEXT, ability TEXT
+    );
+    INSERT INTO catches VALUES
+      (1,'user',1,'Buddy','Common',0,0,100,0,0,0,0,0,0,0,0,0,0,0,0,0,210,210,105,105,105,'[]','[]',0,'Power Bracer',NULL),
+      (2,'user',1,'Buddy','Common',0,0,100,0,0,0,0,0,0,0,0,0,0,0,0,0,210,210,105,105,105,'[]','[]',0,'Power Bracer',NULL);
+    CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER);
+  `);
+  const ctx = vm.createContext({
+    db, assertUserId: () => {}, getUser: () => ({ buddy_catch_id: 1 }),
+    POWER_ITEM_EVS: { 'Power Bracer': 'atk' }, SHINY_STAT_MULTIPLIER: 1.1,
+    parseSketchedMoves: (value) => JSON.parse(value || '[]'),
+    getUserItemAmount: (id, name) => db.prepare('SELECT amount FROM user_items WHERE user_id=? AND item_name=?').get(id, name)?.amount || 0,
+  });
+  vm.runInContext(extract(dbSource, 'const EV_STATS =', '\n// Startup self-heal:'), ctx);
+  vm.runInContext(extract(dbSource, 'function takeUserItem(', '\nconst PLAYER_BONUSES'), ctx);
+  vm.runInContext(extract(dbSource, 'function awardPokemonEvs(', '\nfunction setCatchTeamStatus('), ctx);
+  for (const [name, stat] of [
+    ['Zinc', 'spdef'], ['Protein', 'atk'], ['Iron', 'def'],
+    ['HP Up', 'hp'], ['Carbos', 'spe'], ['Calcium', 'spa'],
+  ]) {
+    db.prepare('INSERT INTO user_items VALUES (?,?,?)').run('user', name, 1);
+    const result = ctx.useBuddyVitamin('user', name);
+    assert.equal(result.gained, 10);
+    assert.equal(result.stat, stat);
+    const rows = db.prepare(`SELECT ev_${stat} AS ev FROM catches ORDER BY id`).all();
+    assert.deepEqual(rows.map((row) => row.ev), [10, 10]);
+    assert.equal(db.prepare('SELECT amount FROM user_items WHERE item_name=?').get(name).amount, 0);
+    if (name === 'Zinc') assert.equal(db.prepare('SELECT ev_atk FROM catches WHERE id=1').get().ev_atk, 0);
+  }
+  const buddy = db.prepare('SELECT * FROM catches WHERE id=1').get();
+  assert.equal(buddy.max_hp, 212);
+  assert.equal(buddy.atk, 107);
+  assert.equal(buddy.def, 107);
+  assert.equal(buddy.spd, 107);
+  const field = battle.createField();
+  const specialMove = { category: 'special' };
+  const untrained = { ...buddy, ev_spa: 0, ev_spdef: 0 };
+  const trainedStats = battle.damageStats(buddy, buddy, specialMove, field);
+  const untrainedStats = battle.damageStats(untrained, untrained, specialMove, field);
+  assert.ok(trainedStats.atk > untrainedStats.atk);
+  assert.ok(trainedStats.def > untrainedStats.def);
+  const [training] = ctx.awardPokemonEvs('user', [1], 'spe', 9);
+  assert.equal(training.bonus.gained, 8);
+  assert.equal(db.prepare('SELECT ev_atk FROM catches WHERE id=1').get().ev_atk, 18);
+  db.close();
+});
+
+test('vitamins consume only useful quantities, respect EV caps and reject missing inventory', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER);
+    INSERT INTO pokemon_forms VALUES (1,50,50,50,50);
+    CREATE TABLE catches (
+      id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, rarity TEXT, is_shiny INTEGER,
+      is_golden INTEGER, level INTEGER, hp_iv INTEGER, atk_iv INTEGER, def_iv INTEGER, spd_iv INTEGER,
+      ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER, ev_spa INTEGER, ev_spdef INTEGER, ev_spe INTEGER,
+      hp INTEGER, max_hp INTEGER, atk INTEGER, def INTEGER, spd INTEGER, held_item TEXT
+    );
+    INSERT INTO catches VALUES (1,'user',1,'Buddy','Common',0,0,100,0,0,0,0,0,250,0,0,0,0,200,210,105,105,105,NULL);
+    CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER);
+    INSERT INTO user_items VALUES ('user','Protein',3), ('user','Iron',2);
+  `);
+  const ctx = vm.createContext({
+    db, assertUserId: () => {}, getUser: () => ({ buddy_catch_id: 1 }),
+    POWER_ITEM_EVS: {}, SHINY_STAT_MULTIPLIER: 1.1, syncDuplicateCatchState: () => {},
+    getUserItemAmount: (id, name) => db.prepare('SELECT amount FROM user_items WHERE user_id=? AND item_name=?').get(id, name)?.amount || 0,
+  });
+  vm.runInContext(extract(dbSource, 'const EV_STATS =', '\nconst DUPLICATE_CATCH_STATE_FIELDS'), ctx);
+  vm.runInContext(extract(dbSource, 'function takeUserItem(', '\nconst PLAYER_BONUSES'), ctx);
+  vm.runInContext(extract(dbSource, 'function awardPokemonEvs(', '\nfunction setCatchTeamStatus('), ctx);
+  const result = ctx.useBuddyVitamin('user', 'Protein', 'all');
+  assert.equal(result.gained, 2);
+  assert.equal(result.used, 1);
+  assert.equal(db.prepare("SELECT amount FROM user_items WHERE item_name='Protein'").get().amount, 2);
+  assert.equal(ctx.useBuddyVitamin('user', 'Protein').error, 'ev_limit');
+  assert.equal(ctx.useBuddyVitamin('user', 'Iron', 3).error, 'not_enough_items');
+  assert.equal(db.prepare("SELECT amount FROM user_items WHERE item_name='Iron'").get().amount, 2);
+  db.prepare('UPDATE catches SET ev_hp=248 WHERE id=1').run();
+  const capped = ctx.useBuddyVitamin('user', 'Iron', 'all');
+  assert.equal(capped.gained, 10);
+  assert.equal(capped.used, 1);
+  assert.equal(ctx.useBuddyVitamin('user', 'Iron').error, 'ev_limit');
+  db.close();
+});
+
+test('Patreon shop buys vitamins by ID or name and charges 20 tokens each', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE users (id TEXT PRIMARY KEY, patreon_tokens INTEGER);
+    INSERT INTO users VALUES ('user', 100);
+    CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER);
+  `);
+  const ctx = vm.createContext({
+    db, userId: 'user', PREFIX: '.', EMOJIS: { patreonToken: ':token:' },
+    getUser: (id) => db.prepare('SELECT * FROM users WHERE id=?').get(id),
+    incrementUser: (id, fields) => db.prepare('UPDATE users SET patreon_tokens=patreon_tokens+? WHERE id=?').run(fields.patreon_tokens, id),
+    addUserItem: (id, name, amount) => db.prepare('INSERT INTO user_items VALUES (?,?,?)').run(id, name, amount),
+    parseAmount: Number, getItemEmoji: () => ':vitamin:',
+    message: { reply: (content) => content },
+  });
+  vm.runInContext(extract(dbSource, 'const VITAMIN_ITEMS =', '\nfunction calculateStat('), ctx);
+  vm.runInContext(extract(indexSource, 'function findVitamin(', '\nconst ARCEUS_PLATES'), ctx);
+  vm.runInContext(
+    `function purchase(purchaseArgs) { ${extract(indexSource, '      const vitaminById =', '\n      const threeWordItem =')} }`,
+    ctx
+  );
+  assert.match(ctx.purchase(['105', '2']), /2x :vitamin: Zinc/);
+  assert.match(ctx.purchase(['hp', 'up', '3']), /3x :vitamin: HP Up/);
+  assert.equal(db.prepare("SELECT patreon_tokens FROM users WHERE id='user'").get().patreon_tokens, 0);
+  assert.equal(db.prepare("SELECT amount FROM user_items WHERE item_name='HP Up'").get().amount, 3);
+  assert.match(ctx.purchase(['zinc']), /costs/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM user_items').get().count, 2);
+  db.close();
+});
+
+test('vitamin use accepts multiword names and all, and the token market displays its emoji', async () => {
+  const used = [];
+  const ctx = vm.createContext({
+    command: 'use', args: ['hp', 'up', 'all'], userId: 'user', PREFIX: '.',
+    parseAmount: Number, getItemEmoji: () => ':hpup:', EV_STAT_LABELS: { hp: 'HP' },
+    useBuddyVitamin: (...args) => { used.push(args); return { used: 2, pokemon: 'Buddy', stat: 'hp', before: 0, after: 20, gained: 20 }; },
+    message: { reply: (content) => content },
+  });
+  vm.runInContext(extract(dbSource, 'const VITAMIN_ITEMS =', '\nfunction calculateStat('), ctx);
+  vm.runInContext(extract(indexSource, 'function findVitamin(', '\nconst ARCEUS_PLATES'), ctx);
+  vm.runInContext(
+    `function run() { ${extract(indexSource, "    if (command === 'use') {\n      const twoWordVitamin", "\n    if (command === 'use' && /^exp")} }`,
+    ctx
+  );
+  assert.match(ctx.run(), /HP EVs \*\*0\*\* → \*\*20\*\*/);
+  assert.deepEqual(used[0], ['user', 'HP Up', 'all']);
+  const tokenCtx = vm.createContext({
+    EmbedBuilder, EMOJIS: { patreonToken: '<:patreontoken:1560376902374522980>', pokecoin: ':coin:' },
+    stats: { volume: 0, average_price: 0 }, monthName: 'November', view: 'sell', PREFIX: '.', userId: 'user',
+    getPatreonTokenOrderBook: () => [], describeOrders: () => 'No orders',
+    getUser: () => ({ coins: 0, patreon_tokens: 0 }),
+  });
+  vm.runInContext(
+    `${extract(indexSource, '      const buildTokenEmbed =', '\n      const buildTokenButtons =')}\nglobalThis.embed = buildTokenEmbed();`,
+    tokenCtx
+  );
+  const embed = tokenCtx.embed.toJSON();
+  assert.match(embed.thumbnail.url, /1560376902374522980\.png/);
+  assert.match(embed.fields.at(-1).value, /<:patreontoken:1560376902374522980>/);
+});
+
+test('built-in bot admins retain access alongside configured admin IDs', () => {
+  const context = vm.createContext({ process: { env: { ADMIN_IDS: 'extra-admin' } } });
+  vm.runInContext(extract(indexSource, 'function isConfiguredBotAdmin(', '\nconst EXTRA_CHANNEL_BOOSTER_IDS'), context);
+  for (const id of ['426946381098254336', '183625933041827840', '1352997432929288194', '378623134816927745', 'extra-admin']) {
+    assert.equal(context.isConfiguredBotAdmin({ author: { id } }), true);
+  }
+  assert.equal(context.isConfiguredBotAdmin({ author: { id: 'other' } }), false);
+});
+
+test('admin command attempts are classified and logged with their original text', async () => {
+  const sent = [];
+  const context = vm.createContext({
+    client: { channels: { fetch: async (id) => ({
+      isTextBased: () => true,
+      send: async (payload) => sent.push({ id, payload }),
+    }) } },
+    console,
+  });
+  vm.runInContext(
+    extract(indexSource, 'const ADMIN_COMMAND_LOG_CHANNEL_ID', '\nasync function notifyAdminOfRareSpawn('),
+    context
+  );
+  for (const [command, args] of [
+    ['admin', ['pc']], ['admingive', ['boss']], ['adminboss', []],
+    ['p', ['ADMIN']], ['pokemon', ['admin']], ['autospawn', ['set']],
+    ['gstart', ['pokemon']], ['giveaway', ['set']], ['lot', ['channel']],
+  ]) {
+    assert.equal(context.isAdminCommand(command, args), true);
+  }
+  assert.equal(context.isAdminCommand('p', []), false);
+  assert.equal(context.isAdminCommand('lottery', ['buy']), false);
+  await context.sendAdminCommandLog({
+    content: '.admin pokemon <@123> shiny Mew',
+    author: { id: '123', username: 'Trainer' },
+    guild: { id: '456', name: 'Server' },
+  });
+  assert.equal(sent[0].id, '1570468196237189141');
+  assert.equal(sent[0].payload.embeds[0].description, '.admin pokemon <@123> shiny Mew');
+  assert.match(sent[0].payload.embeds[0].fields[0].value, /Trainer \(123\)/);
+  assert.equal(sent[0].payload.allowedMentions.parse.length, 0);
+});
+
+test('automated command patterns are logged to the configured channel rather than sent by DM', async () => {
+  const sent = [];
+  const context = vm.createContext({
+    process: { env: {} }, PREFIX: '.',
+    client: { channels: { fetch: async (id) => ({
+      isTextBased: () => true,
+      send: async (payload) => sent.push({ id, payload }),
+    }) } },
+  });
+  vm.runInContext(extract(indexSource, 'const USER_COMMAND_GAP_MS', '\nfunction isCommandThrottled('), context);
+  let activity;
+  for (let i = 0; i < 6; i++) {
+    activity = context.recordCommandCadence({
+      author: { id: '123', username: 'Trainer' }, content: '.catch',
+      guild: { id: '456', name: 'Server' }, createdTimestamp: 10000 + i * 1000,
+    });
+  }
+  await context.logCommandCadence('123', activity);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].id, '1570490554096160957');
+  assert.match(sent[0].payload.content, /Username: Trainer\nUser ID: 123\nServer: Server \(456\)/);
+  assert.match(sent[0].payload.content, /Pattern: \.catch repeated 6 times/);
+  assert.equal(sent[0].payload.allowedMentions.parse.length, 0);
+  context.client.channels.fetch = async () => null;
+  await assert.rejects(context.logCommandCadence('123', activity), /not a text channel/);
+});
+
+test('guild join logs identify recent bot inviters and report unavailable audit logs', async () => {
+  const messages = [];
+  const warnings = [];
+  const context = vm.createContext({
+    client: {
+      user: { id: 'bot' },
+      channels: { fetch: async (id) => ({
+        isTextBased: () => true, send: async (payload) => messages.push({ id, payload }),
+      }) },
+      users: { fetch: async () => ({ send: async () => {} }) },
+    },
+    AuditLogEvent: { BotAdd: 'bot-add' },
+    GUILD_JOIN_LOG_CHANNEL_ID: '1570468221469859891',
+    GUILD_JOIN_REPORT_ADMIN_ID: 'admin',
+    BLOCKED_GUILD_IDS: new Set(),
+    console: { warn: (...args) => warnings.push(args), error: (...args) => { throw new Error(args.join(' ')); } },
+    Date,
+    setTimeout: (callback) => callback(),
+  });
+  vm.runInContext(extract(indexSource, 'async function reportGuildJoin(', "\nclient.on('guildCreate'"), context);
+  const guild = {
+    id: '456', name: 'Server', memberCount: 42,
+    fetchOwner: async () => ({ id: 'owner', user: { username: 'Owner' } }),
+    fetchAuditLogs: async () => ({
+      entries: [
+        { target: { id: 'other' }, createdTimestamp: Date.now(), executor: { id: 'wrong', username: 'Wrong' } },
+        { target: { id: 'bot' }, createdTimestamp: Date.now(), executor: { id: '123', username: 'Inviter' } },
+      ],
+    }),
+  };
+  await context.reportGuildJoin(guild);
+  assert.equal(messages[0].id, '1570468221469859891');
+  assert.match(messages[0].payload.content, /Server.*456/);
+  assert.match(messages[0].payload.content, /Added by: Inviter \(`123`\)/);
+  guild.fetchAuditLogs = async () => ({
+    entries: [{ target: { id: 'bot' }, createdTimestamp: Date.now() - 600000, executor: { id: 'old', username: 'Old' } }],
+  });
+  await context.reportGuildJoin(guild);
+  assert.match(messages[1].payload.content, /Added by: Unknown \(no recent bot-add audit log entry\)/);
+  guild.fetchAuditLogs = async () => { throw new Error('Missing Access'); };
+  await context.reportGuildJoin(guild);
+  assert.match(messages[2].payload.content, /Added by: Unknown \(audit log unavailable\)/);
+  assert.equal(warnings.length, 1);
+});
+
 test('CatchBot Pokémon, cost, and duration upgrade prices double at every level', () => {
   const ctx = vm.createContext({});
   vm.runInContext(
@@ -167,7 +1004,7 @@ test('.co renders aligned Pokémon, Fishing, Explore, and held-item columns', as
   const embed = response.embeds[0].toJSON();
   assert.equal(embed.fields.length, 3);
   assert.match(embed.description, /<:magnifyingglass:1569838771791466546> - Explore Counters/);
-  assert.match(embed.description, /Event spawn counts successful `.p` catches; older counts may include encounters/);
+  assert.match(embed.description, /Counts successful catches; older counts may include encounters/);
   assert.match(embed.fields[0].value, /Item found/);
   assert.match(embed.fields[1].value, /8 - ⭐ Smeargle \(Nugget\)/);
   assert.match(embed.fields[0].value, /Golden spawn/);
@@ -218,7 +1055,7 @@ test('market sale history returns only the latest sale', () => {
         (2, 25, 0, 0, 200, 2, '2026-11-09'),
         (3, 25, 0, 0, 450, 3, '2026-11-10');
     `);
-    const ctx = vm.createContext({ db });
+      const ctx = vm.createContext({ db });
     vm.runInContext(
       `${extract(dbSource, 'function getMarketSaleHistory(', '\nfunction getUserMarketSaleSummary(')}
        globalThis.testMarketHistory = getMarketSaleHistory;`,
@@ -412,33 +1249,73 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   const math = Object.create(Math);
   math.random = () => roll;
   const ctx = vm.createContext({
-    Math: math, LEGENDARY_BASE_CHANCE: 1 / 167,
-    LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125, HARD_RARITY_USER_IDS: new Set(),
+    Math: math, HARD_RARITY_USER_IDS: new Set(),
     HARD_RARITY_RATE_MULTIPLIER: 1, ENCOUNTER_RARITY_WEIGHTS: { normal: { Common: 1 } },
   });
-  vm.runInContext(`${legendarySource}\n${eventSource}`, ctx);
-  roll = 0.0015;
+  vm.runInContext(`${extract(indexSource, 'const LEGENDARY_BASE_CHANCE =', '\n// A hunt')}
+    ${legendarySource}\n${eventSource}`, ctx);
+  roll = 1 / 666 - 1e-10;
   assert.equal(ctx.chooseEncounterRarity('normal', false, 0), 'Legendary');
-  roll = 1 / 167;
+  roll = 1 / 666;
   assert.equal(ctx.chooseEncounterRarity('normal', false, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 500);
-  assert.equal(ctx.getEventSpawnChance(50), 1.5 / 500);
-  assert.match(indexSource, /const EVENT_SPAWN_ODDS = 500;/);
-  assert.match(indexSource, /const EVENT_SPAWN_PITY_MIN = 300;/);
-  assert.match(indexSource, /const EVENT_SPAWN_PITY_LIMIT = 500;/);
-  assert.match(indexSource, /const WILD_SHINY_PITY_MIN = 1000;/);
-  assert.match(indexSource, /const WILD_SHINY_PITY_LIMIT = 2000;/);
-  assert.match(indexSource, /const LEGENDARY_BASE_CHANCE = 1 \/ 167;/);
-  assert.match(indexSource, /const LEGENDARY_SPAWN_PITY_LIMIT = 167;/);
-  assert.match(indexSource, /const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 \/ 125;/);
-  assert.match(indexSource, /const BASE_SHINY_RATE = 1 \/ 1000;/);
-  assert.match(indexSource, /const FULL_ODDS_SHINY_PITY_LIMIT = 750;/);
-  assert.match(indexSource, /const PATREON_SHINY_RATE = 1 \/ 500;/);
-  assert.match(indexSource, /patreon: \{ event: 1 \/ 50, nonEvent: 1 \/ 250 \}/);
-  assert.match(indexSource, /standard: \{ event: 1 \/ 100, nonEvent: 1 \/ 500 \}/);
-  assert.match(indexSource, /name: 'Good Rod',\s+baseShinyRate: 1 \/ 1250,/);
-  assert.match(indexSource, /name: 'Super Rod',\s+baseShinyRate: 1 \/ 625,/);
-  assert.match(indexSource, /name: 'Golden Rod',\s+baseShinyRate: 1 \/ 625,/);
+  roll = 1 / 500 - 1e-10;
+  assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Legendary');
+  roll = 1 / 500;
+  assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Common');
+  assert.equal(ctx.getEventSpawnChance(), 1 / 1000);
+  assert.equal(ctx.getEventSpawnChance(50), 1.5 / 1000);
+  assert.ok(Math.abs(ctx.getEventSpawnChance(0, 30, true) - 1 / 450) < 1e-15);
+  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 450);
+});
+
+test('full-odds shiny rolls use each trainer tier and charm without Patreon base doubling', () => {
+  let rolls = [];
+  const math = Object.create(Math);
+  math.random = () => {
+    assert.ok(rolls.length, 'Unexpected shiny-roll random value');
+    return rolls.shift();
+  };
+  const users = {
+    standard: { patreon_tier: null, has_patreon: 0, shiny_charms: 0 },
+    common: { patreon_tier: 'common', has_patreon: 1, shiny_charms: 0 },
+    legendary: { patreon_tier: 'legendary', has_patreon: 1, shiny_charms: 0 },
+    shiny: { patreon_tier: 'shiny', has_patreon: 1, shiny_charms: 0 },
+    extra: { patreon_tier: 'common', has_patreon: 1, shiny_charms: 3 },
+  };
+  const ctx = vm.createContext({
+    Math: math, getUser: (id) => users[id], getPlayerClan: () => null,
+    getClanPerkMultipliers: () => ({ srBonus: 0, erBonus: 0 }),
+    consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
+    isEventOpen: () => false, halloweenEvent: {}, eventSpawnEntries: [],
+    consumeEncounterModifier: () => 'normal', getChamberSpawnSpecies: () => [],
+    rollSpecialLegendarySpawn: () => null, getActiveHuntTarget: () => null,
+    chooseEncounterRarity: () => 'Common', getEncounterRarityRate: () => 1,
+    formatPercent: () => '100%', getRandomPokemon: () => ({
+      id: 1, speciesId: 1, name: 'Test', speciesName: 'Test', rarity: 'Common',
+    }),
+    SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
+    EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
+    FISH_PATREON_ONLY_SHINY_KEYS: new Set(), HARD_RARITY_USER_IDS: new Set(),
+    HARD_RARITY_RATE_MULTIPLIER: 1, DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.1,
+    eventSpawnFormIds: [], EVENT_FISH_SPAWN_FORM_IDS: [], INCENSE_BOOST: 1.1,
+  });
+  vm.runInContext(
+    extract(dbSource, 'const NO_PATREON_PERKS =', '\nconst BASE_INCENSE_CHARGES') + '\n'
+    + extract(dbSource, 'function getPatreonPerks(', '\ndb.exec(') + '\n'
+    + extract(dbSource, 'function getTotalEffectiveShinyBonus(', '\n// perkCatches') + '\n'
+    + extract(indexSource, 'const BASE_SHINY_RATE =', '\nconst CATCHBOT_GOLDEN_BASE_CHANCE') + '\n'
+    + extract(indexSource, 'function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE'),
+    ctx
+  );
+  for (const [user, chance] of [
+    ['standard', 1 / 1500], ['common', 1 / 1200], ['legendary', 1 / 1000],
+    ['shiny', 1 / 990], ['extra', 1.25 / (1500 * 0.97)], ['standard', 1 / 1500],
+  ]) {
+    rolls = [0.5, chance - 1e-12];
+    assert.equal(ctx.rollSpawn('land', user).isShiny, true, user);
+    rolls = [0.5, chance + 1e-12];
+    assert.equal(ctx.rollSpawn('land', user).isShiny, false, user);
+  }
 });
 
 test('event spawn pity is persistent and isolated by event and trainer', () => {
@@ -595,7 +1472,9 @@ test('wiping a trainer clears catches, stats and snapshots while preserving clan
     INSERT INTO user_items VALUES ('trainer', 'Candy', 2);
     INSERT INTO pokemon_gifts VALUES ('other', 'trainer');
   `);
-  const ctx = vm.createContext({ db });
+  const ctx = vm.createContext({ db, auctions: {
+    settle: () => {}, cancelLeadingBids: () => {}, confiscate: () => 0,
+  } });
   vm.runInContext(
     extract(dbSource, 'function wipeUserData(', '\nfunction deleteClanByName('),
     ctx
@@ -931,8 +1810,6 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   let pokeradar = false;
   let selectedWeights = [];
   let tierPerks = null;
-  let eventSpawnPity = 299;
-  let encounterPity = { legendary: 0, shiny: 0 };
   let raritySettings = [{ name: 'Common', spawn_weight: 1, pokemon_count: 1 }];
   const configuredPerks = vm.runInNewContext(
     extract(dbSource, 'const NO_PATREON_PERKS =', '\nconst BASE_INCENSE_CHARGES')
@@ -968,12 +1845,6 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     consumeEncounterModifier: () => 'normal', rollSpecialLegendarySpawn: () => null,
     getPatreonPerks: () => tierPerks || { shinyRatePct: 0, eventShinyPct },
     isPlayerBonusActive: (key) => key === 'shiny' && bonusActive,
-    advanceEventSpawnPity: () => { eventSpawnPity += 1; return eventSpawnPity; },
-    resetEventSpawnPity: () => { eventSpawnPity = 0; },
-    advanceEncounterPity: (_userId, category) => { encounterPity[category] += 1; return encounterPity[category]; },
-    resetEncounterPity: (_userId, category) => { encounterPity[category] = 0; },
-    advanceWildShinyPity: () => { encounterPity.shiny += 1; return encounterPity.shiny + 1000; },
-    resetWildShinyPity: () => { encounterPity.shiny = 0; },
     HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
     getRaritySettings: () => raritySettings,
     getRandomPokemon: (rarity, water, a, b, excluded, species, ids) => {
@@ -983,16 +1854,15 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
     EVENT_NON_FISH_SPECIES: [],
     EVENT_FISH_SPAWN_FORM_IDS: [], eventSpawnFormIds: [],
-    LEGENDARY_BASE_CHANCE: 1 / 167,
-    LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 125,
-    LEGENDARY_SPAWN_PITY_LIMIT: 167,
-    FULL_ODDS_SHINY_PITY_LIMIT: 750,
-    WILD_SHINY_PITY_MIN: 1000, WILD_SHINY_PITY_LIMIT: 2000,
+    LEGENDARY_BASE_CHANCE: 1 / 666,
+    LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 500,
     EVENT_TICKET_SHINY_RATES: {
       standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02, nonEvent: 0.002 },
     },
-    BASE_SHINY_RATE: 0.001, PATREON_SHINY_RATE: 0.002,
-    CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
+    BASE_SHINY_RATE: 1 / 1500, INCENSE_BOOST: 1.1,
+    CATCHBOT_RARITY_WEIGHTS: { Common: 55 },
+    CATCHBOT_SHINY_DENOMINATORS: [100000],
+    CATCHBOT_LEGENDARY_DENOMINATORS: [6666],
     EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
     FISH_PATREON_ONLY_SHINY_KEYS: new Set(),
   });
@@ -1004,18 +1874,14 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   );
   const rod = { enablesLegendary: true, enablesShiny: true, baseShinyRate: 0.001 };
   const fishEvent = (selectionRoll, options = {}) => {
-    eventSpawnPity = 299;
     rolls = [0, selectionRoll];
     return ctx.rollSpawn('water', 'user', rod, options);
   };
-  eventSpawnPity = 299;
-  rolls = [1 / 500 - 1e-10, 0];
+  rolls = [1 / 1000 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
-  eventSpawnPity = 299;
-  rolls = [(1 + 5 / 100) / 500 - 1e-10, 0];
+  rolls = [(1 + 5 / 100) / 1000 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 1);
-  eventSpawnPity = 299;
-  rolls = [(1 + 5 / 100) / 500, 0.5, 0.1, 0.001];
+  rolls = [(1 + 5 / 100) / 1000, 0.5, 0.1, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 4);
   assert.equal(fishEvent(0.52).id, 2);
   assert.deepEqual(selectedWeights, [1 / 0.95, 1]);
@@ -1024,7 +1890,6 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   assert.equal(fishEvent(boundary - 1e-8).id, 1);
   assert.equal(fishEvent(boundary + 1e-8).id, 2);
   assert.equal(fishEvent(0.9).id, 2);
-  eventSpawnPity = 299;
   rolls = [0, 0.99];
   assert.equal(ctx.rollSpawn('land', 'user').id, 3);
 
@@ -1045,18 +1910,28 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     assert.equal(tierPerks.eventShinyPct, eventPct, `${tier} event perk`);
     assert.equal(tierPerks.shinyRatePct, ordinaryPct, `${tier} ordinary shiny perk`);
     assert.equal(tierPerks.shinyCharms, charm, `${tier} shiny charms`);
+    const eventChance = ctx.getEventSpawnChance(0, eventPct);
+    rolls = [eventChance - 1e-12, 0];
+    assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, true, `${tier} event below threshold`);
+    rolls = [eventChance + 1e-12, 0.5, 1];
+    assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, undefined, `${tier} event above threshold`);
     fishEvent(0);
     const weight = baseline * (tier ? 2 : 1) * (1 + eventPct / 100) / (1 - charm / 100);
     assert.ok(Math.abs(selectedWeights[0] - weight) < 1e-12, `${tier} event shiny weight`);
     assert.equal(selectedWeights[1], 1, `${tier} regular event weight`);
-    const ordinaryChance = (tier ? 0.002 : 0.001) * (1 + ordinaryPct / 100) / (1 - charm / 100);
-    eventSpawnPity = 299;
-    rolls = [1 / 500, 0.5, ordinaryChance - 1e-10];
+    const ordinaryChance = 0.001 * (1 + ordinaryPct / 100) / (1 - charm / 100);
+    rolls = [eventChance, 0.5, ordinaryChance - 1e-10];
     assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true, `${tier} ordinary shiny below threshold`);
-    eventSpawnPity = 299;
-    rolls = [1 / 500, 0.5, ordinaryChance + 1e-10];
+    rolls = [eventChance, 0.5, ordinaryChance + 1e-10];
     assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false, `${tier} ordinary shiny above threshold`);
   }
+  tierPerks = configuredPerks.tiers.legendary;
+  bonusActive = true;
+  rolls = [1 / 450 - 1e-12, 0];
+  assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, true);
+  rolls = [1 / 450 + 1e-12, 0.5, 1];
+  assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, undefined);
+  bonusActive = false;
   tierPerks = null;
   patreon = true;
   fishEvent(0);
@@ -1105,10 +1980,10 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   pokeradar = false;
   ctx.HARD_RARITY_USER_IDS.clear();
   ctx.HARD_RARITY_RATE_MULTIPLIER = 1;
+  bonusActive = false;
 
   // A non-event encounter at the ordinary shiny threshold stays non-shiny.
-  eventSpawnPity = 299;
-  rolls = [1 / 500, 0.5, 0.001];
+  rolls = [1 / 1000, 0.5, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
   ticket = false;
   rolls = [0.5, 0.001];
@@ -1118,33 +1993,8 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   rolls = [0.5, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
   eventOpen = true;
-  rolls = [0.5, 0.00025];
+  rolls = [0.5, 0.00001];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { catchbot: true }).isShiny, false);
-
-  eventSpawnPity = 0;
-  for (let encounter = 1; encounter < 500; encounter += 1) {
-    rolls = encounter < 300 ? [0.5, 1] : [0.5, 0.5, 1];
-    assert.equal(ctx.rollSpawn('water', 'user', rod).id, 4);
-  }
-  assert.equal(eventSpawnPity, 499);
-  rolls = [0];
-  assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
-  assert.equal(eventSpawnPity, 0);
-
-  ticket = false;
-  raritySettings = [
-    { name: 'Common', spawn_weight: 1, pokemon_count: 1 },
-    { name: 'Legendary', spawn_weight: 1, pokemon_count: 1 },
-  ];
-  encounterPity = { legendary: 166, shiny: 999 };
-  ctx.rollEncounterLegendary = () => ({ id: 5, name: 'Legendary', speciesName: 'Legendary', rarity: 'Legendary' });
-  rolls = [0.5];
-  const guaranteedEncounter = ctx.rollSpawn('water', 'user', {
-    enablesLegendary: true, enablesShiny: true, baseShinyRate: 0.001,
-  });
-  assert.equal(guaranteedEncounter.rarity, 'Legendary');
-  assert.equal(guaranteedEncounter.isShiny, true);
-  assert.deepEqual(encounterPity, { legendary: 0, shiny: 0 });
 });
 
 test('Future Sight resolves two turns later and does not hit a replacement after a faint', () => {
@@ -1175,6 +2025,38 @@ test('normal moves do not damage Ghost types unless Scrappy applies', () => {
   ctx.player.ability = 'Scrappy';
   battle.performMove(ctx, { mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' }, move, () => {});
   assert.ok(ctx.enemy.hp < 100);
+});
+
+test('Miracle Eye marks the target until it switches, bypassing Dark immunity and positive evasion', () => {
+  const ctx = battleContext();
+  ctx.enemy.types = ['dark', 'poison'];
+  ctx.typeEff = (type, types) => type === 'psychic'
+    ? (types.includes('dark') ? 0 : types.includes('poison') ? 2 : 1) : 1;
+  ctx.calc = (move, _atk, _def, types) => 10 * ctx.typeEff(move.type, types);
+  const psychic = { name: 'Psychic', type: 'psychic', power: 90, category: 'special', accuracy: 100 };
+  const eye = { name: 'Miracle Eye', type: 'psychic', power: 0, category: 'status', accuracy: 100 };
+  const player = { mon: ctx.player, side: 'player' };
+  const enemy = { mon: ctx.enemy, side: 'enemy' };
+  const logs = [];
+  const originalRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    battle.performMove(ctx, player, enemy, psychic, (text) => logs.push(text));
+    assert.equal(ctx.enemy.hp, 100);
+    battle.fx(ctx.enemy).stages.eva = 6;
+    battle.performMove(ctx, player, enemy, eye, (text) => logs.push(text));
+    assert.equal(battle.fx(ctx.enemy).miracleEye, true);
+    battle.performMove(ctx, player, enemy, eye, (text) => logs.push(text));
+    assert.match(logs.at(-1), /failed/i);
+    battle.performMove(ctx, player, enemy, psychic, (text) => logs.push(text));
+    assert.equal(ctx.enemy.hp, 80);
+    battle.onSwitchIn(ctx, ctx.enemy, 'enemy', () => {});
+    assert.equal(battle.fx(ctx.enemy).miracleEye, false);
+    battle.performMove(ctx, player, enemy, psychic, (text) => logs.push(text));
+    assert.equal(ctx.enemy.hp, 80);
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test('Simple Beam affects world boss stat changes across switches and damaging moves', () => {
@@ -1213,11 +2095,25 @@ test('Simple Beam affects world boss stat changes across switches and damaging m
   assert.match(firstHit.battleLog[0], /harshly fell/);
   assert.equal(secondHit.damage, firstHit.damage * 3);
   assert.equal(vm.runInContext('worldBossDefenceDrops.get("42:user").spdef', ctx), -6);
+  const untrained = ctx.runWorldBossMove('untrained', [pokemon], boss, 0, 0);
+  const trained = ctx.runWorldBossMove('trained', [{ ...pokemon, ev_spa: 40 }], boss, 0, 0);
+  assert.ok(trained.damage > untrained.damage);
 
   const normal = battleContext();
   battle.performMove(normal, { mon: normal.player, side: 'player' }, { mon: normal.enemy, side: 'enemy' },
     { name: 'Simple Beam', accuracy: 100, power: 0 }, () => {});
   assert.equal(normal.enemy.ability, undefined);
+
+  const psychic = { name: 'Psychic', type: 'psychic', power: 90, category: 'special' };
+  ctx.db = { prepare: () => ({ get: () => ({ types: '["dark","poison"]' }) }) };
+  ctx.typeEffectiveness = (type, types) => type === 'psychic' && types.includes('dark') ? 0 : 1;
+  ctx.getWorldBossTeamMoves = (team) => team.map((entry) => ({
+    pokemon: entry, teamIndex: 0, types: ['psychic'], moves: [psychic],
+  }));
+  assert.equal(ctx.runWorldBossMove('user', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx).error, 'no_effect');
+  battle.performMove(moveCtx, { mon: bs.mon, side: 'player' }, { mon: bs.boss, side: 'enemy' },
+    { name: 'Miracle Eye', accuracy: 100, power: 0 }, () => {});
+  assert.ok(ctx.runWorldBossMove('user', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx).damage > 0);
 });
 
 test('NPC coin rewards are halved for first clears, rematches, challengers and Volo', () => {
@@ -1489,6 +2385,7 @@ test('a completed event reward is granted once and announces the claim', async (
     updateUser: (id, fields) => db.prepare('UPDATE users SET event_gold_claimed=? WHERE id=?').run(fields.event_gold_claimed, id),
     saveCatch: (id, pokemon) => db.prepare('INSERT INTO rewards VALUES (?,?)').run(id, pokemon.name),
     announceEventChecklistCompletion: async () => { announcements += 1; },
+    notifyAdminIfRareGrant: async () => {},
     formatPokemonReward: (pokemon) => pokemon.name, PREFIX: '.',
   });
   vm.runInContext(extract(indexSource, 'async function handleEventCommand(', '\nasync function getUsernameById('), context);
@@ -1862,6 +2759,69 @@ test('autospawn command requires a bot admin and an allowed server', async () =>
   message.channel.guildId = message.guildId;
   assert.match(await ctx.run(message, ['set']), /15–500/);
   assert.equal(ctx.setCalled, true);
+});
+
+test('wild item rolls use 5% for Pokémon and fishing encounters while retaining boosts', () => {
+  const math = Object.create(Math);
+  let rolls = [];
+  math.random = () => {
+    assert.ok(rolls.length, 'Unexpected random roll');
+    return rolls.shift();
+  };
+  const ordinary = { name: 'Stone' };
+  const researchItem = { name: 'Vest', requiresRelicExchange: true };
+  const relic = { name: 'Relic' };
+  const valuable = { name: 'Nugget' };
+  let relicActive = false;
+  const ctx = vm.createContext({
+    Math: math, Date,
+    WILD_HELD_ITEMS_BY_SPECIES: new Map([['test', [ordinary]], ['research', [researchItem]]]),
+    getUser: () => ({ research_relic_unlock_until: relicActive ? Date.now() + 10000 : 0 }),
+    getUserItems: () => [], RESEARCH_RELICS: [relic],
+    RESEARCH_DROP_VALUABLES: ['Nugget'], RESEARCH_VALUABLES: [valuable],
+  });
+  vm.runInContext(
+    extract(indexSource, 'const WILD_HELD_ITEM_SPAWN_CHANCE =', '\nconst RESEARCH_RELIC_COOLDOWN_MS')
+      + '\n' + extract(indexSource, 'function rollWildHeldItem(', '\nconst FACTION_CATCH_POINTS'),
+    ctx
+  );
+  const roll = (source, values, target = { speciesName: 'Test' }, research = false) => {
+    rolls = values;
+    return ctx.rollWildHeldItem(target, 'trainer', research, source);
+  };
+  for (const source of ['pokemon', 'fishing']) {
+    assert.equal(roll(source, [0, 0.049999]), ordinary);
+    assert.equal(roll(source, [0, 0.05]), null);
+  }
+  assert.equal(roll(null, [0, 0.099999]), ordinary);
+  assert.equal(roll(null, [0, 0.1]), null);
+  assert.equal(roll('pokemon', [0, 0.0599], { speciesName: 'Test', overworldAbility: 'compound-eyes' }), ordinary);
+  assert.equal(roll('pokemon', [0, 0.0601], { speciesName: 'Test', overworldAbility: 'compound-eyes' }), null);
+  assert.equal(roll('pokemon', [0, 0.0649], { speciesName: 'Test', researchToolBoosts: { fluffyTail: true } }), ordinary);
+  assert.equal(roll('pokemon', [0, 0.0651], { speciesName: 'Test', researchToolBoosts: { fluffyTail: true } }), null);
+  assert.equal(roll('pokemon', [0.0499, 0], { speciesName: 'Other' }, true), relic);
+  assert.equal(roll('pokemon', [0.05, 0.0499, 0], { speciesName: 'Other' }, true), valuable);
+  assert.equal(roll('pokemon', [0.05, 0.05], { speciesName: 'Other' }, true), null);
+  relicActive = true;
+  assert.equal(roll('pokemon', [0, 0.05, 0.0499, 0], { speciesName: 'Research' }, true), researchItem);
+  assert.equal(roll('pokemon', [0, 0.05, 0.05, 0.05, 0.05], { speciesName: 'Research' }, true), null);
+});
+
+test('wild encounter item rolls receive their Pokémon or fishing source', () => {
+  const calls = [];
+  const ctx = vm.createContext({
+    target: { speciesName: 'Test' }, userId: 'trainer', mode: 'catch', counterSource: 'pokemon',
+    rollWildHeldItem: (...args) => { calls.push(args); return null; },
+  });
+  const snippet = extract(indexSource, '  if (!target.isExplore && !target.heldItem && !target.heldItemRolled) {', '\n  const user = getUser(userId);');
+  for (const [mode, source] of [['catch', 'pokemon'], ['fish', 'fishing'], ['catch', null]]) {
+    ctx.mode = mode;
+    ctx.counterSource = source;
+    vm.runInContext(snippet, ctx);
+  }
+  assert.deepEqual(calls.map((args) => [args[2], args[3]]), [
+    [true, 'pokemon'], [false, 'fishing'], [false, null],
+  ]);
 });
 
 test('held-item encounters identify the item only with Frisk and do not alone trigger rare advice', () => {

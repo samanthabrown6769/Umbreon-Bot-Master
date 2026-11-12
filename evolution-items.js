@@ -1,5 +1,5 @@
 // Species IDs are National Dex numbers. Each pair is [from, to].
-// "stone" items are used straight from the inventory; "held" items must be held first.
+// Both stones and held evolution items can be used from inventory or held.
 const EVOLUTION_ITEMS = {
   'Fire Stone': {
     kind: 'stone', emoji: '<:firestone:1559927145147539507>',
@@ -27,15 +27,15 @@ const EVOLUTION_ITEMS = {
   },
   'Shiny Stone': {
     kind: 'stone', emoji: '<:shinystone:1559927132111634553>',
-    evolutions: [[176, 468], [315, 407], [572, 573], [670, 671]],
+    evolutions: [[133, 700], [176, 468], [315, 407], [572, 573], [670, 671]],
   },
   'Dusk Stone': {
     kind: 'stone', emoji: '<:duskstone:1559927147102081084>',
-    evolutions: [[198, 430], [200, 429], [608, 609], [680, 681]],
+    evolutions: [[133, 197], [198, 430], [200, 429], [608, 609], [680, 681]],
   },
   'Dawn Stone': {
     kind: 'stone', emoji: '<:dawnstone:1559927148624486500>',
-    evolutions: [[281, 475], [361, 478]],
+    evolutions: [[133, 196], [281, 475], [361, 478]],
   },
   'Ice Stone': {
     kind: 'stone', emoji: '<:icestone:1559927143662882896>',
@@ -83,7 +83,7 @@ const itemsByKey = new Map(
   Object.keys(EVOLUTION_ITEMS).map((name) => [normalizeItemName(name), name])
 );
 
-const ITEM_ALIASES = { linkingcord: 'Link Cable', linkingcable: 'Link Cable', linkcord: 'Link Cable' };
+const ITEM_ALIASES = { grassstone: 'Leaf Stone', linkingcord: 'Link Cable', linkingcable: 'Link Cable', linkcord: 'Link Cable' };
 
 function findEvolutionItem(query) {
   const key = normalizeItemName(query);

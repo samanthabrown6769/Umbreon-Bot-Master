@@ -32,16 +32,18 @@ test('admin sprite and emoji overrides survive a database reopen and catalog ref
   let db = new Database(filename);
   try {
     db.exec(`
-      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, slug TEXT, name TEXT, sprite TEXT, shiny_sprite TEXT);
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, slug TEXT, name TEXT, sprite TEXT, shiny_sprite TEXT, species_id INTEGER, is_default INTEGER);
       CREATE TABLE pokemon_admin_sprites (slug TEXT PRIMARY KEY, normal_url TEXT NOT NULL, shiny_url TEXT);
+      CREATE TABLE pokemon_admin_sprite_variants (slug TEXT NOT NULL, variant TEXT NOT NULL, url TEXT NOT NULL, PRIMARY KEY (slug, variant));
       CREATE TABLE pokemon_admin_emojis (slug TEXT NOT NULL, variant TEXT NOT NULL, emoji TEXT NOT NULL, PRIMARY KEY (slug, variant));
-      INSERT INTO pokemon_forms VALUES (1, 'iron-bundle', 'Iron Bundle', 'catalog-normal', 'catalog-shiny');
+      INSERT INTO pokemon_forms VALUES (1, 'iron-bundle', 'Iron Bundle', 'catalog-normal', 'catalog-shiny', 991, 1);
     `);
     let animated;
     const records = new Map([['iron-bundle', { slug: 'iron-bundle', animated: 'catalog-animated', shinyAnimated: 'catalog-shiny-animated' }]]);
     const makeContext = () => {
       const context = vm.createContext({
         db, URL, loadPokemonDatabase: () => records, setSpriteOverrides: (value) => { animated = value; },
+        setGoldenSpriteOverrides: () => {},
       });
       vm.runInContext(extract(dbSource, 'function updatePokemonSpriteLinks(', '\nconst pokemonMovesPath'), context);
       return context;
@@ -74,6 +76,97 @@ test('admin sprite and emoji overrides survive a database reopen and catalog ref
     fs.unlinkSync(filename);
     fs.rmdirSync(directory);
   }
+});
+
+test('Dex variant sprite overrides are independent, immediate and persistent', () => {
+  const { getGoldenSpriteUrl, setGoldenSpriteOverrides } = require('../golden-pokemon');
+  const { getPokemonShowdownSprite, setSpriteOverrides } = require('../pokemon-sprites');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pokemon-variants-'));
+  const filename = path.join(directory, 'test.sqlite');
+  let db = new Database(filename);
+  try {
+    db.exec(`
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, slug TEXT, name TEXT, sprite TEXT, shiny_sprite TEXT, species_id INTEGER, is_default INTEGER);
+      CREATE TABLE pokemon_admin_sprites (slug TEXT PRIMARY KEY, normal_url TEXT NOT NULL, shiny_url TEXT);
+      CREATE TABLE pokemon_admin_sprite_variants (slug TEXT NOT NULL, variant TEXT NOT NULL, url TEXT NOT NULL, PRIMARY KEY (slug, variant));
+      INSERT INTO pokemon_forms VALUES (1, 'bulbasaur', 'Bulbasaur', 'catalog-normal', 'catalog-shiny', 1, 1);
+      INSERT INTO pokemon_forms VALUES (2, 'vulpix-alola', 'Alolan Vulpix', 'regional-normal', 'regional-shiny', 37, 0);
+      INSERT INTO pokemon_admin_sprites VALUES ('bulbasaur', 'https://example.test/legacy', 'https://example.test/legacy-shiny');
+    `);
+    const ctx = vm.createContext({ db, URL, loadPokemonDatabase: () => new Map(),
+      setSpriteOverrides, setGoldenSpriteOverrides });
+    vm.runInContext(extract(dbSource, 'function updatePokemonSpriteLinks(', '\nconst pokemonMovesPath'), ctx);
+    ctx.applyPokemonAdminSpriteOverrides();
+    ctx.refreshPokemonSpriteOverrides();
+    const legacy = getPokemonShowdownSprite('bulbasaur');
+    const legacyShiny = getPokemonShowdownSprite('bulbasaur', true);
+    ctx.updatePokemonSpriteVariants(1, { golden: 'https://example.test/golden' });
+    assert.equal(getGoldenSpriteUrl(1, 'bulbasaur'), 'https://example.test/golden');
+    assert.equal(getGoldenSpriteUrl(1), 'https://example.test/golden');
+    assert.equal(getPokemonShowdownSprite('bulbasaur'), legacy);
+    assert.equal(getPokemonShowdownSprite('bulbasaur', true), legacyShiny);
+    ctx.updatePokemonSpriteVariants(1, { shiny: 'https://example.test/shiny' });
+    assert.equal(getPokemonShowdownSprite('bulbasaur'), legacy);
+    assert.equal(getPokemonShowdownSprite('bulbasaur', true), 'https://example.test/shiny');
+    ctx.updatePokemonSpriteVariants(1, { normal: 'https://example.test/normal' });
+    ctx.updatePokemonSpriteVariants(2, { golden: 'https://example.test/regional' });
+    assert.equal(getGoldenSpriteUrl(37, 'vulpix-alola'), 'https://example.test/regional');
+    assert.notEqual(getGoldenSpriteUrl(37), 'https://example.test/regional');
+    assert.throws(() => ctx.updatePokemonSpriteVariants(1, { golden: 'http://example.test/no' }), /HTTPS/);
+    assert.throws(() => ctx.updatePokemonSpriteVariants(1, { invalid: 'https://example.test/no' }), /variant/);
+    db.close();
+    db = new Database(filename);
+    ctx.db = db;
+    db.prepare('UPDATE pokemon_forms SET sprite = ?, shiny_sprite = ? WHERE id = 1').run('fresh-catalog', 'fresh-shiny');
+    setSpriteOverrides(new Map());
+    setGoldenSpriteOverrides([]);
+    ctx.applyPokemonAdminSpriteOverrides();
+    ctx.refreshPokemonSpriteOverrides();
+    assert.deepEqual(db.prepare('SELECT sprite, shiny_sprite FROM pokemon_forms WHERE id = 1').get(),
+      { sprite: 'https://example.test/normal', shiny_sprite: 'https://example.test/shiny' });
+    assert.equal(getPokemonShowdownSprite('bulbasaur'), 'https://example.test/normal');
+    assert.equal(getPokemonShowdownSprite('bulbasaur', true), 'https://example.test/shiny');
+    assert.equal(getGoldenSpriteUrl(1), 'https://example.test/golden');
+  } finally {
+    setSpriteOverrides(new Map());
+    setGoldenSpriteOverrides([]);
+    db.close();
+    fs.unlinkSync(filename);
+    fs.rmdirSync(directory);
+  }
+});
+
+test('admin sprite command targets the exact Dex variant and retains name-based dual URLs', async () => {
+  const writes = [];
+  const replies = [];
+  const form = { id: 1, name: 'Bulbasaur', slug: 'bulbasaur' };
+  const context = vm.createContext({
+    command: 'admin', subtype: 'pokemon', action: 'sprite', PREFIX: '.', args: [], URL,
+    message: { reply: async (value) => { replies.push(value); return value; } },
+    resolvePokemonForm: (query) => ['bulbasaur', '001', '1001', '9001'].includes(query.toLowerCase()) ? form : null,
+    getDexQueryMarketVariant: (_form, query) => ({ '001': 'normal', '1001': 'shiny', '9001': 'golden' }[query] || null),
+    updatePokemonSpriteVariants: (id, variants) => { writes.push({ id, variants }); return form; },
+  });
+  vm.runInContext(`async function run() { ${extract(indexSource, "      if (command === 'admin' && subtype === 'pokemon' && action === 'sprite') {", "\n      if (command === 'admin' && subtype === 'pokemon' && action === 'rarity')")} }`, context);
+  for (const [query, variant] of [['001', 'normal'], ['1001', 'shiny'], ['9001', 'golden']]) {
+    context.args = ['pokemon', 'sprite', query, 'https://example.test/sprite'];
+    await context.run();
+    assert.deepEqual(Object.keys(writes.at(-1).variants), [variant]);
+  }
+  context.args = ['pokemon', 'sprite', 'golden', 'bulbasaur', 'https://example.test/gold'];
+  await context.run();
+  assert.equal(writes.at(-1).variants.golden, 'https://example.test/gold');
+  context.args = ['pokemon', 'sprite', 'bulbasaur', 'https://example.test/normal', 'https://example.test/shiny'];
+  await context.run();
+  assert.deepEqual(Object.keys(writes.at(-1).variants), ['normal', 'shiny']);
+  const count = writes.length;
+  context.args = ['pokemon', 'sprite', '9001', 'https://example.test/a', 'https://example.test/b'];
+  await context.run();
+  assert.match(replies.at(-1), /one sprite URL/);
+  context.args = ['pokemon', 'sprite', 'shiny', '9001', 'https://example.test/a'];
+  await context.run();
+  assert.match(replies.at(-1), /does not match/);
+  assert.equal(writes.length, count);
 });
 
 test('sprite emoji overrides apply by variant and retain built-in fallbacks', () => {

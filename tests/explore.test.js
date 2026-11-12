@@ -159,22 +159,57 @@ test('rare spawn announcements forward caught Explore rarities and describe swap
   assert.equal(errors.length, 0);
 
   const catchFlow = extract('async function askForBall(', '\nconst TYPE_EFFECTIVENESS');
-  assert.match(catchFlow, /target\.isExplore \? '\.explore'/);
+  assert.match(catchFlow, /target\.isExplore \? `\$\{PREFIX\}explore`/);
+  assert.match(catchFlow, /isFishing \? `\$\{PREFIX\}f` : `\$\{PREFIX\}p`/);
   assert.match(catchFlow, /activity: target\.isExplore \? 'explore' : 'found'/);
   assert.match(catchFlow, /if \(inline\?\.onSpawn\) inline\.onSpawn\(embed\)/);
   const swapFlow = extract("    if (command === 'swap'", "\n    if (command === 'collection'");
   assert.match(swapFlow, /activity: 'swap'/);
 });
 
+test('rare Pokémon receipt logs include the recipient, Pokémon, method, and configured channel', async () => {
+  const channelIds = [];
+  const messages = [];
+  const ctx = vm.createContext({
+    client: {
+      channels: {
+        fetch: async (channelId) => {
+          channelIds.push(channelId);
+          return {
+            isTextBased: () => true,
+            send: async (payload) => messages.push(payload),
+          };
+        },
+      },
+    },
+    console: { error: (...args) => { throw new Error(args.join(' ')); } },
+  });
+  vm.runInContext(
+    extract('const RARE_SPAWN_LOG_CHANNEL_ID', '\nasync function notifyAdminIfRareGrant('),
+    ctx
+  );
+  await ctx.notifyAdminOfRareSpawn(
+    { id: 'guild', name: 'Test Server' },
+    { id: 'trainer', username: 'Ash' },
+    { name: 'Pikachu', rarity: 'Legendary', isShiny: true },
+    '.p',
+    false
+  );
+  assert.deepEqual(channelIds, ['1570468169422864485']);
+  assert.match(messages[0].content, /Ash.*Pikachu/);
+  assert.match(messages[0].content, /Method: `\.p`/);
+});
+
 test('Explore map selectors choose the exact map and reject invalid choices', () => {
   for (const [args, mapKey, backgroundIndex] of [
-    [['gm', '1'], 'grass', 0], [['GM', '2'], 'grass', 1],
-    [['fm', '1'], 'fire', 0], [['wm', '1'], 'water', 0],
+    [['gm', '1'], 'grass', 0], [['GM', '2'], 'grass', 1], [['gm', '3'], 'grass', 2], [['gm', '4'], 'grass', 3],
+    [['fm', '1'], 'fire', 0], [['fm', '2'], 'fire', 1], [['fm', '3'], 'fire', 2],
+    [['wm', '1'], 'water', 0], [['wm', '2'], 'water', 1], [['wm', '3'], 'water', 2],
     [[], 'grass', null], [['grass'], 'grass', null], [['fire'], 'fire', null], [['water'], 'water', null],
   ]) {
     assert.deepEqual(data.selectExploreMap(args), { mapKey, backgroundIndex });
   }
-  for (const args of [['gm'], ['gm', '0'], ['gm', '3'], ['fm', '2'], ['wm', '2'], ['wm', '1', 'extra'], ['__proto__', '1']]) {
+  for (const args of [['gm'], ['gm', '0'], ['gm', '5'], ['fm', '4'], ['wm', '4'], ['wm', '1', 'extra'], ['__proto__', '1']]) {
     assert.equal(data.selectExploreMap(args), null);
   }
   assert.equal(data.EXPLORE_MAPS.fire.images[0].file, 'fire-1.png');
@@ -256,7 +291,7 @@ test('Explore Legendary pools use matching default forms from Generations 1–4'
   db.close();
 });
 
-test('Explore Legendary roll has a 1/167 boundary and allows eligible Shinies', () => {
+test('Explore Legendary roll has a 1/666 boundary and allows eligible Shinies', () => {
   const math = Object.create(Math);
   let rolls = [];
   math.random = () => { assert.ok(rolls.length); return rolls.shift(); };
@@ -265,7 +300,7 @@ test('Explore Legendary roll has a 1/167 boundary and allows eligible Shinies', 
   const ctx = vm.createContext({
     Math: math, EXPLORE_EXCLUSIVES: { fire: [[4, 'Uncommon', false]] },
     getExploreLegendaryEntries: () => [legendary], getExploreCatalogEntries: () => [],
-    EXPLORE_GOLDENS: {}, LEGENDARY_BASE_CHANCE: 1 / 167,
+    EXPLORE_GOLDENS: {},
     db: { prepare: () => ({ get: () => ({ id: 4, species_id: 4, name: 'Charmander',
       species_name: 'Charmander', rarity: 'Uncommon', types: '["fire"]', is_default: 1 }) }) },
     getUser: () => ({ has_patreon: 0 }), getPatreonPerks: () => ({ shinyRatePct: 0, goldenBoost: 0 }),
@@ -274,14 +309,15 @@ test('Explore Legendary roll has a 1/167 boundary and allows eligible Shinies', 
     EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
     advanceEncounterPity: () => 1, resetEncounterPity: () => {}, FULL_ODDS_SHINY_PITY_LIMIT: 2000,
   });
-  vm.runInContext(extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), ctx);
-  rolls = [1 / 167 - 0.0000001, 0, 0];
+  vm.runInContext(extract('const LEGENDARY_BASE_CHANCE =', '\n// A hunt') + '\n'
+    + extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), ctx);
+  rolls = [1 / 666 - 0.0000001, 0, 0];
   const shiny = ctx.rollExploreEncounter('user', 'fire');
   assert.equal(shiny.speciesId, 146);
   assert.equal(shiny.rarity, 'Legendary');
   assert.equal(shiny.isShiny, true);
   assert.equal(shiny.isExplore, true);
-  rolls = [1 / 167, 0];
+  rolls = [1 / 666, 0];
   assert.equal(ctx.rollExploreEncounter('user', 'fire').speciesId, 4);
 });
 
@@ -588,7 +624,7 @@ test('ordinary encounter and swap pools allow regular Explore species but protec
   db.close();
 });
 
-test('wild starter encounters retain Explore shiny exclusivity without consuming pity', () => {
+test('wild starter encounters retain Explore shiny exclusivity', () => {
   let speciesId = 1;
   let forcedEvent = false;
   let shinyPityAdvances = 0;
@@ -633,6 +669,8 @@ test('wild starter encounters retain Explore shiny exclusivity without consuming
     DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.1,
     EVENT_TICKET_SHINY_RATES: { standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02, nonEvent: 0.002 } },
     BASE_SHINY_RATE: 0.001, PATREON_SHINY_RATE: 0.002, CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
+    CATCHBOT_RARITY_WEIGHTS: { Common: 55 }, CATCHBOT_SHINY_DENOMINATORS: [100000],
+    CATCHBOT_LEGENDARY_DENOMINATORS: [6666],
   });
   vm.runInContext(extract('function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE'), ctx);
   for (const [pool, id] of [['land', 1], ['water', 7]]) {
@@ -647,8 +685,8 @@ test('wild starter encounters retain Explore shiny exclusivity without consuming
   assert.equal(shinyPityResets, 0);
   speciesId = 2;
   assert.equal(ctx.rollSpawn('land', 'user').isShiny, true);
-  assert.equal(shinyPityAdvances, 1);
-  assert.equal(shinyPityResets, 1);
+  assert.equal(shinyPityAdvances, 0);
+  assert.equal(shinyPityResets, 0);
   ctx.rollSpawn('land', 'user', null, { catchbot: true });
   assert.deepEqual([...selections.at(-1).excluded], ['Other exclusive']);
   forcedEvent = true;
@@ -656,7 +694,7 @@ test('wild starter encounters retain Explore shiny exclusivity without consuming
   assert.equal(ctx.rollSpawn('land', 'user').isShiny, true);
 });
 
-test('wild Shiny and event pity windows are independent and enforce exact boundaries', () => {
+test('wild Shiny and event rolls do not use old pity counters', () => {
   let shinyCount = 0;
   let eventCount = 0;
   let eventActive = false;
@@ -700,16 +738,13 @@ test('wild Shiny and event pity windows are independent and enforce exact bounda
   vm.runInContext(extract('function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE'), ctx);
   const rod = { enablesLegendary: false, enablesShiny: true, baseShinyRate: 0.001 };
   shinyCount = 998;
-  assert.equal(ctx.rollSpawn('land', 'user').isShiny, false);
-  assert.equal(shinyCount, 999);
+  assert.equal(ctx.rollSpawn('land', 'user').isShiny, true);
+  assert.equal(shinyCount, 998);
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true);
-  assert.equal(shinyCount, 0);
-  shinyCount = 1998;
+  assert.equal(shinyCount, 998);
   random = 0.9;
   assert.equal(ctx.rollSpawn('land', 'user').isShiny, false);
-  assert.equal(shinyCount, 1999);
-  assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true);
-  assert.equal(shinyCount, 0);
+  assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
   shinyCount = 999;
   speciesId = 1;
   assert.equal(ctx.rollSpawn('land', 'user').isShiny, false);
@@ -721,30 +756,26 @@ test('wild Shiny and event pity windows are independent and enforce exact bounda
   eventActive = true;
   eventCount = 298;
   random = 0;
-  assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, undefined);
-  assert.equal(eventCount, 299);
   assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, true);
-  assert.equal(eventCount, 0);
-  assert.equal(shinyCount, 11);
+  assert.equal(eventCount, 298);
+  assert.equal(shinyCount, 10);
   shinyCount = 10;
   eventCount = 499;
   random = 0.9;
   const event = ctx.rollSpawn('water', 'user', rod);
-  assert.equal(event.isEventSpawn, true);
-  assert.equal(event.isShiny, true);
+  assert.equal(event.isEventSpawn, undefined);
+  assert.equal(event.isShiny, false);
   assert.equal(shinyCount, 10);
-  assert.equal(eventCount, 0);
+  assert.equal(eventCount, 499);
   eventActive = false;
   shinyCount = 998;
   ctx.rollSpecialLegendarySpawn = () => ({ name: 'Special', isShiny: true });
-  assert.equal(ctx.rollSpawn('land', 'user').isShiny, false);
-  assert.equal(shinyCount, 999);
   assert.equal(ctx.rollSpawn('land', 'user').isShiny, true);
-  assert.equal(shinyCount, 0);
+  assert.equal(shinyCount, 998);
   shinyCount = 1999;
   ctx.rollSpecialLegendarySpawn = () => ({ name: 'Special', isShiny: false });
-  assert.equal(ctx.rollSpawn('land', 'user').isShiny, true);
-  assert.equal(shinyCount, 0);
+  assert.equal(ctx.rollSpawn('land', 'user').isShiny, false);
+  assert.equal(shinyCount, 1999);
 });
 
 test('checklist displays Explore usage, reset and access status', async () => {
@@ -893,6 +924,33 @@ test('Fire Map 1 blocks lava pools and movement across them', () => {
   assert.equal(renderer.isExploreMoveBlocked('fire', 0, 97, 83, 129, 83), false);
   assert.equal(renderer.isExploreMoveBlocked('grass', 0, 300, 160, 332, 192), false);
   assert.equal(renderer.isExploreMoveBlocked('water', 0, 300, 160, 332, 192), false);
+});
+
+test('all Fire Maps block their lava and ladders while leaving their starts accessible', () => {
+  const targets = [
+    { lava: [[1055, 135], [615, 325], [502, 385], [900, 618]], ladder: [[57, 135], [211, 730], [750, 713]] },
+    { lava: [[380, 389], [435, 417], [590, 240], [570, 281], [540, 365], [749, 290], [719, 386], [555, 704], [605, 665], [661, 666]],
+      ladder: [[121, 86]] },
+    { lava: [[65, 75], [177, 86], [210, 248], [145, 312], [250, 312], [200, 330]],
+      ladder: [[120, 144], [328, 208]] },
+  ];
+  for (const [variant, target] of targets.entries()) {
+    const map = data.EXPLORE_MAPS.fire.images[variant];
+    const { width, height } = renderer.getExploreMapSize('fire', variant);
+    for (const [reason, points] of Object.entries(target)) {
+      for (const [sourceX, sourceY] of points) {
+        const x = sourceX * width / map.width - 16;
+        const y = sourceY * height / map.height - 16;
+        assert.equal(renderer.getExploreMoveBlockReason('fire', variant, x - 80, y, x + 80, y), reason);
+      }
+    }
+    const startX = Math.floor((width - renderer.TRAINER_WIDTH) * map.startX);
+    const startY = Math.floor((height - renderer.TRAINER_HEIGHT) * map.startY);
+    assert.equal(renderer.getExploreMoveBlockReason('fire', variant, startX, startY, startX, startY), null);
+    assert.ok([[32, 0], [-32, 0], [0, 32], [0, -32]]
+      .some(([dx, dy]) => !renderer.isExploreMoveBlocked('fire', variant, startX, startY, startX + dx, startY + dy)));
+  }
+  assert.equal(renderer.getExploreMoveBlockReason('grass', 0, 300, 160, 332, 192), null);
 });
 
 test('Explore chests only spawn in positions reachable around lava within four moves', () => {
@@ -1108,7 +1166,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   await ctx.run();
   assert.match(payloads.at(-1), /requires an active Patreon tier/);
   user.has_patreon = 1;
-  ctx.args = ['fm', '2'];
+  ctx.args = ['fm', '4'];
   await ctx.run();
   assert.match(payloads.at(-1), /Usage/);
   ctx.args = ['gm', '2'];
@@ -1299,13 +1357,66 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   await click('exp_down');
   cancelled = false;
   const stepsBeforeLava = user.explore_steps_today;
-  assert.match((await click('exp_down'))[0].content, /cannot walk into lava/);
+  assert.equal((await click('exp_down'))[0].content, "That's too spicy for a swim");
   assert.equal(user.explore_steps_today, stepsBeforeLava);
   assert.equal(cancelled, false);
   await click('exp_search');
   assert.equal(user.explore_steps_today, stepsBeforeLava + 1);
   await click('exp_run');
   await endPromise;
+
+  user.explore_steps_today = 0;
+  await ctx.run();
+  await click('exp_left');
+  const stepsBeforeLadder = user.explore_steps_today;
+  assert.equal((await click('exp_left'))[0].content, "It's too dark down there");
+  assert.equal(user.explore_steps_today, stepsBeforeLadder);
+  await click('exp_run');
+  await endPromise;
+
+  const findObstaclePath = (variant, reason) => {
+    const map = data.EXPLORE_MAPS.fire.images[variant];
+    const { width, height } = renderer.getExploreMapSize('fire', variant);
+    const startX = Math.floor((width - renderer.TRAINER_WIDTH) * map.startX);
+    const startY = Math.floor((height - renderer.TRAINER_HEIGHT) * map.startY);
+    const moves = [
+      ['exp_up', 0, -32], ['exp_down', 0, 32], ['exp_left', -32, 0], ['exp_right', 32, 0],
+      ['exp_nw', -32, -32], ['exp_ne', 32, -32], ['exp_sw', -32, 32], ['exp_se', 32, 32],
+    ];
+    const queue = [{ x: startX, y: startY, path: [] }];
+    const visited = new Set([`${startX},${startY}`]);
+    for (let i = 0; i < queue.length; i++) {
+      const { x, y, path } = queue[i];
+      for (const [id, dx, dy] of moves) {
+        const nextX = Math.max(0, Math.min(width - renderer.TRAINER_WIDTH, x + dx));
+        const nextY = Math.max(0, Math.min(height - renderer.TRAINER_HEIGHT, y + dy));
+        if (nextX === x && nextY === y) continue;
+        const blocked = renderer.getExploreMoveBlockReason('fire', variant, x, y, nextX, nextY);
+        if (blocked === reason) return [...path, id];
+        const key = `${nextX},${nextY}`;
+        if (!blocked && !visited.has(key)) {
+          visited.add(key);
+          queue.push({ x: nextX, y: nextY, path: [...path, id] });
+        }
+      }
+    }
+    throw new Error(`No reachable ${reason} on Fire Map ${variant + 1}`);
+  };
+  for (const variant of [1, 2]) {
+    for (const [reason, text] of [['lava', "That's too spicy for a swim"], ['ladder', "It's too dark down there"]]) {
+      ctx.args = ['fm', String(variant + 1)];
+      user.explore_steps_today = 0;
+      ctx.CHEST_SPAWN_CHANCE = 0;
+      await ctx.run();
+      const path = findObstaclePath(variant, reason);
+      for (const move of path.slice(0, -1)) await click(move);
+      const before = user.explore_steps_today;
+      assert.equal((await click(path.at(-1)))[0].content, text);
+      assert.equal(user.explore_steps_today, before);
+      await click('exp_run');
+      await endPromise;
+    }
+  }
 
   ctx.args = ['wm', '1'];
   for (const [tier, [steps, seconds]] of Object.entries({
@@ -1327,14 +1438,30 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   user.patreon_tier = 'common';
   user.explore_steps_today = 0;
   for (const [args, map, variant] of [
-    [['gm', '1'], 'grass', 0], [['gm', '2'], 'grass', 1], [['fm', '1'], 'fire', 0], [['wm', '1'], 'water', 0],
+    [['gm', '1'], 'grass', 0], [['gm', '2'], 'grass', 1], [['gm', '3'], 'grass', 2], [['gm', '4'], 'grass', 3],
+    [['fm', '1'], 'fire', 0], [['fm', '2'], 'fire', 1], [['fm', '3'], 'fire', 2],
+    [['wm', '1'], 'water', 0], [['wm', '2'], 'water', 1], [['wm', '3'], 'water', 2],
   ]) {
     ctx.args = args;
+    await ctx.run();
+    assert.deepEqual(rendered.at(-1), { map, variant });
+    if ((map === 'grass' && variant >= 2) || (map === 'water' && variant >= 1)) {
+      const before = user.explore_steps_today;
+      await click('exp_up');
+      assert.equal(user.explore_steps_today, before + 1);
+    }
+    await click('exp_run');
+    await endPromise;
+  }
+  for (const [map, variant] of [['grass', 3], ['water', 2]]) {
+    ctx.args = [map];
+    nextRolls = [0.999];
     await ctx.run();
     assert.deepEqual(rendered.at(-1), { map, variant });
     await click('exp_run');
     await endPromise;
   }
+  user.explore_steps_today = 0;
   await ctx.run();
   user.has_patreon = 0;
   assert.match((await click('exp_search'))[0].content, /requires an active Patreon tier/);

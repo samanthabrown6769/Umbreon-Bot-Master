@@ -48,7 +48,7 @@ const EFFECTS = {
   'focus-energy': { flag: 'focus', text: 'is getting pumped!' }, 'laser-focus': { flag: 'laser', text: 'concentrated intensely!' },
   'lock-on': { flag: 'sureHit', text: 'took aim!', foe: true }, 'mind-reader': { flag: 'sureHit', text: 'took aim!', foe: true },
   'odor-sleuth': { flag: 'sureHit', text: 'took aim!', foe: true }, foresight: { flag: 'sureHit', text: 'took aim!', foe: true },
-  'miracle-eye': { flag: 'sureHit', text: 'took aim!', foe: true }, charge: { flag: 'charge', text: 'began charging power!', boost: { spdef: 1 } },
+  'miracle-eye': { flag: 'miracleEye', onFoe: true, foe: true, sure: true, text: 'was identified!' }, charge: { flag: 'charge', text: 'began charging power!', boost: { spdef: 1 } },
   'magnet-rise': { timer: ['magnetRise', 5], text: 'levitated with electromagnetism!' },
   telekinesis: { timer: ['telekinesis', 3], text: 'was hurled into the air!', foe: true },
   'aqua-ring': { flag: 'aquaRing', text: 'surrounded itself with a veil of water!' }, ingrain: { flag: 'ingrain', text: 'planted its roots!' },
@@ -325,6 +325,7 @@ function chooseEnemyMove(enemy, player, field) {
 function onSwitchIn(ctx, mon, side, L) {
   fx(mon).choiceMove = null;
   fx(mon).choiceMoveSlug = null;
+  fx(mon).miracleEye = false;
   const s = ctx.field.sides[side];
   if (s.healingWish) {
     s.healingWish = false;
@@ -351,6 +352,11 @@ function onSwitchIn(ctx, mon, side, L) {
 }
 
 function typeEffOf(ctx, type, types) { return ctx.typeEff ? ctx.typeEff(type, types) : 1; }
+
+function miracleEyeTypes(type, types, target) {
+  return type === 'psychic' && target && fx(target).miracleEye
+    ? types.filter((entry) => entry !== 'dark') : types;
+}
 
 function useProtect(ctx, A, eff, L) {
   const f = fx(A.mon);
@@ -405,7 +411,8 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     }
   }
   if (!f.sureHit && move.accuracy && !AB.alwaysHits(m, t)) {
-    let chance = move.accuracy * accMult(f.stages.acc - tf.stages.eva) * AB.accuracyMultiplier(m, t, move, ctx.field);
+    const evasion = tf.miracleEye ? Math.min(0, tf.stages.eva) : tf.stages.eva;
+    let chance = move.accuracy * accMult(f.stages.acc - evasion) * AB.accuracyMultiplier(m, t, move, ctx.field);
     if (m.held_item === 'Zoom Lens'
         && effectiveSpeed(m, ctx.field, A.side) < effectiveSpeed(t, ctx.field, B.side)) {
       chance *= 1.2;
@@ -415,6 +422,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   }
   f.sureHit = false;
   let defTypes = AB.adjustDefenderTypes(m, type, [...t.types]);
+  defTypes = miracleEyeTypes(type, defTypes, t);
   if (ctx.field.gravity > 0 && type === 'ground') defTypes = defTypes.filter((x) => x !== 'flying');
   const levitating = (tf.magnetRise > 0 || tf.telekinesis > 0) && ctx.field.gravity <= 0;
   const eff = (type === 'ground' && levitating) ? 0 : typeEffOf(ctx, type, defTypes);
@@ -627,7 +635,8 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     if (eff.powder && t.types.includes('grass')) { L(`It doesn't affect ${t.name}...`); return; }
     if (eff.groundImmune && t.types.includes('ground')) { L(`It doesn't affect ${t.name}...`); return; }
     if (!eff.sure && !f.sureHit && move.accuracy && move.accuracy < 101) {
-      const chance = move.accuracy * accMult(f.stages.acc - tf.stages.eva);
+      const evasion = tf.miracleEye ? Math.min(0, tf.stages.eva) : tf.stages.eva;
+      const chance = move.accuracy * accMult(f.stages.acc - evasion);
       if (Math.random() * 100 >= chance) { L('But it missed!'); return; }
     }
     f.sureHit = false;
@@ -752,6 +761,7 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   } else if (eff.flag) {
     const target = eff.onFoe ? tf : f;
     const owner = eff.onFoe ? t : m;
+    if (eff.flag === 'miracleEye' && target.miracleEye) { L('But it failed!'); return; }
     target[eff.flag] = true;
     L(`${owner.name} ${eff.text}`);
     if (eff.boost) { /* charge also boosts Sp. Def below */ }
@@ -1210,7 +1220,7 @@ module.exports = {
   abilities,
   battleGender,
   EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
-  applyStatusMove, canAct, performMove, effectivePower, stageMult, damageStats, healMon, STAGE_KEYS, STAGE_NAMES,
+  applyStatusMove, canAct, performMove, effectivePower, stageMult, damageStats, evBonus, miracleEyeTypes, healMon, STAGE_KEYS, STAGE_NAMES,
   DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, DRAIN_MOVES, RECHARGE_MOVES, takeBatonState, giveBatonState, cureStatus,
   summarize(mon) {
     const f = fx(mon);

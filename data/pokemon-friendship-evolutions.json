@@ -12,7 +12,5 @@
   { "fromSpeciesId": 527, "toSpeciesId": 528 },
   { "fromSpeciesId": 872, "toSpeciesId": 873, "timeOfDay": "night" },
   { "fromSpeciesId": 42, "toSpeciesId": 169 },
-  { "fromSpeciesId": 113, "toSpeciesId": 242 },
-  { "fromSpeciesId": 133, "toSpeciesId": 196, "timeOfDay": "day" },
-  { "fromSpeciesId": 133, "toSpeciesId": 197, "timeOfDay": "night" }
+  { "fromSpeciesId": 113, "toSpeciesId": 242 }
 ]

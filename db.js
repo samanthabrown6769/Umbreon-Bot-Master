@@ -18,6 +18,7 @@ const {
 const { BOXES, VOTE_BOXES } = require('./boxes');
 const { getPromoItemNames } = require('./promo');
 const { setSpriteOverrides } = require('./pokemon-sprites');
+const { setGoldenSpriteOverrides } = require('./golden-pokemon');
 const { loadPokemonDatabase, updatePokemonDatabaseOverride } = require('./pokemon-database');
 const {
   RESEARCH_HELD_ITEMS,
@@ -36,6 +37,12 @@ db.exec(`
     slug TEXT PRIMARY KEY,
     normal_url TEXT NOT NULL,
     shiny_url TEXT
+  );
+  CREATE TABLE IF NOT EXISTS pokemon_admin_sprite_variants (
+    slug TEXT NOT NULL,
+    variant TEXT NOT NULL CHECK (variant IN ('normal', 'shiny', 'golden')),
+    url TEXT NOT NULL,
+    PRIMARY KEY (slug, variant)
   );
   CREATE TABLE IF NOT EXISTS pokemon_admin_emojis (
     slug TEXT NOT NULL,
@@ -226,7 +233,7 @@ function getCooldownNotificationMode(userId) {
   const mode = db.prepare(
     'SELECT value FROM bot_settings WHERE key = ?'
   ).get(`cooldown_notification_mode:${userId}`)?.value || 'ping';
-  if (!['ping', 'username'].includes(mode)) {
+  if (!['ping', 'username', 'react'].includes(mode)) {
     throw new Error(`Unknown cooldown notification mode "${mode}".`);
   }
   return mode;
@@ -234,8 +241,8 @@ function getCooldownNotificationMode(userId) {
 
 function setCooldownNotificationMode(userId, mode) {
   assertUserId(userId);
-  if (!['ping', 'username'].includes(mode)) {
-    throw new TypeError('Cooldown notification mode must be "ping" or "username".');
+  if (!['ping', 'username', 'react'].includes(mode)) {
+    throw new TypeError('Cooldown notification mode must be "ping", "username", or "react".');
   }
   db.prepare(`
     INSERT INTO bot_settings (key, value)
@@ -508,6 +515,36 @@ function updatePokemonSpriteLinks(formId, normalUrl, shinyUrl = null) {
   return { ...form, sprite: normalUrl, shiny_sprite: shinyUrl || form.shiny_sprite || normalUrl };
 }
 
+function updatePokemonSpriteVariants(formId, variants) {
+  if (!Number.isSafeInteger(formId) || formId <= 0) throw new TypeError('Invalid Pokémon form ID.');
+  if (!variants || typeof variants !== 'object' || Array.isArray(variants) || !Object.keys(variants).length) {
+    throw new TypeError('At least one sprite variant is required.');
+  }
+  for (const [variant, value] of Object.entries(variants)) {
+    if (!['normal', 'shiny', 'golden'].includes(variant)) throw new TypeError('Invalid Pokémon sprite variant.');
+    try {
+      if (typeof value !== 'string' || new URL(value).protocol !== 'https:') throw new TypeError();
+    } catch {
+      throw new TypeError('Pokémon sprite URLs must use HTTPS.');
+    }
+  }
+  const form = db.prepare('SELECT id, slug, name FROM pokemon_forms WHERE id = ?').get(formId);
+  if (!form) return null;
+  db.transaction(() => {
+    const upsert = db.prepare(`
+      INSERT INTO pokemon_admin_sprite_variants (slug, variant, url) VALUES (?, ?, ?)
+      ON CONFLICT(slug, variant) DO UPDATE SET url = excluded.url
+    `);
+    for (const [variant, url] of Object.entries(variants)) {
+      upsert.run(form.slug, variant, url);
+      if (variant === 'normal') db.prepare('UPDATE pokemon_forms SET sprite = ? WHERE id = ?').run(url, formId);
+      if (variant === 'shiny') db.prepare('UPDATE pokemon_forms SET shiny_sprite = ? WHERE id = ?').run(url, formId);
+    }
+  }).immediate();
+  refreshPokemonSpriteOverrides();
+  return form;
+}
+
 function refreshPokemonSpriteOverrides() {
   const animatedSprites = new Map();
   for (const record of loadPokemonDatabase().values()) {
@@ -519,7 +556,20 @@ function refreshPokemonSpriteOverrides() {
     const previous = animatedSprites.get(row.slug) || {};
     animatedSprites.set(row.slug, { normal: row.normal_url, shiny: row.shiny_url || previous.shiny });
   }
+  const goldenOverrides = [];
+  for (const row of db.prepare(`
+    SELECT s.slug, s.variant, s.url, p.species_id, p.is_default
+    FROM pokemon_admin_sprite_variants s
+    JOIN pokemon_forms p ON p.slug = s.slug
+  `).all()) {
+    if (row.variant === 'golden') goldenOverrides.push(row);
+    else {
+      const previous = animatedSprites.get(row.slug) || {};
+      animatedSprites.set(row.slug, { ...previous, [row.variant]: row.url });
+    }
+  }
   setSpriteOverrides(animatedSprites);
+  setGoldenSpriteOverrides(goldenOverrides);
 }
 
 function applyPokemonAdminSpriteOverrides() {
@@ -530,6 +580,14 @@ function applyPokemonAdminSpriteOverrides() {
         (SELECT shiny_url FROM pokemon_admin_sprites WHERE slug = pokemon_forms.slug), shiny_sprite
       )
     WHERE slug IN (SELECT slug FROM pokemon_admin_sprites)
+  `);
+  db.exec(`
+    UPDATE pokemon_forms SET
+      sprite = COALESCE((SELECT url FROM pokemon_admin_sprite_variants
+        WHERE slug = pokemon_forms.slug AND variant = 'normal'), sprite),
+      shiny_sprite = COALESCE((SELECT url FROM pokemon_admin_sprite_variants
+        WHERE slug = pokemon_forms.slug AND variant = 'shiny'), shiny_sprite)
+    WHERE slug IN (SELECT slug FROM pokemon_admin_sprite_variants)
   `);
 }
 
@@ -3335,6 +3393,14 @@ const EV_TOTAL_LIMIT = 510;
 const EV_STAT_LIMIT = 252;
 const EV_PER_BATTLE = 9;
 const POWER_ITEM_EV_BONUS = 8;
+const VITAMIN_ITEMS = Object.freeze({
+  105: { name: 'Zinc', stat: 'spdef' },
+  106: { name: 'Protein', stat: 'atk' },
+  107: { name: 'Iron', stat: 'def' },
+  108: { name: 'HP Up', stat: 'hp' },
+  109: { name: 'Carbos', stat: 'spe' },
+  110: { name: 'Calcium', stat: 'spa' },
+});
 
 function calculateStat(
   base,
@@ -4030,10 +4096,25 @@ function sortedNameWords(value) {
 // Moves a specific form can learn on top of its species learnset.
 const FORM_EXTRA_MOVES = Object.freeze({ 10078: ['fury-cutter'] });
 
+// Bulbapedia Role Play learnset, including level-up, breeding, tutor and special moves.
+const ROLE_PLAY_LEARNERS = new Set([
+  35, 36, 37, 38, 39, 40, 54, 55, 56, 57, 63, 64, 65, 66, 67, 68,
+  94, 96, 97, 106, 107, 122, 124, 128, 150, 151, 173, 174, 185, 190,
+  228, 229, 234, 236, 237, 238, 257, 296, 297, 302, 307, 308, 325,
+  326, 327, 331, 332, 352, 353, 354, 359, 380, 386, 390, 391, 392,
+  424, 438, 439, 441, 447, 448, 453, 454, 459, 460, 480, 481, 482,
+  494, 509, 510, 511, 512, 513, 514, 515, 516, 531, 549, 562, 563,
+  574, 575, 576, 577, 578, 579, 605, 606, 619, 620, 624, 625, 641,
+  642, 645, 648, 655, 656, 657, 658, 676, 677, 678, 686, 687, 708,
+  709, 710, 711, 720, 741, 759, 760, 764, 769, 770, 777, 781, 793,
+  802, 805, 866, 899,
+]);
+
 function getSpeciesLearnset(speciesId, formId = null) {
   const extraMoves = FORM_EXTRA_MOVES[formId] || [];
   const base = getBaseSpeciesLearnset(speciesId, formId);
-  return extraMoves.length ? [...new Set([...base, ...extraMoves])] : base;
+  const rolePlay = ROLE_PLAY_LEARNERS.has(speciesId) ? ['role-play'] : [];
+  return extraMoves.length || rolePlay.length ? [...new Set([...base, ...extraMoves, ...rolePlay])] : base;
 }
 
 function getBaseSpeciesLearnset(speciesId, formId = null) {
@@ -4929,6 +5010,7 @@ const EXP_CANDY_VALUES = Object.freeze({
 });
 const SPECIAL_USER_ITEM_NAMES = Object.freeze([
   ...Object.keys(EXP_CANDY_VALUES),
+  ...Object.values(VITAMIN_ITEMS).map((item) => item.name),
   'Incubator', 'Super Incubator', 'Incense', 'Pokeradar', 'Boss Coin', 'Swap Ticket',
   'Cooldown Machine', 'Ability Capsule', 'Ability Patch', 'Double XP Ticket', 'Mega Bracelet',
   'Team Medallion', 'Event Voucher',
@@ -5409,7 +5491,7 @@ function holdEvolutionItem(userId, itemQuery, pokemonQuery) {
   assertUserId(userId);
   const itemName = findEvolutionItem(itemQuery) || findBattleHeldItem(itemQuery);
   if (!itemName) return { error: 'unknown_item' };
-  if (EVOLUTION_ITEMS[itemName]?.kind !== 'held' && !BATTLE_HELD_ITEM_NAMES.has(itemName)) {
+  if (!EVOLUTION_ITEMS[itemName] && !BATTLE_HELD_ITEM_NAMES.has(itemName)) {
     return { error: 'not_holdable', itemName };
   }
   return db.transaction(() => {
@@ -5440,7 +5522,7 @@ function unholdEvolutionItem(userId, pokemonQuery, itemQuery = null) {
   if (itemQuery) {
     itemName = findEvolutionItem(itemQuery) || findBattleHeldItem(itemQuery);
     if (!itemName) return { error: 'unknown_item' };
-    if (EVOLUTION_ITEMS[itemName]?.kind !== 'held' && !BATTLE_HELD_ITEM_NAMES.has(itemName)) {
+    if (!EVOLUTION_ITEMS[itemName] && !BATTLE_HELD_ITEM_NAMES.has(itemName)) {
       return { error: 'not_holdable', itemName };
     }
   }
@@ -5448,7 +5530,7 @@ function unholdEvolutionItem(userId, pokemonQuery, itemQuery = null) {
     const owned = findOwnedPokemonRows(userId, pokemonQuery);
     if (!owned.length) return { error: 'pokemon_not_owned' };
     const holding = owned.filter((row) =>
-      EVOLUTION_ITEMS[row.held_item]?.kind === 'held'
+      EVOLUTION_ITEMS[row.held_item]
       || BATTLE_HELD_ITEM_NAMES.has(row.held_item)
     );
     const target = holding.find((row) => !itemName || row.held_item === itemName);
@@ -5477,30 +5559,27 @@ function evolvePokemonWithItem(userId, pokemonQuery, itemQuery = null) {
       const itemName = requestedItem
         || (EVOLUTION_ITEMS[row.held_item] ? row.held_item : null);
       if (!itemName) continue;
-      const isHeld = EVOLUTION_ITEMS[itemName].kind === 'held';
-      const alreadyHeld = isHeld && row.held_item === itemName;
-      const hasInventoryItem = isHeld && !alreadyHeld && Boolean(db.prepare(
+      const alreadyHeld = row.held_item === itemName;
+      const hasInventoryItem = !alreadyHeld && Boolean(db.prepare(
         'SELECT 1 FROM user_items WHERE user_id = ? AND item_name = ? AND amount > 0'
       ).get(userId, itemName));
-      if (isHeld && !alreadyHeld && !hasInventoryItem) continue;
       const target = resolveItemEvolution(itemName, row);
-      if (target) {
+      if (target && (alreadyHeld || hasInventoryItem)) {
         chosen = {
           row,
           itemName,
           target,
           alreadyHeld,
-          needsInventoryItem: isHeld && !alreadyHeld,
+          needsInventoryItem: !alreadyHeld,
         };
         break;
       }
     }
     if (!chosen) {
       if (!requestedItem) return { error: 'no_held_item', pokemonName: owned[0].name };
-      const kind = EVOLUTION_ITEMS[requestedItem].kind;
       const compatible = owned.some((row) => resolveItemEvolution(requestedItem, row));
       return {
-        error: compatible && kind === 'held' ? 'no_item' : 'cannot_evolve',
+        error: compatible ? 'no_item' : 'cannot_evolve',
         itemName: requestedItem,
         pokemonName: owned[0].name,
       };
@@ -5629,10 +5708,15 @@ function findMoveInfo(query) {
   if (typeof query !== 'string') return null;
   const key = query.trim().toLowerCase().replace(/[\s_]+/g, '-');
   if (!key) return null;
-  if (moveInfoData[key]) return moveInfoData[key];
   const compact = key.replace(/-/g, '');
-  const match = Object.entries(moveInfoData).find(([slug]) => slug.replace(/-/g, '') === compact);
-  return match ? match[1] : null;
+  const move = moveInfoData[key]
+    || Object.entries(moveInfoData).find(([slug]) => slug.replace(/-/g, '') === compact)?.[1];
+  if (!move) return null;
+  if (compact !== 'roleplay') return move;
+  const names = pokemonCatalog
+    .filter((pokemon) => pokemon.is_default && ROLE_PLAY_LEARNERS.has(pokemon.species_id))
+    .map((pokemon) => pokemon.species_name || pokemon.name);
+  return { ...move, learners: [...new Set([...move.learners, ...names])] };
 }
 
 // Admin tool: permanently adds a move to (or removes it from) a catch's learned moves.
@@ -6237,7 +6321,7 @@ function useExpCandy(userId, itemName, amount = 1) {
 }
 
 // Grants EVs to the given catches (capped per stat and in total) and refreshes their stats.
-function awardPokemonEvs(userId, catchIds, stat, amount = EV_PER_BATTLE) {
+function awardPokemonEvs(userId, catchIds, stat, amount = EV_PER_BATTLE, { applyPowerItemBonus = true } = {}) {
   assertUserId(userId);
   if (!EV_STATS.includes(stat)) throw new TypeError(`Unknown EV stat "${stat}".`);
   if (!Number.isSafeInteger(amount) || amount <= 0) throw new TypeError('amount must be a positive safe integer.');
@@ -6266,7 +6350,7 @@ function awardPokemonEvs(userId, catchIds, stat, amount = EV_PER_BATTLE) {
         return granted;
       };
       const gained = grant(stat, amount);
-      const powerStat = POWER_ITEM_EVS[pokemon.held_item];
+      const powerStat = applyPowerItemBonus ? POWER_ITEM_EVS[pokemon.held_item] : null;
       const bonusGained = powerStat ? grant(powerStat, POWER_ITEM_EV_BONUS) : 0;
       results.push({
         id: catchId,
@@ -6291,6 +6375,30 @@ function awardPokemonEvs(userId, catchIds, stat, amount = EV_PER_BATTLE) {
       syncDuplicateCatchState(userId, catchId);
     }
     return results;
+  }).immediate();
+}
+
+function useBuddyVitamin(userId, itemName, amount = 1) {
+  assertUserId(userId);
+  const vitamin = Object.values(VITAMIN_ITEMS).find((item) => item.name === itemName);
+  if (!vitamin) return { error: 'unknown_vitamin' };
+  if (amount !== 'all' && (!Number.isSafeInteger(amount) || amount <= 0)) return { error: 'invalid_amount' };
+  return db.transaction(() => {
+    const buddyId = getUser(userId).buddy_catch_id;
+    const pokemon = buddyId && db.prepare('SELECT * FROM catches WHERE id = ? AND user_id = ?')
+      .get(buddyId, userId);
+    if (!pokemon) return { error: 'no_buddy' };
+    const before = pokemon[`ev_${vitamin.stat}`] || 0;
+    const total = EV_STATS.reduce((sum, stat) => sum + (pokemon[`ev_${stat}`] || 0), 0);
+    const available = Math.max(0, Math.min(EV_STAT_LIMIT - before, EV_TOTAL_LIMIT - total));
+    if (!available) return { error: 'ev_limit', pokemon: pokemon.name, stat: vitamin.stat };
+    const owned = getUserItemAmount(userId, itemName);
+    const used = Math.min(amount === 'all' ? owned : amount, Math.ceil(available / 10));
+    if (!used || owned < used) return { error: 'not_enough_items' };
+    if (!takeUserItem(userId, itemName, used)) throw new Error(`Could not consume ${itemName} for user ${userId}.`);
+    const [result] = awardPokemonEvs(userId, [buddyId], vitamin.stat, used * 10, { applyPowerItemBonus: false });
+    if (!result || !result.gained) throw new Error(`Could not apply ${itemName} to buddy ${buddyId}.`);
+    return { pokemon: pokemon.name, stat: vitamin.stat, before, after: result.value, gained: result.gained, used };
   }).immediate();
 }
 
@@ -9285,8 +9393,29 @@ function disbandClan(userId) {
 
 db.exec('CREATE TABLE IF NOT EXISTS banned_users (user_id TEXT PRIMARY KEY, banned_at INTEGER NOT NULL)');
 
+const auctions = require('./auctions').createAuctions({
+  db, getUser, incrementUser, addUserItem, saveCatch, rebaseTransferredPokemon, syncNewCatchState,
+});
+
 function banUser(userId) {
-  db.prepare('INSERT OR REPLACE INTO banned_users (user_id, banned_at) VALUES (?, ?)').run(userId, Date.now());
+  return db.transaction(() => {
+    auctions.settle();
+    auctions.cancelLeadingBids(userId);
+    db.prepare('INSERT OR REPLACE INTO banned_users (user_id, banned_at) VALUES (?, ?)').run(userId, Date.now());
+    return auctions.confiscate(userId);
+  }).immediate();
+}
+
+function backfillBannedAuctions() {
+  const banned = db.prepare('SELECT user_id FROM banned_users').all();
+  if (!banned.length) return;
+  const criteria = auctions.getEligibility();
+  for (const { user_id: userId } of banned) {
+    db.transaction(() => {
+      auctions.cancelLeadingBids(userId);
+      auctions.confiscate(userId, Date.now(), criteria);
+    }).immediate();
+  }
 }
 
 function unbanUser(userId) {
@@ -9300,9 +9429,12 @@ function isUserBanned(userId) {
 function wipeUserData(userId) {
   const keep = new Set([
     'banned_users', 'market_sales', 'patreon_token_trades', 'clan_members',
-    'clan_activity_periods', 'catches',
+    'clan_activity_periods', 'catches', 'pokemon_auctions', 'pokemon_auction_bids',
   ]);
   return db.transaction(() => {
+    auctions.settle();
+    auctions.cancelLeadingBids(userId);
+    const auctioned = auctions.confiscate(userId);
     const clanMember = db.prepare('SELECT * FROM clan_members WHERE user_id = ?').get(userId);
     db.prepare('DELETE FROM clan_activity_periods WHERE user_id = ?').run(userId);
     if (clanMember) {
@@ -9333,6 +9465,7 @@ function wipeUserData(userId) {
     }
 
     const deleted = {};
+    if (auctioned) deleted.auctioned = auctioned;
     const catchCount = db.prepare('DELETE FROM catches WHERE user_id = ?').run(userId).changes;
     if (catchCount) deleted.catches = catchCount;
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
@@ -10647,6 +10780,8 @@ applyMissedVoteGrant('missed-vote-20261103-434593153341980672', '434593153341980
 applyMissedVoteGrant('missed-vote-20261103-396307095521067012', '396307095521067012');
 
 module.exports = {
+  auctions,
+  backfillBannedAuctions,
   getTimeOfDayPhase,
   getEvolutionRoute,
   db,
@@ -10666,6 +10801,7 @@ module.exports = {
   rerollBuddyIv,
   renamePokemonForm,
   updatePokemonSpriteLinks,
+  updatePokemonSpriteVariants,
   setPokemonSpriteEmoji,
   getPokemonSpriteEmojiOverrides,
   SPECIAL_SPAWN_RESERVED_SPECIES,
@@ -10798,6 +10934,8 @@ module.exports = {
   rollExpCandy,
   EXP_CANDY_VALUES,
   awardPokemonEvs,
+  VITAMIN_ITEMS,
+  useBuddyVitamin,
   getChallengerInvites,
   addChallengerInvite,
   removeChallengerInvite,

@@ -130,12 +130,26 @@ for (const pokemon of regionalForms) {
   });
 }
 
+let goldenSpriteOverridesBySlug = new Map();
+let goldenSpriteOverridesBySpecies = new Map();
+
+function setGoldenSpriteOverrides(entries) {
+  goldenSpriteOverridesBySlug = new Map(entries.map((entry) => [entry.slug, entry]));
+  goldenSpriteOverridesBySpecies = new Map(entries.filter((entry) => entry.is_default)
+    .map((entry) => [entry.species_id, entry.url]));
+}
+
 function getGoldenSpriteUrl(speciesId, formSlug = null) {
   if (!Number.isSafeInteger(speciesId) || speciesId <= 0) return null;
   if (formSlug) {
+    const override = goldenSpriteOverridesBySlug.get(formSlug);
+    if (override?.species_id === speciesId) return override.url;
     const regionalForm = GOLDEN_REGIONAL_FORMS.get(formSlug);
     if (regionalForm?.speciesId === speciesId) return regionalForm.spriteUrl;
     if (!isGoldenBaseForm(speciesId, formSlug)) return null;
+  } else {
+    const override = goldenSpriteOverridesBySpecies.get(speciesId);
+    if (override) return override;
   }
   return `${GOLDEN_SPRITE_BASE}/${String(speciesId).padStart(3, '0')}M.gif`;
 }
@@ -146,5 +160,6 @@ module.exports = {
   GOLDEN_REGIONAL_FORMS,
   GOLDEN_SPRITE_BASE,
   getGoldenSpriteUrl,
+  setGoldenSpriteOverrides,
   isGoldenBaseForm,
 };
