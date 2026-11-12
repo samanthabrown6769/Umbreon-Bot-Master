@@ -788,6 +788,24 @@ test('admin command attempts are classified and logged with their original text'
   assert.equal(sent[0].payload.allowedMentions.parse.length, 0);
 });
 
+test('selected users only log admin ban and wipe commands', () => {
+  const context = vm.createContext({});
+  vm.runInContext(
+    extract(indexSource, 'const ADMIN_COMMAND_LOG_EXEMPT_USER_IDS', '\nasync function sendAdminCommandLog('),
+    context
+  );
+  const message = (id) => ({ author: { id } });
+
+  for (const id of ['1514082847609061541', '426946381098254336']) {
+    assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['coins']), false);
+    assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['unban']), false);
+    assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['BAN']), true);
+    assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['wipe']), true);
+    assert.equal(context.shouldLogAdminCommand(message(id), 'adminboss', []), false);
+  }
+  assert.equal(context.shouldLogAdminCommand(message('other'), 'admin', ['coins']), true);
+});
+
 test('automated command patterns are logged to the configured channel rather than sent by DM', async () => {
   const sent = [];
   const context = vm.createContext({

@@ -6405,6 +6405,10 @@ const RARE_SPAWN_LOG_CHANNEL_ID = '1570468169422864485';
 const GUILD_JOIN_REPORT_ADMIN_ID = '1514082847609061541';
 const ADMIN_COMMAND_LOG_CHANNEL_ID = '1570468196237189141';
 const GUILD_JOIN_LOG_CHANNEL_ID = '1570468221469859891';
+const ADMIN_COMMAND_LOG_EXEMPT_USER_IDS = new Set([
+  '1514082847609061541',
+  '426946381098254336',
+]);
 
 function isAdminCommand(command, args) {
   const subcommand = args[0]?.toLowerCase();
@@ -6412,6 +6416,11 @@ function isAdminCommand(command, args) {
     || (['p', 'pokemon'].includes(command) && subcommand === 'admin')
     || (command === 'giveaway')
     || (['lottery', 'lot'].includes(command) && ['channel', 'setchannel'].includes(subcommand));
+}
+
+function shouldLogAdminCommand(message, command, args) {
+  if (!ADMIN_COMMAND_LOG_EXEMPT_USER_IDS.has(message.author.id)) return true;
+  return command === 'admin' && ['ban', 'wipe'].includes(args[0]?.toLowerCase());
 }
 
 async function sendAdminCommandLog(message) {
@@ -12106,7 +12115,9 @@ client.on('messageCreate', async (message) => {
   if (!input) return;
   let args = input.split(/\s+/);
   let command = args.shift().toLowerCase();
-  if (isAdminCommand(command, args)) void sendAdminCommandLog(message);
+  if (isAdminCommand(command, args) && shouldLogAdminCommand(message, command, args)) {
+    void sendAdminCommandLog(message);
+  }
   if (isUserBanned(message.author.id)) return;
   if (isCommandThrottled(message.author.id)) return;
   if (command === 'mbuy') {
