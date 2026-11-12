@@ -7,6 +7,7 @@ const MAP_WIDTH = 640;
 const MAP_ZOOM = 1.25;
 const TRAINER_WIDTH = 32;
 const TRAINER_HEIGHT = 32;
+const TRAINER_SPRITE_SIZE = 40;
 const mapCache = new Map();
 const backgroundCache = new Map();
 const iconCache = new Map();
@@ -120,11 +121,12 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   if (chestIcon) {
     ctx.drawImage(chestIcon, chest.x, chest.y, TRAINER_WIDTH, TRAINER_HEIGHT);
   }
-  const scale = Math.min(TRAINER_WIDTH / trainer.width, TRAINER_HEIGHT / trainer.height);
+  const scale = Math.min(TRAINER_SPRITE_SIZE / trainer.width, TRAINER_SPRITE_SIZE / trainer.height);
   const trainerWidth = trainer.width * scale;
   const trainerHeight = trainer.height * scale;
-  ctx.drawImage(trainer, posX + (TRAINER_WIDTH - trainerWidth) / 2,
-    posY + TRAINER_HEIGHT - trainerHeight, trainerWidth, trainerHeight);
+  const trainerX = Math.max(0, Math.min(width - trainerWidth, posX + (TRAINER_WIDTH - trainerWidth) / 2));
+  const trainerY = Math.max(0, Math.min(height - trainerHeight, posY + TRAINER_HEIGHT - trainerHeight));
+  ctx.drawImage(trainer, trainerX, trainerY, trainerWidth, trainerHeight);
   return canvas.toBuffer('image/png');
 }
 

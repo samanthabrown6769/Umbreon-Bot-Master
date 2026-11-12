@@ -39,7 +39,17 @@ test('Explore chests spawn within reach, last 5–15 movements, and have one-tim
   assert.equal(select({}, 0.009999).special, 'shiny');
   assert.equal(select({}, 0.01).special, 'amulet');
   assert.equal(select({}, 0.019999).special, 'amulet');
-  assert.equal(select({}, 0.02, 0, 0).field, 'repels');
+  for (const [roll, key, field] of [
+    [0.02, 'scanner', 'explore_scanner'],
+    [0.03, 'ring', 'explore_item_ring'],
+    [0.04, 'dowsing', 'explore_dowsing_machine'],
+    [0.05, 'pack', 'explore_large_pack'],
+  ]) {
+    assert.equal(select({}, roll).special, key);
+    assert.equal(select({}, roll + 0.009999).special, key);
+    assert.equal(select({ [field]: 1 }, roll, 0, 0).field, 'repels');
+  }
+  assert.equal(select({}, 0.06, 0, 0).field, 'repels');
   assert.equal(select({ explore_shiny_charm: 1 }, 0, 0, 0).field, 'repels');
   assert.equal(select({ explore_amulet_coin: 1 }, 0.01, 0, 0).field, 'repels');
 });
@@ -60,6 +70,68 @@ test('Explore reward bonuses add to existing Amulet and Shiny totals without mod
   assert.equal(ctx.getTotalEffectiveShinyBonus('user'), 10);
   assert.equal(user.amulet_coins, 10);
   assert.equal(user.shiny_charms, 5);
+});
+
+test('Explore unlock fields migrate existing users and persist independently', () => {
+  const dbSource = fs.readFileSync(require.resolve('../db.js'), 'utf8');
+  const db = new Database(':memory:');
+  db.exec("CREATE TABLE users (id TEXT PRIMARY KEY); INSERT INTO users (id) VALUES ('trainer')");
+  const ctx = vm.createContext({ db });
+  vm.runInContext(
+    dbSource.slice(dbSource.indexOf('const userDefinitions ='), dbSource.indexOf('\nconst catchDefinitions ='))
+      + '\n' + dbSource.slice(dbSource.indexOf('function ensureColumns('), dbSource.indexOf('\ndb.exec(`', dbSource.indexOf('function ensureColumns(')))
+      + '\nensureColumns("users", Object.fromEntries(Object.values(items).map(item => [item.field, userDefinitions[item.field]])));',
+    Object.assign(ctx, { items: chests.EXPLORE_ITEMS })
+  );
+  const fields = Object.values(chests.EXPLORE_ITEMS).map((item) => item.field);
+  for (const field of fields) {
+    assert.equal(db.prepare(`SELECT ${field} FROM users WHERE id = ?`).get('trainer')[field], 0);
+    db.prepare(`UPDATE users SET ${field} = 1 WHERE id = ?`).run('trainer');
+  }
+  assert.deepEqual(fields.map((field) => db.prepare(`SELECT ${field} FROM users WHERE id = ?`).get('trainer')[field]), [1, 1, 1, 1]);
+  db.close();
+});
+
+test('Explore unlock item info reports ownership and how each item works', async () => {
+  const user = {};
+  const ctx = vm.createContext({
+    command: 'item', args: [], userId: 'trainer', getUser: () => user,
+    EXPLORE_ITEMS: chests.EXPLORE_ITEMS, CHEST_EMOJI: chests.CHEST_EMOJI, EmbedBuilder, PREFIX: '.',
+    message: { reply: async (payload) => payload },
+  });
+  const prefix = extract("    if ((command === 'item' || command === 'i') && args[0]?.toLowerCase() === 'info') {",
+    '\n        const vitamin = findVitamin(query);');
+  vm.runInContext(`async function info() { ${prefix}\n} } }`, ctx);
+  for (const item of Object.values(chests.EXPLORE_ITEMS)) {
+    ctx.args = ['info', item.name.replace(/ /g, '').toLowerCase()];
+    user[item.field] = 0;
+    let embed = (await ctx.info()).embeds[0].toJSON();
+    assert.ok(embed.description.includes(`0x ${item.name}`));
+    assert.ok(embed.description.includes(item.description));
+    assert.match(embed.description, /1% chance, one-time unlock/);
+    user[item.field] = 1;
+    embed = (await ctx.info()).embeds[0].toJSON();
+    assert.ok(embed.description.includes(`1x ${item.name}`));
+  }
+});
+
+test('Explore unlocks and their ownership are shown in the utility bag', () => {
+  const bagUser = { exp_share_owned: 0, rare_candies: 0, double_xp_charges: 0,
+    shiny_charms: 0, quest_reset_scrolls: 0, explore_scanner: 1, explore_item_ring: 0,
+    explore_dowsing_machine: 1, explore_large_pack: 0 };
+  const ctx = vm.createContext({
+    EmbedBuilder, bagUser, ownedItems: new Map(), targetId: 'trainer', totalPages: 6, PREFIX: '.',
+    targetUser: { username: 'Trainer', displayAvatarURL: () => 'https://example.test/avatar.png' },
+    getAmuletCoinBoost: () => ({ owned: 0, explore: 0 }), EVOLUTION_ITEMS: {},
+    FUN_ITEM_EMOJIS: { 'Sitrus Berry': 'berry', Leftovers: 'leftovers' }, RESEARCH_HELD_ITEMS: [],
+    BATTLE_HELD_ITEM_DETAILS: [], EMOJIS: { expshare: 'share', rarecandy: 'candy', shinyCharm: 'charm', amuletcoin: 'coin' },
+    EXP_CANDY_EMOJIS: {}, ENCOUNTER_ITEM_BAG_ENTRIES: [['Item', 'Item', 'item']], EXPLORE_ITEMS: chests.EXPLORE_ITEMS,
+  });
+  vm.runInContext(`${extract('      const buildBagEmbed = (page) => {', '\n      const buildBagButtons =')}\nthis.buildBagEmbed = buildBagEmbed;`, ctx);
+  const field = ctx.buildBagEmbed(2).toJSON().fields.find((entry) => entry.name === 'Explore');
+  for (const item of Object.values(chests.EXPLORE_ITEMS)) {
+    assert.ok(field.value.includes(`${item.emoji} **${bagUser[item.field]}x** ${item.name}`));
+  }
 });
 
 test('Explore catch bonuses exclude clan perks but retain Patreon and channel bonuses', () => {
@@ -882,7 +954,7 @@ test('Explore draws each supplied map zoomed at its aspect ratio with the select
   }
 });
 
-test('Explore preserves trainer icon proportions within the movement tile', async () => {
+test('Explore enlarges trainer icons while preserving their proportions', async () => {
   const originalFetch = global.fetch;
   const icons = {
     'https://example.test/tall.png': [4, 8],
@@ -898,8 +970,8 @@ test('Explore preserves trainer icon proportions within the movement tile', asyn
   };
   try {
     for (const [url, inside, outside] of [
-      ['https://example.test/tall.png', [[71, 81], [88, 118]], [[67, 82], [92, 118]]],
-      ['https://example.test/wide.png', [[61, 101], [98, 118]], [[61, 96], [98, 96]]],
+      ['https://example.test/tall.png', [[69, 71], [91, 118]], [[65, 72], [95, 118]]],
+      ['https://example.test/wide.png', [[56, 96], [103, 118]], [[53, 96], [103, 92]]],
     ]) {
       const image = await loadImage(await renderer.renderExploreMap('grass', 48, 64, url));
       const canvas = createCanvas(image.width, image.height);
@@ -911,6 +983,36 @@ test('Explore preserves trainer icon proportions within the movement tile', asyn
       for (const [x, y] of outside) {
         assert.notDeepEqual([...ctx.getImageData(x, y, 1, 1).data], [255, 0, 255, 255]);
       }
+    }
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('Explore keeps the enlarged trainer visible at map edges without changing movement bounds', async () => {
+  const originalFetch = global.fetch;
+  const icon = createCanvas(4, 4);
+  icon.getContext('2d').fillStyle = '#ff00ff';
+  icon.getContext('2d').fillRect(0, 0, 4, 4);
+  global.fetch = async () => ({ ok: true, arrayBuffer: async () => icon.toBuffer('image/png') });
+  try {
+    const { width, height } = renderer.getExploreMapSize('grass', 0);
+    assert.equal(renderer.TRAINER_WIDTH, 32);
+    assert.equal(renderer.TRAINER_HEIGHT, 32);
+    for (const [x, y, left, top] of [
+      [0, 0, 0, 0],
+      [304, 224, 295, 210],
+      [width - 32, height - 32, 590, 430],
+    ]) {
+      const image = await loadImage(await renderer.renderExploreMap('grass', x, y, 'https://example.test/square.png'));
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      for (const [px, py] of [[left, top], [left + 49, top + 49]]) {
+        assert.deepEqual([...ctx.getImageData(px, py, 1, 1).data], [255, 0, 255, 255]);
+      }
+      if (left > 0) assert.notDeepEqual([...ctx.getImageData(left - 1, top, 1, 1).data], [255, 0, 255, 255]);
+      if (top > 0) assert.notDeepEqual([...ctx.getImageData(left, top - 1, 1, 1).data], [255, 0, 255, 255]);
     }
   } finally {
     global.fetch = originalFetch;
@@ -1107,13 +1209,15 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   let nextRolls = [];
   let rewardChoice = 'shiny';
   let chestLifetime = 5;
+  let clockOffset = 0;
+  class TestDate extends Date { static now() { return Date.now() + clockOffset; } }
   const rendered = [];
   const tierPerks = patreonPerks();
   const { getDailyResetDay, getNextDailyReset } = require('../db');
   const math = Object.create(Math);
   math.random = () => nextRolls.length ? nextRolls.shift() : 0;
   const ctx = vm.createContext({
-    Math: math, Date, console, require: () => ({
+    Math: math, Date: TestDate, console, require: () => ({
       ...renderer, renderExploreMap: async (map, x, y, icon, variant) => {
         rendered.push({ map, variant });
         return Buffer.from('image');
@@ -1122,11 +1226,12 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     command: 'explore', args: ['gm', '2'], message: msg, userId: 'trainer', PREFIX: '.',
     selectExploreMap: data.selectExploreMap, getExploreStepStatus: data.getExploreStepStatus,
     getDailyResetDay, getNextDailyReset,
-    CHEST_EMOJI: chests.CHEST_EMOJI, CHEST_SPAWN_CHANCE: 0,
+    CHEST_EMOJI: chests.CHEST_EMOJI, CHEST_SPAWN_CHANCE: 0, EXPLORE_ITEMS: chests.EXPLORE_ITEMS,
     spawnExploreChest: (x, y) => ({ x, y: y - 32, stepsRemaining: chestLifetime }),
     chooseExploreChestReward: (current, loot) => {
       if (rewardChoice === 'shiny' && !current.explore_shiny_charm) return { special: 'shiny' };
       if (rewardChoice === 'amulet' && !current.explore_amulet_coin) return { special: 'amulet' };
+      if (chests.EXPLORE_ITEMS[rewardChoice] && !current[chests.EXPLORE_ITEMS[rewardChoice].field]) return { special: rewardChoice };
       return { ...loot[0], quantity: 500 };
     },
     db: { transaction: (fn) => ({ immediate: fn }) },
@@ -1297,14 +1402,14 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     await ctx.run();
     nextRolls = [0, 0.9];
     await click('exp_up');
-    assert.match(payloads.at(-1).content, /Chest on the map/);
+    assert.doesNotMatch(payloads.at(-1).content, /chest appeared/i);
     ctx.CHEST_SPAWN_CHANCE = 0;
     nextRolls = [0.9];
     await click('exp_up');
-    assert.match(payloads.at(-1).content, /press 🔍 to open/);
+    assert.match(payloads.at(-1).content, /Press 🔍 to open/);
     await click('exp_search');
     assert.match(payloads.at(-1).content, new RegExp(`found ${expected}`));
-    assert.doesNotMatch(payloads.at(-1).content, /Chest on the map/);
+    assert.doesNotMatch(payloads.at(-1).content, /Press 🔍 to open/);
     await click('exp_run');
     await endPromise;
   }
@@ -1334,18 +1439,74 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   await ctx.run();
   nextRolls = [0, 0.9];
   await click('exp_up');
-  assert.match(payloads.at(-1).content, /Chest on the map/);
+  assert.doesNotMatch(payloads.at(-1).content, /chest appeared/i);
   ctx.CHEST_SPAWN_CHANCE = 0;
   nextRolls = [0.9];
   await click('exp_right');
-  assert.match(payloads.at(-1).content, /Chest on the map/);
+  assert.doesNotMatch(payloads.at(-1).content, /chest appeared/i);
   nextRolls = [0.9];
   await click('exp_right');
-  assert.doesNotMatch(payloads.at(-1).content, /Chest on the map/);
-  assert.match(payloads.at(-1).content, /The chest disappeared from the map/);
+  assert.doesNotMatch(payloads.at(-1).content, /chest disappeared/i);
   await click('exp_run');
   await endPromise;
   chestLifetime = 5;
+
+  for (const [key, item] of Object.entries(chests.EXPLORE_ITEMS)) {
+    rewardChoice = key;
+    ctx.chooseExploreChestReward = (current) => ({ special: key });
+    user.explore_steps_today = 0;
+    ctx.CHEST_SPAWN_CHANCE = 0.1;
+    await ctx.run();
+    nextRolls = [0, 0.9];
+    await click('exp_up');
+    ctx.CHEST_SPAWN_CHANCE = 0;
+    nextRolls = [0.9];
+    await click('exp_up');
+    await click('exp_search');
+    assert.equal(user[item.field], 1);
+    assert.ok(payloads.at(-1).content.includes(`1x ${item.name}`));
+    if (key === 'scanner') assert.match(payloads.at(-1).content, /90 seconds left/);
+    await click('exp_run');
+    await endPromise;
+  }
+  user.explore_steps_today = 0;
+  ctx.CHEST_SPAWN_CHANCE = 0.1;
+  chestLifetime = 5;
+  await ctx.run();
+  assert.match(payloads.at(-1).content, /90 seconds left/);
+  nextRolls = [0.105, 0.9];
+  await click('exp_up');
+  assert.match(payloads.at(-1).content, /A chest appeared on the map/);
+  ctx.CHEST_SPAWN_CHANCE = 0;
+  for (let i = 0; i < 8; i += 1) {
+    nextRolls = [0.9];
+    await click(i % 2 === 0 ? 'exp_right' : 'exp_left');
+    if (i === 7) assert.match(payloads.at(-1).content, /disappear in 2 movements/);
+  }
+  nextRolls = [0.9];
+  await click('exp_right');
+  assert.doesNotMatch(payloads.at(-1).content, /disappeared/);
+  clockOffset = 76000;
+  nextRolls = [0.9];
+  await click('exp_left');
+  assert.match(payloads.at(-1).content, /14 seconds left ❗❗/);
+  assert.match(payloads.at(-1).content, /The chest disappeared/);
+  await click('exp_run');
+  await endPromise;
+  clockOffset = 0;
+  user.explore_steps_today = 0;
+  ctx.CHEST_SPAWN_CHANCE = 0.1;
+  await ctx.run();
+  nextRolls = [0.11, 0.9];
+  await click('exp_up');
+  assert.doesNotMatch(payloads.at(-1).content, /A chest appeared/);
+  nextRolls = [0.109999, 0.9];
+  await click('exp_right');
+  assert.match(payloads.at(-1).content, /A chest appeared/);
+  await click('exp_run');
+  await endPromise;
+  for (const item of Object.values(chests.EXPLORE_ITEMS)) user[item.field] = 0;
+  ctx.CHEST_SPAWN_CHANCE = 0;
 
   user.explore_steps_today = 500;
   await ctx.run();
@@ -1447,7 +1608,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     user.patreon_tier = tier;
     user.explore_steps_today = steps - 1;
     await ctx.run();
-    assert.equal(collectorOptions.time, seconds * 1000);
+    assert.ok(collectorOptions.time > seconds * 1000 - 1000 && collectorOptions.time <= seconds * 1000);
     assert.doesNotMatch(payloads.at(-1).content, /Session:.*seconds/);
     await click('exp_search');
     assert.match(payloads.at(-1).content, new RegExp(`${steps}/${steps}`));

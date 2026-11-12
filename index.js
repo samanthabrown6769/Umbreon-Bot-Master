@@ -490,7 +490,7 @@ const {
   isPlateItem,
 } = require('./held-item-effects');
 const { getGoldenSpriteUrl } = require('./golden-pokemon');
-const { CHEST_EMOJI, CHEST_SPAWN_CHANCE, spawnExploreChest, chooseExploreChestReward } = require('./exploreChests');
+const { CHEST_EMOJI, CHEST_SPAWN_CHANCE, EXPLORE_ITEMS, spawnExploreChest, chooseExploreChestReward } = require('./exploreChests');
 const { getCurrentPromo, getActivePromos, getPastPromos, findPromoByItemName, rollPromoItemDrop } = require('./promo');
 const { EVOLUTION_ITEMS, findEvolutionItem } = require('./evolution-items');
 const { BOXES, VOTE_BOXES, LOOTBOX_EMOJI, findBox, findVoteBox } = require('./boxes');
@@ -20822,8 +20822,13 @@ client.on('messageCreate', async (message) => {
         ),
       ];
       let statusText = '\n🌿 No Pokémon appeared.';
+      let sessionEndsAt = Date.now() + sessionSeconds * 1000;
       const buildPayload = async (steps, finished = false) => {
         const limit = getStepLimit();
+        const remainingSeconds = Math.max(0, Math.ceil((sessionEndsAt - Date.now()) / 1000));
+        const scannerText = !finished && getUser(userId).explore_scanner
+          ? ` — ${EXPLORE_ITEMS.scanner.emoji} ${remainingSeconds} seconds left${remainingSeconds < 15 ? ' ❗❗' : ''}`
+          : '';
         const summarize = (entries) => {
           const digits = '⁰¹²³⁴⁵⁶⁷⁸⁹';
           const groups = [...entries.values()].map(({ label, quantity }) =>
@@ -20841,8 +20846,8 @@ client.on('messageCreate', async (message) => {
           `\n${CHEST_EMOJI} Items found (${foundItemCount}): ${summarize(foundItems)}` +
           `\n${EMOJIS.pokecoin} Coins earned: **${sessionCoins.toLocaleString()}**`;
         return {
-          content: `🗺️ Map: ${theme.emoji} **${mapTitle}** — Steps today: **${steps}/${limit}**${finished ? summary : statusText}` +
-            (!finished && chest ? `\n${CHEST_EMOJI} Chest on the map${chest.x === x && chest.y === y ? ' — press 🔍 to open it!' : '.'}` : ''),
+          content: `🗺️ Map: ${theme.emoji} **${mapTitle}** — Steps today: **${steps}/${limit}**${scannerText}${finished ? summary : statusText}` +
+            (!finished && chest && chest.x === x && chest.y === y ? `\n${CHEST_EMOJI} Press 🔍 to open the chest!` : ''),
           files: [new AttachmentBuilder(await renderExploreMap(mapKey, x, y, trainerUrl, backgroundIndex, finished ? null : chest), { name: 'explore.png' })],
           attachments: [],
           embeds: !finished && activeEncounterEmbed ? [activeEncounterEmbed] : [],
@@ -20855,6 +20860,7 @@ client.on('messageCreate', async (message) => {
       activeExploreSessions.add(userId);
       try {
         exploreMsg = await message.reply(await buildPayload(startSteps));
+        sessionEndsAt = Date.now() + sessionSeconds * 1000;
         collector = exploreMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: sessionSeconds * 1000 });
       } catch (error) {
         activeExploreSessions.delete(userId);
@@ -20923,11 +20929,14 @@ client.on('messageCreate', async (message) => {
             const found = db.transaction(() => {
               const reward = chooseExploreChestReward(getUser(userId), SEARCH_LOOT);
               if (reward.special) {
-                const field = reward.special === 'shiny' ? 'explore_shiny_charm' : 'explore_amulet_coin';
-                updateUser(userId, { [field]: 1 });
-                return reward.special === 'shiny'
-                  ? { label: 'Shiny Charm', emoji: EMOJIS.shinyCharm, quantity: 1 }
-                  : { label: 'Amulet Coin', emoji: EMOJIS.amuletcoin, quantity: 1 };
+                const special = {
+                  shiny: { field: 'explore_shiny_charm', name: 'Shiny Charm', emoji: EMOJIS.shinyCharm },
+                  amulet: { field: 'explore_amulet_coin', name: 'Amulet Coin', emoji: EMOJIS.amuletcoin },
+                  ...EXPLORE_ITEMS,
+                }[reward.special];
+                if (!special) throw new Error(`Unknown Explore chest reward: ${reward.special}`);
+                updateUser(userId, { [special.field]: 1 });
+                return { label: special.name, emoji: special.emoji, quantity: 1 };
               }
               incrementUser(userId, { [reward.field]: reward.quantity });
               return reward;
@@ -20947,13 +20956,21 @@ client.on('messageCreate', async (message) => {
             chest.stepsRemaining -= 1;
             if (chest.stepsRemaining <= 0) {
               chest = null;
-              chestExpirationText = `\n${CHEST_EMOJI} The chest disappeared from the map.`;
+              if (getUser(userId).explore_dowsing_machine) {
+                chestExpirationText = `\n${CHEST_EMOJI} The chest disappeared from the map.`;
+              }
+            } else if (chest.stepsRemaining === 2 && getUser(userId).explore_dowsing_machine) {
+              chestExpirationText = `\n${EXPLORE_ITEMS.dowsing.emoji} The chest will disappear in 2 movements!`;
             }
-          } else if (Math.random() < CHEST_SPAWN_CHANCE) {
+          } else if (Math.random() < CHEST_SPAWN_CHANCE + (getUser(userId).explore_item_ring ? CHEST_SPAWN_CHANCE / 10 : 0)) {
             const isMoveAllowed = background.blockedAreas
               ? (fromX, fromY, toX, toY) => !isExploreMoveBlocked(mapKey, backgroundIndex, fromX, fromY, toX, toY)
               : null;
             chest = spawnExploreChest(x, y, mapWidth - TRAINER_WIDTH, mapHeight - TRAINER_HEIGHT, STEP, Math.random, isMoveAllowed);
+            if (getUser(userId).explore_large_pack) chest.stepsRemaining += 5;
+            if (getUser(userId).explore_dowsing_machine) {
+              chestExpirationText = `\n${EXPLORE_ITEMS.dowsing.emoji} A chest appeared on the map!`;
+            }
           }
           const ability = await resolveLeadOverworldAbility(userId);
           if (Math.random() < Math.min(1, EXPLORE_ENCOUNTER_CHANCE * getExploreEncounterMultiplier(ability))) {
@@ -22057,6 +22074,11 @@ client.on('messageCreate', async (message) => {
               inline: true,
             },
             {
+              name: 'Explore',
+              value: Object.values(EXPLORE_ITEMS).map((item) => line(item.emoji, bagUser[item.field] ? 1 : 0, item.name)).join('\n'),
+              inline: true,
+            },
+            {
               name: 'Battle',
               value: battleItems.map(([name, emoji]) => line(emoji, owned(name), name)).join('\n'),
               inline: true,
@@ -22785,6 +22807,25 @@ client.on('messageCreate', async (message) => {
     if ((command === 'item' || command === 'i') && args[0]?.toLowerCase() === 'info') {
       const query = args.slice(1).join(' ').toLowerCase().trim();
       if (query) {
+        const exploreItem = Object.values(EXPLORE_ITEMS).find((item) =>
+          item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === query.replace(/[^a-z0-9]/g, '')
+        );
+        if (exploreItem) {
+          const owned = getUser(userId)[exploreItem.field] ? 1 : 0;
+          return message.reply({
+            embeds: [new EmbedBuilder()
+              .setColor(0x0099ff)
+              .setAuthor({ name: `${exploreItem.name} — Item information` })
+              .setDescription(
+                `${exploreItem.description}\n\n` +
+                `**You currently own:** ${exploreItem.emoji} **${owned}x ${exploreItem.name}**\n\n` +
+                `**Usage**\nAutomatically active once obtained.\n\n` +
+                `**Method to obtain**\n• ${CHEST_EMOJI} Explore chests (1% chance, one-time unlock)\n\n` +
+                '**Can be held by Pokémon?** ❌ No'
+              )
+              .setFooter({ text: `Item info: ${PREFIX}item info <item>` })],
+          });
+        }
         const vitamin = findVitamin(query);
         if (vitamin) {
           const owned = getUserItems(userId).find((item) => item.item_name === vitamin.name)?.amount || 0;
