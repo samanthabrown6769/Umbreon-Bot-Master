@@ -79,10 +79,12 @@ test('auction minimum bids follow Pokémon category, including overlapping varia
       (3,'source',3,'Shiny Legend','Legendary',1,0,NULL),
       (4,'source',4,'Golden','Common',0,1,NULL),
       (5,'source',10190,'Eternamax','Legendary',0,0,NULL),
-      (6,'source',10190,'Eternamax','Legendary',1,0,NULL);
+      (6,'source',10190,'Eternamax','Legendary',1,0,NULL),
+      (7,'source',7,'Gem Teddiursa','Gem',0,0,NULL),
+      (8,'source',8,'Shiny Gem','Gem',1,0,NULL);
   `);
   db.transaction(() => auctions.confiscate('source', 1000))();
-  for (const [id, minimum] of [[1, 50], [2, 50], [3, 100], [4, 100], [5, 1000], [6, 1000]]) {
+  for (const [id, minimum] of [[1, 50], [2, 50], [3, 100], [4, 100], [5, 1000], [6, 1000], [7, 500], [8, 500]]) {
     assert.deepEqual(auctions.bid('alice', id, minimum - 1, 2000), { error: 'too_low', minimum });
     assert.equal(auctions.bid('alice', id, minimum, 2000).amount, minimum);
     assert.deepEqual(auctions.bid('bob', id, minimum, 3000), { error: 'too_low', minimum: minimum + 1 });

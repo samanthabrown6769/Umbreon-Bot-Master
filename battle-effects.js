@@ -214,6 +214,42 @@ function effectivePower(move, stages) {
   return 20 + 20 * boosts;
 }
 
+function fieldMovePowerMultiplier(move, defender, field) {
+  const key = slug(move.name);
+  const weather = AB.activeWeather(field);
+  let multiplier = 1;
+  if (['solar-beam', 'solar-blade'].includes(key) && weather && weather !== 'sun') multiplier *= 0.5;
+  if (field.terrain === 'electric' && key === 'rising-voltage' && isGrounded(defender, field)) multiplier *= 2;
+  if (field.terrain === 'grassy' && ['earthquake', 'bulldoze', 'magnitude'].includes(key)
+      && isGrounded(defender, field)) multiplier *= 0.5;
+  return multiplier;
+}
+
+function fieldDamageMultiplier(type, attacker, defender, field) {
+  let multiplier = 1;
+  const weather = AB.activeWeather(field);
+  if (weather === 'rain') multiplier *= type === 'water' ? 1.5 : type === 'fire' ? 0.5 : 1;
+  if (weather === 'sun') multiplier *= type === 'fire' ? 1.5 : type === 'water' ? 0.5 : 1;
+  if (isGrounded(attacker, field)) {
+    if (field.terrain === 'grassy' && type === 'grass') multiplier *= 1.3;
+    if (field.terrain === 'electric' && type === 'electric') multiplier *= 1.3;
+    if (field.terrain === 'psychic' && type === 'psychic') multiplier *= 1.3;
+  }
+  if (field.terrain === 'misty' && type === 'dragon' && isGrounded(defender, field)) multiplier *= 0.5;
+  return multiplier;
+}
+
+function fieldMoveAccuracy(move, field) {
+  const weather = AB.activeWeather(field);
+  const key = slug(move.name);
+  if (['thunder', 'hurricane'].includes(key)) {
+    if (weather === 'rain') return 100;
+    if (weather === 'sun') return 50;
+  }
+  if (key === 'blizzard' && weather === 'hail') return 100;
+  return move.accuracy;
+}
+
 function stageText(delta, label, name) {
   const size = Math.abs(delta);
   if (delta > 0) return `${name}'s ${label} ${size >= 3 ? 'rose drastically' : size === 2 ? 'rose sharply' : 'rose'}!`;
@@ -410,9 +446,10 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
       return;
     }
   }
-  if (!f.sureHit && move.accuracy && !AB.alwaysHits(m, t)) {
+  const accuracy = fieldMoveAccuracy(move, ctx.field);
+  if (!f.sureHit && accuracy && !AB.alwaysHits(m, t)) {
     const evasion = tf.miracleEye ? Math.min(0, tf.stages.eva) : tf.stages.eva;
-    let chance = move.accuracy * accMult(f.stages.acc - evasion) * AB.accuracyMultiplier(m, t, move, ctx.field);
+    let chance = accuracy * accMult(f.stages.acc - evasion) * AB.accuracyMultiplier(m, t, move, ctx.field);
     if (m.held_item === 'Zoom Lens'
         && effectiveSpeed(m, ctx.field, A.side) < effectiveSpeed(t, ctx.field, B.side)) {
       chance *= 1.2;
@@ -440,7 +477,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   }
   const { atk, def, physical } = damageStats(m, t, move, ctx.field);
   let calcMove = { ...move, type };
-  calcMove.power = effectivePower(move, f.stages);
+  calcMove.power = effectivePower(move, f.stages) * fieldMovePowerMultiplier(move, t, ctx.field);
   let dmg = eff === 0 ? 0 : ctx.calc(calcMove, atk, def, defTypes);
   const rolledHits = getMultiHitCount(move.name, m.held_item);
   const hitCount = ctx.worldBoss ? 1 : m.held_item === 'Loaded Dice' ? rolledHits : AB.multiHitCount(m, rolledHits);
@@ -450,17 +487,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   );
   let crit = false;
   if (dmg > 0) {
-    let mult = heldItemMultiplier;
-    const w = AB.activeWeather(ctx.field);
-    if (w === 'rain') mult *= type === 'water' ? 1.5 : type === 'fire' ? 0.5 : 1;
-    if (w === 'sun') mult *= type === 'fire' ? 1.5 : type === 'water' ? 0.5 : 1;
-    const terrain = ctx.field.terrain;
-    if (isGrounded(m, ctx.field)) {
-      if (terrain === 'grassy' && type === 'grass') mult *= 1.3;
-      if (terrain === 'electric' && type === 'electric') mult *= 1.3;
-      if (terrain === 'psychic' && type === 'psychic') mult *= 1.3;
-    }
-    if (terrain === 'misty' && type === 'dragon' && isGrounded(t, ctx.field)) mult *= 0.5;
+    let mult = heldItemMultiplier * fieldDamageMultiplier(type, m, t, ctx.field);
     if (f.charge && type === 'electric') mult *= 2;
     if (ctx.field.waterSport > 0 && type === 'fire') mult *= 0.33;
     if (ctx.field.mudSport > 0 && type === 'electric') mult *= 0.33;
@@ -1220,7 +1247,8 @@ module.exports = {
   abilities,
   battleGender,
   EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
-  applyStatusMove, canAct, performMove, effectivePower, stageMult, damageStats, evBonus, miracleEyeTypes, healMon, STAGE_KEYS, STAGE_NAMES,
+  applyStatusMove, canAct, performMove, effectivePower, fieldMovePowerMultiplier, fieldMoveAccuracy, fieldDamageMultiplier,
+  stageMult, damageStats, evBonus, miracleEyeTypes, healMon, STAGE_KEYS, STAGE_NAMES,
   DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, DRAIN_MOVES, RECHARGE_MOVES, takeBatonState, giveBatonState, cureStatus,
   summarize(mon) {
     const f = fx(mon);

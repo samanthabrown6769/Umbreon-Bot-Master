@@ -1,6 +1,7 @@
 const AUCTION_DURATION_MS = 48 * 60 * 60 * 1000;
 const AUCTION_STARTING_BID_SQL = `CASE
   WHEN json_extract(a.pokemon_json, '$.pokemon_id') = 10190 THEN 1000
+  WHEN lower(json_extract(a.pokemon_json, '$.rarity')) = 'gem' THEN 500
   WHEN json_extract(a.pokemon_json, '$.is_shiny') = 1
     OR json_extract(a.pokemon_json, '$.is_golden') = 1 THEN 100
   ELSE 50
@@ -45,6 +46,7 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
   }
   function eligible(mon, names, legendaryForms) {
     return Boolean(mon.is_shiny || mon.is_golden)
+      || String(mon.rarity).toLowerCase() === 'gem'
       || String(mon.rarity).toLowerCase() === 'legendary'
       || legendaryForms.has(mon.pokemon_id)
       || mon.pokemon_id === 10190

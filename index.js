@@ -5209,6 +5209,8 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   const bossForm = db.prepare('SELECT types FROM pokemon_forms WHERE id = ?')
     .get(bossTemplate?.formId ?? bossTemplate?.id);
   const bossTypes = bossForm ? JSON.parse(bossForm.types) : [];
+  const field = abilityCtx?.field || battleFx.createField();
+  const fieldDefender = bossMon || { types: bossTypes };
   const baseMoveType = getHeldItemMoveType(move.name, move.type, pokemon.held_item, pokemon.name);
   const abilityType = battleMon ? battleFx.abilities.adjustMoveType(battleMon, move, baseMoveType) : { type: baseMoveType, boost: 1 };
   const moveType = abilityType.type;
@@ -5236,9 +5238,11 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
     1,
     Math.floor(
       (attack * 3.5 + pokemon.level * 4 + (pokemon.atk_iv || 15))
-      * (battleFx.effectivePower(move, stages) / 100)
+      * (battleFx.effectivePower(move, stages)
+        * battleFx.fieldMovePowerMultiplier(move, fieldDefender, field) / 100)
       * effectiveness
       * stab
+      * battleFx.fieldDamageMultiplier(moveType, battleMon || pokemon, fieldDefender, field)
       * heldItemMultiplier
       * (move.category === 'physical' && CHOICE_ATTACK_ITEMS.has(pokemon.held_item)
         || move.category === 'special' && CHOICE_SPECIAL_ATTACK_ITEMS.has(pokemon.held_item)

@@ -1234,6 +1234,34 @@ function battleContext() {
   };
 }
 
+test('weather and terrain modify move accuracy and power', () => {
+  const ctx = battleContext();
+  ctx.calc = (move) => move.power;
+  const player = { mon: ctx.player, side: 'player' };
+  const enemy = { mon: ctx.enemy, side: 'enemy' };
+  const earthquake = { name: 'Earthquake', type: 'ground', power: 100, category: 'physical', accuracy: 100 };
+  ctx.field.terrain = 'grassy';
+  battle.performMove(ctx, player, enemy, earthquake, () => {});
+  assert.equal(ctx.enemy.hp, 50);
+
+  ctx.enemy.hp = 100;
+  ctx.field.terrain = null;
+  const thunder = { name: 'Thunder', type: 'electric', power: 100, category: 'special', accuracy: 70 };
+  const originalRandom = Math.random;
+  Math.random = () => 0.9;
+  try {
+    ctx.field.weather = 'rain';
+    battle.performMove(ctx, player, enemy, thunder, () => {});
+    assert.ok(ctx.enemy.hp < 100);
+    ctx.enemy.hp = 100;
+    ctx.field.weather = null;
+    battle.performMove(ctx, player, enemy, thunder, () => {});
+    assert.equal(ctx.enemy.hp, 100);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test('chamber species has 2.5 times the selection weight', () => {
   const species = ['ordinary', 'chamber'];
   let boosted = 0;
@@ -2116,6 +2144,26 @@ test('Simple Beam affects world boss stat changes across switches and damaging m
   const untrained = ctx.runWorldBossMove('untrained', [pokemon], boss, 0, 0);
   const trained = ctx.runWorldBossMove('trained', [{ ...pokemon, ev_spa: 40 }], boss, 0, 0);
   assert.ok(trained.damage > untrained.damage);
+
+  const surf = { name: 'Surf', type: 'water', power: 90, category: 'special' };
+  const thunderbolt = { name: 'Thunderbolt', type: 'electric', power: 90, category: 'special' };
+  ctx.getWorldBossTeamMoves = (team) => team.map((entry) => ({
+    pokemon: entry, teamIndex: 0, types: ['poison'], moves: [surf],
+  }));
+  moveCtx.field.weather = null;
+  const clearWeather = ctx.runWorldBossMove('clear-weather', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx);
+  moveCtx.field.weather = 'rain';
+  const rainy = ctx.runWorldBossMove('rainy-weather', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx);
+  assert.equal(clearWeather.damage, 175);
+  assert.equal(rainy.damage, 263);
+
+  ctx.getWorldBossTeamMoves = (team) => team.map((entry) => ({
+    pokemon: entry, teamIndex: 0, types: ['poison'], moves: [thunderbolt],
+  }));
+  moveCtx.field.weather = null;
+  moveCtx.field.terrain = 'electric';
+  const terrainBoosted = ctx.runWorldBossMove('electric-terrain', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx);
+  assert.equal(terrainBoosted.damage, 228);
 
   const normal = battleContext();
   battle.performMove(normal, { mon: normal.player, side: 'player' }, { mon: normal.enemy, side: 'enemy' },
