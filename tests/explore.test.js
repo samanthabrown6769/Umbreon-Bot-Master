@@ -893,7 +893,7 @@ test('Explore zooms each map and follows the trainer without cropping the map wo
       for (let variant = 0; variant < theme.images.length; variant += 1) {
         const { width, height } = renderer.getExploreMapSize(map, variant);
         const original = await loadImage(require('node:path').join(__dirname, '..', 'assets', 'explore', theme.images[variant].file));
-        const zoom = map === 'water' && variant === 1 ? 1.9 : 2;
+        const zoom = map === 'water' && variant === 1 ? 1.5 : 2;
         const background = createCanvas(width, height);
         const backgroundCtx = background.getContext('2d');
         backgroundCtx.imageSmoothingEnabled = false;
@@ -972,7 +972,7 @@ test('only the requested Explore maps use smaller trainer icons', async () => {
       ['fire', 1, 24], ['water', 0, 24], ['water', 1, 40],
     ]) {
       const { height } = renderer.getExploreMapSize(map, variant);
-      const zoom = map === 'water' && variant === 1 ? 1.9 : 2;
+      const zoom = map === 'water' && variant === 1 ? 1.5 : 2;
       const image = await loadImage(await renderer.renderExploreMap(
         map, 304, Math.floor(height / 2) - 16, 'https://example.test/size-icon.png', variant
       ));
