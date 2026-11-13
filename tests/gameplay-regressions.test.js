@@ -1424,6 +1424,285 @@ function battleContext() {
   };
 }
 
+test('Insomnia and Own Tempo prevent and cure their conditions when gained', () => {
+  const ctx = battleContext();
+  const player = { mon: ctx.player, side: 'player' };
+  const enemy = { mon: ctx.enemy, side: 'enemy' };
+  const use = (name, a = player, b = enemy) =>
+    battle.performMove(ctx, a, b, { name, power: 0, category: 'status', accuracy: 100 }, () => {});
+  ctx.enemy.ability = 'Insomnia';
+  use('Hypnosis');
+  assert.equal(battle.fx(ctx.enemy).status, null);
+  ctx.enemy.hp = 50;
+  use('Rest', enemy, player);
+  assert.equal(ctx.enemy.hp, 50);
+  assert.equal(battle.fx(ctx.enemy).status, null);
+  ctx.player.ability = 'Pressure';
+  battle.fx(ctx.player).status = 'slp';
+  battle.fx(ctx.player).sleep = 2;
+  use('Skill Swap', enemy, player);
+  assert.equal(ctx.player.ability, 'Insomnia');
+  assert.equal(battle.fx(ctx.player).status, null);
+
+  ctx.player.ability = 'Own Tempo';
+  ctx.enemy.ability = 'Pressure';
+  battle.fx(ctx.enemy).confuse = 3;
+  use('Skill Swap');
+  assert.equal(battle.fx(ctx.enemy).confuse, 0);
+  use('Confuse Ray');
+  assert.equal(battle.fx(ctx.enemy).confuse, 0);
+  ctx.player.gender = 'male';
+  ctx.enemy.gender = 'female';
+  use('Attract');
+  assert.equal(battle.fx(ctx.enemy).attract, ctx.player);
+  battle.abilities.entry(ctx, { mon: { ...ctx.player, ability: 'Intimidate' }, side: 'player' }, enemy, () => {});
+  assert.equal(battle.fx(ctx.enemy).stages.atk, 0);
+});
+
+test('Skill Swap activates gained abilities and restores each original ability on switching', () => {
+  const ctx = battleContext();
+  ctx.player.ability = 'Pressure';
+  ctx.enemy.ability = 'Intimidate';
+  battle.performMove(ctx, { mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' },
+    { name: 'Skill Swap', power: 0, category: 'status' }, () => {});
+  assert.equal(ctx.player.ability, 'Intimidate');
+  assert.equal(ctx.enemy.ability, 'Pressure');
+  assert.equal(battle.fx(ctx.enemy).stages.atk, -1);
+  battle.onSwitchOut(ctx, ctx.player, 'player');
+  assert.equal(ctx.player.ability, 'Pressure');
+  assert.equal(ctx.enemy.ability, 'Pressure');
+  battle.onSwitchOut(ctx, ctx.enemy, 'enemy');
+  assert.equal(ctx.enemy.ability, 'Intimidate');
+});
+
+test('Stench gives eligible damaging hits a non-stacking flinch chance', () => {
+  const ctx = battleContext();
+  ctx.player.ability = 'Stench';
+  const move = { name: 'Tackle', type: 'normal', power: 40, category: 'physical', accuracy: 100 };
+  ctx.enemy.types = ['normal'];
+  const originalRandom = Math.random;
+  Math.random = () => 0.09;
+  try {
+    battle.performMove(ctx, { mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' }, move, () => {});
+    assert.equal(battle.fx(ctx.enemy).flinch, true);
+    battle.fx(ctx.enemy).flinch = false;
+    ctx.enemy.ability = 'Shield Dust';
+    battle.performMove(ctx, { mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' }, move, () => {});
+    assert.equal(battle.fx(ctx.enemy).flinch, false);
+    ctx.enemy.ability = null;
+    ctx.player.held_item = "King's Rock";
+    let rolls = 0;
+    Math.random = () => { rolls += 1; return 0.5; };
+    battle.applyFlinchEffect(ctx.player, ctx.enemy, move, 1, () => {});
+    assert.equal(rolls, 1);
+    rolls = 0;
+    battle.applyFlinchEffect(ctx.player, ctx.enemy, { ...move, name: 'Rock Slide' }, 1, () => {});
+    assert.equal(rolls, 1);
+    assert.equal(battle.fx(ctx.enemy).flinch, false);
+    Math.random = () => 0.2;
+    battle.applyFlinchEffect(ctx.player, ctx.enemy, { ...move, name: 'Rock Slide' }, 1, () => {});
+    assert.equal(battle.fx(ctx.enemy).flinch, true);
+  } finally { Math.random = originalRandom; }
+});
+
+test('Geomancy charges, locks the next action, and respects interruption and Power Herb', () => {
+  const ctx = battleContext();
+  const geomancy = { name: 'Geomancy', type: 'fairy', power: 0, category: 'status' };
+  const coil = { name: 'Coil', type: 'poison', power: 0, category: 'status' };
+  const player = { mon: ctx.player, side: 'player', move: geomancy };
+  const enemy = { mon: ctx.enemy, side: 'enemy', move: coil };
+  battle.runAction(ctx, player, enemy);
+  assert.equal(battle.fx(ctx.player).stages.spa, 0);
+  assert.equal(battle.fx(ctx.player).chargingMove, geomancy);
+  battle.runAction(ctx, { ...player, move: coil }, enemy);
+  assert.deepEqual([battle.fx(ctx.player).stages.spa, battle.fx(ctx.player).stages.spdef,
+    battle.fx(ctx.player).stages.spe, battle.fx(ctx.player).stages.atk], [2, 2, 2, 0]);
+  battle.runAction(ctx, player, enemy);
+  battle.fx(ctx.player).flinch = true;
+  battle.runAction(ctx, player, enemy);
+  assert.equal(battle.fx(ctx.player).chargingMove, null);
+  ctx.player.held_item = 'Power Herb';
+  battle.runAction(ctx, player, enemy);
+  assert.equal(battle.fx(ctx.player).stages.spa, 4);
+  battle.runAction(ctx, player, enemy);
+  assert.equal(battle.fx(ctx.player).stages.spa, 4);
+  assert.equal(battle.fx(ctx.player).chargingMove, geomancy);
+});
+
+test('Octolock traps its target and ends with its source while respecting stat-drop immunity', () => {
+  const ctx = battleContext();
+  ctx.enemy.types = ['normal'];
+  const use = () => battle.performMove(ctx, { mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' },
+    { name: 'Octolock', power: 0, category: 'status', accuracy: 100 }, () => {});
+  const originalRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    ctx.enemy.ability = 'Clear Body';
+    use();
+    assert.equal(battle.isOctolocked(ctx.enemy, ctx.player), true);
+    battle.endOfTurn(ctx);
+    assert.equal(battle.fx(ctx.enemy).stages.def, 0);
+    ctx.enemy.ability = null;
+    battle.endOfTurn(ctx);
+    assert.equal(battle.fx(ctx.enemy).stages.spdef, -1);
+    battle.onSwitchOut(ctx, ctx.player, 'player');
+    assert.equal(battle.isOctolocked(ctx.enemy, ctx.player), false);
+    battle.endOfTurn(ctx);
+    assert.equal(battle.fx(ctx.enemy).stages.spdef, -1);
+    battle.fx(ctx.enemy).sub = 10;
+    use();
+    assert.equal(battle.fx(ctx.enemy).octolock, null);
+    battle.fx(ctx.enemy).sub = 0;
+    ctx.enemy.types = ['ghost'];
+    use();
+    assert.equal(battle.fx(ctx.enemy).octolock, null);
+  } finally { Math.random = originalRandom; }
+});
+
+test('Baton Pass switches before the slower foe acts and passes effects before entry abilities', () => {
+  const ctx = battleContext();
+  const bench = mon('Bench', ['normal']);
+  bench.ability = 'Intrepid Sword';
+  ctx.party.player.push(bench);
+  ctx.player.spd = 100;
+  ctx.enemy.spd = 10;
+  ctx.enemy.types = ['normal'];
+  battle.fx(ctx.player).stages.atk = 2;
+  const originalRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    battle.runTurn(ctx, { name: 'Baton Pass', power: 0, category: 'status' },
+      { name: 'Tackle', type: 'normal', power: 40, category: 'physical', accuracy: 100 });
+    assert.equal(ctx.player.hp, 100);
+    const state = battle.takeBatonState(ctx.player);
+    battle.onSwitchOut(ctx, ctx.player, 'player');
+    ctx.player = bench;
+    battle.giveBatonState(bench, state);
+    battle.onSwitchIn(ctx, bench, 'player', () => {});
+    battle.resumeBatonTurn(ctx);
+    assert.equal(bench.hp, 90);
+    assert.equal(battle.fx(bench).stages.atk, 3);
+    assert.equal(ctx.field.pendingBatonTurn, null);
+  } finally { Math.random = originalRandom; }
+});
+
+test('World Boss damage uses accuracy stages and Skill Swap reports an ability-free boss', () => {
+  const math = Object.create(Math);
+  math.random = () => 0.75;
+  const move = { name: 'Tackle', type: 'normal', power: 40, category: 'physical', accuracy: 60 };
+  const boss = { id: 42, name: 'Boss' };
+  const pokemon = { ...mon('Raider', ['normal']), id: 1, team_slot: 1 };
+  let hits = 0;
+  const ctx = vm.createContext({
+    Math: math, battleFx: battle, WORLD_BOSS_POOL: [{ id: 1, name: 'Boss', baseHp: 50, baseAtk: 50, baseDef: 50, baseSpd: 50 }],
+    WORLD_BOSS_DUMMY_HP: 1600, WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER: 0.25, EMOJIS: {},
+    db: { prepare: () => ({ get: () => ({ types: '["normal"]' }) }) },
+    createBattleField: battle.createField, combatStats: () => ({}),
+    getWorldBossTeamMoves: (team) => team.map((entry) => ({ pokemon: entry, teamIndex: 0, types: ['normal'], moves: [move] })),
+    getHeldItemMoveType: (_name, type) => type, isPlateItem: () => false,
+    getHeldItemDamageMultiplier: () => 1, typeEffectiveness: () => 1,
+    CHOICE_ATTACK_ITEMS: new Set(), CHOICE_SPECIAL_ATTACK_ITEMS: new Set(),
+    applyWorldBossDamage: (_userId, _bossId, damage) => { hits += 1; return { damage, defeated: false, boss }; },
+  });
+  vm.runInContext(extract(indexSource, 'function getWorldBossBattle(', '\nconst WORLD_BOSS_PROGRESS_INTERVAL_MS'), ctx);
+  const state = { pokemon, hp: 100, types: ['normal'], moves: [move], teamStates: new Map() };
+  const bs = ctx.getWorldBossBattle(state, boss);
+  const fight = { ...battleContext(), worldBoss: true, player: bs.mon, enemy: bs.boss, field: bs.field };
+  assert.equal(ctx.runWorldBossMove('user', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, fight).damage, 0);
+  assert.equal(hits, 0);
+  battle.performMove(fight, { mon: bs.mon, side: 'player' }, { mon: bs.boss, side: 'enemy' },
+    { name: 'Coil', power: 0, category: 'status' }, () => {});
+  assert.ok(ctx.runWorldBossMove('user', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, fight).damage > 0);
+  assert.equal(hits, 1);
+  bs.mon.ability = 'Insomnia';
+  const logs = [];
+  battle.performMove(fight, { mon: bs.mon, side: 'player' }, { mon: bs.boss, side: 'enemy' },
+    { name: 'Skill Swap', power: 0, category: 'status' }, (text) => logs.push(text));
+  assert.match(logs.at(-1), /World Boss has no ability/);
+  assert.equal(bs.mon.ability, 'Insomnia');
+});
+
+test('World Boss Baton Pass resumes the counterattack against the selected replacement', async () => {
+  const source = extract(indexSource, "      if (action === 'choose') {", '\n      const pokemonId = Number(parts[3]);');
+  const old = { ...mon('Old', ['normal']), id: 1, team_slot: 1 };
+  const next = { ...mon('Next', ['normal']), id: 2, team_slot: 2, ability: 'Intrepid Sword' };
+  const bossMon = mon('Boss', ['normal']);
+  const switchedBoss = mon('Boss', ['normal']);
+  const field = battle.createField();
+  const oldBattle = { mon: old, boss: bossMon, field, turn: 1 };
+  battle.fx(old).stages.atk = 2;
+  battle.fx(old).octolock = { source: bossMon };
+  const teamStates = new Map();
+  const playerState = { pokemon: old, hp: 100, battle: oldBattle, batonPass: true, teamStates };
+  const players = new Map([['user', playerState]]);
+  const events = [];
+  const interaction = {
+    user: { id: 'user' }, message: { id: 'panel' },
+    deferUpdate: async () => events.push('deferred'),
+    editReply: async (payload) => events.push(payload),
+  };
+  const ctx = vm.createContext({
+    action: 'choose', parts: ['worldboss', 'choose', '42', '2'], playerTeam: [old, next],
+    playerState, playerId: 'user', teamStatesByPlayer: new Map([['user', teamStates]]),
+    faintedTeam: new Set(), players, battleFx: battle, boss: { id: 42 }, currentBoss: { name: 'Boss' },
+    bossMessage: { id: 'post' }, interaction, PREFIX: '.',
+    isWorldBossTeamFainted: () => false,
+    getWorldBossTeamMoves: (team) => team.map((pokemon) => ({ types: pokemon.types, moves: [{ name: 'Tackle' }] })),
+    attachBattleAbilities: async () => {},
+    getWorldBossBattle: (state) => {
+      state.battle = { mon: state.pokemon, boss: switchedBoss, field, turn: 1 };
+      return state.battle;
+    },
+    worldBossCtx: (bs, log) => ({ ...battleContext(), player: bs.mon, enemy: bs.boss, field: bs.field, log }),
+    runWorldBossCounterattack: (bs, state, _boss, attack) => {
+      events.push('counterattack');
+      assert.equal(bs.mon, next);
+      assert.equal(battle.fx(next).stages.atk, 3);
+      assert.equal(battle.isOctolocked(next, switchedBoss), true);
+      state.hp -= 10;
+      attack.battleLog.push('Counterattack!');
+    },
+    createWorldBossPanelEmbed: (_boss, details) => details,
+    createWorldBossPlayerMoveRows: () => [], createWorldBossSwitchRows: () => [],
+    createWorldBossForfeitRow: () => [], createWorldBossPlayerSelectRows: () => [],
+  });
+  vm.runInContext(`async function run() { ${source} }`, ctx);
+  await ctx.run();
+  assert.equal(events[0], 'deferred');
+  assert.equal(events[1], 'counterattack');
+  assert.match(events[2].embeds[0].log.at(-1), /Counterattack/);
+  assert.equal(players.get('user').hp, 90);
+});
+
+test('World Boss counterattack respects evasion and Miracle Eye', () => {
+  const math = Object.create(Math);
+  math.random = () => 0.2;
+  const player = mon('Raider', ['normal']);
+  const bossMon = mon('Boss', ['normal']);
+  const move = { name: 'Tackle', type: 'normal', power: 40, category: 'physical', accuracy: 100 };
+  bossMon.moves = [move];
+  const bs = { mon: player, boss: bossMon, field: battle.createField(), turn: 1 };
+  const playerState = { hp: 100 };
+  const boss = { id: 42, name: 'Boss' };
+  battle.fx(player).stages.eva = 6;
+  const ctx = vm.createContext({
+    Math: math, battleFx: battle, WORLD_BOSS_POOL: [{ id: 1, name: 'Boss' }],
+    WORLD_BOSS_COUNTER_DAMAGE_MULTIPLIER: 1, WORLD_BOSS_CHIP_PER_HP: 1,
+    db: { prepare: () => ({ get: () => ({ species_id: 1 }) }) },
+    worldBossCtx: (_bs, log) => ({ ...battleContext(), player, enemy: bossMon, field: bs.field, log }),
+    chooseEnemyMove: () => move, typeEffectiveness: () => 1,
+    calculateMoveDamage: () => 10, getActiveWorldBoss: () => null,
+  });
+  vm.runInContext(extract(indexSource, 'function runWorldBossCounterattack(', '\nconst WORLD_BOSS_PROGRESS_INTERVAL_MS'), ctx);
+  const attack = { defeated: false, battleLog: [] };
+  ctx.runWorldBossCounterattack(bs, playerState, boss, attack, 'user', boss);
+  assert.equal(playerState.hp, 100);
+  assert.match(attack.battleLog.join(' '), /missed/);
+  battle.fx(player).miracleEye = true;
+  ctx.runWorldBossCounterattack(bs, playerState, boss, attack, 'user', boss);
+  assert.equal(playerState.hp, 90);
+});
+
 test('Oblivion Wing heals three quarters of actual damage without overhealing', () => {
   const ctx = battleContext();
   const attacker = { mon: ctx.player, side: 'player' };

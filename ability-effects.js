@@ -347,7 +347,7 @@ function blocksConfusion(attacker, mon) {
 }
 
 function blocksAttract(attacker, mon) {
-  return !breaksAbility(attacker) && has(mon, 'oblivious', 'own-tempo');
+  return !breaksAbility(attacker) && has(mon, 'oblivious');
 }
 
 // Flinch handling: Inner Focus ignores it, Steadfast turns it into a Speed boost.

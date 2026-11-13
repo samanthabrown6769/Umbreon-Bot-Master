@@ -40,7 +40,7 @@ const EFFECTS = {
   'work-up': B({ atk: 1, spa: 1 }), sharpen: B({ atk: 1 }), 'cotton-guard': B({ def: 3 }), autotomize: B({ spe: 2 }),
   'hone-claws': B({ atk: 1, acc: 1 }), 'tail-glow': B({ spa: 3 }), 'defend-order': B({ def: 1, spdef: 1 }),
   'bulk-up': B({ atk: 1, def: 1 }), howl: B({ atk: 1 }), 'shift-gear': B({ spe: 2, atk: 1 }), 'gear-up': B({ atk: 1, spa: 1 }),
-  'no-retreat': B({ ...ALL5 }), 'clangorous-soul': B({ ...ALL5 }, { cost: 1 / 3 }), geomancy: B({ spa: 2, spdef: 2, spe: 2 }),
+  'no-retreat': B({ ...ALL5 }), 'clangorous-soul': B({ ...ALL5 }, { cost: 1 / 3 }), geomancy: B({ spa: 2, spdef: 2, spe: 2 }, { charging: true }),
   stockpile: B({ def: 1, spdef: 1 }, { stockpile: true }), 'flower-shield': B({ def: 1 }), 'stuff-cheeks': B({ def: 2 }),
   'belly-drum': B({}, { cost: 0.5, maxAtk: true }), 'fillet-away': B({ atk: 2, spa: 2, spe: 2 }, { cost: 0.5 }),
   shelter: B({ def: 2 }), 'take-heart': B({ spa: 1, spdef: 1 }, { cure: true }), acupressure: { randomBoost: 2 },
@@ -146,6 +146,14 @@ const RECHARGE_MOVES = new Set([
   'hyper-beam', 'giga-impact', 'blast-burn', 'hydro-cannon', 'frenzy-plant', 'rock-wrecker',
   'roar-of-time', 'prismatic-laser', 'meteor-assault', 'eternabeam',
 ]);
+const FLINCH_CHANCES = {
+  'air-slash': 30, astonish: 30, bite: 30, 'bone-club': 10, 'dark-pulse': 20, 'double-iron-bash': 30,
+  'dragon-rush': 20, extrasensory: 10, 'fake-out': 100, 'fiery-wrath': 20, 'fire-fang': 10,
+  'floaty-fall': 30, headbutt: 30, 'heart-stamp': 30, 'hyper-fang': 10, 'ice-fang': 10,
+  'icicle-crash': 30, 'iron-head': 30, 'mountain-gale': 30, 'needle-arm': 30, 'rock-slide': 30,
+  'rolling-kick': 30, 'sky-attack': 30, snore: 30, steamroller: 30, stomp: 30, 'thunder-fang': 10,
+  'triple-arrows': 50, twister: 20, 'upper-hand': 100, waterfall: 20, 'zen-headbutt': 20, 'zing-zap': 30,
+};
 
 const stageMult = (s) => (s >= 0 ? (2 + s) / 2 : 2 / (2 - s));
 const accMult = (s) => (s >= 0 ? (3 + s) / 3 : 3 / (3 - s));
@@ -350,6 +358,7 @@ function isUseful(move, user, target, field, side) {
 }
 
 function chooseEnemyMove(enemy, player, field) {
+  if (fx(enemy).chargingMove) return fx(enemy).chargingMove;
   const moves = enemy.moves || [];
   const damaging = moves.filter((m) => m.power > 0);
   const status = moves.filter((m) => !m.power && isUseful(m, enemy, player, field, 'enemy'));
@@ -384,7 +393,71 @@ function onSwitchIn(ctx, mon, side, L) {
   }
   if (s.web && grounded) changeStage(ctx, mon, side, 'spe', -1, L);
   const foe = side === 'player' ? ctx.enemy : ctx.player;
-  AB.entry(AH, ctx, { mon, side }, { mon: foe, side: other(side) }, L);
+  activateGainedAbility(ctx, { mon, side }, { mon: foe, side: other(side) }, L);
+}
+
+function activateGainedAbility(ctx, A, B, L) {
+  cureAbilityConditions(A.mon, L);
+  AB.entry(AH, ctx, A, B, L);
+}
+
+function cureAbilityConditions(mon, L) {
+  const f = fx(mon);
+  if (AB.has(mon, 'insomnia', 'vital-spirit') && f.status === 'slp') {
+    cureStatus(mon);
+    L(`${mon.name}'s **${mon.ability}** woke it up!`);
+  }
+  if (AB.has(mon, 'own-tempo') && f.confuse > 0) {
+    f.confuse = 0;
+    L(`${mon.name}'s **Own Tempo** cured its confusion!`);
+  }
+}
+
+function onSwitchOut(ctx, mon, side) {
+  const f = fx(mon);
+  const foe = side === 'player' ? ctx.enemy : ctx.player;
+  if (foe && fx(foe).octolock?.source === mon) fx(foe).octolock = null;
+  if (Object.prototype.hasOwnProperty.call(f, 'originalAbility')) {
+    mon.ability = f.originalAbility;
+    delete f.originalAbility;
+  }
+  f.chargingMove = null;
+  f.octolock = null;
+  f.miracleEye = false;
+  f.confuse = 0;
+  for (const key of STAGE_KEYS) f.stages[key] = 0;
+}
+
+function isOctolocked(mon, foe) {
+  return Boolean(mon && foe && foe.hp > 0 && fx(mon).octolock?.source === foe
+    && !mon.types.includes('ghost'));
+}
+
+function moveAccuracyMultiplier(attacker, defender, move, field) {
+  const af = fx(attacker); const df = fx(defender);
+  const evasion = df.miracleEye ? Math.min(0, df.stages.eva) : df.stages.eva;
+  return accMult(Math.max(-6, Math.min(6, af.stages.acc - evasion)))
+    * AB.accuracyMultiplier(attacker, defender, move, field);
+}
+
+function applyFlinchEffect(attacker, defender, move, hitCount, L) {
+  if (defender.hp <= 0 || AB.blocksSecondaryEffects(attacker, defender)) return;
+  const nativeChance = FLINCH_CHANCES[slug(move.name)];
+  const hasStench = AB.has(attacker, 'stench');
+  const hasItem = [KINGS_ROCK_ITEM, 'Razor Fang'].includes(attacker.held_item);
+  if (!nativeChance && (!hasStench && !hasItem
+      || /flinch/i.test(moveInfo[slug(move.name)]?.description || ''))) return;
+  const chance = nativeChance
+    ? Math.min(1, nativeChance / 100 * (AB.has(attacker, 'serene-grace') ? 2 : 1))
+    : 0.1;
+  for (let hit = 0; hit < hitCount; hit += 1) {
+    if (Math.random() < chance) {
+      fx(defender).flinch = true;
+      L(nativeChance ? `${defender.name} may flinch!`
+        : `${defender.name} may flinch from ${hasStench ? `${attacker.name}'s Stench` : attacker.held_item}!`);
+      break;
+    }
+  }
 }
 
 function typeEffOf(ctx, type, types) { return ctx.typeEff ? ctx.typeEff(type, types) : 1; }
@@ -448,8 +521,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
   }
   const accuracy = fieldMoveAccuracy(move, ctx.field);
   if (!f.sureHit && accuracy && !AB.alwaysHits(m, t)) {
-    const evasion = tf.miracleEye ? Math.min(0, tf.stages.eva) : tf.stages.eva;
-    let chance = accuracy * accMult(f.stages.acc - evasion) * AB.accuracyMultiplier(m, t, move, ctx.field);
+    let chance = accuracy * moveAccuracyMultiplier(m, t, move, ctx.field);
     if (m.held_item === 'Zoom Lens'
         && effectiveSpeed(m, ctx.field, A.side) < effectiveSpeed(t, ctx.field, B.side)) {
       chance *= 1.2;
@@ -535,12 +607,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     t.hp = 1;
     survivedText = ` ${t.name} hung on with its Focus Band!`;
   }
-  if (dmg > 0 && t.hp > 0 && m.held_item === KINGS_ROCK_ITEM
-      && !/flinch/i.test(moveInfo[slug(move.name)]?.description || '')
-      && Math.random() < 0.1) {
-    tf.flinch = true;
-    survivedText += ` ${t.name} flinched from the King's Rock!`;
-  }
+  if (dmg > 0) applyFlinchEffect(m, t, move, hitCount, L);
   if (dmg > 0 && m.held_item === 'Life Orb' && m.hp > 0 && !AB.ignoresIndirect(m)) {
     const recoil = Math.max(1, Math.floor(m.max_hp / 10));
     m.hp -= recoil;
@@ -634,7 +701,8 @@ function applyDamageSecondaryEffects(ctx, A, B, t, move, dmg, L) {
 const UNCHANGEABLE_ABILITIES = new Set([
   'wonder-guard', 'multitype', 'stance-change', 'schooling', 'comatose', 'shields-down', 'disguise', 'rks-system',
   'battle-bond', 'power-construct', 'zen-mode', 'ice-face', 'gulp-missile', 'as-one-glastrier', 'as-one-spectrier',
-  'zero-to-hero', 'commander', 'hunger-switch', 'terashift', 'tera-shift',
+  'zero-to-hero', 'commander', 'hunger-switch', 'terashift', 'tera-shift', 'illusion', 'neutralizing-gas',
+  'protosynthesis', 'quark-drive', 'orichalcum-pulse', 'hadron-engine', 'tera-shell', 'teraform-zero', 'poison-puppeteer',
 ]);
 
 function applyStatusMove(ctx, A, B, move, L, depth = 0) {
@@ -643,7 +711,7 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   const eff = EFFECTS[key];
   if (!eff) { L(`${m.name} used **${move.name}**. But nothing happened!`); return; }
   const foeTarget = Boolean(eff.foe);
-  if (foeTarget && tf.magicCoat && depth === 0 && !eff.healFoe) {
+  if (foeTarget && tf.magicCoat && depth === 0 && !eff.healFoe && !eff.abilitySwap && key !== 'octolock') {
     tf.magicCoat = false;
     L(`${m.name} used **${move.name}**, but ${t.name} bounced it back!`);
     applyStatusMove(ctx, B, A, move, L, 1);
@@ -658,12 +726,12 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   L(`${m.name} used **${move.name}**.`);
   if (foeTarget) {
     if (tf.protect && tf.protect !== 'endure' && tf.protect !== 'quick') { L(`${t.name} protected itself!`); return; }
-    if (tf.sub > 0 && !SOUND_MOVES.has(key) && !eff.sure && !eff.flag) { L('But it failed!'); return; }
+    if (tf.sub > 0 && !SOUND_MOVES.has(key) && ((!eff.sure && !eff.flag) || key === 'octolock')) { L('But it failed!'); return; }
+    if (key === 'octolock' && t.types.includes('ghost')) { L(`It doesn't affect ${t.name}...`); return; }
     if (eff.powder && t.types.includes('grass')) { L(`It doesn't affect ${t.name}...`); return; }
     if (eff.groundImmune && t.types.includes('ground')) { L(`It doesn't affect ${t.name}...`); return; }
     if (!eff.sure && !f.sureHit && move.accuracy && move.accuracy < 101) {
-      const evasion = tf.miracleEye ? Math.min(0, tf.stages.eva) : tf.stages.eva;
-      const chance = move.accuracy * accMult(f.stages.acc - evasion);
+      const chance = move.accuracy * moveAccuracyMultiplier(m, t, move, ctx.field);
       if (Math.random() * 100 >= chance) { L('But it missed!'); return; }
     }
     f.sureHit = false;
@@ -679,9 +747,13 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
         || (eff.abilityTarget === 'copy' && AB.abilitySlug(m.ability) === AB.abilitySlug(t.ability))
         || (typeof eff.abilityTarget === 'string' && eff.abilityTarget !== 'copy'
           && AB.abilitySlug(t.ability) === AB.abilitySlug(eff.abilityTarget))) {
-      L('But it failed!');
+      L(ctx.worldBoss && eff.abilitySwap && !t.ability
+        ? 'Skill Swap failed: this World Boss has no ability to swap.'
+        : 'But it failed!');
       return;
     }
+    if ((eff.abilitySwap || eff.abilityUser) && !Object.prototype.hasOwnProperty.call(f, 'originalAbility')) f.originalAbility = m.ability;
+    if ((eff.abilitySwap || eff.abilityTarget !== undefined) && !Object.prototype.hasOwnProperty.call(tf, 'originalAbility')) tf.originalAbility = t.ability;
     if (eff.abilitySwap) {
       [m.ability, t.ability] = [t.ability, m.ability];
       L(`${m.name} swapped abilities with ${t.name}!`);
@@ -698,6 +770,8 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
       t.ability = eff.abilityTarget;
       L(`${t.name}'s ability became **${t.ability}**!`);
     }
+    if (eff.abilitySwap || eff.abilityUser) activateGainedAbility(ctx, A, B, L);
+    if (eff.abilitySwap || eff.abilityTarget !== undefined) activateGainedAbility(ctx, B, A, L);
     return;
   }
   if (eff.baton) {
@@ -709,6 +783,18 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   }
   if (eff.needs === 'hail' && ctx.field.weather !== 'hail') { L('But it failed!'); return; }
   if (eff.firstTurn && f.protectStreak > 0) { L('But it failed!'); return; }
+  if (eff.charging) {
+    if (f.chargingMove) {
+      f.chargingMove = null;
+    } else if (m.held_item === 'Power Herb' && !f.powerHerbUsed) {
+      f.powerHerbUsed = true;
+      L(`${m.name} used its Power Herb to finish charging!`);
+    } else {
+      f.chargingMove = move;
+      L(`${m.name} is charging power!`);
+      return;
+    }
+  }
   if (eff.cost) {
     const cost = Math.floor(m.max_hp * eff.cost);
     if (m.hp <= cost || (eff.maxAtk && f.stages.atk >= 6)) { L('But it failed!'); return; }
@@ -773,7 +859,12 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     else { tf.attract = m; L(`${t.name} fell in love!`); }
   }
   if (eff.nightmare) { if (tf.status === 'slp' && !tf.nightmare) { tf.nightmare = true; L(`${t.name} is locked in a nightmare!`); } else L('But it failed!'); }
-  if (eff.yawn) { if (tf.status || tf.yawn) L('But it failed!'); else { tf.yawn = 2; L(`${t.name} grew drowsy!`); } }
+  if (eff.yawn) {
+    const abilityBlock = AB.statusBlocked(ctx, t, 'slp', m);
+    if (tf.status || tf.yawn) L('But it failed!');
+    else if (abilityBlock) L(abilityBlock);
+    else { tf.yawn = 2; L(`${t.name} grew drowsy!`); }
+  }
   if (eff.disable) { if (tf.lastMove) { const key = slug(tf.lastMove.name); tf.disabledMoves = tf.disabledMoves || {}; tf.disabledMoves[key] = 4; L(`${t.name}'s **${tf.lastMove.name}** was disabled!`); } else L('But it failed!'); }
   if (eff.encore) { if (tf.lastMove) { tf.encore = 3; L(`${t.name} must keep using **${tf.lastMove.name}**!`); } else L('But it failed!'); }
   if (eff.psychoShift) {
@@ -789,7 +880,8 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     const target = eff.onFoe ? tf : f;
     const owner = eff.onFoe ? t : m;
     if (eff.flag === 'miracleEye' && target.miracleEye) { L('But it failed!'); return; }
-    target[eff.flag] = true;
+    if (eff.flag === 'octolock' && target.octolock) { L('But it failed!'); return; }
+    target[eff.flag] = eff.flag === 'octolock' ? { source: m } : true;
     L(`${owner.name} ${eff.text}`);
     if (eff.boost) { /* charge also boosts Sp. Def below */ }
   }
@@ -821,6 +913,7 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
   }
   if (eff.rest) {
     if (f.status === 'slp' || m.hp >= m.max_hp) L('But it failed!');
+    else if (AB.statusBlocked(ctx, m, 'slp', null)) L(AB.statusBlocked(ctx, m, 'slp', null));
     else { m.hp = m.max_hp; cureStatus(m); f.status = 'slp'; f.sleep = 2; L(`${m.name} slept and became healthy!`); }
   }
   if (eff.swallow) {
@@ -996,7 +1089,8 @@ function performMove(ctx, A, B, move, L, depth = 0) {
   }
 }
 
-const BATON_PASSED_FLAGS = ['aquaRing', 'ingrain', 'focus', 'sub', 'magnetRise', 'healBlock', 'embargo', 'perish', 'cursed'];
+const BATON_PASSED_FLAGS = ['aquaRing', 'ingrain', 'focus', 'sub', 'magnetRise', 'telekinesis',
+  'healBlock', 'embargo', 'perish', 'cursed', 'confuse', 'leech', 'octolock'];
 
 // Captures what Baton Pass hands over (stat stages plus lingering effects like Aqua Ring) and clears it from the user.
 function takeBatonState(mon) {
@@ -1020,6 +1114,7 @@ function giveBatonState(mon, state) {
 // Returns false if the actor is prevented from acting; logs the reason.
 function canAct(ctx, A, B, move, L) {
   const m = A.mon; const f = fx(m); const bf = fx(B.mon);
+  cureAbilityConditions(m, L);
   const slugName = slug(move.name);
   if (f.flinch) {
     f.flinch = false;
@@ -1066,7 +1161,7 @@ function runAction(ctx, A, B, prefix = '') {
   let first = true;
   const L = (text) => { ctx.log.push(`${first ? prefix : '↳ '}${text}`); first = false; };
   const f = fx(A.mon);
-  let move = A.move;
+  let move = f.chargingMove || A.move;
   if (!CHOICE_ITEMS.has(A.mon.held_item)) {
     f.choiceMove = null;
     f.choiceMoveSlug = null;
@@ -1074,8 +1169,8 @@ function runAction(ctx, A, B, prefix = '') {
   if (CHOICE_ITEMS.has(A.mon.held_item) && f.choiceMove && slug(move.name) !== f.choiceMoveSlug) {
     move = f.choiceMove;
   }
-  if (f.encore > 0 && f.lastMove) { move = f.lastMove; }
-  if (!canAct(ctx, A, B, move, L)) { f.lastMove = move; f.protectStreak = 0; return false; }
+  if (!f.chargingMove && f.encore > 0 && f.lastMove) { move = f.lastMove; }
+  if (!canAct(ctx, A, B, move, L)) { f.chargingMove = null; f.lastMove = move; f.protectStreak = 0; return false; }
   const isProtectLike = EFFECTS[slug(move.name)]?.protect;
   if (!isProtectLike) f.protectStreak = 0;
   f.lastMove = move;
@@ -1095,6 +1190,7 @@ function endOfTurn(ctx) {
   for (const { mon, side } of mons) {
     if (!mon || mon.hp <= 0) continue;
     const f = fx(mon);
+    cureAbilityConditions(mon, L);
     f.protect = false;
     const weather = AB.activeWeather(field);
     if (weather === 'sand' && !mon.types.some((x) => ['rock', 'ground', 'steel'].includes(x)) && !AB.ignoresWeatherDamage(mon, 'sand')) {
@@ -1121,7 +1217,14 @@ function endOfTurn(ctx) {
     }
     if (mon.hp > 0 && f.cursed && !magicGuard) { const d = Math.max(1, Math.floor(mon.max_hp / 4)); mon.hp -= d; L(`${mon.name} is afflicted by the curse for **${d}** damage.`); }
     if (mon.hp > 0 && f.nightmare && f.status === 'slp' && !magicGuard) { const d = Math.max(1, Math.floor(mon.max_hp / 4)); mon.hp -= d; L(`${mon.name} is locked in a nightmare for **${d}** damage.`); }
-    if (mon.hp > 0 && f.octolock) { changeStage(ctx, mon, side, 'def', -1, L); changeStage(ctx, mon, side, 'spdef', -1, L); }
+    if (f.octolock) {
+      const foe = side === 'player' ? ctx.enemy : ctx.player;
+      if (f.octolock.source !== foe || foe?.hp <= 0) f.octolock = null;
+      else if (mon.hp > 0) {
+        changeStage(ctx, mon, side, 'def', -1, L, true);
+        changeStage(ctx, mon, side, 'spdef', -1, L, true);
+      }
+    }
     for (const healingFlag of ['aquaRing', 'ingrain']) {
       if (mon.hp > 0 && f[healingFlag] && mon.hp < mon.max_hp) healMon(mon, mon.max_hp / 16, L);
     }
@@ -1177,13 +1280,28 @@ function runTurn(ctx, playerMove, enemyMove) {
     if (sa === sb) return Math.random() < 0.5 ? -1 : 1;
     return ctx.field.trickRoom > 0 ? sa - sb : sb - sa;
   });
-  for (const actor of order) {
+  for (let index = 0; index < order.length; index += 1) {
+    const actor = order[index];
     const foe = actor === P ? E : P;
     if (actor.mon.hp <= 0 || foe.mon.hp <= 0) continue;
     if (runAction(ctx, actor, foe) && actor === P) playerActed = true;
+    if (actor === P && fx(P.mon).batonPass) {
+      ctx.field.pendingBatonTurn = { enemyMove: index === 0 ? E.move : null };
+      return playerActed;
+    }
   }
   endOfTurn(ctx);
   return playerActed;
+}
+
+function resumeBatonTurn(ctx) {
+  const pending = ctx.field.pendingBatonTurn;
+  if (!pending) return;
+  ctx.field.pendingBatonTurn = null;
+  if (pending.enemyMove && ctx.enemy.hp > 0 && ctx.player.hp > 0) {
+    runAction(ctx, { mon: ctx.enemy, side: 'enemy', move: pending.enemyMove }, { mon: ctx.player, side: 'player' });
+  }
+  endOfTurn(ctx);
 }
 
 function runSwitchTurn(ctx, enemyMove) {
@@ -1246,9 +1364,9 @@ const abilities = {
 module.exports = {
   abilities,
   battleGender,
-  EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, runAction, endOfTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves, isUseful,
+  EFFECTS, slug, fx, createField, runTurn, runSwitchTurn, resumeBatonTurn, runAction, endOfTurn, onSwitchIn, onSwitchOut, activateGainedAbility, isOctolocked, chooseEnemyMove, buildEnemyMoves, isUseful,
   applyStatusMove, canAct, performMove, effectivePower, fieldMovePowerMultiplier, fieldMoveAccuracy, fieldDamageMultiplier,
-  stageMult, damageStats, evBonus, miracleEyeTypes, healMon, STAGE_KEYS, STAGE_NAMES,
+  stageMult, damageStats, evBonus, miracleEyeTypes, moveAccuracyMultiplier, applyFlinchEffect, healMon, STAGE_KEYS, STAGE_NAMES,
   DAMAGE_STAT_DROPS, DAMAGE_SELF_BOOSTS, DRAIN_MOVES, RECHARGE_MOVES, takeBatonState, giveBatonState, cureStatus,
   summarize(mon) {
     const f = fx(mon);

@@ -1771,7 +1771,8 @@ async function attachBattleAbilities(...groups) {
     try {
       const list = await fetchPokemonAbilities(formId);
       mon.ability = (list.find((entry) => !entry.hidden) || list[0]).name;
-    } catch {
+    } catch (error) {
+      console.error(`Failed to load battle ability for form ${formId}:`, error);
       mon.ability = null;
     }
   }));
@@ -5261,6 +5262,11 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   const move = moves[moveIndex];
   if (!move) return { error: 'invalid_move' };
   if (!move.power) return { error: 'status_move', pokemon, move };
+  if (battleMon && bossMon && abilityCtx && move.accuracy
+      && Math.random() * 100 >= Math.min(100, battleFx.fieldMoveAccuracy(move, abilityCtx.field)
+        * battleFx.moveAccuracyMultiplier(battleMon, bossMon, move, abilityCtx.field))) {
+    return { damage: 0, defeated: false, boss, battleLog: [`**${pokemon.name}** used **${move.name}**, but missed.`] };
+  }
   const bossTemplate = WORLD_BOSS_POOL.find((entry) => entry.name === boss.name);
   const bossForm = db.prepare('SELECT types FROM pokemon_forms WHERE id = ?')
     .get(bossTemplate?.formId ?? bossTemplate?.id);
@@ -5372,6 +5378,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
     battleFx.healMon(battleMon, Math.max(1, Math.floor(result.damage * drainFraction)), (text) => battleLog.push(text));
   }
   if (battleMon && bossMon && abilityCtx) {
+    battleFx.applyFlinchEffect(battleMon, bossMon, move, 1, (text) => battleLog.push(text));
     battleFx.abilities.afterHit(
       abilityCtx, { mon: battleMon, side: 'player' }, { mon: bossMon, side: 'enemy' }, move, result.damage,
       { type: moveType, crit: isCritical }, (text) => battleLog.push(text)
@@ -5391,6 +5398,156 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
       rarity: WORLD_BOSS_POOL.find((entry) => entry.name === result.boss.name)?.rarity || 'Legendary',
     },
   };
+}
+
+function runWorldBossCounterattack(bs, playerState, currentBoss, attack, playerId, boss) {
+  if (!attack.defeated && playerState.hp > 0 && !playerState.batonPass) {
+    const template = WORLD_BOSS_POOL.find((entry) => entry.name === currentBoss.name);
+    const bossForm = db.prepare('SELECT species_id FROM pokemon_forms WHERE id = ?')
+      .get(template?.formId ?? template?.id);
+    if (!template || !bossForm) {
+      throw new Error(`Missing World Boss battle data for "${currentBoss.name}".`);
+    }
+    if (!bs.boss.moves) {
+      // The boss uses Hyper Beam in place of Max Ooze; players keep Max Ooze and its buff.
+      const hyperBeam = getPokemonMove('hyper-beam');
+      bs.boss.moves = buildEnemyMoves([...new Map(
+        getSpeciesLearnset(bossForm.species_id, bossForm.id)
+          .map((name) => getPokemonMove(name))
+          .filter(Boolean)
+          // The boss must never wipe, copy, reverse or swap the raider's stat stages (Haze, Psych Up...).
+          .filter((move) => {
+            const effect = battleFx.EFFECTS[battleFx.slug(move.name)];
+            return !(effect && (effect.haze || effect.topsy || effect.psychUp || effect.swap));
+          })
+          .map((move) => (move.name === 'Max Ooze' && hyperBeam ? hyperBeam : move))
+          .map((move) => [move.name, move])
+      ).values()]);
+    }
+    if (!bs.boss.moves.length) throw new Error(`${currentBoss.name} has no moves available for its counterattack.`);
+    bs.mon.hp = playerState.hp;
+    const bossCtx = worldBossCtx(bs, attack.battleLog, bs.turn);
+    const bossActor = { mon: bs.boss, side: 'enemy' };
+    const playerActor = { mon: bs.mon, side: 'player' };
+    const selectedBossMove = chooseEnemyMove(bs.boss, bs.mon, bs.field);
+    const bossMoveType = battleFx.abilities.adjustMoveType(bs.boss, selectedBossMove, selectedBossMove.type).type;
+    const bossMove = { ...selectedBossMove, type: bossMoveType };
+    let playerTypes = battleFx.abilities.adjustDefenderTypes(bs.boss, bossMoveType, bs.mon.types);
+    playerTypes = battleFx.miracleEyeTypes(bossMoveType, playerTypes, bs.mon);
+    if (bs.field.gravity > 0 && bossMoveType === 'ground') playerTypes = playerTypes.filter((type) => type !== 'flying');
+    const playerFx = battleFx.fx(bs.mon);
+    const bossEffectiveness = bossMoveType === 'ground' && bs.field.gravity <= 0
+      && (playerFx.magnetRise > 0 || playerFx.telekinesis > 0)
+      ? 0 : typeEffectiveness(bossMoveType, playerTypes);
+    const bossSay = (text) => attack.battleLog.push(text);
+    if (battleFx.canAct(bossCtx, { ...bossActor, move: bossMove }, { ...playerActor, move: bossMove }, bossMove, bossSay)) {
+      battleFx.fx(bs.boss).lastMove = bossMove;
+      if (!bossMove.power || ['future-sight', 'doom-desire'].includes(battleFx.slug(bossMove.name))) {
+        battleFx.performMove(bossCtx, { ...bossActor, move: bossMove },             { ...playerActor, move: bossMove }, bossMove, bossSay);
+      } else if (battleFx.abilities.absorb(
+        bossCtx, bossActor, playerActor, bossMove, bossMove.type, bossEffectiveness, bossSay
+      )) {
+        playerState.hp = bs.mon.hp;
+      } else if (bossEffectiveness === 0) {
+        attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but it had no effect on **${bs.mon.name}**.`);
+      } else if (Math.random() < Math.min(1, Math.min(
+        (battleFx.fieldMoveAccuracy(bossMove, bs.field) || 100) / 100,
+        bs.mon.held_item === 'Loaded Dice'
+          ? (bs.mon.is_golden || bs.mon.isGolden ? 1 / 3 : 1 / 4)
+          : (bs.mon.is_golden || bs.mon.isGolden ? 1 / 2 : 1 / 3)
+      ) * battleFx.moveAccuracyMultiplier(bs.boss, bs.mon, bossMove, bs.field))) {
+        const { atk: bossAtk, def: playerDef } = battleFx.damageStats(bs.boss, bs.mon, bossMove, bs.field);
+        const playerSide = bs.field.sides.player;
+        const screened = playerSide.veil > 0 || (bossMove.category === 'special' ? playerSide.lightScreen : playerSide.reflect) > 0;
+        const abilityDefence = battleFx.abilities.damageMultiplier(
+          bossCtx, bossActor, playerActor, bossMove,
+          {
+            type: bossMove.type, eff: bossEffectiveness,
+            physical: bossMove.category !== 'special', crit: false, typeBoost: 1,
+          }
+        );
+        const counterDamage = Math.max(1, Math.floor(calculateMoveDamage(
+          bossMove,
+          bossAtk,
+          playerDef,
+          playerTypes
+        ) * WORLD_BOSS_COUNTER_DAMAGE_MULTIPLIER * (screened ? 0.5 : 1) * abilityDefence));
+        const protectedByMove = bs.mon.fx?.protect;
+        if (protectedByMove && protectedByMove !== 'endure' && protectedByMove !== 'crafty') {
+          attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but **${bs.mon.name}** protected itself!`);
+        } else {
+          const wasAtFullHp = playerState.hp === bs.mon.max_hp;
+          let damageTaken = counterDamage;
+          let survivedWithOneHp = false;
+          let hungOnWith = bs.mon.held_item;
+          if (playerState.hp - counterDamage <= 0 && protectedByMove !== 'endure') {
+            if (bs.mon.held_item === 'Focus Sash' && wasAtFullHp && !battleFx.fx(bs.mon).focusSashUsed) {
+              battleFx.fx(bs.mon).focusSashUsed = true;
+              survivedWithOneHp = true;
+            } else if (battleFx.abilities.survivesLethal(bs.boss, bs.mon, playerState.hp)) {
+              survivedWithOneHp = true;
+              hungOnWith = bs.mon.ability;
+            } else if (bs.mon.held_item === 'Focus Band' && Math.random() < 0.1) {
+              survivedWithOneHp = true;
+            }
+          }
+          playerState.hp = Math.max(
+            protectedByMove === 'endure' || survivedWithOneHp ? 1 : 0,
+            playerState.hp - damageTaken
+          );
+          bs.mon.hp = playerState.hp;
+          attack.battleLog.push(
+            `**${currentBoss.name}** counterattacked with **${bossMove.name}** for **${counterDamage}** damage.`
+          );
+          if (survivedWithOneHp) {
+            attack.battleLog.push(
+              `${bs.mon.name} hung on with its ${hungOnWith}!`
+            );
+          }
+          battleFx.abilities.afterHit(
+            bossCtx, bossActor, playerActor, bossMove, counterDamage,
+            { type: bossMove.type, crit: false }, bossSay
+          );
+          playerState.hp = bs.mon.hp;
+          if (bs.mon.hp > 0 && bs.mon.held_item === 'Sitrus Berry'
+              && !battleFx.fx(bs.mon).sitrusBerryUsed && bs.mon.hp <= bs.mon.max_hp / 2) {
+            battleFx.fx(bs.mon).sitrusBerryUsed = true;
+            battleFx.healMon(bs.mon, bs.mon.max_hp / 4, (text) => attack.battleLog.push(text));
+            playerState.hp = bs.mon.hp;
+          }
+          if (battleFx.RECHARGE_MOVES.has(battleFx.slug(bossMove.name))) battleFx.fx(bs.boss).recharge = true;
+          const bossBoost = battleFx.DAMAGE_SELF_BOOSTS[battleFx.slug(bossMove.name)];
+          if (bossBoost && Math.random() * 100 < bossBoost[0]) {
+            for (const [key, delta] of Object.entries(bossBoost[1])) {
+              const bossStages = battleFx.fx(bs.boss).stages;
+              const before = bossStages[key];
+              bossStages[key] = Math.max(-6, Math.min(6, before + delta));
+              if (bossStages[key] !== before) {
+                attack.battleLog.push(`${currentBoss.name}'s ${battleFx.STAGE_NAMES[key]} ${delta > 0 ? 'rose' : 'fell'}!`);
+              }
+            }
+          }
+        }
+      } else {
+        attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but missed.`);
+      }
+    } else {
+      battleFx.fx(bs.boss).chargingMove = null;
+    }
+    playerState.hp = bs.mon.hp;
+    if (playerState.hp > 0) {
+      battleFx.endOfTurn(bossCtx);
+      playerState.hp = bs.mon.hp;
+      // Damage-over-time on the boss (burn, poison, Leech Seed...) is converted into real boss damage.
+      const chip = Math.max(0, bs.boss.max_hp - Math.max(0, bs.boss.hp)) * WORLD_BOSS_CHIP_PER_HP;
+      bs.boss.hp = bs.boss.max_hp;
+      const liveBoss = getActiveWorldBoss();
+      if (chip > 0 && liveBoss && liveBoss.current_hp > 1) {
+        const applied = applyWorldBossDamage(playerId, boss.id, Math.min(chip, liveBoss.current_hp - 1));
+        if (!applied.error) attack.battleLog.push(`${currentBoss.name} took **${applied.damage.toLocaleString()}** damage from status effects.`);
+      }
+    }
+  }
 }
 
 const WORLD_BOSS_PROGRESS_INTERVAL_MS = 15000;
@@ -5812,6 +5969,13 @@ async function startWorldBossBattle(message, boss, userId, team) {
           return;
         }
         const switched = playerState?.hp > 0 && playerState.pokemon.id !== pokemon.id;
+        let switchedWithBaton = false;
+        const switchLog = switched ? [`🔄 Switched to **${pokemon.name}**.`] : [];
+        if (switched && !playerState.batonPass && playerState.battle
+            && battleSwitchBlocked(playerState.battle.mon, playerState.battle.boss)) {
+          await interaction.reply({ content: 'Your Pokémon cannot switch while trapped or charging.', ephemeral: true });
+          return;
+        }
         if (playerState?.hp > 0) {
           if (playerState.pokemon.id === pokemon.id) {
             refreshWorldBossMoves(playerState, playerTeam);
@@ -5819,6 +5983,11 @@ async function startWorldBossBattle(message, boss, userId, team) {
             const batonStages = playerState.batonPass && playerState.battle
               ? battleFx.takeBatonState(playerState.battle.mon)
               : null;
+            if (playerState.battle) {
+              battleFx.onSwitchOut(worldBossCtx(playerState.battle, [], playerState.battle.turn),
+                playerState.battle.mon, 'player');
+              playerState.battle.abilityEntered = false;
+            }
             playerState.batonPass = false;
             let teamStates = teamStatesByPlayer.get(playerId);
             if (!teamStates) {
@@ -5844,11 +6013,36 @@ async function startWorldBossBattle(message, boss, userId, team) {
             }
             players.set(playerId, playerState);
             if (batonStages) {
+              switchedWithBaton = true;
               playerState.incomingBaton = batonStages;
               if (playerState.battle) {
                 battleFx.giveBatonState(playerState.battle.mon, batonStages);
                 playerState.incomingBaton = null;
               }
+            }
+          }
+          if (switchedWithBaton) {
+            if (interaction.message.id === bossMessage.id) await interaction.deferReply();
+            else await interaction.deferUpdate();
+            await attachBattleAbilities(playerState.pokemon);
+            const switchedBattle = getWorldBossBattle(playerState, currentBoss);
+            if (playerState.incomingBaton) {
+              battleFx.giveBatonState(switchedBattle.mon, playerState.incomingBaton);
+              playerState.incomingBaton = null;
+            }
+            if (battleFx.fx(switchedBattle.mon).octolock) {
+              battleFx.fx(switchedBattle.mon).octolock.source = switchedBattle.boss;
+            }
+            battleFx.activateGainedAbility(worldBossCtx(switchedBattle, switchLog, switchedBattle.turn),
+              { mon: switchedBattle.mon, side: 'player' }, { mon: switchedBattle.boss, side: 'enemy' },
+              (text) => switchLog.push(text));
+            switchedBattle.abilityEntered = true;
+            const attack = { defeated: false, battleLog: switchLog };
+            runWorldBossCounterattack(switchedBattle, playerState, currentBoss, attack, playerId, boss);
+            if (playerState.hp <= 0) {
+              switchLog.push(`💫 **${playerState.pokemon.name}** fainted! Choose another Pokémon.`);
+              faintedTeam.add(playerState.pokemon.id);
+              players.delete(playerId);
             }
           }
           const switchPayload = {
@@ -5857,16 +6051,20 @@ async function startWorldBossBattle(message, boss, userId, team) {
               team: playerTeam,
               faintedIds: faintedTeam,
               user: interaction.user,
-              log: switched ? [`🔄 Switched to **${playerState.pokemon.name}**.`] : [],
+              log: switchLog,
             })],
-            components: [
+            components: playerState.hp <= 0 ? [
+              ...createWorldBossPlayerSelectRows(boss.id, playerTeam, faintedTeam, playerState.teamStates),
+              ...createWorldBossForfeitRow(boss.id),
+            ] : [
               ...createWorldBossPlayerMoveRows(boss.id, playerState.pokemon, playerState.moves),
               ...createWorldBossSwitchRows(boss.id, playerTeam, playerState.pokemon.id, faintedTeam),
               ...createWorldBossForfeitRow(boss.id),
             ],
           };
           // Switching from an existing battle panel edits it instead of posting another.
-          if (interaction.message.id === bossMessage.id) await interaction.reply(switchPayload);
+          if (switchedWithBaton) await interaction.editReply(switchPayload);
+          else if (interaction.message.id === bossMessage.id) await interaction.reply(switchPayload);
           else await interaction.update(switchPayload);
           return;
         }
@@ -5954,7 +6152,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
         ? battleMonFx.choiceMove
           || playerState.moves.find((move) => battleFx.slug(move.name) === battleMonFx.choiceMoveSlug)
         : null;
-      const chosenMove = lockedChoiceMove || selectedMove;
+      const chosenMove = battleMonFx.chargingMove || lockedChoiceMove || selectedMove;
       if (lockedChoiceMove && selectedMove && battleFx.slug(selectedMove.name) !== battleFx.slug(lockedChoiceMove.name)) {
         await interaction.followUp({
           content: `🔒 **${bs.mon.name}** is locked into **${lockedChoiceMove.name}** by its ${bs.mon.held_item}.`,
@@ -5968,9 +6166,8 @@ async function startWorldBossBattle(message, boss, userId, team) {
       const turnSay = (text) => turnLog.push(text);
       if (!bs.abilityEntered) {
         bs.abilityEntered = true;
-        battleFx.abilities.entry(
-          worldBossCtx(bs, turnLog, bs.turn), { mon: bs.mon, side: 'player' }, { mon: bs.boss, side: 'enemy' }, turnSay
-        );
+        battleFx.activateGainedAbility(worldBossCtx(bs, turnLog, bs.turn),
+          { mon: bs.mon, side: 'player' }, { mon: bs.boss, side: 'enemy' }, turnSay);
       }
       if (chosenMove) {
         bs.turn += 1;
@@ -5979,6 +6176,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
           worldBossCtx(bs, turnLog, bs.turn), { mon: bs.mon, side: 'player', move: chosenMove },
           { mon: bs.boss, side: 'enemy', move: chosenMove }, chosenMove, turnSay
         );
+        if (!acted) battleMonFx.chargingMove = null;
         battleFx.fx(bs.mon).lastMove = chosenMove;
       }
       const delayedMove = chosenMove && ['future-sight', 'doom-desire'].includes(battleFx.slug(chosenMove.name));
@@ -6041,7 +6239,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
           bs.boss,
           worldBossCtx(bs, turnLog, bs.turn)
         );
-        if (!attack.error && bs.mon.held_item === 'Life Orb' && !battleFx.abilities.ignoresIndirect(bs.mon)) {
+        if (!attack.error && attack.damage > 0 && bs.mon.held_item === 'Life Orb' && !battleFx.abilities.ignoresIndirect(bs.mon)) {
           const recoil = Math.max(1, Math.floor(bs.mon.max_hp / 10));
           bs.mon.hp = Math.max(0, bs.mon.hp - recoil);
           attack.battleLog.push(`**${bs.mon.name}** lost **${recoil}** HP to its Life Orb recoil.`);
@@ -6085,151 +6283,7 @@ async function startWorldBossBattle(message, boss, userId, team) {
         return;
       }
 
-      if (!attack.defeated && playerState.hp > 0 && !playerState.batonPass) {
-        const template = WORLD_BOSS_POOL.find((entry) => entry.name === currentBoss.name);
-        const bossForm = db.prepare('SELECT species_id FROM pokemon_forms WHERE id = ?')
-          .get(template?.formId ?? template?.id);
-        if (!template || !bossForm) {
-          throw new Error(`Missing World Boss battle data for "${currentBoss.name}".`);
-        }
-        if (!bs.boss.moves) {
-          // The boss uses Hyper Beam in place of Max Ooze; players keep Max Ooze and its buff.
-          const hyperBeam = getPokemonMove('hyper-beam');
-          bs.boss.moves = buildEnemyMoves([...new Map(
-            getSpeciesLearnset(bossForm.species_id, bossForm.id)
-              .map((name) => getPokemonMove(name))
-              .filter(Boolean)
-              // The boss must never wipe, copy, reverse or swap the raider's stat stages (Haze, Psych Up...).
-              .filter((move) => {
-                const effect = battleFx.EFFECTS[battleFx.slug(move.name)];
-                return !(effect && (effect.haze || effect.topsy || effect.psychUp || effect.swap));
-              })
-              .map((move) => (move.name === 'Max Ooze' && hyperBeam ? hyperBeam : move))
-              .map((move) => [move.name, move])
-          ).values()]);
-        }
-        if (!bs.boss.moves.length) throw new Error(`${currentBoss.name} has no moves available for its counterattack.`);
-        bs.mon.hp = playerState.hp;
-        const bossCtx = worldBossCtx(bs, attack.battleLog, bs.turn);
-        const bossActor = { mon: bs.boss, side: 'enemy' };
-        const playerActor = { mon: bs.mon, side: 'player' };
-        const selectedBossMove = chooseEnemyMove(bs.boss, bs.mon, bs.field);
-        const bossMoveType = battleFx.abilities.adjustMoveType(bs.boss, selectedBossMove, selectedBossMove.type).type;
-        const bossMove = { ...selectedBossMove, type: bossMoveType };
-        let playerTypes = battleFx.abilities.adjustDefenderTypes(bs.boss, bossMoveType, bs.mon.types);
-        playerTypes = battleFx.miracleEyeTypes(bossMoveType, playerTypes, bs.mon);
-        if (bs.field.gravity > 0 && bossMoveType === 'ground') playerTypes = playerTypes.filter((type) => type !== 'flying');
-        const playerFx = battleFx.fx(bs.mon);
-        const bossEffectiveness = bossMoveType === 'ground' && bs.field.gravity <= 0
-          && (playerFx.magnetRise > 0 || playerFx.telekinesis > 0)
-          ? 0 : typeEffectiveness(bossMoveType, playerTypes);
-        const bossSay = (text) => attack.battleLog.push(text);
-        if (battleFx.canAct(bossCtx, { ...bossActor, move: bossMove }, { ...playerActor, move: bossMove }, bossMove, bossSay)) {
-          battleFx.fx(bs.boss).lastMove = bossMove;
-          if (!bossMove.power || ['future-sight', 'doom-desire'].includes(battleFx.slug(bossMove.name))) {
-            battleFx.performMove(bossCtx, { ...bossActor, move: bossMove },             { ...playerActor, move: bossMove }, bossMove, bossSay);
-          } else if (battleFx.abilities.absorb(
-            bossCtx, bossActor, playerActor, bossMove, bossMove.type, bossEffectiveness, bossSay
-          )) {
-            playerState.hp = bs.mon.hp;
-          } else if (bossEffectiveness === 0) {
-            attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but it had no effect on **${bs.mon.name}**.`);
-          } else if (Math.random() < Math.min(
-            bossMove.accuracy / 100,
-            bs.mon.held_item === 'Loaded Dice'
-              ? (bs.mon.is_golden || bs.mon.isGolden ? 1 / 3 : 1 / 4)
-              : (bs.mon.is_golden || bs.mon.isGolden ? 1 / 2 : 1 / 3)
-          )) {
-            const { atk: bossAtk, def: playerDef } = battleFx.damageStats(bs.boss, bs.mon, bossMove, bs.field);
-            const playerSide = bs.field.sides.player;
-            const screened = playerSide.veil > 0 || (bossMove.category === 'special' ? playerSide.lightScreen : playerSide.reflect) > 0;
-            const abilityDefence = battleFx.abilities.damageMultiplier(
-              bossCtx, bossActor, playerActor, bossMove,
-              {
-                type: bossMove.type, eff: bossEffectiveness,
-                physical: bossMove.category !== 'special', crit: false, typeBoost: 1,
-              }
-            );
-            const counterDamage = Math.max(1, Math.floor(calculateMoveDamage(
-              bossMove,
-              bossAtk,
-              playerDef,
-              playerTypes
-            ) * WORLD_BOSS_COUNTER_DAMAGE_MULTIPLIER * (screened ? 0.5 : 1) * abilityDefence));
-            const protectedByMove = bs.mon.fx?.protect;
-            if (protectedByMove && protectedByMove !== 'endure' && protectedByMove !== 'crafty') {
-              attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but **${bs.mon.name}** protected itself!`);
-            } else {
-              const wasAtFullHp = playerState.hp === bs.mon.max_hp;
-              let damageTaken = counterDamage;
-              let survivedWithOneHp = false;
-              let hungOnWith = bs.mon.held_item;
-              if (playerState.hp - counterDamage <= 0 && protectedByMove !== 'endure') {
-                if (bs.mon.held_item === 'Focus Sash' && wasAtFullHp && !battleFx.fx(bs.mon).focusSashUsed) {
-                  battleFx.fx(bs.mon).focusSashUsed = true;
-                  survivedWithOneHp = true;
-                } else if (battleFx.abilities.survivesLethal(bs.boss, bs.mon, playerState.hp)) {
-                  survivedWithOneHp = true;
-                  hungOnWith = bs.mon.ability;
-                } else if (bs.mon.held_item === 'Focus Band' && Math.random() < 0.1) {
-                  survivedWithOneHp = true;
-                }
-              }
-              playerState.hp = Math.max(
-                protectedByMove === 'endure' || survivedWithOneHp ? 1 : 0,
-                playerState.hp - damageTaken
-              );
-              bs.mon.hp = playerState.hp;
-              attack.battleLog.push(
-                `**${currentBoss.name}** counterattacked with **${bossMove.name}** for **${counterDamage}** damage.`
-              );
-              if (survivedWithOneHp) {
-                attack.battleLog.push(
-                  `${bs.mon.name} hung on with its ${hungOnWith}!`
-                );
-              }
-              battleFx.abilities.afterHit(
-                bossCtx, bossActor, playerActor, bossMove, counterDamage,
-                { type: bossMove.type, crit: false }, bossSay
-              );
-              playerState.hp = bs.mon.hp;
-              if (bs.mon.hp > 0 && bs.mon.held_item === 'Sitrus Berry'
-                  && !battleFx.fx(bs.mon).sitrusBerryUsed && bs.mon.hp <= bs.mon.max_hp / 2) {
-                battleFx.fx(bs.mon).sitrusBerryUsed = true;
-                battleFx.healMon(bs.mon, bs.mon.max_hp / 4, (text) => attack.battleLog.push(text));
-                playerState.hp = bs.mon.hp;
-              }
-              if (battleFx.RECHARGE_MOVES.has(battleFx.slug(bossMove.name))) battleFx.fx(bs.boss).recharge = true;
-              const bossBoost = battleFx.DAMAGE_SELF_BOOSTS[battleFx.slug(bossMove.name)];
-              if (bossBoost && Math.random() * 100 < bossBoost[0]) {
-                for (const [key, delta] of Object.entries(bossBoost[1])) {
-                  const bossStages = battleFx.fx(bs.boss).stages;
-                  const before = bossStages[key];
-                  bossStages[key] = Math.max(-6, Math.min(6, before + delta));
-                  if (bossStages[key] !== before) {
-                    attack.battleLog.push(`${currentBoss.name}'s ${battleFx.STAGE_NAMES[key]} ${delta > 0 ? 'rose' : 'fell'}!`);
-                  }
-                }
-              }
-            }
-          } else {
-            attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but missed.`);
-          }
-        }
-        playerState.hp = bs.mon.hp;
-        if (playerState.hp > 0) {
-          battleFx.endOfTurn(bossCtx);
-          playerState.hp = bs.mon.hp;
-          // Damage-over-time on the boss (burn, poison, Leech Seed...) is converted into real boss damage.
-          const chip = Math.max(0, bs.boss.max_hp - Math.max(0, bs.boss.hp)) * WORLD_BOSS_CHIP_PER_HP;
-          bs.boss.hp = bs.boss.max_hp;
-          const liveBoss = getActiveWorldBoss();
-          if (chip > 0 && liveBoss && liveBoss.current_hp > 1) {
-            const applied = applyWorldBossDamage(playerId, boss.id, Math.min(chip, liveBoss.current_hp - 1));
-            if (!applied.error) attack.battleLog.push(`${currentBoss.name} took **${applied.damage.toLocaleString()}** damage from status effects.`);
-          }
-        }
-      }
+      runWorldBossCounterattack(bs, playerState, currentBoss, attack, playerId, boss);
       if (playerState.hp <= 0) {
         attack.battleLog.push(`💫 **${playerState.pokemon.name}** fainted! Choose another Pokémon.`);
         faintedTeam.add(playerState.pokemon.id);
@@ -8235,13 +8289,22 @@ function isBatonPending(party, activeIndex) {
   return Boolean(party[activeIndex]?.fx?.batonPass);
 }
 
-function completeBatonSwitch(from, to) {
-  battleFx.giveBatonState(to, battleFx.takeBatonState(from));
+function completeBattleSwitch(ctx, from, to, batonSwitch) {
+  const batonState = batonSwitch ? battleFx.takeBatonState(from) : null;
+  battleFx.onSwitchOut(ctx, from, 'player');
+  if (batonState) battleFx.giveBatonState(to, batonState);
+  onSwitchIn(ctx, to, 'player', (text) => ctx.log.push(`↳ ${text}`));
+  if (batonSwitch) battleFx.resumeBatonTurn(ctx);
+}
+
+function battleSwitchBlocked(mon, foe) {
+  return Boolean(battleFx.fx(mon).chargingMove || battleFx.isOctolocked(mon, foe));
 }
 
 // A Pokémon holding a Choice item can only use the first move it executed.
 function getSelectableMoves(mon) {
   const moves = mon?.moves || [];
+  if (mon && battleFx.fx(mon).chargingMove) return [battleFx.fx(mon).chargingMove];
   if (!mon || !CHOICE_ITEMS.has(mon.held_item)) return moves;
   const lockedSlug = battleFx.fx(mon).choiceMoveSlug;
   const locked = lockedSlug ? moves.filter((move) => battleFx.slug(move.name) === lockedSlug) : [];
@@ -8365,12 +8428,17 @@ async function runPlayerSpar(message, userId, opponentUser) {
         }
         const previousPlayer = party[partyIndex];
         const batonSwitch = isBatonPending(party, partyIndex);
+        if (!batonSwitch && battleSwitchBlocked(previousPlayer, enemy)) {
+          turn -= 1;
+          await interaction.reply({ content: 'Your Pokémon cannot switch while trapped or charging.', ephemeral: true });
+          return;
+        }
+        if (batonSwitch) turn -= 1;
         partyIndex = nextIndex;
         log.push(`🔄 You switched to **${nextPlayer.name}**!`);
         const ctx = makeBattleCtx(field, log, nextPlayer, enemy, turn, party, opponents);
-        onSwitchIn(ctx, nextPlayer, 'player', (text) => log.push(`↳ ${text}`));
-        if (batonSwitch) completeBatonSwitch(previousPlayer, nextPlayer);
-        else runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
+        completeBattleSwitch(ctx, previousPlayer, nextPlayer, batonSwitch);
+        if (!batonSwitch) runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
       } else {
         const moveIndex = Number(parts[2]);
         const player = party[partyIndex];
@@ -8693,12 +8761,17 @@ async function runMegaChamberGauntlet(message, userId, config) {
         }
         const previousPlayer = party[partyIndex];
         const batonSwitch = isBatonPending(party, partyIndex);
+        if (!batonSwitch && battleSwitchBlocked(previousPlayer, enemy)) {
+          turn -= 1;
+          await interaction.reply({ content: 'Your Pokémon cannot switch while trapped or charging.', ephemeral: true });
+          return;
+        }
+        if (batonSwitch) turn -= 1;
         partyIndex = nextIndex;
         log.push(`🔄 You switched to **${nextPlayer.name}**!`);
         const ctx = makeBattleCtx(field, log, nextPlayer, enemy, turn, party, opponents);
-        onSwitchIn(ctx, nextPlayer, 'player', (text) => log.push(`↳ ${text}`));
-        if (batonSwitch) completeBatonSwitch(previousPlayer, nextPlayer);
-        else runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
+        completeBattleSwitch(ctx, previousPlayer, nextPlayer, batonSwitch);
+        if (!batonSwitch) runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
       } else {
         const moveIndex = Number(parts[2]);
         const player = party[partyIndex];
@@ -9088,6 +9161,10 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           await interaction.reply({ content: 'That Pokémon cannot be switched in.', ephemeral: true });
           return;
         }
+        if (!isBatonPending(partyData, partyIndex) && battleSwitchBlocked(partyData[partyIndex], enemy)) {
+          await interaction.reply({ content: 'Your Pokémon cannot switch while trapped or charging.', ephemeral: true });
+          return;
+        }
       } else if (parts[1] === 'move') {
         selectedMove = currentMoves()[Number(parts[2])];
         if (!selectedMove || !partyData[partyIndex]) {
@@ -9117,12 +9194,12 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
       if (parts[1] === 'switch') {
         const previousPlayer = partyData[partyIndex];
         const batonSwitch = isBatonPending(partyData, partyIndex);
+        if (batonSwitch) turn -= 1;
         partyIndex = partyData.indexOf(nextPlayer);
         log.push(`🔄 You switched to **${nextPlayer.name}**!`);
         const ctx = makeBattleCtx(field, log, nextPlayer, enemy, turn, partyData, opponents);
-        onSwitchIn(ctx, nextPlayer, 'player', (text) => log.push(`↳ ${text}`));
-        if (batonSwitch) completeBatonSwitch(previousPlayer, nextPlayer);
-        else runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
+        completeBattleSwitch(ctx, previousPlayer, nextPlayer, batonSwitch);
+        if (!batonSwitch) runSwitchTurn(ctx, chooseEnemyMove(enemy, nextPlayer, field));
       } else {
         const player = partyData[partyIndex];
         const ctx = makeBattleCtx(field, log, player, enemy, turn, partyData, opponents);
