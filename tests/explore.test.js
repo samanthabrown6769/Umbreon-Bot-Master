@@ -893,6 +893,7 @@ test('Explore zooms each map and follows the trainer without cropping the map wo
       for (let variant = 0; variant < theme.images.length; variant += 1) {
         const { width, height } = renderer.getExploreMapSize(map, variant);
         const original = await loadImage(require('node:path').join(__dirname, '..', 'assets', 'explore', theme.images[variant].file));
+        const zoom = map === 'water' && variant === 1 ? 1.9 : 2;
         const background = createCanvas(width, height);
         const backgroundCtx = background.getContext('2d');
         backgroundCtx.imageSmoothingEnabled = false;
@@ -904,12 +905,12 @@ test('Explore zooms each map and follows the trainer without cropping the map wo
           const result = createCanvas(image.width, image.height);
           const context = result.getContext('2d');
           context.drawImage(image, 0, 0);
-          const viewX = Math.max(0, Math.min(width - 320, x + 16 - 160));
-          const viewY = Math.max(0, Math.min(height - 240, y + 16 - 120));
+          const viewX = Math.max(0, Math.min(width - 640 / zoom, x + 16 - 320 / zoom));
+          const viewY = Math.max(0, Math.min(height - 480 / zoom, y + 16 - 240 / zoom));
           const expected = createCanvas(640, 480);
           const expectedCtx = expected.getContext('2d');
           expectedCtx.imageSmoothingEnabled = false;
-          expectedCtx.scale(2, 2);
+          expectedCtx.scale(zoom, zoom);
           expectedCtx.translate(-viewX, -viewY);
           expectedCtx.drawImage(background, 0, 0);
           for (const [px, py] of [[200, 80], [440, 80], [200, 400], [440, 400]]) {
@@ -919,7 +920,7 @@ test('Explore zooms each map and follows the trainer without cropping the map wo
           const trainerX = Math.max(0, Math.min(width - size, x + (32 - size) / 2));
           const trainerY = Math.max(0, Math.min(height - size, y + 32 - size));
           assert.deepEqual([...context.getImageData(
-            Math.floor((trainerX + size * 0.75 - viewX) * 2), Math.floor((trainerY + size / 2 - viewY) * 2), 1, 1
+            Math.floor((trainerX + size * 0.75 - viewX) * zoom), Math.floor((trainerY + size / 2 - viewY) * zoom), 1, 1
           ).data], [255, 0, 255, 255]);
         }
       }
@@ -971,18 +972,27 @@ test('only the requested Explore maps use smaller trainer icons', async () => {
       ['fire', 1, 24], ['water', 0, 24], ['water', 1, 40],
     ]) {
       const { height } = renderer.getExploreMapSize(map, variant);
+      const zoom = map === 'water' && variant === 1 ? 1.9 : 2;
       const image = await loadImage(await renderer.renderExploreMap(
         map, 304, Math.floor(height / 2) - 16, 'https://example.test/size-icon.png', variant
       ));
       const canvas = createCanvas(image.width, image.height);
       const ctx = canvas.getContext('2d');
       ctx.drawImage(image, 0, 0);
-      const left = 320 - size;
-      const top = 272 - 2 * size;
-      for (const [x, y] of [[left, top], [left + 2 * size - 1, top + 2 * size - 1]]) {
+      const posX = 304;
+      const posY = Math.floor(height / 2) - 16;
+      const viewX = Math.max(0, Math.min(640 - 640 / zoom, posX + 16 - 320 / zoom));
+      const viewY = Math.max(0, Math.min(height - 480 / zoom, posY + 16 - 240 / zoom));
+      const left = Math.floor((posX + (32 - size) / 2 - viewX) * zoom);
+      const top = Math.floor((posY + 32 - size - viewY) * zoom);
+      const renderedSize = size * zoom;
+      for (const [x, y] of [
+        [left + 2, top + 2],
+        [Math.floor(left + renderedSize - 2), Math.floor(top + renderedSize - 2)],
+      ]) {
         assert.deepEqual([...ctx.getImageData(x, y, 1, 1).data], [255, 0, 255, 255]);
       }
-      for (const [x, y] of [[left - 1, top], [left, top - 1], [left + 2 * size, top]]) {
+      for (const [x, y] of [[left - 1, top], [left, top - 1], [Math.ceil(left + renderedSize), top]]) {
         assert.notDeepEqual([...ctx.getImageData(x, y, 1, 1).data], [255, 0, 255, 255]);
       }
     }
