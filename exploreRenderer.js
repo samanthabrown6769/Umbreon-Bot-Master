@@ -129,7 +129,7 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   const trainerX = Math.max(0, Math.min(width - trainerWidth, posX + (TRAINER_WIDTH - trainerWidth) / 2));
   const trainerY = Math.max(0, Math.min(height - trainerHeight, posY + TRAINER_HEIGHT - trainerHeight));
   ctx.drawImage(trainer, trainerX, trainerY, trainerWidth, trainerHeight);
-  return canvas.toBuffer('image/png');
+  return canvas.encode('png');
 }
 
 module.exports = {

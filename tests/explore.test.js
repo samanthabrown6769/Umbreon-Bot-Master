@@ -290,15 +290,6 @@ test('Explore map selectors choose the exact map and reject invalid choices', ()
   assert.deepEqual(renderer.getExploreMapSize('fire', 0), { width: 640, height: 490 });
 });
 
-test('Explore testing access grants only the specified testers and bot admins', () => {
-  const context = vm.createContext({ isBotAdmin: (message) => message.author.id === 'admin' });
-  vm.runInContext(extract('const EXPLORE_TESTER_IDS =', '\nfunction hasCooldownExemption('), context);
-  for (const id of ['1352997432929288194', '378623134816927745', '183625933041827840', 'admin']) {
-    assert.equal(context.isExploreTester({ author: { id } }), true);
-  }
-  assert.equal(context.isExploreTester({ author: { id: 'other' } }), false);
-});
-
 test('Explore catalog pools use matching types and exclude special and event-only species', () => {
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE pokemon_forms (
@@ -1232,6 +1223,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   let endPromise;
   let cancelled = false;
   let collectorOptions;
+  let abilityResolutions = 0;
   const collector = {
     on(name, fn) { events.on(name, fn); return this; },
     stop(reason) {
@@ -1243,7 +1235,16 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     author: { id: 'trainer' }, guildId: 'guild', channelId: 'channel',
     reply: async (payload) => {
       payloads.push(payload);
-      return { edit: async (p) => { payloads.push(p); }, createMessageComponentCollector: (options) => { collectorOptions = options; return collector; } };
+      let attachment = { id: 'initial-map', name: 'explore.png' };
+      return {
+        attachments: { find: (predicate) => attachment && predicate(attachment) ? attachment : undefined },
+        edit: async (p) => {
+          payloads.push(p);
+          if (p.files?.length) attachment = { id: `map-${payloads.length}`, name: 'explore.png' };
+          else if (!p.attachments?.length) attachment = null;
+        },
+        createMessageComponentCollector: (options) => { collectorOptions = options; return collector; },
+      };
     },
   };
   let rollAbility;
@@ -1278,7 +1279,6 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
       return { ...loot[0], quantity: 500 };
     },
     db: { transaction: (fn) => ({ immediate: fn }) },
-    isExploreTester: (message) => message.isAdmin === true,
     EMOJIS: { pokecoin: 'coin', pokeball: 'pokeball', greatball: 'greatball', ultraball: 'ultraball', rarecandy: 'candy', repel: 'repel', shinyCharm: 'charm', amuletcoin: 'amulet' },
     getPokemonSpriteEmoji: (pokemon) => pokemon.isShiny ? ':shiny:' : pokemon.isGolden ? ':golden:' : ':pokemon:',
     activeExploreSessions: new Set(), BALL_CONFIG: Object.fromEntries(
@@ -1289,7 +1289,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     getUser: () => user, updateUser: (_id, fields) => Object.assign(user, fields),
     getPatreonPerks: () => tierPerks.tiers[user.patreon_tier] || tierPerks.none,
     incrementUser: (_id, fields) => { for (const [key, amount] of Object.entries(fields)) user[key] += amount; },
-    getTrainerIconUrl: () => 'trainer-icon', resolveLeadOverworldAbility: async () => 'frisk',
+    getTrainerIconUrl: () => 'trainer-icon', resolveLeadOverworldAbility: async () => { abilityResolutions++; return 'frisk'; },
     getExploreEncounterMultiplier: (ability) => { rollAbility = ability; return 1; },
     getChannelCatchRateBoost: () => 5,
     rollExploreEncounter: (_id, map, boost) => {
@@ -1315,19 +1315,13 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     replyToInteractionFailure: async (_interaction, text) => { throw new Error(text); },
   });
   vm.runInContext(`async function run() { ${extract("    if (command === 'explore' || command === 'exp') {", "\n    if (command === 'team') {")} }`, ctx);
-  await ctx.run();
-  assert.match(payloads[0], /approved testers only/);
-  assert.equal(ctx.activeExploreSessions.size, 0);
-  ctx.command = 'exp';
-  await ctx.run();
-  assert.match(payloads.at(-1), /approved testers only/);
-  ctx.command = 'explore';
-  payloads.length = 0;
-  msg.isAdmin = true;
   user.patreon_tier = null;
   await ctx.run();
   assert.match(payloads.at(-1), /requires an active Patreon tier/);
   assert.equal(ctx.activeExploreSessions.size, 0);
+  ctx.command = 'exp';
+  await ctx.run();
+  assert.match(payloads.at(-1), /requires an active Patreon tier/);
   user.patreon_tier = 'common';
   user.has_patreon = 0;
   await ctx.run();
@@ -1343,20 +1337,25 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.doesNotMatch(payloads[0].content, /Session:.*seconds/);
   assert.deepEqual(rendered.at(-1), { map: 'grass', variant: 1 });
   assert.equal(ctx.activeExploreSessions.has('trainer'), true);
+  ctx.command = 'explore';
   await ctx.run();
   assert.match(payloads.at(-1), /already have an active Explore session/);
-  const click = async (id, actor = 'trainer') => {
+  const click = async (id, actor = 'trainer', deferUpdate = async () => {}) => {
     const replies = [];
     await events.listeners('collect')[0]({
       user: { id: actor }, customId: id,
       reply: async (value) => replies.push(value),
-      deferUpdate: async () => {},
+      deferUpdate,
     });
 
     return replies;
   };
   assert.match((await click('exp_up', 'other'))[0].content, /own adventure/);
-  await click('exp_up');
+  let acknowledge;
+  const firstMove = click('exp_up', 'trainer', () => new Promise((resolve) => { acknowledge = resolve; }));
+  assert.equal(abilityResolutions, 1);
+  acknowledge();
+  await firstMove;
   assert.equal(user.explore_steps_today, 1);
   assert.equal(user.grazz_buff_encounters, 5);
   assert.equal(user.repel_encounters, 7);
@@ -1371,7 +1370,11 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.match((await click('exp_down'))[0].content, /all of your exploring steps/);
   assert.equal(cancelled, false);
   user.explore_steps_today = 1;
+  const rendersBeforeSearch = rendered.length;
   await click('exp_search');
+  assert.equal(rendered.length, rendersBeforeSearch);
+  assert.equal(payloads.at(-1).files.length, 0);
+  assert.ok(payloads.at(-1).attachments[0].id);
   assert.match(payloads.at(-1).content, /no chest at your position/);
   assert.equal(payloads.at(-1).components[0].components[3].data.disabled, false);
   nextRolls = [0.9, 0.9];
@@ -1381,7 +1384,10 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.match((await click('exp_ball:pb'))[0].content, /no wild Pokémon/);
   cancelled = false;
   await click('exp_up');
+  const rendersBeforeCatch = rendered.length;
   await click('exp_ball:pb');
+  assert.equal(rendered.length, rendersBeforeCatch);
+  assert.equal(payloads.at(-1).files.length, 0);
   assert.match(payloads.at(-1).content, /Caught Bulbasaur/);
   await click('exp_down');
   await click('exp_ball:pb');
@@ -1687,7 +1693,7 @@ test('Explore exclusives command lists map-specific shiny and Golden species', a
   });
   vm.runInContext(`async function run() { ${extract("    if (command === 'excl') {", "\n    if (command === 'vote') {")} }`, ctx);
   const embed = (await ctx.run()).embeds[0].toJSON();
-  assert.match(embed.description, /bot admins and approved testers/);
+  assert.match(embed.description, /active Patreon tier/);
   assert.equal(embed.fields.length, 3);
   for (const [index, [map, entries]] of Object.entries(Object.entries(data.EXPLORE_EXCLUSIVES))) {
     const value = embed.fields[index].value;

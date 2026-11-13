@@ -94,6 +94,15 @@ db.exec(`
     user_id TEXT PRIMARY KEY,
     encounters_since_spawn INTEGER NOT NULL DEFAULT 0 CHECK (encounters_since_spawn >= 0)
   );
+  CREATE TABLE IF NOT EXISTS wild_spawn_guarantees (
+    user_id TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('pokemon', 'fishing')),
+    category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny', 'event')),
+    event_id TEXT NOT NULL DEFAULT '',
+    encounters_since_spawn INTEGER NOT NULL DEFAULT 0 CHECK (encounters_since_spawn >= 0),
+    threshold_fraction REAL CHECK (threshold_fraction >= 0 AND threshold_fraction < 1),
+    PRIMARY KEY (user_id, source, category, event_id)
+  );
   CREATE TABLE IF NOT EXISTS daily_catch_counts (
     reset_day INTEGER NOT NULL,
     user_id TEXT NOT NULL,
@@ -1762,6 +1771,9 @@ ensureColumns('autospawn_channels', {
   message_target: 'INTEGER NOT NULL DEFAULT 0',
 });
 db.exec('CREATE INDEX IF NOT EXISTS pokemon_forms_slug_idx ON pokemon_forms(slug)');
+ensureColumns('wild_spawn_guarantees', {
+  threshold_fraction: 'REAL CHECK (threshold_fraction >= 0 AND threshold_fraction < 1)',
+});
 ensureColumns('users', userDefinitions);
 ensureColumns('users', { id: 'TEXT' });
 ensureColumns('users', { unique_caught_base: 'INTEGER DEFAULT 0' });
@@ -8786,6 +8798,52 @@ function resetWildShinyPity(userId) {
   db.prepare('DELETE FROM wild_shiny_spawn_pity WHERE user_id = ?').run(userId);
 }
 
+function getWildSpawnGuarantee(userId, source, category, eventId = '') {
+  assertUserId(userId);
+  return db.prepare(`
+    SELECT encounters_since_spawn, threshold_fraction FROM wild_spawn_guarantees
+    WHERE user_id = ? AND source = ? AND category = ? AND event_id = ?
+  `).get(userId, source, category, eventId);
+}
+
+function initializeWildSpawnGuarantees(userId, source, outcomes) {
+  assertUserId(userId);
+  db.transaction(() => {
+    const initialize = db.prepare(`
+      INSERT INTO wild_spawn_guarantees (user_id, source, category, event_id, threshold_fraction)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, source, category, event_id) DO UPDATE SET
+        threshold_fraction = COALESCE(threshold_fraction, excluded.threshold_fraction)
+    `);
+    for (const { category, eventId = '', thresholdFraction } of outcomes) {
+      if (thresholdFraction !== undefined) {
+        initialize.run(userId, source, category, eventId, thresholdFraction);
+      }
+    }
+  }).immediate();
+}
+
+function recordWildSpawnGuarantees(userId, source, outcomes) {
+  assertUserId(userId);
+  db.transaction(() => {
+    const advance = db.prepare(`
+      INSERT INTO wild_spawn_guarantees (user_id, source, category, event_id, encounters_since_spawn, threshold_fraction)
+      VALUES (?, ?, ?, ?, 1, ?)
+      ON CONFLICT(user_id, source, category, event_id) DO UPDATE SET
+        encounters_since_spawn = encounters_since_spawn + 1,
+        threshold_fraction = COALESCE(threshold_fraction, excluded.threshold_fraction)
+    `);
+    const reset = db.prepare(`
+      DELETE FROM wild_spawn_guarantees
+      WHERE user_id = ? AND source = ? AND category = ? AND event_id = ?
+    `);
+    for (const { category, eventId = '', spawned, thresholdFraction } of outcomes) {
+      if (spawned) reset.run(userId, source, category, eventId);
+      else advance.run(userId, source, category, eventId, thresholdFraction);
+    }
+  }).immediate();
+}
+
 function trackEventCatch(eventId, userId, pokemonName, isShiny) {
   return Boolean(recordEventCatch(eventId, userId, pokemonName, isShiny)?.added);
 }
@@ -11036,6 +11094,9 @@ module.exports = {
   resetEncounterPity,
   advanceWildShinyPity,
   resetWildShinyPity,
+  getWildSpawnGuarantee,
+  initializeWildSpawnGuarantees,
+  recordWildSpawnGuarantees,
   trackEventCatch,
   recordEventCatch,
   getUserEventProgress,

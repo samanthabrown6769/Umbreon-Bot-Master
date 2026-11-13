@@ -132,6 +132,9 @@ const {
   getRaritySettings,
   getUserRarityStreak,
   resetRarityStreaks,
+  getWildSpawnGuarantee,
+  initializeWildSpawnGuarantees,
+  recordWildSpawnGuarantees,
   getUser,
   getAmuletCoinBoost,
   getPatreonPerks,
@@ -3370,7 +3373,7 @@ function parseEncounterModifierAmount(command, amountArg, ownedRepels) {
   return amountArg === undefined ? 1 : parseAmount(amountArg);
 }
 
-function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, roleChanceBoost = 0, userId = null) {
+function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, roleChanceBoost = 0, userId = null, legendaryRoll = null) {
   const hardRarity = userId !== null && HARD_RARITY_USER_IDS.has(userId);
   const legendaryChance = Math.min(
     1,
@@ -3379,7 +3382,8 @@ function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, rol
       * (1 + roleChanceBoost / 100)
       * (hardRarity ? HARD_RARITY_RATE_MULTIPLIER : 1)
   );
-  if (Math.random() < legendaryChance) return 'Legendary';
+  const rolledLegendary = Math.random() < legendaryChance;
+  if (legendaryRoll ? legendaryRoll(legendaryChance, rolledLegendary) : rolledLegendary) return 'Legendary';
 
   const baseWeights = ENCOUNTER_RARITY_WEIGHTS[modifier] || ENCOUNTER_RARITY_WEIGHTS.normal;
   const weights = hardRarity
@@ -3613,11 +3617,44 @@ function rollSpawn(
     roleChanceBoost = 0,
     goldenRazzActive = false,
     guildId = null,
+    useSpawnPity = false,
   } = {}
 ) {
   if (poolName !== 'land' && poolName !== 'water') {
     throw new TypeError(`Unknown spawn pool: ${poolName}`);
   }
+  const pityEnabled = useSpawnPity && !catchbot && userId !== null;
+  const pitySource = poolName === 'land' ? 'pokemon' : 'fishing';
+  const pityStates = new Map();
+  const pityRoll = (category, chance, rolled, eventId = '') => {
+    if (rolled) return true;
+    if (!pityEnabled || chance <= 0) return false;
+    const key = JSON.stringify([category, eventId]);
+    if (!pityStates.has(key)) {
+      const state = getWildSpawnGuarantee(userId, pitySource, category, eventId);
+      pityStates.set(key, {
+        count: state?.encounters_since_spawn ?? 0,
+        fraction: state?.threshold_fraction ?? Math.random(),
+      });
+    }
+    const { count, fraction } = pityStates.get(key);
+    const maximum = Math.ceil(1 / Math.min(1, chance));
+    const minimum = Math.min(100, maximum);
+    const threshold = minimum + Math.floor(fraction * (maximum - minimum + 1));
+    return count + 1 >= threshold;
+  };
+  const outcomes = [];
+  const finishSpawn = (pokemon) => {
+    if (pityEnabled && outcomes.length) {
+      const pityOutcomes = outcomes.map((outcome) => ({
+        ...outcome,
+        thresholdFraction: pityStates.get(JSON.stringify([outcome.category, outcome.eventId ?? '']))?.fraction,
+      }));
+      initializeWildSpawnGuarantees(userId, pitySource, pityOutcomes);
+      pokemon.spawnPity = { source: pitySource, outcomes: pityOutcomes };
+    }
+    return pokemon;
+  };
   // One shared server charge per boosted encounter.
   const incenseActive = !catchbot && consumeIncenseCharge(guildId);
   const pokeradarActive = !catchbot && userId !== null && consumePokeradarCharge(userId);
@@ -3648,9 +3685,16 @@ function rollSpawn(
     ? eventSpawnEntries.filter((entry) => entry.fish)
     : eventSpawnEntries;
   const eventSpawnEligible = eventTicketActive && forcedEventPool.length > 0;
-  if (eventSpawnEligible && Math.random() < getEventSpawnChance(
+  const eventChance = eventSpawnEligible ? getEventSpawnChance(
     roleChanceBoost, getPatreonPerks(userId).eventShinyPct, isPlayerBonusActive('shiny')
-  )) {
+  ) : 0;
+  const eventSpawned = eventSpawnEligible && pityRoll(
+    'event', eventChance, Math.random() < eventChance, halloweenEvent.id
+  );
+  if (pityEnabled && eventSpawnEligible && eventChance > 0) {
+    outcomes.push({ category: 'event', eventId: halloweenEvent.id, spawned: eventSpawned });
+  }
+  if (eventSpawned) {
     const isPatreonUser = Boolean(getUser(userId).has_patreon);
     const eventShinyWeight = (isPatreonUser
       ? EVENT_TICKET_SHINY_RATES.patreon.event / EVENT_TICKET_SHINY_RATES.standard.event
@@ -3675,7 +3719,7 @@ function rollSpawn(
       roleChanceBoost
     );
     if (specialPokemon) {
-      return specialPokemon;
+      return finishSpawn(specialPokemon);
     }
   }
 
@@ -3684,6 +3728,7 @@ function rollSpawn(
     let pokemon;
     let isForcedEventSpawn = false;
     let forcedShiny = false;
+    let legendaryAttempt = false;
     if (forcedEvent) {
       pokemon = getRandomPokemon(null, false, true, true, null, [], forcedEvent.ids);
       pokemon.encounterModifier = encounterModifier;
@@ -3700,7 +3745,11 @@ function rollSpawn(
           goldenRazzActive,
           channelRateBoost,
           roleChanceBoost,
-          userId
+          userId,
+          pityEnabled && !huntTarget ? (chance, rolled) => {
+            legendaryAttempt = chance > 0;
+            return pityRoll('legendary', chance, rolled);
+          } : null
         );
       if (huntTarget) {
         pokemon = getRandomPokemon(null, false, false, false, null, [], [huntTarget.id]);
@@ -3762,8 +3811,9 @@ function rollSpawn(
         * (1 + roleChanceBoost / 100)
         * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
       );
-      if (legendaryEnabled && (!rod || rod.enablesLegendary)
-          && Math.random() < legendaryChance) {
+      const legendaryEligible = legendaryEnabled && (!rod || rod.enablesLegendary);
+      if (pityEnabled && legendaryEligible && legendaryChance > 0) legendaryAttempt = true;
+      if (legendaryEligible && pityRoll('legendary', legendaryChance, Math.random() < legendaryChance)) {
         rarity = 'Legendary';
       } else {
         let random = Math.random() * totalWeight;
@@ -3852,7 +3902,7 @@ function rollSpawn(
       ? forcedShiny
       : catchbot
         ? Math.random() < shinyChance
-        : wildShinyEligible && Math.random() < shinyChance;
+        : wildShinyEligible && pityRoll('shiny', shinyChance, Math.random() < shinyChance);
     if (pokemon.isShiny && !isForcedEventSpawn
         && (EGG_ONLY_SHINY_SPECIES_KEYS.has(String(pokemon.speciesName).toLowerCase())
           || EXPLORE_EXCLUSIVE_SHINY_IDS.has(pokemon.speciesId))) {
@@ -3874,8 +3924,15 @@ function rollSpawn(
       && eventTicketActive
       && isEventShinyTarget(pokemon)
     );
-    if (isForcedEventSpawn || !eventTicketActive) return pokemon;
-    if (!getEventPokemonKey(pokemon, false)) return pokemon;
+    if (isForcedEventSpawn || !eventTicketActive || !getEventPokemonKey(pokemon, false)) {
+      if (pityEnabled && legendaryAttempt) {
+        outcomes.push({ category: 'legendary', spawned: rarity === 'Legendary' });
+      }
+      if (pityEnabled && wildShinyEligible && shinyChance > 0) {
+        outcomes.push({ category: 'shiny', spawned: pokemon.isShiny });
+      }
+      return finishSpawn(pokemon);
+    }
   }
 }
 
@@ -4549,14 +4606,6 @@ async function sendPagedEmbeds(message, embeds, label) {
 
 function isBotAdmin(message) {
   return isConfiguredBotAdmin(message);
-}
-
-const EXPLORE_TESTER_IDS = new Set([
-  '1352997432929288194', '378623134816927745', '183625933041827840',
-]);
-
-function isExploreTester(message) {
-  return isBotAdmin(message) || EXPLORE_TESTER_IDS.has(message.author.id);
 }
 
 function hasCooldownExemption(userId) {
@@ -7416,6 +7465,9 @@ async function askForBall(
       LIMIT 1
     `).get(userId, target.id, target.isShiny ? 1 : 0, target.isGolden ? 1 : 0);
     saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden), selectedBall, !allowAnyUserCatch);
+    if (target.spawnPity) {
+      recordWildSpawnGuarantees(userId, target.spawnPity.source, target.spawnPity.outcomes);
+    }
     if (counterSource) {
       recordWildEncounterCounter(userId, counterSource);
       if (counterSource !== 'explore') recordHeldItemEncounterCounter(userId);
@@ -12716,7 +12768,7 @@ client.on('messageCreate', async (message) => {
           `${page.emoji} **${page.name} Patreon Benefits**\n` +
           (lower ? '• ✅ Includes all lower-tier benefits\n' : '') +
           `\n✨ **Key Benefits**\n${page.benefits.map((line) => `• ${line}`).join('\n')}\n\n` +
-          `🗺️ **Explore:** ${perks.exploreSteps.toLocaleString()} steps per 24 hours, ${perks.exploreSeconds} seconds per session (bot admins and approved testers only during testing)\n\n` +
+          `🗺️ **Explore:** ${perks.exploreSteps.toLocaleString()} steps per 24 hours, ${perks.exploreSeconds} seconds per session\n\n` +
           `📅 **Daily Rewards**\n• ${PT} ${perks.dailyTokens.toLocaleString()} Patreon Tokens\n` +
           `• ${EMOJIS.pokecoin} ${perks.dailyCoins.toLocaleString()} PokeCoins\n\n` +
           `💰 **Monthly Rewards**\n${monthlyText(tierKey)}\n\n` +
@@ -12860,7 +12912,7 @@ client.on('messageCreate', async (message) => {
         embed = new EmbedBuilder()
           .setColor(0x78c850)
           .setTitle('🗺️ Explore Exclusives')
-          .setDescription('Explore is currently available to bot admins and approved testers with Patreon while testing.')
+          .setDescription('Explore is available to trainers with an active Patreon tier.')
           .addFields(...Object.entries(EXPLORE_EXCLUSIVES).map(([key, entries]) => ({
             name: `${EXPLORE_MAPS[key].emoji} ${EXPLORE_MAPS[key].name}`,
             value: `**Shiny:** ${entries.filter(([, , shiny]) => shiny).map(([id]) => nameFor(id)).join(', ')}\n` +
@@ -13725,7 +13777,7 @@ client.on('messageCreate', async (message) => {
         .setDescription(
           `• \`${PREFIX}gym [region]\` / \`${PREFIX}elitefour [region]\` (\`${PREFIX}e4\`) / \`${PREFIX}champion [region]\` — League hubs per region\n` +
           `• \`${PREFIX}challenges\` / \`${PREFIX}ch [name|id]\` — View challenger trainers and their progress\n` +
-          `• \`${PREFIX}explore <gm 1-2|fm 1-2|wm 1-2>\` / \`${PREFIX}exp\` — Explore maps for exclusive Shinies and Goldens (Patreon and approved testers only during testing)\n` +
+          `• \`${PREFIX}explore <gm 1-2|fm 1-2|wm 1-2>\` / \`${PREFIX}exp\` — Explore maps for exclusive Shinies and Goldens (active Patreon required)\n` +
           `• \`${PREFIX}bonus\` / \`${PREFIX}bo a <bonus>\` — Activate event voucher bonuses\n` +
           `• \`${PREFIX}ability\` / \`${PREFIX}ab [Pokémon]\` — Browse Pokémon abilities\n` +
           `• \`${PREFIX}cooldown [quantity]\` — Add Cooldown Machine charges\n` +
@@ -16751,6 +16803,7 @@ client.on('messageCreate', async (message) => {
         roleChanceBoost,
         goldenRazzActive: grazzActive,
         guildId: message.guildId,
+        useSpawnPity: true,
       }), 'catch', {
         counterSource: 'pokemon',
         cooldownState,
@@ -16825,6 +16878,7 @@ client.on('messageCreate', async (message) => {
           channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
           roleChanceBoost,
           guildId: message.guildId,
+          useSpawnPity: true,
         });
       }
       return await askForBall(
@@ -20750,7 +20804,6 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'explore' || command === 'exp') {
-      if (!isExploreTester(message)) return message.reply('Explore is currently in testing and is available to bot admins and approved testers only.');
       const selectedMap = selectExploreMap(args);
       if (!selectedMap) return message.reply(`Usage: \`${PREFIX}explore <gm 1-2|fm 1-2|wm 1-2>\` (e.g. \`${PREFIX}explore gm 2\`)`);
       const getStepLimit = () => getExploreStepStatus(
@@ -20815,34 +20868,38 @@ client.on('messageCreate', async (message) => {
       };
       const moveButton = (id, emoji, disabled) =>
         new ButtonBuilder().setCustomId(id).setEmoji(emoji).setStyle(ButtonStyle.Primary).setDisabled(disabled);
-      const ballButton = (key) => {
-        const count = getUser(userId)[BALL_CONFIG[key].column];
+      const ballButton = (key, user) => {
+        const count = user[BALL_CONFIG[key].column];
         const button = new ButtonBuilder().setCustomId(`exp_ball:${key}`).setEmoji(BALL_CONFIG[key].buttonEmoji)
           .setStyle(ButtonStyle.Secondary).setDisabled(!activeWild || !catchHandler || count <= 0);
         if (count > 0) button.setLabel(String(count));
         return button;
       };
-      const buildRows = (disabled) => [
+      const buildRows = (disabled, user) => [
         new ActionRowBuilder().addComponents(
           moveButton('exp_nw', '↖️', disabled), moveButton('exp_up', '⬆️', disabled), moveButton('exp_ne', '↗️', disabled),
-          ballButton('pb'), ballButton('prb')
+          ballButton('pb', user), ballButton('prb', user)
         ),
         new ActionRowBuilder().addComponents(
           moveButton('exp_left', '⬅️', disabled), moveButton('exp_search', '🔍', disabled), moveButton('exp_right', '➡️', disabled),
-          ballButton('gb'), ballButton('mb')
+          ballButton('gb', user), ballButton('mb', user)
         ),
         new ActionRowBuilder().addComponents(
           moveButton('exp_sw', '↙️', disabled), moveButton('exp_down', '⬇️', disabled), moveButton('exp_se', '↘️', disabled),
-          ballButton('ub'),
+          ballButton('ub', user),
           new ButtonBuilder().setCustomId('exp_run').setEmoji('🏃').setStyle(ButtonStyle.Secondary)
         ),
       ];
       let statusText = '\n🌿 No Pokémon appeared.';
       let sessionEndsAt = Date.now() + sessionSeconds * 1000;
+      let exploreMsg;
+      let displayedMapKey = null;
+      const getMapImageKey = (finished) => JSON.stringify([x, y, finished ? null : chest?.x, finished ? null : chest?.y]);
       const buildPayload = async (steps, finished = false) => {
         const limit = getStepLimit();
         const remainingSeconds = Math.max(0, Math.ceil((sessionEndsAt - Date.now()) / 1000));
-        const scannerText = !finished && getUser(userId).explore_scanner
+        const currentUser = getUser(userId);
+        const scannerText = !finished && currentUser.explore_scanner
           ? ` — ${EXPLORE_ITEMS.scanner.emoji} ${remainingSeconds} seconds left${remainingSeconds < 15 ? ' ❗❗' : ''}`
           : '';
         const summarize = (entries) => {
@@ -20861,21 +20918,34 @@ client.on('messageCreate', async (message) => {
           `\n<:caught:1560340176713031711> Pokémon caught (${caughtCount}): ${summarize(caught)}` +
           `\n${CHEST_EMOJI} Items found (${foundItemCount}): ${summarize(foundItems)}` +
           `\n${EMOJIS.pokecoin} Coins earned: **${sessionCoins.toLocaleString()}**`;
+        const existingImage = displayedMapKey === getMapImageKey(finished)
+          ? exploreMsg?.attachments?.find((attachment) => attachment.name === 'explore.png')
+          : null;
+        const image = existingImage
+          ? { attachments: [{ id: existingImage.id }], files: [] }
+          : {
+            files: [new AttachmentBuilder(await renderExploreMap(mapKey, x, y, trainerUrl, backgroundIndex, finished ? null : chest), { name: 'explore.png' })],
+            attachments: [],
+          };
         return {
           content: `🗺️ Map: ${theme.emoji} **${mapTitle}** — Steps today: **${steps}/${limit}**${scannerText}${finished ? summary : statusText}` +
             (!finished && chest && chest.x === x && chest.y === y ? `\n${CHEST_EMOJI} Press 🔍 to open the chest!` : ''),
-          files: [new AttachmentBuilder(await renderExploreMap(mapKey, x, y, trainerUrl, backgroundIndex, finished ? null : chest), { name: 'explore.png' })],
-          attachments: [],
+          ...image,
           embeds: !finished && activeEncounterEmbed ? [activeEncounterEmbed] : [],
-          components: finished ? [] : buildRows(steps >= limit),
+          components: finished ? [] : buildRows(steps >= limit, currentUser),
         };
       };
+      const editExplore = async (steps, finished = false) => {
+        const imageKey = getMapImageKey(finished);
+        await exploreMsg.edit(await buildPayload(steps, finished));
+        displayedMapKey = imageKey;
+      };
       const startSteps = readSteps();
-      let exploreMsg;
       let collector;
       activeExploreSessions.add(userId);
       try {
         exploreMsg = await message.reply(await buildPayload(startSteps));
+        displayedMapKey = getMapImageKey(false);
         sessionEndsAt = Date.now() + sessionSeconds * 1000;
         collector = exploreMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: sessionSeconds * 1000 });
       } catch (error) {
@@ -20936,7 +21006,10 @@ client.on('messageCreate', async (message) => {
         y = nextY;
         updateUser(userId, { explore_steps_today: steps + 1 });
         sessionSteps += 1;
-        await interaction.deferUpdate();
+        const [, ability] = await Promise.all([
+          interaction.deferUpdate(),
+          isSearch ? null : resolveLeadOverworldAbility(userId),
+        ]);
         let wild = null;
         let foundText = '';
         chestExpirationText = '';
@@ -20988,7 +21061,6 @@ client.on('messageCreate', async (message) => {
               chestExpirationText = `\n${EXPLORE_ITEMS.dowsing.emoji} A chest appeared on the map!`;
             }
           }
-          const ability = await resolveLeadOverworldAbility(userId);
           if (Math.random() < Math.min(1, EXPLORE_ENCOUNTER_CHANCE * getExploreEncounterMultiplier(ability))) {
             wild = rollExploreEncounter(userId, mapKey, getChannelCatchRateBoost(userId, message.guildId, message.channelId), ability);
           }
@@ -21042,7 +21114,7 @@ client.on('messageCreate', async (message) => {
                   activeEncounterEmbed = null;
                   cancelEncounter = null;
                   statusText = `${chestExpirationText}\n${text}`;
-                  if (!ending) await exploreMsg.edit(await buildPayload(readSteps()));
+                  if (!ending) await editExplore(readSteps());
                 },
               },
             });
@@ -21056,7 +21128,7 @@ client.on('messageCreate', async (message) => {
             statusText = '\n❌ The encounter could not be started. Please try moving again.';
           }
         }
-        if (!ending) await exploreMsg.edit(await buildPayload(steps + 1));
+        if (!ending) await editExplore(steps + 1);
       };
       collector.on('collect', async (interaction) => {
         if (processing || ending) {
@@ -21079,7 +21151,7 @@ client.on('messageCreate', async (message) => {
         try {
           if (pendingAction) await pendingAction.catch(() => {});
           if (cancelEncounter) cancelEncounter();
-          await exploreMsg.edit(await buildPayload(readSteps(), true));
+          await editExplore(readSteps(), true);
         } catch (error) {
           console.error('Failed to finish Explore session:', error);
           await exploreMsg.edit({ content: '❌ Explore ended, but the session summary could not be displayed.', components: [] })
