@@ -531,7 +531,8 @@ test('Eevee evolves with every specified stone from inventory or while held', as
   const ctx = vm.createContext({
     db, EVOLUTION_ITEMS, findEvolutionItem, BATTLE_HELD_ITEM_NAMES: new Set(),
     findBattleHeldItem: () => null, assertUserId: () => {}, calculateStat: () => 10,
-    syncDuplicateCatchState: () => {}, carryOverEvolutionMoves: () => {}, recordPokemonSeen: () => {},
+    syncEvolvedCatchState: () => false, syncDuplicateCatchState: () => {},
+    carryOverEvolutionMoves: () => {}, recordPokemonSeen: () => {},
     addUserItem: (id, name) => db.prepare(`
       INSERT INTO user_items VALUES (?,?,1)
       ON CONFLICT(user_id,item_name) DO UPDATE SET amount=amount+1
@@ -1265,6 +1266,92 @@ function battleContext() {
     typeChart: {}, party: { player: [player], enemy: [enemy] },
   };
 }
+
+test('Oblivion Wing heals three quarters of actual damage without overhealing', () => {
+  const ctx = battleContext();
+  const attacker = { mon: ctx.player, side: 'player' };
+  const defender = { mon: ctx.enemy, side: 'enemy' };
+  const move = { name: 'Oblivion Wing', type: 'flying', power: 80, category: 'special', accuracy: 100 };
+  const originalRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    ctx.player.hp = 40;
+    battle.performMove(ctx, attacker, defender, move, () => {});
+    assert.equal(ctx.player.hp, 47);
+    ctx.enemy.hp = 4;
+    battle.performMove(ctx, attacker, defender, move, () => {});
+    assert.equal(ctx.player.hp, 50);
+    ctx.player.hp = 99;
+    ctx.enemy.hp = 100;
+    battle.performMove(ctx, attacker, defender, move, () => {});
+    assert.equal(ctx.player.hp, 100);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test('inventory selects the equipped fishing rod emoji', () => {
+  const ctx = vm.createContext({
+    FISHING_COOLDOWN_MS: 1,
+    EMOJIS: { oldrod: 'old', goodRod: 'good', superRod: 'super', goldenRod: 'golden' },
+  });
+  vm.runInContext(extract(indexSource, 'const ROD_CONFIGS =', '\nconst EMOJIS ='), ctx);
+  for (const [name, emoji] of [['Old Rod', 'old'], ['Good Rod', 'good'], ['Super Rod', 'super'], ['Golden Rod', 'golden']]) {
+    assert.equal(ctx.getFishingRodEmoji({ fish_rods: name }), emoji);
+  }
+  assert.match(indexSource, /\$\{getFishingRodEmoji\(bagUser\)\} \*\*\$\{bagUser\.fish_rods\}\*\*/);
+});
+
+test('admin Pokémon grants count each regular, shiny and Golden copy as seen and owned', async () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (
+      id INTEGER, species_id INTEGER, name TEXT, slug TEXT, is_default INTEGER, rarity TEXT,
+      base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER
+    );
+    INSERT INTO pokemon_forms VALUES (1,1,'Bulbasaur','bulbasaur',1,'Common',45,49,49,45);
+    CREATE TABLE catches (user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER);
+    CREATE TABLE pokemon_user_seen_counts (
+      user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER, seen_count INTEGER,
+      PRIMARY KEY (user_id, pokemon_id, is_shiny, is_golden)
+    );
+  `);
+  const save = (userId, pokemon, shiny, golden) => db.prepare('INSERT INTO catches VALUES (?,?,?,?)')
+    .run(userId, pokemon.id, shiny ? 1 : 0, golden ? 1 : 0);
+  const ctx = vm.createContext({
+    db, assertUserId: () => {}, subtype: 'pokemon', action: '', args: [], rawTargetId: '123',
+    target: { id: '123' }, PREFIX: '.', EMOJIS: { golden: 'golden' },
+    message: { author: { username: 'Admin' }, content: '.admin pokemon', guild: null, reply: async (value) => value },
+    client: { users: { fetch: async (id) => ({ id }) } },
+    getPokemonDexNumbers: () => new Map([[1, { dexNumber: 1, shinyDexNumber: 1001 }]]),
+    isGoldenDexNumber: (number) => number === 9001,
+    isGoldenFormSupported: () => true, getGoldenDexNumber: () => 9001,
+    findPokemonForms: (name) => db.prepare('SELECT * FROM pokemon_forms WHERE lower(name) = ?').all(name.toLowerCase()),
+    saveCatch: (userId, pokemon, shiny) => save(userId, pokemon, shiny, false),
+    saveGoldenCatch: (userId, pokemon) => save(userId, pokemon, false, true),
+    notifyAdminIfRareGrant: async () => {}, formatPokemonReward: (pokemon) => pokemon.name,
+  });
+  vm.runInContext(extract(dbSource, 'function recordPokemonSeen(', '\nfunction getUserBuddyHistory('), ctx);
+  vm.runInContext(`async function run() { ${extract(indexSource,
+    "      if (['pokemon', 'mon', 'p'].includes(subtype)) {",
+    "\n      return message.reply(\`Invalid sub-command.")} }`, ctx);
+  ctx.args = ['pokemon', '123', 'Bulbasaur', '2', 'shiny'];
+  await ctx.run();
+  ctx.args = ['pokemon', '123', '9001', 'shiny'];
+  await ctx.run();
+  ctx.action = 'multi';
+  ctx.args = ['pokemon', 'multi', '123', 'Bulbasaur,', 'golden Bulbasaur,', 'shiny Bulbasaur'];
+  await ctx.run();
+  assert.deepEqual(db.prepare(`SELECT is_shiny, is_golden, seen_count FROM pokemon_user_seen_counts
+    ORDER BY is_golden, is_shiny`).all(), [
+    { is_shiny: 0, is_golden: 0, seen_count: 1 },
+    { is_shiny: 1, is_golden: 0, seen_count: 3 },
+    { is_shiny: 0, is_golden: 1, seen_count: 2 },
+  ]);
+  assert.deepEqual(db.prepare(`SELECT is_shiny, is_golden, COUNT(*) AS count FROM catches
+    GROUP BY is_shiny, is_golden ORDER BY is_golden, is_shiny`).all().map((row) => row.count), [1, 3, 2]);
+  db.close();
+});
 
 test('weather and terrain modify move accuracy and power', () => {
   const ctx = battleContext();
@@ -2177,6 +2264,15 @@ test('Simple Beam affects world boss stat changes across switches and damaging m
   const trained = ctx.runWorldBossMove('trained', [{ ...pokemon, ev_spa: 40 }], boss, 0, 0);
   assert.ok(trained.damage > untrained.damage);
 
+  const oblivionWing = { name: 'Oblivion Wing', type: 'flying', power: 80, category: 'special' };
+  ctx.getWorldBossTeamMoves = (team) => team.map((entry) => ({
+    pokemon: entry, teamIndex: 0, types: ['poison'], moves: [oblivionWing],
+  }));
+  bs.mon.hp = 1;
+  bs.mon.max_hp = 10000;
+  const drainingHit = ctx.runWorldBossMove('draining', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx);
+  assert.equal(bs.mon.hp, 1 + Math.max(1, Math.floor(drainingHit.damage * 0.75)));
+
   const surf = { name: 'Surf', type: 'water', power: 90, category: 'special' };
   const thunderbolt = { name: 'Thunderbolt', type: 'electric', power: 90, category: 'special' };
   ctx.getWorldBossTeamMoves = (team) => team.map((entry) => ({
@@ -2552,7 +2648,7 @@ test('evolution keeps held items on original forms and preserves target-form ite
   const evolution = extract(dbSource, 'function applyPokemonEvolution(', '\nfunction ');
   const ctx = vm.createContext({
     db, calculateStat: () => 10, carryOverEvolutionMoves: () => {},
-    syncDuplicateCatchState: () => {}, recordPokemonSeen: () => {},
+    syncEvolvedCatchState: () => false, recordPokemonSeen: () => {},
   });
   vm.runInContext(source, ctx);
   vm.runInContext(evolution, ctx);
@@ -2603,7 +2699,7 @@ test('evolution preserves a last original copy holding its item and consumes evo
   `);
   const ctx = vm.createContext({
     db, calculateStat: () => 10, carryOverEvolutionMoves: () => {},
-    syncDuplicateCatchState: () => {}, recordPokemonSeen: () => {},
+    syncEvolvedCatchState: () => false, recordPokemonSeen: () => {},
   });
   vm.runInContext(extract(dbSource, 'function prepareEvolutionHeldItems(', '\nfunction applyPokemonEvolution('), ctx);
   vm.runInContext(extract(dbSource, 'function applyPokemonEvolution(', '\nfunction '), ctx);
@@ -2648,7 +2744,7 @@ test('Mega Evolution preserves the original item and an existing Mega form item'
   `);
   const ctx = vm.createContext({
     db, assertUserId: () => {}, getMegaStoneForForm: () => 'Venusaurite', calculateStat: () => 10,
-    syncDuplicateCatchState: () => {}, recordPokemonSeen: () => {},
+    syncEvolvedCatchState: () => false, recordPokemonSeen: () => {},
     getPokemonDexNumbersForForms: () => new Map([[2, { dexNumber: 2 }]]),
   });
   vm.runInContext(extract(dbSource, 'function prepareEvolutionHeldItems(', '\nfunction applyPokemonEvolution('), ctx);
@@ -2661,6 +2757,83 @@ test('Mega Evolution preserves the original item and an existing Mega form item'
   assert.equal(base.level, 1);
   assert.equal(db.prepare('SELECT amount FROM mega_stones').get().amount, 0);
   db.close();
+});
+
+test('regular and Mega Evolution preserve existing target profiles, including snapshots', () => {
+  for (const mega of [false, true]) {
+    for (const profile of ['copy', 'snapshot', 'none']) {
+      const db = new Database(':memory:');
+      db.exec(`
+        CREATE TABLE pokemon_forms (
+          id INTEGER PRIMARY KEY, species_id INTEGER, species_name TEXT, name TEXT, slug TEXT,
+          rarity TEXT, is_default INTEGER, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER
+        );
+        INSERT INTO pokemon_forms VALUES (1,1,'Venusaur','Venusaur','venusaur','Rare',1,80,82,83,80),
+          (2,1,'Venusaur','Mega Venusaur','venusaur-mega','Mega',0,80,100,123,80);
+        CREATE TABLE catches (
+          id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, is_shiny INTEGER DEFAULT 0,
+          is_golden INTEGER DEFAULT 0, rarity TEXT, held_item TEXT, level INTEGER DEFAULT 1,
+          experience INTEGER DEFAULT 0, hp_iv INTEGER DEFAULT 1, atk_iv INTEGER DEFAULT 2,
+          def_iv INTEGER DEFAULT 3, spa_iv INTEGER DEFAULT 2, spdef_iv INTEGER DEFAULT 3,
+          spd_iv INTEGER DEFAULT 4, ev_hp INTEGER DEFAULT 0, ev_atk INTEGER DEFAULT 0,
+          ev_def INTEGER DEFAULT 0, ev_spa INTEGER DEFAULT 0, ev_spdef INTEGER DEFAULT 0,
+          ev_spe INTEGER DEFAULT 0, hp INTEGER DEFAULT 10, max_hp INTEGER DEFAULT 10,
+          atk INTEGER DEFAULT 10, def INTEGER DEFAULT 10, spd INTEGER DEFAULT 10,
+          friendship INTEGER DEFAULT 0, moves TEXT DEFAULT '[]', sketched_moves TEXT DEFAULT '[]',
+          ability TEXT, in_team INTEGER DEFAULT 0, team_slot INTEGER
+        );
+        CREATE TABLE user_pokemon_state_snapshots (
+          user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, is_golden INTEGER,
+          level INTEGER, experience INTEGER, hp_iv INTEGER, atk_iv INTEGER, def_iv INTEGER,
+          spa_iv INTEGER, spdef_iv INTEGER, spd_iv INTEGER, friendship INTEGER, moves TEXT, sketched_moves TEXT,
+          ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER, ev_spa INTEGER, ev_spdef INTEGER, ev_spe INTEGER
+        );
+        CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER);
+        INSERT INTO user_items VALUES ('user','Mega Bracelet',1);
+        CREATE TABLE mega_stones (user_id TEXT, stone_name TEXT, amount INTEGER);
+        INSERT INTO mega_stones VALUES ('user','Venusaurite',1);
+        INSERT INTO catches (id,user_id,pokemon_id,name,rarity,level,experience,hp_iv)
+          VALUES (1,'user',1,'Venusaur','Rare',10,100,5);
+      `);
+      if (profile === 'copy') {
+        db.prepare(`INSERT INTO catches (id,user_id,pokemon_id,name,rarity,level,experience,hp_iv,moves)
+          VALUES (2,'user',2,'Mega Venusaur','Mega',100,5000,25,'["target-move"]')`).run();
+      } else if (profile === 'snapshot') {
+        db.prepare(`INSERT INTO user_pokemon_state_snapshots VALUES
+          ('user',2,0,0,100,5000,25,2,3,2,3,4,0,'["target-move"]','[]',0,0,0,0,0,0)`).run();
+      }
+      const ctx = vm.createContext({
+        db, assertUserId: () => {}, getUser: () => ({ buddy_catch_id: 1 }),
+        calculateStat: () => 10, parseSketchedMoves: (raw) => JSON.parse(raw || '[]'),
+        EV_STATS: ['hp', 'atk', 'def', 'spa', 'spdef', 'spe'],
+        carryOverEvolutionMoves: () => {}, recordPokemonSeen: () => {},
+        getMegaStoneForForm: () => 'Venusaurite',
+        getPokemonDexNumbersForForms: () => new Map([[2, { dexNumber: 2 }]]),
+      });
+      vm.runInContext(
+        extract(dbSource, 'function getCatchStateSnapshot(', '\nconst EV_STATS')
+        + '\n' + extract(dbSource, 'const DUPLICATE_CATCH_STATE_FIELDS', '\n// Startup self-heal')
+        + '\n' + extract(dbSource, 'function syncNewCatchState(', '\n// Brings every group')
+        + '\n' + extract(dbSource, 'function prepareEvolutionHeldItems(', '\nfunction holdEvolutionItem(')
+        + '\n' + extract(dbSource, 'function megaEvolvePokemon(', '\nconst ROTOM_ITEMS'), ctx);
+      const result = mega
+        ? ctx.megaEvolvePokemon('user', 'venusaur')
+        : ctx.applyPokemonEvolution('user', db.prepare('SELECT * FROM catches WHERE id=1').get(),
+          db.prepare('SELECT * FROM pokemon_forms WHERE id=2').get());
+      assert.equal(result.error, undefined);
+      if (!mega) assert.equal(result.targetProfilePreserved, profile !== 'none');
+      const evolved = db.prepare('SELECT level, experience, hp_iv, moves FROM catches WHERE id=1').get();
+      if (profile === 'none') {
+        assert.deepEqual(evolved, { level: 10, experience: 100, hp_iv: 5, moves: '[]' });
+      } else {
+        assert.deepEqual(evolved, { level: 100, experience: 5000, hp_iv: 25, moves: '["target-move"]' });
+      }
+      if (profile === 'copy') {
+        assert.deepEqual(db.prepare('SELECT level, experience, hp_iv, moves FROM catches WHERE id=2').get(), evolved);
+      }
+      db.close();
+    }
+  }
 });
 
 function autospawnContext() {

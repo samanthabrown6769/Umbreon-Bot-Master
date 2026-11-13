@@ -4,30 +4,17 @@ const EXPLORE_MAPS = {
     images: [
       { file: 'grass-1.png', width: 1023, height: 768, startX: 0.65, startY: 0.48 },
       { file: 'grass-2.png', width: 720, height: 624, startX: 0.5, startY: 0.5 },
-      { file: 'grass-3.webp', width: 555, height: 418, startX: 0.3, startY: 0.37 },
-      { file: 'grass-4.png', width: 495, height: 320, startX: 0.52, startY: 0.4 },
     ],
   },
   fire: {
     name: 'Fire Map', emoji: '🔥',
     images: [
       {
-        file: 'fire-1.png', width: 1191, height: 768, startX: 0.16, startY: 0.22,
+        file: 'fire-1-replacement.png', width: 640, height: 490, startX: 0.5, startY: 0.55,
         blockedAreas: [
-          [1007, 108, 1108, 168], [582, 297, 646, 358],
-          [472, 374, 532, 399], [862, 605, 936, 633],
+          [254, 0, 408, 40], [239, 40, 405, 104],
+          [252, 104, 385, 153], [270, 153, 376, 171],
         ],
-        ladderAreas: [[46, 102, 69, 170], [195, 709, 230, 751], [737, 678, 763, 748]],
-      },
-      {
-        file: 'fire-2.jpg', width: 873, height: 768, startX: 0.15, startY: 0.27,
-        blockedAreas: [
-          [318, 378, 445, 400], [417, 398, 452, 431],
-          [568, 233, 625, 254], [551, 250, 608, 273], [557, 270, 590, 295], [529, 265, 558, 396],
-          [736, 234, 763, 384], [704, 375, 760, 399],
-          [533, 694, 612, 716], [588, 672, 630, 706], [599, 656, 620, 673], [613, 654, 692, 682],
-        ],
-        ladderAreas: [[108, 55, 134, 116]],
       },
       {
         file: 'fire-3.png', width: 448, height: 384, startX: 0.68, startY: 0.18,
@@ -43,8 +30,7 @@ const EXPLORE_MAPS = {
     name: 'Water Map', emoji: '🌊',
     images: [
       { file: 'water-1.png', width: 640, height: 571, startX: 0.68, startY: 0.49 },
-      { file: 'water-2.png', width: 640, height: 446, startX: 0.5, startY: 0.5 },
-      { file: 'water-3.jpg', width: 798, height: 768, startX: 0.36, startY: 0.48 },
+      { file: 'water-2-replacement.png', width: 384, height: 800, startX: 0.5, startY: 0.5 },
     ],
   },
 };

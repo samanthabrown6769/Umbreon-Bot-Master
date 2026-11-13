@@ -569,7 +569,7 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
 }
 
 // Fraction of damage dealt that the user heals.
-const DRAIN_MOVES = { 'drain-punch': 0.5, 'draining-kiss': 0.75 };
+const DRAIN_MOVES = { 'drain-punch': 0.5, 'draining-kiss': 0.75, 'oblivion-wing': 0.75 };
 
 // Stat drops that damaging moves inflict on the target: [chance %, stages].
 const DAMAGE_STAT_DROPS = {

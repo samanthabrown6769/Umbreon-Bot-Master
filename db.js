@@ -3529,7 +3529,7 @@ function syncNewCatchState(userId, catchId) {
     && pokemon.is_shiny === identity.is_shiny
     && pokemon.is_golden === identity.is_golden;
   const buddyCatchId = getUser(userId).buddy_catch_id;
-  const buddy = buddyCatchId
+  const buddy = buddyCatchId && buddyCatchId !== catchId
     ? db.prepare('SELECT id, pokemon_id, is_shiny, is_golden FROM catches WHERE id = ? AND user_id = ?')
       .get(buddyCatchId, userId)
     : null;
@@ -3547,6 +3547,21 @@ function syncNewCatchState(userId, catchId) {
     ? buddy.id
     : firstCopy?.id || catchId;
   return syncDuplicateCatchState(userId, sourceId);
+}
+
+function syncEvolvedCatchState(userId, catchId) {
+  const identity = db.prepare(`
+    SELECT pokemon_id, is_shiny, is_golden FROM catches WHERE id = ? AND user_id = ?
+  `).get(catchId, userId);
+  if (!identity) throw new Error(`Evolved Pokémon ${catchId} is missing for user ${userId}.`);
+  const existing = db.prepare(`
+    SELECT 1 FROM catches
+    WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ? AND id != ?
+    LIMIT 1
+  `).get(userId, identity.pokemon_id, identity.is_shiny, identity.is_golden, catchId);
+  const targetProfilePreserved = Boolean(existing || getCatchStateSnapshot(userId, identity));
+  syncNewCatchState(userId, catchId);
+  return targetProfilePreserved;
 }
 
 function rebaseTransferredPokemon(userId, catchId) {
@@ -4979,7 +4994,7 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
       userId
     );
     resetPreEvolutionCopies(userId, pokemon);
-    syncDuplicateCatchState(userId, pokemon.id);
+    syncEvolvedCatchState(userId, pokemon.id);
     recordPokemonSeen(userId, megaForm.id, Boolean(isShiny), Boolean(pokemon.is_golden));
     const megaDexNumbers = getPokemonDexNumbersForForms().get(megaForm.id);
     return {
@@ -5364,13 +5379,14 @@ function applyPokemonEvolution(userId, row, target, itemName = null, consumesHel
   );
   carryOverEvolutionMoves(userId, row, target);
   resetPreEvolutionCopies(userId, row);
-  syncDuplicateCatchState(userId, row.id);
+  const targetProfilePreserved = syncEvolvedCatchState(userId, row.id);
   recordPokemonSeen(userId, target.id, Boolean(row.is_shiny), Boolean(row.is_golden));
   return {
     itemName,
     from: row.name,
     to: target.name,
     level: row.level,
+    targetProfilePreserved,
     isShiny: Boolean(row.is_shiny),
     isGolden: Boolean(row.is_golden),
     rarity: row.is_golden ? 'Golden' : target.rarity,

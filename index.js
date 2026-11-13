@@ -2018,6 +2018,16 @@ function getFishingRod(user) {
   return rod;
 }
 
+function getFishingRodEmoji(user) {
+  const rod = getFishingRod(user);
+  return {
+    'Old Rod': EMOJIS.oldrod,
+    'Good Rod': EMOJIS.goodRod,
+    'Super Rod': EMOJIS.superRod,
+    'Golden Rod': EMOJIS.goldenRod,
+  }[rod.name];
+}
+
 const EMOJIS = {
   pokeball: '<:pokeball:1560318610306637974>',
   greatball: '<:greatball:1560318631399923732>',
@@ -13715,7 +13725,7 @@ client.on('messageCreate', async (message) => {
         .setDescription(
           `• \`${PREFIX}gym [region]\` / \`${PREFIX}elitefour [region]\` (\`${PREFIX}e4\`) / \`${PREFIX}champion [region]\` — League hubs per region\n` +
           `• \`${PREFIX}challenges\` / \`${PREFIX}ch [name|id]\` — View challenger trainers and their progress\n` +
-          `• \`${PREFIX}explore <gm 1-4|fm 1-3|wm 1-3>\` / \`${PREFIX}exp\` — Explore maps for exclusive Shinies and Goldens (Patreon and approved testers only during testing)\n` +
+          `• \`${PREFIX}explore <gm 1-2|fm 1-2|wm 1-2>\` / \`${PREFIX}exp\` — Explore maps for exclusive Shinies and Goldens (Patreon and approved testers only during testing)\n` +
           `• \`${PREFIX}bonus\` / \`${PREFIX}bo a <bonus>\` — Activate event voucher bonuses\n` +
           `• \`${PREFIX}ability\` / \`${PREFIX}ab [Pokémon]\` — Browse Pokémon abilities\n` +
           `• \`${PREFIX}cooldown [quantity]\` — Add Cooldown Machine charges\n` +
@@ -16177,7 +16187,7 @@ client.on('messageCreate', async (message) => {
               || pokemon.slug.toLowerCase() === pokemonName.toLowerCase().replace(/\s+/g, '-')
             );
           }
-          return { exactMatch, isShiny, isGolden };
+          return { exactMatch, isShiny: isGolden ? false : isShiny, isGolden };
         };
 
         if (action === 'multi') {
@@ -16234,8 +16244,11 @@ client.on('messageCreate', async (message) => {
               baseDef: exactMatch.base_def,
               baseSpd: exactMatch.base_spd,
             };
-            if (grant.isGolden) saveGoldenCatch(target.id, catalogPokemon);
-            else saveCatch(target.id, catalogPokemon, grant.isShiny);
+            db.transaction(() => {
+              if (grant.isGolden) saveGoldenCatch(target.id, catalogPokemon);
+              else saveCatch(target.id, catalogPokemon, grant.isShiny);
+              recordPokemonSeen(target.id, exactMatch.id, grant.isShiny, grant.isGolden);
+            }).immediate();
             await notifyAdminIfRareGrant(
               message.guild,
               multiGrantedUser,
@@ -16297,10 +16310,13 @@ client.on('messageCreate', async (message) => {
           baseDef: exactMatch.base_def,
           baseSpd: exactMatch.base_spd,
         };
-        for (let count = 0; count < amount; count++) {
-          if (isGolden) saveGoldenCatch(target.id, catalogPokemon);
-          else saveCatch(target.id, catalogPokemon, isShiny);
-        }
+        db.transaction(() => {
+          for (let count = 0; count < amount; count++) {
+            if (isGolden) saveGoldenCatch(target.id, catalogPokemon);
+            else saveCatch(target.id, catalogPokemon, isShiny);
+            recordPokemonSeen(target.id, exactMatch.id, isShiny, isGolden);
+          }
+        }).immediate();
         const grantSource = `Admin grant by ${message.author.username} (${message.content.slice(0, 100)})`;
         const grantedUser = await client.users.fetch(target.id).catch(() => ({ id: target.id, username: target.id }));
         await notifyAdminIfRareGrant(message.guild, grantedUser, catalogPokemon, grantSource, isShiny, isGolden);
@@ -20736,7 +20752,7 @@ client.on('messageCreate', async (message) => {
     if (command === 'explore' || command === 'exp') {
       if (!isExploreTester(message)) return message.reply('Explore is currently in testing and is available to bot admins and approved testers only.');
       const selectedMap = selectExploreMap(args);
-      if (!selectedMap) return message.reply(`Usage: \`${PREFIX}explore <gm 1-4|fm 1-3|wm 1-3>\` (e.g. \`${PREFIX}explore gm 3\`)`);
+      if (!selectedMap) return message.reply(`Usage: \`${PREFIX}explore <gm 1-2|fm 1-2|wm 1-2>\` (e.g. \`${PREFIX}explore gm 2\`)`);
       const getStepLimit = () => getExploreStepStatus(
         getUser(userId), getPatreonPerks(userId), Date.now(), getDailyResetDay, getNextDailyReset
       ).limit;
@@ -21995,7 +22011,7 @@ client.on('messageCreate', async (message) => {
             {
               name: 'Fishing',
               value: [
-                `${EMOJIS.oldrod} **${bagUser.fish_rods}**`,
+                `${getFishingRodEmoji(bagUser)} **${bagUser.fish_rods}**`,
                 line(EMOJIS.pokeLure, owned('Poké Lure'), `Poké Lures (${bagUser.active_poke_lures.toLocaleString()} active)`),
                 line(EMOJIS.mistysLure, owned("Misty's Lure"), `Misty's Lures (${bagUser.active_mistys_lures.toLocaleString()} active)`),
               ].join('\n'),
@@ -27084,7 +27100,9 @@ client.on('messageCreate', async (message) => {
         .setDescription(
           `**${result.from}** evolved into ` +
           `${emoji ? `${emoji} ` : ''}**${result.to}** ${evolutionMethod}!\n` +
-          `Level ${result.level} and IVs were kept.`
+          (result.targetProfilePreserved
+            ? 'The existing evolved form profile was kept.'
+            : `Level ${result.level} and IVs were kept.`)
         );
       const sprite = (result.isGolden && getGoldenSpriteUrl(result.speciesId, result.slug))
         || getPokemonShowdownSprite(result.slug, result.isShiny, result.sprite);

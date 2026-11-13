@@ -274,18 +274,20 @@ test('rare Pokémon receipt logs include the recipient, Pokémon, method, and co
 
 test('Explore map selectors choose the exact map and reject invalid choices', () => {
   for (const [args, mapKey, backgroundIndex] of [
-    [['gm', '1'], 'grass', 0], [['GM', '2'], 'grass', 1], [['gm', '3'], 'grass', 2], [['gm', '4'], 'grass', 3],
-    [['fm', '1'], 'fire', 0], [['fm', '2'], 'fire', 1], [['fm', '3'], 'fire', 2],
-    [['wm', '1'], 'water', 0], [['wm', '2'], 'water', 1], [['wm', '3'], 'water', 2],
+    [['gm', '1'], 'grass', 0], [['GM', '2'], 'grass', 1],
+    [['fm', '1'], 'fire', 0], [['fm', '2'], 'fire', 1],
+    [['wm', '1'], 'water', 0], [['wm', '2'], 'water', 1],
     [[], 'grass', null], [['grass'], 'grass', null], [['fire'], 'fire', null], [['water'], 'water', null],
   ]) {
     assert.deepEqual(data.selectExploreMap(args), { mapKey, backgroundIndex });
   }
-  for (const args of [['gm'], ['gm', '0'], ['gm', '5'], ['fm', '4'], ['wm', '4'], ['wm', '1', 'extra'], ['__proto__', '1']]) {
+  for (const args of [['gm'], ['gm', '0'], ['gm', '3'], ['gm', '4'], ['fm', '3'], ['wm', '3'], ['wm', '1', 'extra'], ['__proto__', '1']]) {
     assert.equal(data.selectExploreMap(args), null);
   }
-  assert.equal(data.EXPLORE_MAPS.fire.images[0].file, 'fire-1.png');
-  assert.deepEqual(renderer.getExploreMapSize('fire', 0), { width: 640, height: 413 });
+  assert.equal(data.EXPLORE_MAPS.fire.images[0].file, 'fire-1-replacement.png');
+  assert.equal(data.EXPLORE_MAPS.fire.images[1].file, 'fire-3.png');
+  assert.equal(data.EXPLORE_MAPS.water.images[1].file, 'water-2-replacement.png');
+  assert.deepEqual(renderer.getExploreMapSize('fire', 0), { width: 640, height: 490 });
 });
 
 test('Explore testing access grants only the specified testers and bot admins', () => {
@@ -879,7 +881,7 @@ test('checklist displays Explore usage, reset and access status', async () => {
   assert.match(payloads.at(-1).embeds[0].data.description, /Explore requires an active Patreon tier/);
 });
 
-test('Explore draws each supplied map zoomed at its aspect ratio with the selected trainer icon', async () => {
+test('Explore zooms each map and follows the trainer without cropping the map world', async () => {
   const originalFetch = global.fetch;
   const icon = createCanvas(4, 4);
   const iconCtx = icon.getContext('2d');
@@ -898,25 +900,36 @@ test('Explore draws each supplied map zoomed at its aspect ratio with the select
   try {
     for (const [map, theme] of Object.entries(data.EXPLORE_MAPS)) {
       for (let variant = 0; variant < theme.images.length; variant += 1) {
-        const png = await renderer.renderExploreMap(map, 48, 64, 'https://example.test/icon.png', variant);
-        const image = await loadImage(png);
-        assert.equal(image.width, 640);
-        assert.equal(image.height, Math.round(640 * theme.images[variant].height / theme.images[variant].width));
-        const result = createCanvas(image.width, image.height);
-        const context = result.getContext('2d');
-        context.drawImage(image, 0, 0);
-        assert.deepEqual([...context.getImageData(87, 82, 1, 1).data], [255, 0, 255, 255]);
+        const { width, height } = renderer.getExploreMapSize(map, variant);
         const original = await loadImage(require('node:path').join(__dirname, '..', 'assets', 'explore', theme.images[variant].file));
-        const background = createCanvas(image.width, image.height);
+        const background = createCanvas(width, height);
         const backgroundCtx = background.getContext('2d');
         backgroundCtx.imageSmoothingEnabled = false;
-        backgroundCtx.drawImage(original, 0, 0, image.width, image.height);
-        const expected = createCanvas(image.width, image.height);
-        const expectedCtx = expected.getContext('2d');
-        expectedCtx.imageSmoothingEnabled = false;
-        expectedCtx.scale(1.25, 1.25);
-        expectedCtx.drawImage(background, 0, 0);
-        assert.deepEqual([...context.getImageData(5, 5, 1, 1).data], [...expectedCtx.getImageData(5, 5, 1, 1).data]);
+        backgroundCtx.drawImage(original, 0, 0, width, height);
+        for (const [x, y] of [[304, Math.floor(height / 2) - 16], [0, 0], [width - 32, height - 32]]) {
+          const image = await loadImage(await renderer.renderExploreMap(map, x, y, 'https://example.test/icon.png', variant));
+          assert.equal(image.width, 640);
+          assert.equal(image.height, 480);
+          const result = createCanvas(image.width, image.height);
+          const context = result.getContext('2d');
+          context.drawImage(image, 0, 0);
+          const viewX = Math.max(0, Math.min(width - 320, x + 16 - 160));
+          const viewY = Math.max(0, Math.min(height - 240, y + 16 - 120));
+          const expected = createCanvas(640, 480);
+          const expectedCtx = expected.getContext('2d');
+          expectedCtx.imageSmoothingEnabled = false;
+          expectedCtx.scale(2, 2);
+          expectedCtx.translate(-viewX, -viewY);
+          expectedCtx.drawImage(background, 0, 0);
+          for (const [px, py] of [[200, 80], [440, 80], [200, 400], [440, 400]]) {
+            assert.deepEqual([...context.getImageData(px, py, 1, 1).data], [...expectedCtx.getImageData(px, py, 1, 1).data]);
+          }
+          const trainerX = Math.max(0, Math.min(width - 40, x - 4));
+          const trainerY = Math.max(0, Math.min(height - 40, y - 8));
+          assert.deepEqual([...context.getImageData(
+            Math.floor((trainerX + 30 - viewX) * 2), Math.floor((trainerY + 20 - viewY) * 2), 1, 1
+          ).data], [255, 0, 255, 255]);
+        }
       }
     }
     assert.equal(fetches, 1);
@@ -924,24 +937,24 @@ test('Explore draws each supplied map zoomed at its aspect ratio with the select
     const chestCanvas = createCanvas(chestMap.width, chestMap.height);
     const chestContext = chestCanvas.getContext('2d');
     chestContext.drawImage(chestMap, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(106, 85, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(206, 140, 1, 1).data], [0, 255, 0, 255]);
     const occupiedMap = await loadImage(await renderer.renderExploreMap('grass', 48, 64, 'https://example.test/icon.png', 0, { x: 48, y: 64 }));
     chestContext.drawImage(occupiedMap, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(62, 82, 1, 1).data], [0, 255, 0, 255]);
-    assert.deepEqual([...chestContext.getImageData(87, 82, 1, 1).data], [255, 0, 255, 255]);
-    assert.deepEqual([...chestContext.getImageData(60, 118, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(100, 140, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(135, 140, 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(100, 190, 1, 1).data], [0, 255, 0, 255]);
     const emptyMap = await loadImage(await renderer.renderExploreMap('grass', 48, 64, 'https://example.test/icon.png', 0));
     const emptyCanvas = createCanvas(emptyMap.width, emptyMap.height);
     const emptyContext = emptyCanvas.getContext('2d');
     emptyContext.drawImage(emptyMap, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(100, 80, 1, 1).data], [...emptyContext.getImageData(100, 80, 1, 1).data]);
+    assert.deepEqual([...chestContext.getImageData(160, 130, 1, 1).data], [...emptyContext.getImageData(160, 130, 1, 1).data]);
     const rightEdge = await loadImage(await renderer.renderExploreMap('grass', 608, 64, 'https://example.test/icon.png', 0, { x: 608, y: 64 }));
     chestContext.drawImage(rightEdge, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(602, 82, 1, 1).data], [0, 255, 0, 255]);
-    assert.deepEqual([...chestContext.getImageData(627, 82, 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(580, 140, 1, 1).data], [0, 255, 0, 255]);
+    assert.deepEqual([...chestContext.getImageData(620, 140, 1, 1).data], [255, 0, 255, 255]);
     const centered = await loadImage(await renderer.renderExploreMap('grass', 304, 200, 'https://example.test/icon.png', 0));
     chestContext.drawImage(centered, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(328, Math.floor(centered.height / 2), 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(340, 230, 1, 1).data], [255, 0, 255, 255]);
     assert.equal(fetches, 2);
     await assert.rejects(renderer.renderExploreMap('missing', 0, 0, 'x'), /Unknown Explore map/);
     await assert.rejects(renderer.renderExploreMap('grass', 0, 0, null), /No trainer icon/);
@@ -970,8 +983,8 @@ test('Explore enlarges trainer icons while preserving their proportions', async 
   };
   try {
     for (const [url, inside, outside] of [
-      ['https://example.test/tall.png', [[69, 71], [91, 118]], [[65, 72], [95, 118]]],
-      ['https://example.test/wide.png', [[56, 96], [103, 118]], [[53, 96], [103, 92]]],
+      ['https://example.test/tall.png', [[109, 113], [147, 191]], [[105, 113], [151, 191]]],
+      ['https://example.test/wide.png', [[89, 153], [167, 191]], [[85, 153], [167, 149]]],
     ]) {
       const image = await loadImage(await renderer.renderExploreMap('grass', 48, 64, url));
       const canvas = createCanvas(image.width, image.height);
@@ -1001,14 +1014,14 @@ test('Explore keeps the enlarged trainer visible at map edges without changing m
     assert.equal(renderer.TRAINER_HEIGHT, 32);
     for (const [x, y, left, top] of [
       [0, 0, 0, 0],
-      [304, 224, 295, 210],
-      [width - 32, height - 32, 590, 430],
+      [304, 224, 280, 192],
+      [width - 32, height - 32, 560, 400],
     ]) {
       const image = await loadImage(await renderer.renderExploreMap('grass', x, y, 'https://example.test/square.png'));
-      const canvas = createCanvas(width, height);
+      const canvas = createCanvas(640, 480);
       const ctx = canvas.getContext('2d');
       ctx.drawImage(image, 0, 0);
-      for (const [px, py] of [[left, top], [left + 49, top + 49]]) {
+      for (const [px, py] of [[left, top], [left + 79, top + 79]]) {
         assert.deepEqual([...ctx.getImageData(px, py, 1, 1).data], [255, 0, 255, 255]);
       }
       if (left > 0) assert.notDeepEqual([...ctx.getImageData(left - 1, top, 1, 1).data], [255, 0, 255, 255]);
@@ -1019,28 +1032,25 @@ test('Explore keeps the enlarged trainer visible at map edges without changing m
   }
 });
 
-test('Fire Map 1 blocks lava pools and movement across them', () => {
+test('Fire Map 1 blocks lava and movement across it', () => {
   const { width, height } = renderer.getExploreMapSize('fire', 0);
   const map = data.EXPLORE_MAPS.fire.images[0];
-  for (const [sourceX, sourceY] of [[1055, 135], [615, 325], [502, 385], [900, 618]]) {
+  for (const [sourceX, sourceY] of [[320, 20], [320, 80], [320, 130], [320, 160]]) {
     const x = sourceX * width / map.width - 16;
     const y = sourceY * height / map.height - 16;
     assert.equal(renderer.isExploreMoveBlocked('fire', 0, x - 32, y, x, y), true);
     assert.equal(renderer.isExploreMoveBlocked('fire', 0, x - 80, y, x + 80, y), true);
   }
-  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 270, 145, 270, 145), false);
-  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 302, 113, 302, 113), false);
-  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 270, 145, 302, 113), true);
-  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 97, 83, 129, 83), false);
+  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 304, 200, 304, 200), false);
+  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 304, 200, 304, 140), true);
+  assert.equal(renderer.isExploreMoveBlocked('fire', 0, 100, 200, 132, 200), false);
   assert.equal(renderer.isExploreMoveBlocked('grass', 0, 300, 160, 332, 192), false);
   assert.equal(renderer.isExploreMoveBlocked('water', 0, 300, 160, 332, 192), false);
 });
 
-test('Fire Maps block lava and actual ladders while leaving their starts accessible', () => {
+test('Fire Maps block lava while leaving their starts accessible', () => {
   const targets = [
-    { lava: [[1055, 135], [615, 325], [502, 385], [900, 618]], ladder: [[57, 135], [211, 730], [750, 713]] },
-    { lava: [[380, 389], [435, 417], [590, 240], [570, 281], [540, 365], [749, 290], [719, 386], [555, 704], [605, 665], [661, 666]],
-      ladder: [[121, 86]] },
+    { lava: [[320, 20], [320, 80], [320, 130], [320, 160]] },
     { lava: [[65, 75], [177, 86], [210, 248], [145, 312], [250, 312], [200, 330]] },
   ];
   for (const [variant, target] of targets.entries()) {
@@ -1062,22 +1072,22 @@ test('Fire Maps block lava and actual ladders while leaving their starts accessi
   assert.equal(renderer.getExploreMoveBlockReason('grass', 0, 300, 160, 332, 192), null);
 });
 
-test('Fire Map 3 stairs can be crossed in both directions', () => {
-  const map = data.EXPLORE_MAPS.fire.images[2];
-  const { width, height } = renderer.getExploreMapSize('fire', 2);
+test('Fire Map 2 stairs can be crossed in both directions', () => {
+  const map = data.EXPLORE_MAPS.fire.images[1];
+  const { width, height } = renderer.getExploreMapSize('fire', 1);
   for (const [sourceX, top, bottom] of [[120, 129, 159], [328, 193, 223]]) {
     const x = sourceX * width / map.width - 16;
     const y1 = top * height / map.height - 32;
     const y2 = bottom * height / map.height;
-    assert.equal(renderer.getExploreMoveBlockReason('fire', 2, x, y1, x, y2), null);
-    assert.equal(renderer.getExploreMoveBlockReason('fire', 2, x, y2, x, y1), null);
+    assert.equal(renderer.getExploreMoveBlockReason('fire', 1, x, y1, x, y2), null);
+    assert.equal(renderer.getExploreMoveBlockReason('fire', 1, x, y2, x, y1), null);
   }
 });
 
 test('Explore chests only spawn in positions reachable around lava within four moves', () => {
   const canMove = (x, y, nextX, nextY) =>
     !renderer.isExploreMoveBlocked('fire', 0, x, y, nextX, nextY);
-  const start = { x: 289, y: 115 };
+  const start = { x: 304, y: 230 };
   const { width, height } = renderer.getExploreMapSize('fire', 0);
   let frontier = [start];
   const reachable = new Set([`${start.x},${start.y}`]);
@@ -1529,31 +1539,6 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(ctx.activeExploreSessions.has('trainer'), false);
   assert.match(payloads.at(-1).content, /session has ended/);
 
-  ctx.args = ['fm', '1'];
-  user.explore_steps_today = 0;
-  cancelled = false;
-  await ctx.run();
-  for (let i = 0; i < 6; i += 1) await click('exp_right');
-  await click('exp_down');
-  cancelled = false;
-  const stepsBeforeLava = user.explore_steps_today;
-  assert.equal((await click('exp_down'))[0].content, "That's too spicy for a swim");
-  assert.equal(user.explore_steps_today, stepsBeforeLava);
-  assert.equal(cancelled, false);
-  await click('exp_search');
-  assert.equal(user.explore_steps_today, stepsBeforeLava + 1);
-  await click('exp_run');
-  await endPromise;
-
-  user.explore_steps_today = 0;
-  await ctx.run();
-  await click('exp_left');
-  const stepsBeforeLadder = user.explore_steps_today;
-  assert.equal((await click('exp_left'))[0].content, "It's too dark down there");
-  assert.equal(user.explore_steps_today, stepsBeforeLadder);
-  await click('exp_run');
-  await endPromise;
-
   const findObstaclePath = (variant, reason) => {
     const map = data.EXPLORE_MAPS.fire.images[variant];
     const { width, height } = renderer.getExploreMapSize('fire', variant);
@@ -1582,9 +1567,8 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     }
     throw new Error(`No reachable ${reason} on Fire Map ${variant + 1}`);
   };
-  for (const variant of [1, 2]) {
+  for (const variant of [0, 1]) {
     const obstacles = [['lava', "That's too spicy for a swim"]];
-    if (variant === 1) obstacles.push(['ladder', "It's too dark down there"]);
     for (const [reason, text] of obstacles) {
       ctx.args = ['fm', String(variant + 1)];
       user.explore_steps_today = 0;
@@ -1592,9 +1576,13 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
       await ctx.run();
       const path = findObstaclePath(variant, reason);
       for (const move of path.slice(0, -1)) await click(move);
+      cancelled = false;
       const before = user.explore_steps_today;
       assert.equal((await click(path.at(-1)))[0].content, text);
       assert.equal(user.explore_steps_today, before);
+      assert.equal(cancelled, false);
+      await click('exp_search');
+      assert.equal(user.explore_steps_today, before + 1);
       await click('exp_run');
       await endPromise;
     }
@@ -1620,14 +1608,14 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   user.patreon_tier = 'common';
   user.explore_steps_today = 0;
   for (const [args, map, variant] of [
-    [['gm', '1'], 'grass', 0], [['gm', '2'], 'grass', 1], [['gm', '3'], 'grass', 2], [['gm', '4'], 'grass', 3],
-    [['fm', '1'], 'fire', 0], [['fm', '2'], 'fire', 1], [['fm', '3'], 'fire', 2],
-    [['wm', '1'], 'water', 0], [['wm', '2'], 'water', 1], [['wm', '3'], 'water', 2],
+    [['gm', '1'], 'grass', 0], [['gm', '2'], 'grass', 1],
+    [['fm', '1'], 'fire', 0], [['fm', '2'], 'fire', 1],
+    [['wm', '1'], 'water', 0], [['wm', '2'], 'water', 1],
   ]) {
     ctx.args = args;
     await ctx.run();
     assert.deepEqual(rendered.at(-1), { map, variant });
-    if ((map === 'grass' && variant >= 2) || (map === 'water' && variant >= 1)) {
+    if (map === 'water' && variant === 1) {
       const before = user.explore_steps_today;
       await click('exp_up');
       assert.equal(user.explore_steps_today, before + 1);
@@ -1635,7 +1623,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     await click('exp_run');
     await endPromise;
   }
-  for (const [map, variant] of [['grass', 3], ['water', 2]]) {
+  for (const [map, variant] of [['grass', 1], ['fire', 1], ['water', 1]]) {
     ctx.args = [map];
     nextRolls = [0.999];
     await ctx.run();

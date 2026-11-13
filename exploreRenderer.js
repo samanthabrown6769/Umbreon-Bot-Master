@@ -4,7 +4,8 @@ const { EXPLORE_MAPS: MAP_THEMES } = require('./exploreData');
 const { CHEST_IMAGE_URL } = require('./exploreChests');
 
 const MAP_WIDTH = 640;
-const MAP_ZOOM = 1.25;
+const VIEW_HEIGHT = 480;
+const MAP_ZOOM = 2;
 const TRAINER_WIDTH = 32;
 const TRAINER_HEIGHT = 32;
 const TRAINER_SPRITE_SIZE = 40;
@@ -108,11 +109,11 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   const [background, trainer, chestIcon] = await Promise.all([
     loadBackground(map, width, height), loadTrainerIcon(trainerUrl), chest ? loadTrainerIcon(CHEST_IMAGE_URL) : null,
   ]);
-  const canvas = createCanvas(width, height);
+  const canvas = createCanvas(MAP_WIDTH, VIEW_HEIGHT);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  const viewWidth = width / MAP_ZOOM;
-  const viewHeight = height / MAP_ZOOM;
+  const viewWidth = MAP_WIDTH / MAP_ZOOM;
+  const viewHeight = VIEW_HEIGHT / MAP_ZOOM;
   const viewX = Math.max(0, Math.min(width - viewWidth, posX + TRAINER_WIDTH / 2 - viewWidth / 2));
   const viewY = Math.max(0, Math.min(height - viewHeight, posY + TRAINER_HEIGHT / 2 - viewHeight / 2));
   ctx.scale(MAP_ZOOM, MAP_ZOOM);
