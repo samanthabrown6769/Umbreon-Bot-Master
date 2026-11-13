@@ -2,22 +2,22 @@ const EXPLORE_MAPS = {
   grass: {
     name: 'Grass Map', emoji: '🌿',
     images: [
-      { file: 'grass-1.png', width: 1023, height: 768, startX: 0.65, startY: 0.48 },
-      { file: 'grass-2.png', width: 720, height: 624, startX: 0.5, startY: 0.5 },
+      { file: 'grass-1.png', width: 1023, height: 768, startX: 0.65, startY: 0.48, trainerSpriteSize: 24 },
+      { file: 'grass-2.png', width: 720, height: 624, startX: 0.5, startY: 0.5, trainerSpriteSize: 24 },
     ],
   },
   fire: {
     name: 'Fire Map', emoji: '🔥',
     images: [
       {
-        file: 'fire-1-replacement.png', width: 640, height: 490, startX: 0.5, startY: 0.55,
+        file: 'fire-1-replacement.png', width: 640, height: 490, startX: 0.5, startY: 0.55, trainerSpriteSize: 24,
         blockedAreas: [
           [254, 0, 408, 40], [239, 40, 405, 104],
           [252, 104, 385, 153], [270, 153, 376, 171],
         ],
       },
       {
-        file: 'fire-3.png', width: 448, height: 384, startX: 0.68, startY: 0.18,
+        file: 'fire-3.png', width: 448, height: 384, startX: 0.68, startY: 0.18, trainerSpriteSize: 24,
         blockedAreas: [
           [40, 55, 136, 104], [136, 71, 218, 104],
           [142, 240, 305, 260], [160, 260, 304, 285],
@@ -29,7 +29,7 @@ const EXPLORE_MAPS = {
   water: {
     name: 'Water Map', emoji: '🌊',
     images: [
-      { file: 'water-1.png', width: 640, height: 571, startX: 0.68, startY: 0.49 },
+      { file: 'water-1.png', width: 640, height: 571, startX: 0.68, startY: 0.49, trainerSpriteSize: 24 },
       { file: 'water-2-replacement.png', width: 384, height: 800, startX: 0.5, startY: 0.5 },
     ],
   },

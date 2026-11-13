@@ -122,7 +122,8 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   if (chestIcon) {
     ctx.drawImage(chestIcon, chest.x, chest.y, TRAINER_WIDTH, TRAINER_HEIGHT);
   }
-  const scale = Math.min(TRAINER_SPRITE_SIZE / trainer.width, TRAINER_SPRITE_SIZE / trainer.height);
+  const spriteSize = map.trainerSpriteSize ?? TRAINER_SPRITE_SIZE;
+  const scale = Math.min(spriteSize / trainer.width, spriteSize / trainer.height);
   const trainerWidth = trainer.width * scale;
   const trainerHeight = trainer.height * scale;
   const trainerX = Math.max(0, Math.min(width - trainerWidth, posX + (TRAINER_WIDTH - trainerWidth) / 2));

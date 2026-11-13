@@ -924,10 +924,11 @@ test('Explore zooms each map and follows the trainer without cropping the map wo
           for (const [px, py] of [[200, 80], [440, 80], [200, 400], [440, 400]]) {
             assert.deepEqual([...context.getImageData(px, py, 1, 1).data], [...expectedCtx.getImageData(px, py, 1, 1).data]);
           }
-          const trainerX = Math.max(0, Math.min(width - 40, x - 4));
-          const trainerY = Math.max(0, Math.min(height - 40, y - 8));
+          const size = map === 'water' && variant === 1 ? 40 : 24;
+          const trainerX = Math.max(0, Math.min(width - size, x + (32 - size) / 2));
+          const trainerY = Math.max(0, Math.min(height - size, y + 32 - size));
           assert.deepEqual([...context.getImageData(
-            Math.floor((trainerX + 30 - viewX) * 2), Math.floor((trainerY + 20 - viewY) * 2), 1, 1
+            Math.floor((trainerX + size * 0.75 - viewX) * 2), Math.floor((trainerY + size / 2 - viewY) * 2), 1, 1
           ).data], [255, 0, 255, 255]);
         }
       }
@@ -941,7 +942,7 @@ test('Explore zooms each map and follows the trainer without cropping the map wo
     const occupiedMap = await loadImage(await renderer.renderExploreMap('grass', 48, 64, 'https://example.test/icon.png', 0, { x: 48, y: 64 }));
     chestContext.drawImage(occupiedMap, 0, 0);
     assert.deepEqual([...chestContext.getImageData(100, 140, 1, 1).data], [0, 255, 0, 255]);
-    assert.deepEqual([...chestContext.getImageData(135, 140, 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(135, 160, 1, 1).data], [255, 0, 255, 255]);
     assert.deepEqual([...chestContext.getImageData(100, 190, 1, 1).data], [0, 255, 0, 255]);
     const emptyMap = await loadImage(await renderer.renderExploreMap('grass', 48, 64, 'https://example.test/icon.png', 0));
     const emptyCanvas = createCanvas(emptyMap.width, emptyMap.height);
@@ -951,10 +952,10 @@ test('Explore zooms each map and follows the trainer without cropping the map wo
     const rightEdge = await loadImage(await renderer.renderExploreMap('grass', 608, 64, 'https://example.test/icon.png', 0, { x: 608, y: 64 }));
     chestContext.drawImage(rightEdge, 0, 0);
     assert.deepEqual([...chestContext.getImageData(580, 140, 1, 1).data], [0, 255, 0, 255]);
-    assert.deepEqual([...chestContext.getImageData(620, 140, 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(620, 160, 1, 1).data], [255, 0, 255, 255]);
     const centered = await loadImage(await renderer.renderExploreMap('grass', 304, 200, 'https://example.test/icon.png', 0));
     chestContext.drawImage(centered, 0, 0);
-    assert.deepEqual([...chestContext.getImageData(340, 230, 1, 1).data], [255, 0, 255, 255]);
+    assert.deepEqual([...chestContext.getImageData(330, 240, 1, 1).data], [255, 0, 255, 255]);
     assert.equal(fetches, 2);
     await assert.rejects(renderer.renderExploreMap('missing', 0, 0, 'x'), /Unknown Explore map/);
     await assert.rejects(renderer.renderExploreMap('grass', 0, 0, null), /No trainer icon/);
@@ -967,7 +968,39 @@ test('Explore zooms each map and follows the trainer without cropping the map wo
   }
 });
 
-test('Explore enlarges trainer icons while preserving their proportions', async () => {
+test('only the requested Explore maps use smaller trainer icons', async () => {
+  const originalFetch = global.fetch;
+  const icon = createCanvas(4, 4);
+  icon.getContext('2d').fillStyle = '#ff00ff';
+  icon.getContext('2d').fillRect(0, 0, 4, 4);
+  global.fetch = async () => ({ ok: true, arrayBuffer: async () => icon.toBuffer('image/png') });
+  try {
+    for (const [map, variant, size] of [
+      ['grass', 0, 24], ['grass', 1, 24], ['fire', 0, 24],
+      ['fire', 1, 24], ['water', 0, 24], ['water', 1, 40],
+    ]) {
+      const { height } = renderer.getExploreMapSize(map, variant);
+      const image = await loadImage(await renderer.renderExploreMap(
+        map, 304, Math.floor(height / 2) - 16, 'https://example.test/size-icon.png', variant
+      ));
+      const canvas = createCanvas(image.width, image.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      const left = 320 - size;
+      const top = 272 - 2 * size;
+      for (const [x, y] of [[left, top], [left + 2 * size - 1, top + 2 * size - 1]]) {
+        assert.deepEqual([...ctx.getImageData(x, y, 1, 1).data], [255, 0, 255, 255]);
+      }
+      for (const [x, y] of [[left - 1, top], [left, top - 1], [left + 2 * size, top]]) {
+        assert.notDeepEqual([...ctx.getImageData(x, y, 1, 1).data], [255, 0, 255, 255]);
+      }
+    }
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('Explore scales trainer icons while preserving their proportions', async () => {
   const originalFetch = global.fetch;
   const icons = {
     'https://example.test/tall.png': [4, 8],
@@ -983,8 +1016,8 @@ test('Explore enlarges trainer icons while preserving their proportions', async 
   };
   try {
     for (const [url, inside, outside] of [
-      ['https://example.test/tall.png', [[109, 113], [147, 191]], [[105, 113], [151, 191]]],
-      ['https://example.test/wide.png', [[89, 153], [167, 191]], [[85, 153], [167, 149]]],
+      ['https://example.test/tall.png', [[116, 144], [139, 191]], [[115, 144], [140, 191]]],
+      ['https://example.test/wide.png', [[104, 168], [151, 191]], [[103, 168], [151, 167]]],
     ]) {
       const image = await loadImage(await renderer.renderExploreMap('grass', 48, 64, url));
       const canvas = createCanvas(image.width, image.height);
@@ -1002,7 +1035,7 @@ test('Explore enlarges trainer icons while preserving their proportions', async 
   }
 });
 
-test('Explore keeps the enlarged trainer visible at map edges without changing movement bounds', async () => {
+test('Explore keeps the trainer visible at map edges without changing movement bounds', async () => {
   const originalFetch = global.fetch;
   const icon = createCanvas(4, 4);
   icon.getContext('2d').fillStyle = '#ff00ff';
@@ -1013,15 +1046,15 @@ test('Explore keeps the enlarged trainer visible at map edges without changing m
     assert.equal(renderer.TRAINER_WIDTH, 32);
     assert.equal(renderer.TRAINER_HEIGHT, 32);
     for (const [x, y, left, top] of [
-      [0, 0, 0, 0],
-      [304, 224, 280, 192],
-      [width - 32, height - 32, 560, 400],
+      [0, 0, 8, 16],
+      [304, 224, 296, 224],
+      [width - 32, height - 32, 584, 432],
     ]) {
       const image = await loadImage(await renderer.renderExploreMap('grass', x, y, 'https://example.test/square.png'));
       const canvas = createCanvas(640, 480);
       const ctx = canvas.getContext('2d');
       ctx.drawImage(image, 0, 0);
-      for (const [px, py] of [[left, top], [left + 79, top + 79]]) {
+      for (const [px, py] of [[left, top], [left + 47, top + 47]]) {
         assert.deepEqual([...ctx.getImageData(px, py, 1, 1).data], [255, 0, 255, 255]);
       }
       if (left > 0) assert.notDeepEqual([...ctx.getImageData(left - 1, top, 1, 1).data], [255, 0, 255, 255]);
