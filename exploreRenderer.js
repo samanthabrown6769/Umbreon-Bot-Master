@@ -26,6 +26,16 @@ function getExploreMapSize(mapType, variant) {
   return { width: MAP_WIDTH, height: Math.round(MAP_WIDTH * map.height / map.width) };
 }
 
+function getExploreViewport(mapType, posX, posY, variant = 0) {
+  const { width, height } = getExploreMapSize(mapType, variant);
+  const zoom = mapType === 'water' && variant === 1 ? WATER_MAP_2_ZOOM : MAP_ZOOM;
+  const viewWidth = MAP_WIDTH / zoom;
+  const viewHeight = VIEW_HEIGHT / zoom;
+  const x = Math.max(0, Math.min(width - viewWidth, posX + TRAINER_WIDTH / 2 - viewWidth / 2));
+  const y = Math.max(0, Math.min(height - viewHeight, posY + TRAINER_HEIGHT / 2 - viewHeight / 2));
+  return { x, y, width: viewWidth, height: viewHeight };
+}
+
 function getExploreMoveBlockReason(mapType, variant, x, y, nextX, nextY) {
   const map = getExploreMap(mapType, variant);
   const { width, height } = getExploreMapSize(mapType, variant);
@@ -108,18 +118,15 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
   const map = getExploreMap(mapType, variant);
   const { width, height } = getExploreMapSize(mapType, variant);
   const zoom = mapType === 'water' && variant === 1 ? WATER_MAP_2_ZOOM : MAP_ZOOM;
+  const viewport = getExploreViewport(mapType, posX, posY, variant);
   const [background, trainer, chestIcon] = await Promise.all([
     loadBackground(map, width, height), loadTrainerIcon(trainerUrl), chest ? loadTrainerIcon(CHEST_IMAGE_URL) : null,
   ]);
   const canvas = createCanvas(MAP_WIDTH, VIEW_HEIGHT);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  const viewWidth = MAP_WIDTH / zoom;
-  const viewHeight = VIEW_HEIGHT / zoom;
-  const viewX = Math.max(0, Math.min(width - viewWidth, posX + TRAINER_WIDTH / 2 - viewWidth / 2));
-  const viewY = Math.max(0, Math.min(height - viewHeight, posY + TRAINER_HEIGHT / 2 - viewHeight / 2));
   ctx.scale(zoom, zoom);
-  ctx.translate(-viewX, -viewY);
+  ctx.translate(-viewport.x, -viewport.y);
   ctx.drawImage(background, 0, 0);
   const spriteSize = map.trainerSpriteSize ?? TRAINER_SPRITE_SIZE;
   if (chestIcon) {
@@ -142,5 +149,5 @@ async function renderExploreMap(mapType, posX, posY, trainerUrl, variant = 0, ch
 
 module.exports = {
   MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize,
-  getExploreMoveBlockReason, isExploreMoveBlocked, renderExploreMap,
+  getExploreViewport, getExploreMoveBlockReason, isExploreMoveBlocked, renderExploreMap,
 };

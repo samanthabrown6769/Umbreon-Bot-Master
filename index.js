@@ -3948,10 +3948,11 @@ function getExploreLegendaryEntries(mapKey) {
   if (!rows) {
     rows = db.prepare(`
       SELECT * FROM pokemon_forms
-      WHERE is_default = 1 AND is_legendary = 1 AND is_mythical = 0 AND species_id <= 493
+      WHERE is_default = 1 AND is_legendary = 1 AND is_mythical = 0
+        AND (species_id <= 493 OR (? = 'grass' AND species_id IN (640, 787)))
         AND EXISTS (SELECT 1 FROM json_each(pokemon_forms.types) WHERE lower(value) = ?)
       ORDER BY species_id, id
-    `).all(mapKey);
+    `).all(mapKey, mapKey);
     exploreLegendaryCache.set(mapKey, rows);
   }
   return isEventOpen(halloweenEvent)
@@ -20793,7 +20794,7 @@ client.on('messageCreate', async (message) => {
       ).limit;
       if (!getStepLimit()) return message.reply('Explore requires an active Patreon tier.');
       const sessionSeconds = getPatreonPerks(userId).exploreSeconds;
-      const { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, getExploreMoveBlockReason, isExploreMoveBlocked, renderExploreMap } = require('./exploreRenderer');
+      const { MAP_THEMES, TRAINER_WIDTH, TRAINER_HEIGHT, getExploreMapSize, getExploreViewport, getExploreMoveBlockReason, isExploreMoveBlocked, renderExploreMap } = require('./exploreRenderer');
       const SEARCH_LOOT = [
         { field: 'coins', label: 'PokéCoins', emoji: EMOJIS.pokecoin, min: 500, max: 5000 },
         { field: 'pokeballs', label: 'Poké Balls', emoji: EMOJIS.pokeball, min: 3, max: 10 },
@@ -21037,7 +21038,10 @@ client.on('messageCreate', async (message) => {
             const isMoveAllowed = background.blockedAreas
               ? (fromX, fromY, toX, toY) => !isExploreMoveBlocked(mapKey, backgroundIndex, fromX, fromY, toX, toY)
               : null;
-            chest = spawnExploreChest(x, y, mapWidth - TRAINER_WIDTH, mapHeight - TRAINER_HEIGHT, STEP, Math.random, isMoveAllowed);
+            const viewport = getExploreViewport(mapKey, x, y, backgroundIndex);
+            chest = spawnExploreChest(
+              x, y, mapWidth - TRAINER_WIDTH, mapHeight - TRAINER_HEIGHT, STEP, Math.random, isMoveAllowed, viewport
+            );
             if (getUser(userId).explore_large_pack) chest.stepsRemaining += 5;
             if (getUser(userId).explore_dowsing_machine) {
               chestExpirationText = `\n${EXPLORE_ITEMS.dowsing.emoji} A chest appeared on the map!`;

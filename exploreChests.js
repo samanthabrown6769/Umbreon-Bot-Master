@@ -21,7 +21,7 @@ const EXPLORE_ITEMS = {
   },
 };
 
-function spawnExploreChest(x, y, maxX, maxY, step, random = Math.random, isMoveAllowed = null) {
+function spawnExploreChest(x, y, maxX, maxY, step, random = Math.random, isMoveAllowed = null, visibleBounds = null) {
   let reachable;
   if (isMoveAllowed) {
     reachable = new Set([`${x},${y}`]);
@@ -53,6 +53,11 @@ function spawnExploreChest(x, y, maxX, maxY, step, random = Math.random, isMoveA
       const targetY = y + dy * step;
       if (targetX < 0 || targetX > maxX || targetY < 0 || targetY > maxY) continue;
       if (reachable && !reachable.has(`${targetX},${targetY}`)) continue;
+      if (visibleBounds && (
+        targetX < visibleBounds.x || targetY < visibleBounds.y
+        || targetX + step > visibleBounds.x + visibleBounds.width
+        || targetY + step > visibleBounds.y + visibleBounds.height
+      )) continue;
       positions.push({ x: targetX, y: targetY });
     }
   }

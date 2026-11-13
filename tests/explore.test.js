@@ -54,6 +54,19 @@ test('Explore chests spawn within reach, last 5–15 movements, and have one-tim
   assert.equal(select({ explore_amulet_coin: 1 }, 0.01, 0, 0).field, 'repels');
 });
 
+test('Explore chests spawn fully inside the current viewport', () => {
+  const viewport = renderer.getExploreViewport('grass', 32, 32, 0);
+  for (let i = 0; i < 100; i += 1) {
+    const chest = chests.spawnExploreChest(
+      32, 32, 608, 448, 32, () => i / 100, null, viewport
+    );
+    assert.ok(chest.x >= viewport.x && chest.y >= viewport.y);
+    assert.ok(chest.x + 32 <= viewport.x + viewport.width);
+    assert.ok(chest.y + 32 <= viewport.y + viewport.height);
+    assert.ok(Math.max(Math.abs(chest.x - 32), Math.abs(chest.y - 32)) <= 128);
+  }
+});
+
 test('Explore reward bonuses add to existing Amulet and Shiny totals without modifying shop counts', () => {
   const dbSource = fs.readFileSync(require.resolve('../db.js'), 'utf8');
   const section = (start, end) => dbSource.slice(dbSource.indexOf(start), dbSource.indexOf(end, dbSource.indexOf(start)));
@@ -325,7 +338,7 @@ test('Explore catalog pools use matching types and exclude special and event-onl
   db.close();
 });
 
-test('Explore Legendary pools use matching default forms from Generations 1–4', () => {
+test('Explore Legendary pools use matching default forms from Generations 1–4 and selected later grass types', () => {
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE pokemon_forms (
     id INTEGER, species_id INTEGER, species_name TEXT, name TEXT, rarity TEXT, types TEXT,
@@ -342,14 +355,15 @@ test('Explore Legendary pools use matching default forms from Generations 1–4'
   });
   vm.runInContext(extract('const exploreCatalogCache =', '\nconst EXPLORE_GOLDEN_CHANCE'), context);
   const entries = (map) => Array.from(context.getExploreLegendaryEntries(map));
-  assert.deepEqual(entries('grass'), []);
+  assert.deepEqual(entries('grass').map((row) => row.species_id), [640, 787]);
   assert.deepEqual(entries('fire').map((row) => row.species_id), [146, 244, 250, 485]);
   assert.deepEqual(entries('water').map((row) => row.species_id), [245, 382, 484]);
-  for (const map of ['fire', 'water']) {
+  for (const map of ['grass', 'fire', 'water']) {
     for (const row of entries(map)) {
       assert.equal(row.is_default, 1);
       assert.equal(row.is_mythical, 0);
-      assert.ok(row.species_id <= 493 && JSON.parse(row.types).includes(map));
+      assert.ok((row.species_id <= 493 || [640, 787].includes(row.species_id))
+        && JSON.parse(row.types).includes(map));
     }
   }
   assert.throws(() => context.getExploreLegendaryEntries('invalid'), /Unknown Explore map/);
