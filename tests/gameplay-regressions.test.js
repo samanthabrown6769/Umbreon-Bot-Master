@@ -1156,6 +1156,29 @@ test('buddy history defaults to descending EXP', () => {
   }
 });
 
+test('buddy info move details are view-only while the active buddy move page keeps its commands', () => {
+  const source = extract(indexSource, 'function createBuddyMovesEmbed(', '\nconst activeTradeLocks');
+  const ctx = vm.createContext({
+    EmbedBuilder,
+    MOVES_PER_PAGE: 10,
+    PREFIX: '.',
+    EMOJIS: { pokecoin: '🪙' },
+    getPokemonMove: (name) => ({ name, type: 'normal', power: 40, accuracy: 100 }),
+    getTypeEmoji: (type) => type,
+    isMaxMove: () => false,
+  });
+  vm.runInContext(source, ctx);
+  const pokemon = { name: 'Testmon' };
+  const learnset = { moves: ['tackle'], pokemon: {} };
+  const viewOnly = ctx.createBuddyMovesEmbed(pokemon, learnset, [], 0, 0, true).toJSON();
+  assert.match(viewOnly.description, /tackle/);
+  assert.match(viewOnly.description, /View-only/);
+  assert.doesNotMatch(viewOnly.description, /move replace/);
+
+  const editable = ctx.createBuddyMovesEmbed(pokemon, learnset, [], 0, 50000).toJSON();
+  assert.match(editable.description, /move replace/);
+});
+
 test('market sale history returns only the latest sale', () => {
   const db = new Database(':memory:');
   try {

@@ -9471,7 +9471,9 @@ function isMaxMove(move) {
   return move.name.startsWith('Max ');
 }
 
-function createBuddyMovesEmbed(buddy, learnsetData, equippedMoves, page = 0, moveChangeCost = 50000) {
+function createBuddyMovesEmbed(
+  buddy, learnsetData, equippedMoves, page = 0, moveChangeCost = 50000, readOnly = false
+) {
   const availableMoveSlots = Math.min(4, learnsetData.moves.length);
   const moveLine = (moveName) => {
     const move = getPokemonMove(moveName);
@@ -9487,13 +9489,15 @@ function createBuddyMovesEmbed(buddy, learnsetData, equippedMoves, page = 0, mov
     .setDescription(
       `**Equipped moves**\n${equippedMoves.length ? equippedMoves.map((moveName, index) =>
         moveName ? `${index + 1}. ${moveLine(moveName)}` : `${index + 1}. *(empty)*`
-      ).join('\n') : 'No moves are available.'}\n\n` +
+      ).join('\n') : 'No moves are equipped.'}\n\n` +
       `**Learnable moves** (${learnsetData.moves.length})\n${learnsetData.moves.slice(page * MOVES_PER_PAGE, (page + 1) * MOVES_PER_PAGE).map(moveLine).join('\n') || 'No moves found.'}\n\n` +
-      (availableMoveSlots
-        ? `Replace an equipped move with \`${PREFIX}move replace <equipped move|slot> <new move>\` ` +
-          `(${EMOJIS.pokecoin} **${moveChangeCost.toLocaleString()}**); delete a slot for free with ` +
-          `\`${PREFIX}move delete <slot>\`; swap equipped slots with \`${PREFIX}move swap <slot> <slot>\`.`
-        : 'This buddy has no moves available to change.')
+      (readOnly
+        ? 'View-only: opening this list does not change the Pokémon’s equipped moves.'
+        : availableMoveSlots
+          ? `Replace an equipped move with \`${PREFIX}move replace <equipped move|slot> <new move>\` ` +
+            `(${EMOJIS.pokecoin} **${moveChangeCost.toLocaleString()}**); delete a slot for free with ` +
+            `\`${PREFIX}move delete <slot>\`; swap equipped slots with \`${PREFIX}move swap <slot> <slot>\`.`
+          : 'This buddy has no moves available to change.')
     )
     .setFooter({ text: `Page ${page + 1}/${Math.max(1, Math.ceil(learnsetData.moves.length / MOVES_PER_PAGE))} • Pokémon can only use moves from their species learnset.` });
 }
@@ -12265,6 +12269,8 @@ client.on('messageCreate', async (message) => {
     }
   }
   const userId = message.author.id;
+  let buddyProfileOwnerId = userId;
+  let buddyProfileAdminView = false;
 
   try {
     // Keep the stored Patreon tier fresh (at most every 10 minutes per user).
@@ -14778,6 +14784,113 @@ client.on('messageCreate', async (message) => {
 
       const subtype = args[0]?.toLowerCase();
       const action = args[1]?.toLowerCase();
+
+      if (command === 'admin' && ['bud', 'buddy'].includes(subtype)) {
+        const targetMatch = args[2]?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
+        const targetId = targetMatch?.[1] || targetMatch?.[2];
+        if (!targetId) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin bud list <@user|user ID>\` or ` +
+            `\`${PREFIX}admin bud info <@user|user ID> <Pokémon name|Pokédex number>\`.`
+          );
+        }
+        if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(targetId)) {
+          return message.reply(`❌ No registered account found for <@${targetId}>.`);
+        }
+        if (action === 'list') {
+          if (args.length !== 3) {
+            return message.reply(`Usage: \`${PREFIX}admin bud list <@user|user ID>\`.`);
+          }
+          const buddies = getUserBuddyHistory(targetId);
+          if (!buddies.length) {
+            return message.reply(`<@${targetId}> has not set any Pokémon as a buddy yet.`);
+          }
+          const currentId = getUser(targetId).buddy_catch_id;
+          const currentBuddy = getUserBuddy(targetId);
+          const pageSize = 15;
+          const totalPages = Math.ceil(buddies.length / pageSize);
+          let page = 1;
+          const buildEmbed = () => {
+            const start = (page - 1) * pageSize;
+            const lines = buddies.slice(start, start + pageSize).map((mon, index) => {
+              const isCurrent = mon.id === currentId;
+              const displayName = isCurrent ? currentBuddy?.display_name || mon.name : mon.name;
+              const heldItem = mon.held_item
+                ? ` • ${FUN_ITEM_EMOJIS[mon.held_item]
+                  || EVOLUTION_ITEMS[mon.held_item]?.emoji
+                  || EMOJIS[mon.held_item.replace(/\s+/g, '').toLowerCase()]
+                  || HELD_ITEM_EMOJI} ${mon.held_item}`
+                : '';
+              return `\`${String(start + index + 1).padStart(2, '0')}\` ` +
+                `${isCurrent ? `**${displayName}**` : mon.name} • Lvl. ${mon.level} • ` +
+                `${(mon.experience || 0).toLocaleString()} XP • ${mon.iv_percent.toFixed(1)}% IV${heldItem}`;
+            });
+            return new EmbedBuilder()
+              .setColor(0x0099ff)
+              .setTitle(`Buddy Profiles for ${targetId}`)
+              .setDescription(
+                `Current buddy: ${currentId && currentBuddy
+                  ? `**${currentBuddy.display_name || currentBuddy.name}** Lvl. ${currentBuddy.level}`
+                  : '*None*'}\n\n${lines.join('\n')}`
+              )
+              .setFooter({ text: `Page ${page}/${totalPages} • ${PREFIX}admin bud list ${targetId}` });
+          };
+          const buildRow = () => new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('adminbudlist_first').setEmoji('⏪')
+              .setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+            new ButtonBuilder().setCustomId('adminbudlist_prev').setEmoji('⬅️')
+              .setStyle(ButtonStyle.Primary).setDisabled(page === 1),
+            new ButtonBuilder().setCustomId('adminbudlist_next').setEmoji('➡️')
+              .setStyle(ButtonStyle.Primary).setDisabled(page === totalPages),
+            new ButtonBuilder().setCustomId('adminbudlist_last').setEmoji('⏩')
+              .setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages)
+          );
+          const listMessage = await message.reply({
+            embeds: [buildEmbed()],
+            components: totalPages > 1 ? [buildRow()] : [],
+          });
+          if (totalPages > 1) {
+            const collector = listMessage.createMessageComponentCollector({
+              componentType: ComponentType.Button,
+              time: 90_000,
+            });
+            collector.on('collect', async (interaction) => {
+              if (interaction.user.id !== userId) {
+                return interaction.reply({
+                  content: 'Only the bot admin who requested this list can browse it.',
+                  ephemeral: true,
+                });
+              }
+              if (interaction.customId === 'adminbudlist_first') page = 1;
+              else if (interaction.customId === 'adminbudlist_prev') page = Math.max(1, page - 1);
+              else if (interaction.customId === 'adminbudlist_next') page = Math.min(totalPages, page + 1);
+              else if (interaction.customId === 'adminbudlist_last') page = totalPages;
+              await interaction.update({ embeds: [buildEmbed()], components: [buildRow()] });
+            });
+            collector.on('end', () => listMessage.edit({ components: [] }).catch((error) => {
+              console.error(`Failed to remove expired admin buddy-list controls for ${targetId}:`, error);
+            }));
+          }
+          return;
+        }
+        if (action === 'info') {
+          const query = args.slice(3).join(' ').trim();
+          if (!query) {
+            return message.reply(
+              `Usage: \`${PREFIX}admin bud info <@user|user ID> <Pokémon name|Pokédex number>\`.`
+            );
+          }
+          buddyProfileOwnerId = targetId;
+          buddyProfileAdminView = true;
+          command = 'bud';
+          args = ['info', query];
+        } else {
+          return message.reply(
+            `Usage: \`${PREFIX}admin bud list <@user|user ID>\` or ` +
+            `\`${PREFIX}admin bud info <@user|user ID> <Pokémon name|Pokédex number>\`.`
+          );
+        }
+      }
 
       if (command === 'admin' && subtype === 'catchbot' && action === 'reset') {
         const targetId = args[2]?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
@@ -19192,16 +19305,19 @@ client.on('messageCreate', async (message) => {
         const wantsShiny = variantMatch?.[1].toLowerCase() === 'shiny';
         const wantsGolden = Boolean(variantMatch) && !wantsShiny;
         const baseQuery = variantMatch ? variantMatch[2].trim() : query;
-        const buddyMatches = findUserPokemonMatches(userId, baseQuery).filter((pokemon) => pokemon.ever_buddy);
+        const buddyMatches = findUserPokemonMatches(buddyProfileOwnerId, baseQuery)
+          .filter((pokemon) => pokemon.ever_buddy);
         const buddyMatch = variantMatch
           ? buddyMatches.find((pokemon) => wantsShiny ? pokemon.is_shiny && !pokemon.is_golden : pokemon.is_golden)
           : buddyMatches.find((pokemon) => !pokemon.is_shiny && !pokemon.is_golden) || buddyMatches[0];
         if (!buddyMatch) {
           return message.reply(
-            `No buddy profile found for **${query}**. Set it as your buddy first with \`${PREFIX}bud set ${query}\`.`
+            buddyProfileAdminView
+              ? `No buddy profile for **${query}** was found for <@${buddyProfileOwnerId}>.`
+              : `No buddy profile found for **${query}**. Set it as your buddy first with \`${PREFIX}bud set ${query}\`.`
           );
         }
-        const pokemon = getUserBuddy(userId, buddyMatch.id);
+        const pokemon = getUserBuddy(buddyProfileOwnerId, buddyMatch.id);
         if (!pokemon) {
           return message.reply(`The buddy profile for **${query}** is no longer available.`);
         }
@@ -19244,7 +19360,7 @@ client.on('messageCreate', async (message) => {
           const filled = iv === 0 ? 0 : iv <= 15 ? 1 : iv <= 30 ? 2 : 3;
           return '⭐'.repeat(filled) + '☆'.repeat(3 - filled) + (iv === 31 ? ' 🎉' : '');
         };
-        const ivValue = (iv) => getPatreonPerks(userId).ivChecker
+        const ivValue = (iv) => getPatreonPerks(buddyProfileOwnerId).ivChecker
           ? `${ivStars(iv)} **${iv}**`
           : ivStars(iv);
         const evolutionRoute = getEvolutionRoute(pokemon.id);
@@ -19254,7 +19370,11 @@ client.on('messageCreate', async (message) => {
             || (pokemon.is_shiny ? pokemon.shiny_sprite || pokemon.sprite : pokemon.sprite);
         const profileEmbed = new EmbedBuilder()
           .setColor(0x3498db)
-          .setTitle(`${getRarityEmojis(pokemon.rarity, pokemon.name, Boolean(pokemon.is_shiny), Boolean(pokemon.is_golden))} ${message.author.username}'s ${pokemon.display_name || pokemon.name}`)
+          .setTitle(
+            `${getRarityEmojis(pokemon.rarity, pokemon.name, Boolean(pokemon.is_shiny), Boolean(pokemon.is_golden))} ` +
+            `${buddyProfileAdminView ? `<@${buddyProfileOwnerId}>'s` : `${message.author.username}'s`} ` +
+            `${pokemon.display_name || pokemon.name}`
+          )
           .setDescription(
             `**Level:** ${pokemon.level}\n` +
             `**Held Item:** ${pokemon.held_item ? `${itemEmoji} **${pokemon.held_item}**` : 'None'}\n` +
@@ -19279,15 +19399,23 @@ client.on('messageCreate', async (message) => {
             text: `${pokemon.display_name || pokemon.name} Level: ${pokemon.level} • Total EXP: ${pokemon.experience.toLocaleString()}`,
           });
         if (profileImage) profileEmbed.setImage(profileImage);
-        const infoMessage = await message.reply({
-          embeds: [profileEmbed],
-          components: [new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
+        const profileButtons = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('buddy-info:view-moves')
+            .setLabel('View Moves')
+            .setEmoji('📖')
+            .setStyle(ButtonStyle.Primary),
+          ...(!buddyProfileAdminView
+            ? [new ButtonBuilder()
               .setCustomId(`ability-change:${pokemon.id}`)
               .setLabel('Ability')
               .setEmoji(EMOJIS.abilityCapsule)
-              .setStyle(ButtonStyle.Primary)
-          )],
+              .setStyle(ButtonStyle.Primary)]
+            : [])
+        );
+        const infoMessage = await message.reply({
+          embeds: [profileEmbed],
+          components: [profileButtons],
         });
         const collector = infoMessage.createMessageComponentCollector({
           componentType: ComponentType.Button,
@@ -19296,6 +19424,55 @@ client.on('messageCreate', async (message) => {
         collector.on('collect', async (interaction) => {
           if (interaction.user.id !== userId) {
             return interaction.reply({ content: 'Only the trainer who requested this Pokémon’s info can change its ability.', ephemeral: true });
+          }
+          if (interaction.customId === 'buddy-info:view-moves') {
+            await interaction.deferReply({ ephemeral: true });
+            const learnsetData = getPokemonLearnset(pokemon.id, buddyProfileOwnerId);
+            if (!learnsetData) {
+              return interaction.editReply('This Pokémon is no longer available in the user’s storage.');
+            }
+            let equippedMoves;
+            try {
+              equippedMoves = JSON.parse(learnsetData.pokemon.moves || '[]');
+              if (!Array.isArray(equippedMoves)) throw new TypeError('Stored moves are not an array.');
+            } catch (error) {
+              console.error(`Could not parse move set for buddy profile catch ${pokemon.id}:`, error);
+              return interaction.editReply('This Pokémon’s move set could not be read. Please contact a bot admin.');
+            }
+            const totalPages = Math.max(1, Math.ceil(learnsetData.moves.length / MOVES_PER_PAGE));
+            let page = 0;
+            const buildPayload = (disabled = false) => ({
+              embeds: [createBuddyMovesEmbed(pokemon, learnsetData, equippedMoves, page, 0, true)],
+              components: totalPages > 1 ? [new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('buddy-info-moves-prev').setLabel('◀')
+                  .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page === 0),
+                new ButtonBuilder().setCustomId('buddy-info-moves-next').setLabel('▶')
+                  .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page >= totalPages - 1)
+              )] : [],
+            });
+            const movesReply = await interaction.editReply(buildPayload());
+            if (totalPages > 1) {
+              const pager = movesReply.createMessageComponentCollector({
+                componentType: ComponentType.Button,
+                time: 120_000,
+              });
+              pager.on('collect', async (pageInteraction) => {
+                if (pageInteraction.user.id !== userId) {
+                  return pageInteraction.reply({
+                    content: 'Only the trainer who requested this Pokémon’s info can browse its moves.',
+                    ephemeral: true,
+                  });
+                }
+                page = Math.min(totalPages - 1, Math.max(
+                  0, page + (pageInteraction.customId === 'buddy-info-moves-next' ? 1 : -1)
+                ));
+                await pageInteraction.update(buildPayload());
+              });
+              pager.on('end', () => movesReply.edit(buildPayload(true)).catch((error) => {
+                console.error(`Failed to disable expired move controls for buddy profile catch ${pokemon.id}:`, error);
+              }));
+            }
+            return;
           }
           collector.stop('opened');
           await interaction.deferReply({ ephemeral: true });
