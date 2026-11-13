@@ -6519,6 +6519,163 @@ const RARE_SPAWN_LOG_CHANNEL_ID = '1570468169422864485';
 const GUILD_JOIN_REPORT_ADMIN_ID = '1514082847609061541';
 const ADMIN_COMMAND_LOG_CHANNEL_ID = '1570468196237189141';
 const GUILD_JOIN_LOG_CHANNEL_ID = '1570468221469859891';
+
+let serverDataExportInProgress = false;
+let nextServerExportRequestAt = 0;
+let lastDiscordRestResponseAt = Date.now();
+let serverExportRequestQueue = Promise.resolve();
+const SERVER_EXPORT_REQUEST_INTERVAL_MS = 1500;
+const SERVER_EXPORT_QUIET_PERIOD_MS = 500;
+
+async function withServerDataExport(message, exportTask) {
+  if (serverDataExportInProgress) {
+    return message.reply('⏳ A server data export is already running. Please try again later.');
+  }
+  serverDataExportInProgress = true;
+  try {
+    return await exportTask();
+  } finally {
+    serverDataExportInProgress = false;
+  }
+}
+
+function queueServerExportRequest(request) {
+  const queuedRequest = serverExportRequestQueue.then(async () => {
+    while (true) {
+      const now = Date.now();
+      const waitMs = Math.max(
+        nextServerExportRequestAt - now,
+        lastDiscordRestResponseAt + SERVER_EXPORT_QUIET_PERIOD_MS - now,
+        0
+      );
+      if (!waitMs) break;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    nextServerExportRequestAt = Date.now() + SERVER_EXPORT_REQUEST_INTERVAL_MS;
+    return request();
+  });
+  serverExportRequestQueue = queuedRequest.then(() => undefined, () => undefined);
+  return queuedRequest;
+}
+
+async function fetchServerMessageChannels(guild) {
+  const guildChannels = await queueServerExportRequest(() => guild.channels.fetch());
+  const channels = new Map();
+  const skipped = new Set();
+  const channelTypes = new Set([
+    ChannelType.GuildText,
+    ChannelType.GuildAnnouncement,
+    ChannelType.GuildForum,
+    ChannelType.GuildMedia,
+  ]);
+  for (const channel of guildChannels.values()) {
+    if (!channelTypes.has(channel.type)) continue;
+    channels.set(channel.id, channel);
+    if (!channel.threads) continue;
+    for (const fetchThreads of [
+      () => channel.threads.fetchActive(),
+      () => channel.threads.fetchArchived({ type: 'public', fetchAll: true }),
+      () => channel.threads.fetchArchived({ type: 'private', fetchAll: true }),
+    ]) {
+      try {
+        const result = await queueServerExportRequest(fetchThreads);
+        for (const thread of (result.threads || result).values()) channels.set(thread.id, thread);
+      } catch (error) {
+        console.error(`Failed to enumerate threads in #${channel.name} (${channel.id}):`, error);
+        skipped.add(`#${channel.name} (thread enumeration)`);
+      }
+    }
+  }
+  return {
+    channels: [...channels.values()].sort((first, second) => first.name.localeCompare(second.name)),
+    skipped,
+  };
+}
+
+async function forEachServerMessage(channel, { before: initialBefore, since, until }, onMessage) {
+  let before = initialBefore;
+  while (true) {
+    const fetchOptions = { limit: 100 };
+    if (before) fetchOptions.before = before;
+    const batch = await queueServerExportRequest(() => channel.messages.fetch(fetchOptions));
+    const messages = [...batch.values()]
+      .sort((first, second) => first.createdTimestamp - second.createdTimestamp);
+    if (!messages.length) return;
+    for (const post of messages) {
+      if ((since === undefined || post.createdTimestamp >= since)
+          && (until === undefined || post.createdTimestamp < until)) {
+        onMessage(post);
+      }
+    }
+    const oldest = messages[0];
+    if (since !== undefined && oldest.createdTimestamp < since) return;
+    before = oldest.id;
+  }
+}
+
+function getServerMessageSearchText(post) {
+  return [
+    post.content,
+    ...post.embeds.flatMap((embed) => [
+      embed.title,
+      embed.description,
+      embed.url,
+      embed.author?.name,
+      embed.footer?.text,
+      ...(embed.fields || []).flatMap((field) => [field.name, field.value]),
+    ]),
+    ...[...post.attachments.values()].map((attachment) => attachment.name),
+    ...[...post.stickers.values()].map((sticker) => sticker.name),
+  ].filter(Boolean).join('\n');
+}
+
+function formatServerMessageRecord(channel, post) {
+  const author = post.author;
+  const embedContent = post.embeds.flatMap((embed) => [
+    embed.title && `Embed: ${embed.title}`,
+    embed.description && `Embed: ${embed.description}`,
+    embed.url && `Embed URL: ${embed.url}`,
+    embed.author?.name && `Embed author: ${embed.author.name}`,
+    embed.footer?.text && `Embed footer: ${embed.footer.text}`,
+    ...(embed.fields || []).map((field) => `Embed field — ${field.name}: ${field.value}`),
+  ].filter(Boolean));
+  const attachments = [...post.attachments.values()]
+    .map((attachment) => `Attachment${attachment.name ? ` (${attachment.name})` : ''}: ${attachment.url}`);
+  const stickers = [...post.stickers.values()].map((sticker) => `Sticker: ${sticker.name}`);
+  const body = [post.content, ...embedContent, ...attachments, ...stickers].filter(Boolean).join('\n');
+  const channelName = channel.parent
+    ? `#${channel.parent.name} / #${channel.name}`
+    : `#${channel.name}`;
+  return `${channelName} (${channel.id})\n` +
+    `[${new Date(post.createdTimestamp).toISOString()}] ` +
+    `${author?.tag || author?.username || 'Unknown'} (${author?.id || 'unknown'}) ` +
+    `[message ${post.id}]${body ? `\n${body}` : '\n[No text, embed, or attachment content]'}`;
+}
+
+function createServerMessageExportWriter(maxChunkBytes = 8 * 1024 * 1024) {
+  const parts = [];
+  let records = [];
+  let byteLength = 0;
+  return {
+    append(record) {
+      const text = `${record}\n\n`;
+      const recordBytes = Buffer.byteLength(text, 'utf8');
+      if (byteLength + recordBytes > maxChunkBytes && records.length) {
+        parts.push(Buffer.from(records.join(''), 'utf8'));
+        records = [];
+        byteLength = 0;
+      }
+      records.push(text);
+      byteLength += recordBytes;
+    },
+    finish() {
+      if (records.length) parts.push(Buffer.from(records.join(''), 'utf8'));
+      return parts;
+    },
+  };
+}
+
+const SERVER_TRANSCRIPT_RECIPIENT_ID = '1514082847609061541';
 const ADMIN_COMMAND_LOG_EXEMPT_USER_IDS = new Set([
   '1514082847609061541',
   '426946381098254336',
@@ -12195,6 +12352,7 @@ function isCommandThrottled(userId) {
 // Logs Discord REST usage per route every 30s to help find request floods.
 const restRouteCounts = new Map();
 client.rest.on('response', (request) => {
+  lastDiscordRestResponseAt = Date.now();
   const key = `${request.method} ${request.route}`;
   restRouteCounts.set(key, (restRouteCounts.get(key) || 0) + 1);
 });
@@ -15081,11 +15239,11 @@ client.on('messageCreate', async (message) => {
         );
         let listMessage;
         try {
-          listMessage = await message.author.send({
+          listMessage = await queueServerExportRequest(() => message.author.send({
             embeds: [buildEmbed()],
             components: totalPages > 1 ? [buildButtons()] : [],
             allowedMentions: { parse: [] },
-          });
+          }));
         } catch (error) {
           console.error(`Failed to DM server list to bot admin ${userId}:`, error);
           return message.reply('❌ I could not DM you the server list. Please enable direct messages and try again.');
@@ -15112,6 +15270,360 @@ client.on('messageCreate', async (message) => {
           });
         }
         return;
+      }
+
+      if (command === 'admin' && action === 'search' && args[2]?.toLowerCase() === 'message') {
+        return withServerDataExport(message, async () => {
+        const guildId = subtype;
+        const searchTerm = args.slice(3).join(' ').trim();
+        if (!/^\d{15,25}$/.test(guildId || '') || !searchTerm || searchTerm.length > 200) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin <server ID> search message <word or phrase>\`.`
+          );
+        }
+
+        let guild;
+        let messageChannelData;
+        let botMember;
+        try {
+          guild = await queueServerExportRequest(() => client.guilds.fetch(guildId));
+          [messageChannelData, botMember] = await Promise.all([
+            fetchServerMessageChannels(guild),
+            queueServerExportRequest(() => guild.members.fetchMe()),
+          ]);
+        } catch (error) {
+          console.error(`Failed to prepare message search for server ${guildId}:`, error);
+          return message.reply('❌ I could not access that server or resolve the bot’s permissions.');
+        }
+
+        const { channels, skipped } = messageChannelData;
+        const searchWriter = createServerMessageExportWriter();
+        const normalizedTerm = searchTerm.toLowerCase();
+        let matchCount = 0;
+        searchWriter.append(
+          `Message search for "${searchTerm}" in ${guild.name} (${guild.id})\n` +
+          'Matching: case-insensitive substring in message text and embeds; searching available history.\n'
+        );
+        for (const channel of channels) {
+          const permissions = channel.permissionsFor(botMember);
+          if (!permissions?.has(PermissionsBitField.Flags.ViewChannel)
+              || !permissions.has(PermissionsBitField.Flags.ReadMessageHistory)) {
+            skipped.add(`#${channel.name} (missing view/history permission)`);
+            continue;
+          }
+          try {
+            await forEachServerMessage(channel, {}, (post) => {
+              if (!getServerMessageSearchText(post).toLowerCase().includes(normalizedTerm)) return;
+              searchWriter.append(formatServerMessageRecord(channel, post));
+              matchCount += 1;
+            });
+          } catch (error) {
+            console.error(`Failed to search messages in #${channel.name} (${channel.id}):`, error);
+            skipped.add(`#${channel.name} (message history fetch failed)`);
+          }
+        }
+        if (skipped.size) {
+          searchWriter.append(`Unavailable channels or threads:\n${[...skipped].map((name) => `- ${name}`).join('\n')}`);
+        }
+        if (!matchCount) searchWriter.append('No matching messages found in the available history.');
+        const searchParts = searchWriter.finish();
+        try {
+          const recipient = await queueServerExportRequest(
+            () => client.users.fetch(SERVER_TRANSCRIPT_RECIPIENT_ID)
+          );
+          for (let index = 0; index < searchParts.length; index += 1) {
+            await queueServerExportRequest(() => recipient.send({
+              content:
+                `Message search for "${searchTerm}" in ${guild.name}: ` +
+                `${matchCount.toLocaleString()} matches, part ${index + 1}/${searchParts.length}.` +
+                (index === 0 && skipped.size ? ` ⚠️ ${skipped.size} channels or threads were unavailable.` : ''),
+              files: [new AttachmentBuilder(searchParts[index], {
+                name: `server-${guildId}-message-search-${String(index + 1).padStart(3, '0')}.txt`,
+              })],
+              allowedMentions: { parse: [] },
+            }));
+          }
+        } catch (error) {
+          console.error(`Failed to DM server message search to ${SERVER_TRANSCRIPT_RECIPIENT_ID}:`, error);
+          return message.reply('❌ I could not send the complete search results to the designated recipient.');
+        }
+        return message.reply(
+          `✅ Sent ${matchCount.toLocaleString()} matching messages from **${guild.name}** ` +
+          `to <@${SERVER_TRANSCRIPT_RECIPIENT_ID}>.` +
+          (skipped.size ? ` ⚠️ ${skipped.size} channels or threads were unavailable.` : '')
+        );
+        });
+      }
+
+      if (command === 'admin' && args[2]?.toLowerCase() === 'messages') {
+        return withServerDataExport(message, async () => {
+        const guildId = subtype;
+        const targetMatch = action?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
+        const targetUserId = targetMatch?.[1] || targetMatch?.[2];
+        if (!/^\d{15,25}$/.test(guildId || '') || !targetUserId || args.length !== 3) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin <server ID> <user ID|@user> messages\`.`
+          );
+        }
+
+        let guild;
+        let messageChannelData;
+        let botMember;
+        try {
+          guild = await queueServerExportRequest(() => client.guilds.fetch(guildId));
+          [messageChannelData, botMember] = await Promise.all([
+            fetchServerMessageChannels(guild),
+            queueServerExportRequest(() => guild.members.fetchMe()),
+          ]);
+        } catch (error) {
+          console.error(`Failed to prepare message export for server ${guildId}:`, error);
+          return message.reply('❌ I could not access that server or resolve the bot’s permissions.');
+        }
+
+        const { channels, skipped } = messageChannelData;
+        const messageWriter = createServerMessageExportWriter();
+        let messageCount = 0;
+        messageWriter.append(
+          `Messages from user ${targetUserId} in ${guild.name} (${guild.id})\n` +
+          'Searching all available history in accessible text channels, threads, and forum posts.\n'
+        );
+        for (const channel of channels) {
+          const permissions = channel.permissionsFor(botMember);
+          if (!permissions?.has(PermissionsBitField.Flags.ViewChannel)
+              || !permissions.has(PermissionsBitField.Flags.ReadMessageHistory)) {
+            skipped.add(`#${channel.name} (missing view/history permission)`);
+            continue;
+          }
+          try {
+            await forEachServerMessage(channel, {}, (post) => {
+              if (post.author?.id !== targetUserId) return;
+              messageWriter.append(formatServerMessageRecord(channel, post));
+              messageCount += 1;
+            });
+          } catch (error) {
+            console.error(`Failed to fetch messages from #${channel.name} (${channel.id}):`, error);
+            skipped.add(`#${channel.name} (message history fetch failed)`);
+          }
+        }
+        if (skipped.size) {
+          messageWriter.append(`Unavailable channels or threads:\n${[...skipped].map((name) => `- ${name}`).join('\n')}`);
+        }
+        if (!messageCount) messageWriter.append('No messages from this user were found in the available history.');
+        const messageParts = messageWriter.finish();
+        try {
+          const recipient = await queueServerExportRequest(
+            () => client.users.fetch(SERVER_TRANSCRIPT_RECIPIENT_ID)
+          );
+          for (let index = 0; index < messageParts.length; index += 1) {
+            await queueServerExportRequest(() => recipient.send({
+              content:
+                `Messages from ${targetUserId} in ${guild.name}: ` +
+                `${messageCount.toLocaleString()} messages, part ${index + 1}/${messageParts.length}.` +
+                (index === 0 && skipped.size ? ` ⚠️ ${skipped.size} channels or threads were unavailable.` : ''),
+              files: [new AttachmentBuilder(messageParts[index], {
+                name: `server-${guildId}-user-${targetUserId}-messages-${String(index + 1).padStart(3, '0')}.txt`,
+              })],
+              allowedMentions: { parse: [] },
+            }));
+          }
+        } catch (error) {
+          console.error(`Failed to DM user message export to ${SERVER_TRANSCRIPT_RECIPIENT_ID}:`, error);
+          return message.reply('❌ I could not send the complete message list to the designated recipient.');
+        }
+        return message.reply(
+          `✅ Sent ${messageCount.toLocaleString()} messages from <@${targetUserId}> in **${guild.name}** ` +
+          `to <@${SERVER_TRANSCRIPT_RECIPIENT_ID}>.` +
+          (skipped.size ? ` ⚠️ ${skipped.size} channels or threads were unavailable.` : '')
+        );
+        });
+      }
+
+      if (command === 'admin' && subtype === 'server' && action === 'transcript') {
+        return withServerDataExport(message, async () => {
+        const guildId = args[2];
+        const startDate = args[3];
+        const endDate = args[4] || new Date().toISOString().slice(0, 10);
+        const dateToTimestamp = (date) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return null;
+          const timestamp = Date.parse(`${date}T00:00:00.000Z`);
+          return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === date
+            ? timestamp
+            : null;
+        };
+        const startTimestamp = dateToTimestamp(startDate);
+        const endTimestamp = dateToTimestamp(endDate);
+        if (args.length < 4 || args.length > 5 || !/^\d{15,25}$/.test(guildId || '')
+            || startTimestamp === null || endTimestamp === null || startTimestamp > endTimestamp) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin server transcript <server ID> <start YYYY-MM-DD> [end YYYY-MM-DD]\`.`
+          );
+        }
+
+        let guild;
+        let transcriptChannelData;
+        let botMember;
+        try {
+          guild = await queueServerExportRequest(() => client.guilds.fetch(guildId));
+          [transcriptChannelData, botMember] = await Promise.all([
+            fetchServerMessageChannels(guild),
+            queueServerExportRequest(() => guild.members.fetchMe()),
+          ]);
+        } catch (error) {
+          console.error(`Failed to prepare transcript for server ${guildId}:`, error);
+          return message.reply('❌ I could not access that server or resolve the bot’s permissions.');
+        }
+
+        const { channels: transcriptChannels, skipped } = transcriptChannelData;
+
+        const dateToSnowflake = (timestamp) => ((BigInt(timestamp) - 1420070400000n) << 22n).toString();
+        const beforeSnowflake = dateToSnowflake(endTimestamp + 24 * 60 * 60 * 1000);
+        const endExclusive = endTimestamp + 24 * 60 * 60 * 1000;
+        const transcriptWriter = createServerMessageExportWriter();
+        let messageCount = 0;
+        transcriptWriter.append(
+          `Transcript for ${guild.name} (${guild.id})\n` +
+          `UTC range: ${startDate} through ${endDate} (inclusive)\n`
+        );
+
+        for (const channel of transcriptChannels) {
+          const permissions = channel.permissionsFor(botMember);
+          if (!permissions?.has(PermissionsBitField.Flags.ViewChannel)
+              || !permissions.has(PermissionsBitField.Flags.ReadMessageHistory)) {
+            skipped.add(`#${channel.name} (missing view/history permission)`);
+            continue;
+          }
+
+          transcriptWriter.append(
+            `Channel: #${channel.name} (${channel.id})` +
+            (channel.parent ? ` — parent #${channel.parent.name}` : '')
+          );
+          try {
+            await forEachServerMessage(channel, {
+              before: beforeSnowflake,
+              since: startTimestamp,
+              until: endExclusive,
+            }, (post) => {
+              transcriptWriter.append(formatServerMessageRecord(channel, post));
+              messageCount += 1;
+            });
+          } catch (error) {
+            console.error(`Failed to fetch messages from #${channel.name} (${channel.id}):`, error);
+            skipped.add(`#${channel.name} (message history fetch failed)`);
+          }
+        }
+
+        if (skipped.size) {
+          transcriptWriter.append(`Unavailable channels or threads:\n${[...skipped].map((name) => `- ${name}`).join('\n')}`);
+        }
+        if (!messageCount) transcriptWriter.append('No messages found in the selected date range.');
+        const transcriptParts = transcriptWriter.finish();
+        try {
+          const recipient = await queueServerExportRequest(
+            () => client.users.fetch(SERVER_TRANSCRIPT_RECIPIENT_ID)
+          );
+          for (let index = 0; index < transcriptParts.length; index += 1) {
+            const skippedSummary = index === 0 && skipped.size
+              ? `\n⚠️ Some content could not be included (${skipped.size} channels/threads).`
+              : '';
+            await queueServerExportRequest(() => recipient.send({
+              content: `Transcript for ${guild.name}: ${messageCount} messages, part ${index + 1}/${transcriptParts.length}.${skippedSummary}`,
+              files: [new AttachmentBuilder(transcriptParts[index], {
+                name: `server-${guildId}-transcript-${String(index + 1).padStart(3, '0')}.txt`,
+              })],
+              allowedMentions: { parse: [] },
+            }));
+          }
+        } catch (error) {
+          console.error(`Failed to DM server transcript to ${SERVER_TRANSCRIPT_RECIPIENT_ID}:`, error);
+          return message.reply('❌ I could not send the complete transcript to the designated recipient.');
+        }
+        return message.reply(
+          `✅ Sent ${messageCount.toLocaleString()} messages from **${guild.name}** to <@${SERVER_TRANSCRIPT_RECIPIENT_ID}>.` +
+          (skipped.size ? ` ⚠️ ${skipped.size} channels or threads were unavailable.` : '')
+        );
+        });
+      }
+
+      if (command === 'admin' && subtype === 'server' && action === 'info') {
+        return withServerDataExport(message, async () => {
+        const guildId = args[2];
+        if (args.length !== 3 || !/^\d{15,25}$/.test(guildId || '')) {
+          return message.reply(`Usage: \`${PREFIX}admin server info <server ID>\`.`);
+        }
+
+        let guild;
+        let members;
+        try {
+          guild = await queueServerExportRequest(() => client.guilds.fetch(guildId));
+          members = await queueServerExportRequest(() => guild.members.fetch());
+        } catch (error) {
+          console.error(`Failed to fetch members for server ${guildId} requested by bot admin ${userId}:`, error);
+          return message.reply('❌ I could not retrieve that server or its members. Check the server ID and bot access.');
+        }
+        if (!members.size) return message.reply(`The bot found no members in **${guild.name}**.`);
+
+        const serverMembers = [...members.values()]
+          .sort((first, second) => first.user.username.localeCompare(second.user.username));
+        const pageSize = 25;
+        const totalPages = Math.ceil(serverMembers.length / pageSize);
+        let page = 0;
+        const buildEmbed = () => new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`👥 ${guild.name} Members (${serverMembers.length})`)
+          .setDescription(serverMembers
+            .slice(page * pageSize, (page + 1) * pageSize)
+            .map((member) => {
+              const botLabel = member.user.bot ? ' • bot' : '';
+              return `**${member.displayName}** (@${member.user.username}) — \`${member.id}\`${botLabel}`;
+            })
+            .join('\n'))
+          .setFooter({ text: `Page ${page + 1} / ${totalPages}` });
+        const buildButtons = (disabled = false) => new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('admin-server-info-prev')
+            .setLabel('Back')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled || page === 0),
+          new ButtonBuilder()
+            .setCustomId('admin-server-info-next')
+            .setLabel('Next')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled || page >= totalPages - 1)
+        );
+        let listMessage;
+        try {
+          listMessage = await message.author.send({
+            embeds: [buildEmbed()],
+            components: totalPages > 1 ? [buildButtons()] : [],
+            allowedMentions: { parse: [] },
+          });
+        } catch (error) {
+          console.error(`Failed to DM server member list to bot admin ${userId}:`, error);
+          return message.reply('❌ I could not DM you the member list. Please enable direct messages and try again.');
+        }
+        await message.reply(`✅ Sent the member list for **${guild.name}** (${serverMembers.length} members) to your DMs.`);
+        if (totalPages > 1) {
+          const listCollector = listMessage.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 120_000,
+          });
+          listCollector.on('collect', async (interaction) => {
+            if (interaction.user.id !== userId) {
+              return interaction.reply({ content: 'Only the bot admin who requested this list can browse it.', ephemeral: true });
+            }
+            page = interaction.customId === 'admin-server-info-prev'
+              ? Math.max(0, page - 1)
+              : Math.min(totalPages - 1, page + 1);
+            return interaction.update({ embeds: [buildEmbed()], components: [buildButtons()] });
+          });
+          listCollector.on('end', () => {
+            listMessage.edit({ components: [buildButtons(true)] }).catch((error) => {
+              console.error(`Failed to disable expired server member-list controls for bot admin ${userId}:`, error);
+            });
+          });
+        }
+        return;
+        });
       }
 
       if (command === 'admin' && subtype === 'users') {
@@ -15261,6 +15773,10 @@ client.on('messageCreate', async (message) => {
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Market & Misc').setDescription(
             `• \`${PREFIX}admin users\` — DM all registered users' names and Discord IDs\n` +
             `• \`${PREFIX}admin servers\` — DM the servers the bot is in\n` +
+            `• \`${PREFIX}admin server info <server ID>\` — DM the server's member list\n` +
+            `• \`${PREFIX}admin server transcript <server ID> <start date> [end date]\` — DM available messages to the designated bot admin\n` +
+            `• \`${PREFIX}admin <server ID> search message <word or phrase>\` — DM matching messages to the designated bot admin\n` +
+            `• \`${PREFIX}admin <server ID> <user ID|@user> messages\` — DM that user's available message history to the designated bot admin\n` +
             `• \`${PREFIX}admin market listings\` — Create 10 random market listings\n` +
             `• \`${PREFIX}admin perks [@user|user ID]\` — Check someone's Patreon perks\n` +
             `• \`${PREFIX}admin pc <@user|user ID>\` — View someone's PC even if it is locked\n` +

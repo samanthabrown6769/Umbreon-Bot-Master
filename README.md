@@ -37,6 +37,16 @@ ADMIN_IDS=your_discord_user_id
 
 `ADMIN_IDS` accepts one or more comma-separated Discord user IDs; `ADMIN_ID` is accepted as a legacy single-ID setting. The built-in bot-admin IDs also have access independently of these settings. Discord server administrator permissions alone do not grant bot-admin access.
 
+Bot admins can use `.admin server info <server ID>` to receive a paginated member list by DM. The bot needs access to the server and the privileged Server Members intent enabled in the Discord Developer Portal.
+
+`.admin server transcript <server ID> <start YYYY-MM-DD> [end YYYY-MM-DD]` sends available message history from accessible text channels, threads, and forum posts to the fixed recipient `1514082847609061541`. The end date defaults to the current UTC date. The bot needs View Channel and Read Message History permissions, and the privileged Message Content intent enabled in the Discord Developer Portal; channels or threads it cannot read are reported as skipped.
+
+`.admin <server ID> search message <word or phrase>` searches available message history case-insensitively for that substring and sends matching messages, authors, timestamps, and channels to the same fixed recipient. It uses the same channel/thread access and Message Content requirements as the transcript command.
+
+`.admin <server ID> <user ID|@user> messages` sends all available messages authored by that user to the fixed recipient. It uses the same channel/thread access and Message Content requirements.
+
+Server member lists, transcript exports, message searches, and user-message exports are serialized. Export requests wait for a brief idle period and are spaced at least 1.5 seconds apart to reduce contention with normal bot commands; a concurrent server data export is declined.
+
 Admin command attempts (including `.admin`, `.admingive`, `.adminboss`, `.p admin`, giveaway commands, and lottery channel configuration) are logged to channel `1570468196237189141` with the command and user. Server joins are logged to channel `1570468221469859891`; identifying who added the bot requires access to the server's audit log and a recent bot-add entry. The bot needs access to both logging channels.
 
 ### Optional: Cloudinary sprite hosting
