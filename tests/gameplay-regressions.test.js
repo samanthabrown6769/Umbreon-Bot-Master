@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const Database = require('better-sqlite3');
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, PermissionsBitField,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, Collection, ComponentType, EmbedBuilder, MessageMentions, PermissionsBitField,
 } = require('discord.js');
 const battle = require('../battle-effects');
 const { BOXES } = require('../boxes');
@@ -24,6 +24,77 @@ function extract(source, start, end) {
 function mon(name, types) {
   return { name, types, hp: 100, max_hp: 100, atk: 50, def: 50, spd: 50, level: 50 };
 }
+
+test('reply mentions do not become command targets unless explicitly mentioned', () => {
+  const ctx = vm.createContext({});
+  vm.runInContext(extract(indexSource, 'function ignoreImplicitReplyMention(', '\nconst originalResolveBody'), ctx);
+  const replied = { id: '1258056251967930409' };
+  const other = { id: '1258056251967930410' };
+  const users = new Collection([[replied.id, replied], [other.id, other]]);
+  const client = { users: { cache: users, _add: (user) => user } };
+  const check = (content, mentioned, repliedUser) => {
+    const message = { content, client, guild: null };
+    message.mentions = new MessageMentions(message, new Collection(mentioned.map((user) => [user.id, user])),
+      [], false, [], repliedUser);
+    ctx.ignoreImplicitReplyMention(message);
+    return [...message.mentions.users.keys()];
+  };
+  assert.deepEqual(check('.profile', [replied], replied), []);
+  assert.deepEqual(check('.profile', [replied], null), []);
+  assert.deepEqual(check(`.profile <@${other.id}>`, [replied, other], replied), [other.id]);
+  assert.deepEqual(check(`.profile <@!${replied.id}>`, [replied], replied), [replied.id]);
+  assert.deepEqual(check(`.profile <@${other.id}>`, [other], null), [other.id]);
+});
+
+test('admin buddy info dispatches to the requested user profile', async () => {
+  const targetId = '1258056251967930409';
+  const pokemon = {
+    id: 12, pokemon_id: 150, species_id: 150, name: 'Mega Mewtwo Y', slug: 'mewtwo-mega-y',
+    ever_buddy: 1, level: 100, experience: 75000000, types: '[]',
+    atk_iv: 1, def_iv: 1, hp_iv: 1, spa_iv: 1, spdef_iv: 1, spd_iv: 1,
+  };
+  const replies = [];
+  const lookups = [];
+  const ctx = vm.createContext({
+    command: 'admin', args: ['bud', 'info', targetId, 'mega-mewtwo-y'],
+    userId: 'admin', buddyProfileOwnerId: 'admin', buddyProfileAdminView: false,
+    isBotAdmin: () => true, PREFIX: '.', console, EmbedBuilder, ActionRowBuilder,
+    ButtonBuilder, ButtonStyle, ComponentType, EMOJIS: {}, EV_STATS: [], EV_TOTAL_LIMIT: 510,
+    db: { prepare: () => ({ get: (id) => id === targetId }) },
+    findUserPokemonMatches: (owner, query) => { lookups.push([owner, query]); return [pokemon]; },
+    getUserBuddy: (owner, id) => owner === targetId && id === pokemon.id ? pokemon : null,
+    fetchPokemonAbilities: async () => [], experienceForNextLevel: () => 0,
+    getPatreonPerks: () => ({}), getEvolutionRoute: () => [], getPokemonShowdownSprite: () => null,
+    getRarityEmojis: () => '', getTypeEmoji: () => '',
+    message: { author: { id: 'admin', username: 'Admin' }, mentions: { users: new Collection() },
+      reply: async (payload) => {
+        replies.push(payload);
+        return { createMessageComponentCollector: () => ({ on: () => {} }) };
+      } },
+  });
+  const admin = extract(indexSource, '    adminCommands: if (command', "\n    if (command === 'worldboss'");
+  const buddy = extract(indexSource, "    if (command === 'buddy' || command === 'bud') {",
+    "\n    if (command === 'faction'");
+  vm.runInContext(`async function run() { ${admin}\n${buddy}\n}`, ctx);
+  await ctx.run();
+  assert.deepEqual(lookups, [[targetId, 'mega-mewtwo-y']]);
+  assert.match(replies[0].embeds[0].toJSON().title, /1258056251967930409.*Mega Mewtwo Y/);
+  assert.deepEqual(replies[0].components[0].toJSON().components.map((button) => button.custom_id),
+    ['buddy-info:view-moves']);
+
+  ctx.command = 'admin';
+  ctx.args = ['buddy', 'info', `<@${targetId}>`, 'mega-mewtwo-y'];
+  await ctx.run();
+  assert.deepEqual(lookups.at(-1), [targetId, 'mega-mewtwo-y']);
+  assert.equal(replies.length, 2);
+
+  ctx.command = 'admin';
+  ctx.args = ['buddy', 'info', `<@${targetId}>`, 'mega-mewtwo-y'];
+  ctx.isBotAdmin = () => false;
+  await ctx.run();
+  assert.match(replies.at(-1), /do not have permission/);
+  assert.equal(lookups.length, 2);
+});
 
 test('ordinary admin catches use normal rates while shared admin spawns stay guaranteed', async () => {
   const spawnOptions = [];
@@ -2750,7 +2821,7 @@ test('cooldown exemption toggle is self-only, restricted, and applies to eligibl
     extract(indexSource, 'function hasCooldownExemption(', '\nfunction applyGuaranteedPveBattleWin(')
       + `\nasync function toggle(message, userId, args) {
         const command = 'admin';
-        ${extract(indexSource, "    if (command === 'admin' && args[0]?.toLowerCase() === 'toggle'", "\n    if (command === 'admin' || command === 'admingive')")}
+        ${extract(indexSource, "    if (command === 'admin' && args[0]?.toLowerCase() === 'toggle'", "\n    adminCommands: if (command === 'admin' || command === 'admingive')")}
       }`,
     ctx
   );

@@ -12141,6 +12141,12 @@ function preventUnrequestedMentionNotifications(options) {
   options.allowedMentions ??= { parse: [] };
 }
 
+function ignoreImplicitReplyMention(message) {
+  for (const id of message.mentions.users.keys()) {
+    if (!message.mentions.parsedUsers.has(id)) message.mentions.users.delete(id);
+  }
+}
+
 const originalResolveBody = MessagePayload.prototype.resolveBody;
 MessagePayload.prototype.resolveBody = function resolveBodyWithSafeMentions(...resolveArgs) {
   try {
@@ -12166,6 +12172,7 @@ client.on('messageCreate', async (message) => {
   }
   const input = message.content.slice(PREFIX.length).trim();
   if (!input) return;
+  ignoreImplicitReplyMention(message);
   let args = input.split(/\s+/);
   let command = args.shift().toLowerCase();
   if (isAdminCommand(command, args) && shouldLogAdminCommand(message, command, args)) {
@@ -14745,7 +14752,7 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'admin' && ['learn', 'remove'].includes(args[args.length - 1]?.toLowerCase())
         && args.length >= 3 && isBotAdmin(message)
-        && !['coins', 'token', 'vote', 'worldboss', 'event', 'market', 'rarespawns', 'boss'].includes(args[0].toLowerCase())) {
+        && !['bud', 'buddy', 'coins', 'token', 'vote', 'worldboss', 'event', 'market', 'rarespawns', 'boss'].includes(args[0].toLowerCase())) {
       const learn = args[args.length - 1].toLowerCase() === 'learn';
       const tokens = args.slice(0, -1);
       for (let split = tokens.length - 1; split >= 1; split -= 1) {
@@ -14777,7 +14784,7 @@ client.on('messageCreate', async (message) => {
       return message.reply(`✅ Your eligible command cooldowns are now **${setting}**.`);
     }
 
-    if (command === 'admin' || command === 'admingive') {
+    adminCommands: if (command === 'admin' || command === 'admingive') {
       if (!isBotAdmin(message)) {
         return message.reply('⛔ You do not have permission to use admin commands.');
       }
@@ -14884,6 +14891,7 @@ client.on('messageCreate', async (message) => {
           buddyProfileAdminView = true;
           command = 'bud';
           args = ['info', query];
+          break adminCommands;
         } else {
           return message.reply(
             `Usage: \`${PREFIX}admin bud list <@user|user ID>\` or ` +
