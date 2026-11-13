@@ -3,7 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const Database = require('better-sqlite3');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder } = require('discord.js');
+const {
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, PermissionsBitField,
+} = require('discord.js');
 const battle = require('../battle-effects');
 const { BOXES } = require('../boxes');
 const { pickWeighted } = require('../spawn-weights');
@@ -382,6 +384,51 @@ test('World Boss reminder is scheduled 20 seconds before battle and is sent only
   await ctx.remindWorldBossRegistrationClosing({ ...boss, id: 8 });
   assert.equal(sent.length, 1);
   db.close();
+});
+
+test('World Boss spawn announcement pings the configured roles', async () => {
+  const sent = [];
+  const savedPosts = [];
+  const channel = {
+    id: 'channel',
+    guildId: 'guild',
+    isTextBased: () => true,
+    permissionsFor: () => ({ has: () => true }),
+    send: async (payload) => {
+      sent.push(payload);
+      return { id: 'post' };
+    },
+  };
+  const ctx = vm.createContext({
+    client: { user: {} },
+    PermissionsBitField,
+    WORLD_BOSS_GUILD_ID: 'guild',
+    WORLD_BOSS_PING_ROLE_ID: 'boss-role',
+    ETERNAMAX_PING_ROLE_ID: 'eternamax-role',
+    createWorldBossEmbed: () => ({}),
+    setWorldBossAnnouncementPost: (...args) => savedPosts.push(args),
+  });
+  vm.runInContext(
+    extract(indexSource, 'function getWorldBossPingRoles(', '\nasync function postWorldBossAnnouncementToChannel('),
+    ctx
+  );
+  const channelPost = extract(
+    indexSource,
+    'async function postWorldBossAnnouncementToChannel(',
+    '\nasync function announceWorldBossEverywhere('
+  );
+  vm.runInContext(channelPost, ctx);
+
+  await ctx.postWorldBossAnnouncementToChannel(
+    { id: 'guild', members: { me: {} } },
+    channel,
+    { id: 7, name: 'Eternamax Eternatus' }
+  );
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].content, '<@&boss-role> <@&eternamax-role>');
+  assert.deepEqual(Array.from(sent[0].allowedMentions.roles), ['boss-role', 'eternamax-role']);
+  assert.deepEqual(savedPosts, [[7, 'guild', 'channel', 'post']]);
 });
 
 test('PC dex sort orders displayed numbers across favorites and variants and works with rarity buttons', async () => {
@@ -818,12 +865,13 @@ test('admin command attempts are classified and logged with their original text'
   );
   for (const [command, args] of [
     ['admin', ['pc']], ['admingive', ['boss']], ['adminboss', []],
-    ['p', ['ADMIN']], ['pokemon', ['admin']], ['autospawn', ['set']],
+    ['p', ['ADMIN']], ['pokemon', ['admin']],
     ['gstart', ['pokemon']], ['giveaway', ['set']], ['lot', ['channel']],
   ]) {
     assert.equal(context.isAdminCommand(command, args), true);
   }
   assert.equal(context.isAdminCommand('p', []), false);
+  assert.equal(context.isAdminCommand('autospawn', ['set']), false);
   assert.equal(context.isAdminCommand('lottery', ['buy']), false);
   await context.sendAdminCommandLog({
     content: '.admin pokemon <@123> shiny Mew',
@@ -2540,7 +2588,7 @@ test('Simple Beam affects world boss stat changes across switches and damaging m
   const pool = [{ id: 1, name: 'Boss', baseHp: 50, baseAtk: 50, baseDef: 50, baseSpd: 50 }];
   const ctx = vm.createContext({
     Math: math, battleFx: battle, WORLD_BOSS_POOL: pool, WORLD_BOSS_DUMMY_HP: 1600,
-    WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER: 0.5, EMOJIS: {},
+    WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER: 0.25, EMOJIS: {},
     db: { prepare: () => ({ get: () => ({ types: '["normal"]' }) }) },
     createBattleField: battle.createField, combatStats: () => ({}),
     getWorldBossTeamMoves: (team) => team.map((pokemon) => ({
@@ -2591,8 +2639,8 @@ test('Simple Beam affects world boss stat changes across switches and damaging m
   const clearWeather = ctx.runWorldBossMove('clear-weather', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx);
   moveCtx.field.weather = 'rain';
   const rainy = ctx.runWorldBossMove('rainy-weather', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx);
-  assert.equal(clearWeather.damage, 175);
-  assert.equal(rainy.damage, 263);
+  assert.equal(clearWeather.damage, 87);
+  assert.equal(rainy.damage, 131);
 
   ctx.getWorldBossTeamMoves = (team) => team.map((entry) => ({
     pokemon: entry, teamIndex: 0, types: ['poison'], moves: [thunderbolt],
@@ -2600,7 +2648,7 @@ test('Simple Beam affects world boss stat changes across switches and damaging m
   moveCtx.field.weather = null;
   moveCtx.field.terrain = 'electric';
   const terrainBoosted = ctx.runWorldBossMove('electric-terrain', [pokemon], boss, 0, 0, 1, bs.mon, bs.boss, moveCtx);
-  assert.equal(terrainBoosted.damage, 228);
+  assert.equal(terrainBoosted.damage, 114);
 
   const normal = battleContext();
   battle.performMove(normal, { mon: normal.player, side: 'player' }, { mon: normal.enemy, side: 'enemy' },
@@ -3185,7 +3233,7 @@ function autospawnContext() {
 
 test('autospawn targets include 500 and only that chat target rolls a Legendary', () => {
   const { ctx, db, setRoll } = autospawnContext();
-  assert.equal(db.prepare("SELECT enabled FROM autospawn_channels WHERE guild_id='other'").get().enabled, 0);
+  assert.equal(db.prepare("SELECT enabled FROM autospawn_channels WHERE guild_id='other'").get().enabled, 1);
   assert.equal(db.prepare("SELECT enabled FROM autospawn_channels WHERE guild_id='1560102297198006274'").get().enabled, 1);
   assert.equal(db.prepare("SELECT enabled FROM autospawn_channels WHERE guild_id='1566723679994380288'").get().enabled, 1);
   setRoll(0);
@@ -3208,7 +3256,7 @@ test('autospawn targets include 500 and only that chat target rolls a Legendary'
   db.close();
 });
 
-test('scheduled autospawns preserve chat progress and disallowed servers cannot spawn', async () => {
+test('scheduled autospawns preserve chat progress and work in any configured server', async () => {
   const { ctx, db } = autospawnContext();
   const config = { guild_id: '1560102297198006274', channel_id: 'allowed-channel', message_count: 12, message_target: 500 };
   const state = ctx.createAutoSpawnState(config);
@@ -3232,7 +3280,7 @@ test('scheduled autospawns preserve chat progress and disallowed servers cannot 
   state.active = false;
   await ctx.triggerAutoSpawn({ ...channel, guildId: 'other' }, { ...config, guild_id: 'other' }, state);
   ctx.trackAutoSpawnMessage({ guild: { id: 'other' } });
-  assert.equal(sent, 2);
+  assert.equal(sent, 3);
   const secondGuildId = '1566723679994380288';
   const secondConfig = { guild_id: secondGuildId, channel_id: 'new-allowed-channel', message_count: 0, message_target: 15 };
   await ctx.triggerAutoSpawn(
@@ -3240,11 +3288,11 @@ test('scheduled autospawns preserve chat progress and disallowed servers cannot 
     secondConfig,
     { count: 0, nextTarget: 15, active: false }
   );
-  assert.equal(sent, 3);
+  assert.equal(sent, 4);
   db.close();
 });
 
-test('scheduler ignores other servers and the chat counter triggers at 500', async () => {
+test('scheduler processes all enabled servers and the chat counter triggers at 500', async () => {
   const { ctx, db } = autospawnContext();
   const guildId = '1560102297198006274';
   const titles = [];
@@ -3255,7 +3303,13 @@ test('scheduler ignores other servers and the chat counter triggers at 500', asy
       return { createMessageComponentCollector: () => ({ on: () => {} }) };
     },
   };
-  const guild = { id: guildId, channels: { cache: new Map([[channel.id, channel]]) } };
+  const guild = {
+    id: guildId,
+    channels: {
+      cache: new Map([[channel.id, channel]]),
+      fetch: async (channelId) => channelId === channel.id ? channel : null,
+    },
+  };
   const fetched = [];
   ctx.client.guilds.fetch = async (id) => { fetched.push(id); return guild; };
   ctx.getAllAutoSpawnChannels = () => [
@@ -3264,7 +3318,7 @@ test('scheduler ignores other servers and the chat counter triggers at 500', asy
   ];
   db.prepare('UPDATE autospawn_channels SET message_count=499 WHERE guild_id=?').run(guildId);
   await ctx.runScheduledAutospawns();
-  assert.deepEqual(fetched, [guildId]);
+  assert.deepEqual(fetched, ['other', guildId]);
   assert.match(titles[0], /Common/);
   vm.runInContext(`autospawnStates.get('${guildId}').active = false`, ctx);
   ctx.trackAutoSpawnMessage({ guild });
@@ -3312,33 +3366,65 @@ test('catching an autospawn awards the Pokémon without advancing eggs', async (
   db.close();
 });
 
-test('autospawn command requires a bot admin and an allowed server', async () => {
+test('autospawn command is available to server members in any server', async () => {
   const source = extract(indexSource, "    if (command === 'autospawn') {", "\n    if (command === 'lottery'");
   const ctx = vm.createContext({
-    AUTOSPAWN_GUILD_IDS: new Set(['1560102297198006274', '1566723679994380288']),
-    isBotAdmin: (message) => message.isAdmin, PREFIX: '.', ChannelType: { GuildText: 0 },
+    PREFIX: '.', ChannelType: { GuildText: 0 },
     setAutoSpawnChannel: () => { ctx.setCalled = true; }, autospawnStates: new Map(),
   });
   vm.runInContext(`async function run(message, args) { const command = 'autospawn'; ${source} }`, ctx);
   const message = {
-    guildId: '1560102297198006274', isAdmin: false, member: { permissions: { has: () => true } },
-    channel: { guildId: '1560102297198006274', type: 0, id: 'channel' },
+    guildId: 'other', member: { permissions: { has: () => true } },
+    channel: { guildId: 'other', type: 0, id: 'channel' },
     mentions: { channels: { first: () => null } }, reply: (text) => text,
   };
-  assert.match(await ctx.run(message, ['set']), /Only bot admins/);
-  message.isAdmin = true;
-  message.guildId = 'other';
-  assert.match(await ctx.run(message, ['set']), /designated server/);
-  assert.equal(ctx.setCalled, undefined);
-  message.guildId = '1566723679994380288';
-  message.channel.guildId = message.guildId;
   assert.match(await ctx.run(message, ['set']), /15–500/);
   assert.equal(ctx.setCalled, true);
-  ctx.setCalled = false;
-  message.guildId = '1560102297198006274';
-  message.channel.guildId = message.guildId;
-  assert.match(await ctx.run(message, ['set']), /15–500/);
-  assert.equal(ctx.setCalled, true);
+});
+
+test('World Boss registration servers include the added guild', () => {
+  const ctx = vm.createContext({});
+  vm.runInContext(
+    extract(indexSource, "const WORLD_BOSS_GUILD_ID =", '\nconst WORLD_BOSS_EMOJI'),
+    ctx
+  );
+  assert.equal(vm.runInContext("WORLD_BOSS_GUILD_IDS.has('1560102297198006274')", ctx), true);
+  assert.equal(vm.runInContext("WORLD_BOSS_GUILD_IDS.has('1570468039206506546')", ctx), true);
+  assert.equal(vm.runInContext("WORLD_BOSS_GUILD_IDS.has('other')", ctx), false);
+});
+
+test('World Boss progress edits are coalesced and throttled', async () => {
+  const timers = [];
+  const announcementUpdates = [];
+  const raidEdits = [];
+  const boss = { id: 1 };
+  const ctx = vm.createContext({
+    setTimeout: (callback, delay) => {
+      const timer = { callback, delay };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimeout: () => {},
+    getActiveWorldBoss: () => boss,
+    createWorldBossEmbed: () => ({}),
+    activeWorldBossPosts: new Map([
+      [1, new Map([
+        ['post', { message: { edit: async (payload) => raidEdits.push(payload) } }],
+      ])],
+    ]),
+    updateWorldBossAnnouncement: async (...args) => announcementUpdates.push(args),
+  });
+  vm.runInContext(
+    extract(indexSource, 'const WORLD_BOSS_PROGRESS_INTERVAL_MS', '\nfunction cancelWorldBossProgressUpdate('),
+    ctx
+  );
+  for (let i = 0; i < 10; i += 1) ctx.scheduleWorldBossProgressUpdate(boss.id, {});
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 15000);
+  await timers[0].callback();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(announcementUpdates.length, 1);
+  assert.equal(raidEdits.length, 1);
 });
 
 test('wild item rolls use 5% for Pokémon and fishing encounters while retaining boosts', () => {

@@ -5392,7 +5392,7 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   };
 }
 
-const WORLD_BOSS_PROGRESS_INTERVAL_MS = 5000;
+const WORLD_BOSS_PROGRESS_INTERVAL_MS = 15000;
 const worldBossProgressTimers = new Map();
 const worldBossRegistrationTimers = new Map();
 const worldBossReminderTimers = new Map();
@@ -6471,7 +6471,7 @@ const ADMIN_COMMAND_LOG_EXEMPT_USER_IDS = new Set([
 
 function isAdminCommand(command, args) {
   const subcommand = args[0]?.toLowerCase();
-  return ['admin', 'admingive', 'adminboss', 'autospawn', 'gstart'].includes(command)
+  return ['admin', 'admingive', 'adminboss', 'gstart'].includes(command)
     || (['p', 'pokemon'].includes(command) && subcommand === 'admin')
     || (command === 'giveaway')
     || (['lottery', 'lot'].includes(command) && ['channel', 'setchannel'].includes(subcommand));
@@ -7757,7 +7757,7 @@ const TYPE_EFFECTIVENESS = {
 };
 
 const MOVE_DAMAGE_SCALE = 0.45;
-const WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER = 0.5;
+const WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER = 0.25;
 const WORLD_BOSS_COUNTER_DAMAGE_MULTIPLIER = 2;
 // The boss's real HP is huge, so status chip damage is tracked on a small dummy HP pool and scaled up.
 const WORLD_BOSS_DUMMY_HP = 1600;
@@ -11242,7 +11242,7 @@ const MEGA_STONE_EMOJIS = {
 const stoneLabel = (name) => `${MEGA_STONE_EMOJIS[name] ? `${MEGA_STONE_EMOJIS[name]} ` : ''}**${name}**`;
 
 const WORLD_BOSS_GUILD_ID = '1560102297198006274';
-const WORLD_BOSS_GUILD_IDS = [WORLD_BOSS_GUILD_ID];
+const WORLD_BOSS_GUILD_IDS = new Set([WORLD_BOSS_GUILD_ID, '1570468039206506546']);
 const WORLD_BOSS_CHANNEL_ID = '1560104155232600146';
 const WORLD_BOSS_EMOJI = '<:worldboss:1559925077167054978>';
 const GIVEAWAY_PING_ROLE_ID = '1560108609898156042';
@@ -11675,17 +11675,8 @@ async function showHeldItemList(message, userId) {
 }
 
 const autospawnStates = new Map();
-const AUTOSPAWN_GUILD_IDS = new Set([
-  '1560102297198006274',
-  '1566723679994380288',
-]);
 const AUTOSPAWN_GUESS_MS = 25 * 1000;
 const AUTOSPAWN_INTERVAL_MS = 10 * 60 * 1000;
-
-db.prepare(
-  `UPDATE autospawn_channels SET enabled = 0 WHERE guild_id NOT IN (${[...AUTOSPAWN_GUILD_IDS]
-    .map(() => '?').join(', ')}) AND enabled = 1`
-).run(...AUTOSPAWN_GUILD_IDS);
 
 function getAutospawnThreshold() {
   return Math.floor(Math.random() * 486) + 15;
@@ -11752,8 +11743,7 @@ function rollAutospawnTarget({ messageThreshold = null } = {}) {
 }
 
 async function triggerAutoSpawn(channel, guildConfig, state, { messageThreshold = null } = {}) {
-  if (!AUTOSPAWN_GUILD_IDS.has(guildConfig.guild_id)
-      || channel.guildId !== guildConfig.guild_id) return;
+  if (channel.guildId !== guildConfig.guild_id) return;
   if (state.active) return;
   state.active = true;
   console.log(`[autospawn] triggering spawn in channel ${channel.id}`);
@@ -11852,7 +11842,7 @@ async function triggerAutoSpawn(channel, guildConfig, state, { messageThreshold 
 }
 
 function trackAutoSpawnMessage(message) {
-  if (!message.guild || !AUTOSPAWN_GUILD_IDS.has(message.guild.id)) return;
+  if (!message.guild) return;
   const guildConfig = getAutoSpawnChannel(message.guild.id);
   if (!guildConfig) return;
   let state = autospawnStates.get(message.guild.id);
@@ -11877,7 +11867,6 @@ function trackAutoSpawnMessage(message) {
 
 async function runScheduledAutospawns() {
   for (const config of getAllAutoSpawnChannels()) {
-    if (!AUTOSPAWN_GUILD_IDS.has(config.guild_id)) continue;
     try {
       const guild = await client.guilds.fetch(config.guild_id).catch(() => null);
       if (!guild) continue;
@@ -13699,7 +13688,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}evolve <Pokémon> [item]\` / \`${PREFIX}use <item> <Pokémon>\` — Evolve with an item, level, or high friendship (catch Pokémon with a buddy to raise it)\n` +
             `• \`${PREFIX}hold <item> <Pokémon>\` / \`${PREFIX}unhold <Pokémon>\` — Hold an evolution item\n` +
             `• \`${PREFIX}giveaway set [#channel]\` / \`${PREFIX}gstart items|coins|pokemon ...\` — Manage Server: run giveaways\n` +
-            `• \`${PREFIX}autospawn set [#channel]\` / \`${PREFIX}autospawn disable\` — Bot admins: toggle button-guess wild spawns\n` +
+            `• \`${PREFIX}autospawn set [#channel]\` / \`${PREFIX}autospawn disable\` — Configure button-guess wild spawns for this server\n` +
             `• \`${PREFIX}clan add co-owner @member\` — Add up to 3 co-owners (one primary owner)\n` +
             `• \`${PREFIX}clan transfer ownership @member\` — Transfer leadership to a current clan member\n` +
             `• \`${PREFIX}clan invite @user\` — Invite a player to your clan with accept/deny buttons\n` +
@@ -13767,7 +13756,7 @@ client.on('messageCreate', async (message) => {
           `• \`${PREFIX}streak\` — View your daily streak and rarity streaks\n` +
           `• \`${PREFIX}lottery\` / \`${PREFIX}lot\` — View the lottery; \`${PREFIX}lottery buy <amount>\` buys tickets\n` +
           `• \`${PREFIX}lottery channel [#channel]\` — Manage Channels: set the lottery results channel\n` +
-          `• \`${PREFIX}autospawn set [#channel]\` / \`${PREFIX}autospawn disable\` — Bot admins: wild spawns\n` +
+          `• \`${PREFIX}autospawn set [#channel]\` / \`${PREFIX}autospawn disable\` — Configure wild spawns for this server\n` +
           `• \`${PREFIX}giveaway set [#channel]\` — Manage Server: set the giveaway channel\n` +
           `• \`${PREFIX}help\` — Show this list; admins can use \`${PREFIX}admin help\``
         );
@@ -13917,12 +13906,6 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'autospawn') {
       if (!message.guildId) return message.reply('Autospawn can only be configured inside a server.');
-      if (!isBotAdmin(message)) {
-        return message.reply('⛔ Only bot admins can configure autospawn.');
-      }
-      if (!AUTOSPAWN_GUILD_IDS.has(message.guildId)) {
-        return message.reply('⛔ Autospawn is only available in the designated server.');
-      }
       const action = args[0]?.toLowerCase();
       if (action === 'set') {
         const targetChannel = message.mentions.channels.first() || message.channel;
@@ -15042,7 +15025,6 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin rarespawns setup\` / \`channel #channel|off\` — Create or set the rare-spawn channel\n` +
             `• \`${PREFIX}giveaway set [#channel]\` — Giveaway channel (Manage Server)\n` +
             `• \`${PREFIX}lottery channel [#channel]\` — Lottery results channel (Manage Channels)\n` +
-            `• \`${PREFIX}autospawn set [#channel]\` / \`${PREFIX}autospawn disable\` — Autospawn channel (bot admins)\n` +
             `• \`${PREFIX}channel add boost\` — eligible Patreon supporters boost a channel for everyone with a +5% rate boost (up to 10 channels)\n` +
             `• \`${PREFIX}channel remove all\` — remove all of your personal channel boosts\n` +
             `• \`${PREFIX}channel boost\` — list your boosted channels across all servers`
@@ -16434,8 +16416,8 @@ client.on('messageCreate', async (message) => {
         );
       }
       if (subCommand === 'register') {
-        if (message.guildId !== WORLD_BOSS_GUILD_ID) {
-          return message.reply('❌ World Boss registration is only available in the official server. You can still fight from anywhere once registered.');
+        if (!WORLD_BOSS_GUILD_IDS.has(message.guildId)) {
+          return message.reply('❌ World Boss registration is only available in configured World Boss servers. You can still fight from anywhere once registered.');
         }
         const currentTeam = getUserTeam(userId);
         if (!currentTeam.length) {
