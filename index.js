@@ -6522,15 +6522,16 @@ const RARE_SPAWN_LOG_CHANNEL_ID = '1570468169422864485';
 const GUILD_JOIN_REPORT_ADMIN_ID = '1514082847609061541';
 const ADMIN_COMMAND_LOG_CHANNEL_ID = '1570468196237189141';
 const GUILD_JOIN_LOG_CHANNEL_ID = '1570468221469859891';
-const AUCTION_ANNOUNCEMENT_CHANNEL_ID = '1571135807769546752';
+const AUCTION_ANNOUNCEMENT_CHANNEL_ID = '1571138032793296896';
+const AUCTION_PING_ROLE_ID = '1571138319054667888';
 
 let auctionAnnouncementsInProgress = false;
 async function sendAuctionAnnouncements() {
-  if (auctionAnnouncementsInProgress) return;
+  if (auctionAnnouncementsInProgress) return false;
   auctionAnnouncementsInProgress = true;
   try {
     let rows = auctions.pendingNotifications(100);
-    if (!rows.length) return;
+    if (!rows.length) return true;
     const channel = await client.channels.fetch(AUCTION_ANNOUNCEMENT_CHANNEL_ID);
     if (!channel?.isTextBased() || typeof channel.send !== 'function') {
       throw new Error('Auction announcement channel is not a sendable text channel.');
@@ -6539,7 +6540,7 @@ async function sendAuctionAnnouncements() {
       const first = rows[0];
       const batch = [];
       for (const row of rows) {
-        if (row.kind !== first.kind || batch.length === 10
+        if (row.kind !== first.kind || batch.length === 20
             || (first.kind === 'created'
               && (row.ends_at !== first.ends_at || row.minimum_bid !== first.minimum_bid))) break;
         batch.push(row);
@@ -6563,12 +6564,21 @@ async function sendAuctionAnnouncements() {
           ? `Bid with ${PREFIX}auction bid {ID} {amount}`
           : `View past auctions with ${PREFIX}auction history` })
         .setTimestamp();
-      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      await channel.send({
+        content: first.kind === 'created' ? `<@&${AUCTION_PING_ROLE_ID}>` : undefined,
+        embeds: [embed],
+        allowedMentions: {
+          parse: [],
+          roles: first.kind === 'created' ? [AUCTION_PING_ROLE_ID] : [],
+        },
+      });
       auctions.markNotificationsDelivered(batch.map((row) => row.notification_id));
       rows = auctions.pendingNotifications(100);
     }
+    return true;
   } catch (error) {
     console.error('Failed to send auction announcements; pending announcements will be retried:', error);
+    return false;
   } finally {
     auctionAnnouncementsInProgress = false;
   }
@@ -6741,6 +6751,26 @@ function isAdminCommand(command, args) {
     || (['p', 'pokemon'].includes(command) && subcommand === 'admin')
     || (command === 'giveaway')
     || (['lottery', 'lot'].includes(command) && ['channel', 'setchannel'].includes(subcommand));
+}
+
+async function getBannedCommandTargetName(message, input, command, args) {
+  if (command === 'admin' && args[0]?.toLowerCase() === 'unban') return null;
+  const ids = new Set(message.mentions.users.keys());
+  for (const id of input.match(/\b\d{15,25}\b/g) || []) ids.add(id);
+  for (const id of ids) {
+    if (!isUserBanned(id)) continue;
+    let target = message.mentions.users.get(id) || client.users.cache.get(id);
+    if (!target) {
+      try {
+        target = await client.users.fetch(id);
+      } catch (error) {
+        console.error(`Failed to fetch banned command target ${id}:`, error);
+        return `<@${id}>`;
+      }
+    }
+    return target.username || `<@${id}>`;
+  }
+  return null;
 }
 
 function shouldLogAdminCommand(message, command, args) {
@@ -12467,8 +12497,14 @@ client.on('messageCreate', async (message) => {
   if (isAdminCommand(command, args) && shouldLogAdminCommand(message, command, args)) {
     void sendAdminCommandLog(message);
   }
-  if (isUserBanned(message.author.id)) return;
+  if (isUserBanned(message.author.id)) {
+    return message.reply(`${message.author.username} is permanently banned from the game`);
+  }
   if (isCommandThrottled(message.author.id)) return;
+  const bannedTargetName = await getBannedCommandTargetName(message, input, command, args);
+  if (bannedTargetName) {
+    return message.reply(`${bannedTargetName} is permanently banned from the game`);
+  }
   if (command === 'mbuy') {
     command = 'market';
     args.unshift('buy');
@@ -15825,6 +15861,7 @@ client.on('messageCreate', async (message) => {
             `• Edit the files in \`pokemon-database/\` (names, rarity, numbers, sprites) and restart the bot to apply`
           ),
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Market & Misc').setDescription(
+            `• \`${PREFIX}admin auction start\` — Start up to 50 queued auctions; announcements show 20 Pokémon per embed\n` +
             `• \`${PREFIX}admin users\` — DM all registered users' names and Discord IDs\n` +
             `• \`${PREFIX}admin servers\` — DM the servers the bot is in\n` +
             `• \`${PREFIX}admin server info <server ID>\` — DM the server's member list\n` +
@@ -15840,7 +15877,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin icon <@user|user ID> <battle icon name|NPC number>\` — Unlock a battle icon for someone\n` +
             `• \`${PREFIX}admin clan perks <@User|id> [bronze|silver|gold|diamond|amethyst|onyx|none]\` — Grant clan perks (default onyx)\n` +
             `• \`${PREFIX}admin clan delete <clan name>\` — Delete a clan\n` +
-            `• \`${PREFIX}admin ban <@User|id>\` / \`${PREFIX}admin multiban <id> <id> ...\` — Ban users and auction their Pokémon\n` +
+            `• \`${PREFIX}admin ban <@User|id>\` / \`${PREFIX}admin multiban <id> <id> ...\` — Ban users and queue eligible Pokémon for auction\n` +
             `• \`${PREFIX}admin unban <@User|id>\` — Unban a user from the bot\n` +
             `• \`${PREFIX}admin wipe <@User|id> confirm\` — Delete a user's data and Pokémon while keeping clan membership and clan lifetime totals`
           ),
@@ -16168,11 +16205,25 @@ client.on('messageCreate', async (message) => {
         const results = banUsers(ids);
         const newlyBanned = results.filter((result) => !result.alreadyBanned);
         const auctioned = newlyBanned.reduce((sum, result) => sum + result.auctioned, 0);
-        void sendAuctionAnnouncements();
         return message.reply(
-          `🔨 Banned **${newlyBanned.length}** account(s); **${auctioned}** Pokémon sent to auction. ` +
+          `🔨 Banned **${newlyBanned.length}** account(s); **${auctioned}** eligible Pokémon queued for auction. ` +
           `Already banned: **${results.length - newlyBanned.length}**.`
         );
+      }
+
+      if (command === 'admin' && subtype === 'auction') {
+        if (args.length !== 2 || action !== 'start') {
+          return message.reply(`Usage: \`${PREFIX}admin auction start\`.`);
+        }
+        const started = auctions.startQueued();
+        if (!started) return message.reply('There are no queued Pokémon auctions to start.');
+        const announced = await sendAuctionAnnouncements();
+        if (!announced) {
+          return message.reply(
+            `⚖️ Started **${started}** queued Pokémon auction${started === 1 ? '' : 's'}, but announcement delivery is pending.`
+          );
+        }
+        return message.reply(`⚖️ Started **${started}** queued Pokémon auction${started === 1 ? '' : 's'}.`);
       }
 
       if (command === 'admin' && ['ban', 'unban', 'wipe'].includes(subtype)) {
@@ -16184,8 +16235,7 @@ client.on('messageCreate', async (message) => {
         if (subtype === 'ban') {
           if (isUserBanned(targetId)) return message.reply(`ℹ️ <@${targetId}> is already banned.`);
           const auctioned = banUser(targetId);
-          void sendAuctionAnnouncements();
-          return message.reply(`🔨 Banned <@${targetId}> from the bot. ${auctioned} Pokémon sent to auction. Use \`${PREFIX}admin wipe ${targetId} confirm\` to also delete their data.`);
+          return message.reply(`🔨 Banned <@${targetId}> from the bot. ${auctioned} eligible Pokémon queued for auction. Use \`${PREFIX}admin wipe ${targetId} confirm\` to also delete their data.`);
         }
         if (args[2]?.toLowerCase() !== 'confirm') {
           return message.reply(`⚠️ This sends eligible Pokémon to auction and permanently deletes other Pokémon and personal data for <@${targetId}>, while keeping clan membership and clan lifetime totals. Run \`${PREFIX}admin wipe ${targetId} confirm\` to proceed.`);

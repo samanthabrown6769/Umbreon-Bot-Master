@@ -9481,7 +9481,7 @@ function banUser(userId) {
     auctions.settle();
     auctions.cancelLeadingBids(userId);
     db.prepare('INSERT OR REPLACE INTO banned_users (user_id, banned_at) VALUES (?, ?)').run(userId, Date.now());
-    return auctions.confiscate(userId, Date.now(), auctions.getEligibility(), { all: true, startingBid: 10 });
+    return auctions.confiscate(userId, Date.now(), auctions.getEligibility(), { queued: true, startingBid: 10 });
   }).immediate();
 }
 
@@ -9500,7 +9500,7 @@ function backfillBannedAuctions() {
   for (const { user_id: userId } of banned) {
     db.transaction(() => {
       auctions.cancelLeadingBids(userId);
-      auctions.confiscate(userId, Date.now(), criteria);
+      auctions.confiscate(userId, Date.now(), criteria, { queued: true, startingBid: 10 });
     }).immediate();
   }
 }

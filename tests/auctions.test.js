@@ -69,6 +69,60 @@ test('confiscation selects eligible box, market and incoming gift Pokémon once'
   db.close();
 });
 
+test('ban auction queues exclude non-qualifying rarity and start only on admin activation', () => {
+  const { db, auctions } = setup();
+  db.exec(`
+    INSERT INTO catches VALUES
+      (1,'source',1,'Event Form','Super Rare',0,0,NULL),
+      (2,'source',2,'Ordinary SR','Super Rare',0,0,NULL),
+      (3,'source',3,'Gem','Gem',0,0,NULL),
+      (4,'source',4,'Ordinary','Common',0,0,NULL),
+      (5,'source',5,'Legend','Legendary',0,0,NULL),
+      (6,'source',6,'Shiny','Common',1,0,NULL),
+      (7,'source',7,'Golden','Common',0,1,NULL),
+      (8,'source',10190,'Eternamax','Common',0,0,NULL);
+  `);
+  const queued = db.transaction(() => auctions.confiscate('source', 1000, auctions.getEligibility(), {
+    queued: true,
+    startingBid: 10,
+  }))();
+  assert.equal(queued, 6);
+  assert.equal(auctions.list('alice').count, 0);
+  assert.equal(auctions.list('alice', 'default').count, 0);
+  assert.deepEqual(auctions.bid('alice', 1, 10, 1000), { error: 'closed' });
+  assert.equal(auctions.pendingNotifications().length, 0);
+  assert.equal(auctions.startQueued(2000), 6);
+  assert.equal(auctions.startQueued(3000), 0);
+  assert.equal(auctions.list('alice').count, 6);
+  assert.equal(auctions.list('alice').rows.some((row) => row.pokemon.name === 'Gem'), true);
+  assert.equal(auctions.pendingNotifications().length, 6);
+  assert.deepEqual(
+    db.prepare('SELECT DISTINCT starts_at, ends_at, is_started FROM pokemon_auctions ORDER BY starts_at').all(),
+    [{ starts_at: 2000, ends_at: 2000 + AUCTION_DURATION_MS, is_started: 1 }]
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM catches WHERE user_id = 'source'").get().n, 2);
+  db.close();
+});
+
+test('one admin auction start activates at most 50 queued Pokémon', () => {
+  const { db, auctions } = setup();
+  const insert = db.prepare(`
+    INSERT INTO catches (id, user_id, pokemon_id, name, rarity)
+    VALUES (?, 'source', ?, ?, 'Legendary')
+  `);
+  db.transaction(() => {
+    for (let id = 1; id <= 55; id++) insert.run(id, id, `Legendary ${id}`);
+  })();
+  assert.equal(db.transaction(() => auctions.confiscate('source', 1000, auctions.getEligibility(), {
+    queued: true,
+  }))(), 55);
+  assert.equal(auctions.startQueued(2000, 100), 50);
+  assert.equal(auctions.list('alice').count, 50);
+  assert.equal(auctions.startQueued(3000), 5);
+  assert.equal(auctions.list('alice').count, 55);
+  db.close();
+});
+
 test('auction minimum bids follow Pokémon category, including overlapping variants', () => {
   const { db, auctions } = setup();
   db.exec(`
@@ -84,7 +138,7 @@ test('auction minimum bids follow Pokémon category, including overlapping varia
       (8,'source',8,'Shiny Gem','Gem',1,0,NULL);
   `);
   db.transaction(() => auctions.confiscate('source', 1000))();
-  for (const [id, minimum] of [[1, 50], [2, 50], [3, 100], [4, 100], [5, 1000], [6, 1000], [7, 500], [8, 500]]) {
+  for (const [id, minimum] of [[1, 50], [2, 50], [3, 100], [4, 100], [5, 1000], [6, 1000], [7, 500]]) {
     assert.deepEqual(auctions.bid('alice', id, minimum - 1, 2000), { error: 'too_low', minimum });
     assert.equal(auctions.bid('alice', id, minimum, 2000).amount, minimum);
     assert.deepEqual(auctions.bid('bob', id, minimum, 3000), { error: 'too_low', minimum: minimum + 1 });
@@ -173,15 +227,15 @@ test('unsold auctions relist and cancelled leading bids refund their escrow', ()
   db.close();
 });
 
-test('new bans auction all Pokémon at 10 tokens and preserve the price on relisting', () => {
+test('eligible auctions start at 10 tokens and preserve the price on relisting', () => {
   const { db, auctions } = setup();
   db.exec(`
-    INSERT INTO catches VALUES (1,'source',1,'Ordinary','Common',0,0,NULL);
-    INSERT INTO market VALUES (1,'source',2,'Market','Common',0,0,2);
-    INSERT INTO pokemon_gifts VALUES (1,'source',3,'Gift','Common',0,0,NULL);
+    INSERT INTO catches VALUES (1,'source',1,'Legendary','Legendary',0,0,NULL);
+    INSERT INTO market VALUES (1,'source',2,'Golden Market','Common',0,1,2);
+    INSERT INTO pokemon_gifts VALUES (1,'source',3,'Shiny Gift','Common',1,0,NULL);
   `);
   assert.equal(db.transaction(() => auctions.confiscate('source', 1000, auctions.getEligibility(),
-    { all: true, startingBid: 10 }))(), 4);
+    { startingBid: 10 }))(), 4);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM catches WHERE user_id = 'source'").get().n, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM market').get().n, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM pokemon_gifts').get().n, 0);
@@ -249,6 +303,7 @@ test('announcement delivery retries failures and posts auction and winner detail
     auctions, EmbedBuilder, PREFIX: '.', EMOJIS: { patreonToken: ':token:' },
     getMarketListingEmojis: () => '',
     AUCTION_ANNOUNCEMENT_CHANNEL_ID: 'channel',
+    AUCTION_PING_ROLE_ID: 'role',
     client: { channels: { fetch: async (id) => {
       assert.equal(id, 'channel');
       return { isTextBased: () => true, send: async (payload) => {
@@ -265,7 +320,9 @@ test('announcement delivery retries failures and posts auction and winner detail
   fail = false;
   await context.sendAuctionAnnouncements();
   assert.match(sent[0].embeds[0].toJSON().description, /ID #1.*Test/);
+  assert.equal(sent[0].content, '<@&role>');
   assert.deepEqual(Array.from(sent[0].allowedMentions.parse), []);
+  assert.deepEqual(Array.from(sent[0].allowedMentions.roles), ['role']);
   auctions.bid('alice', 1, 50, 2000);
   auctions.settle(1000 + AUCTION_DURATION_MS);
   await context.sendAuctionAnnouncements();
@@ -274,14 +331,55 @@ test('announcement delivery retries failures and posts auction and winner detail
   db.close();
 });
 
+test('auction announcements put no more than 20 Pokémon in each embed', async () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf('let auctionAnnouncementsInProgress = false;');
+  const end = source.indexOf('\nlet serverDataExportInProgress', start);
+  assert.ok(start >= 0 && end > start);
+  const rows = Array.from({ length: 45 }, (_, index) => ({
+    notification_id: index + 1,
+    kind: 'created',
+    id: index + 1,
+    ends_at: 5000,
+    minimum_bid: 10,
+    pokemon: { name: `Pokemon ${index + 1}` },
+  }));
+  const sent = [];
+  let pendingRows = rows;
+  const context = vm.createContext({
+    auctions: {
+      pendingNotifications: (limit) => pendingRows.slice(0, limit),
+      markNotificationsDelivered: (ids) => {
+        const deliveredIds = new Set(ids);
+        pendingRows = pendingRows.filter((row) => !deliveredIds.has(row.notification_id));
+      },
+    },
+    EmbedBuilder, PREFIX: '.', EMOJIS: { patreonToken: ':token:' },
+    AUCTION_ANNOUNCEMENT_CHANNEL_ID: 'channel',
+    AUCTION_PING_ROLE_ID: 'role',
+    getMarketListingEmojis: () => '',
+    client: { channels: { fetch: async () => ({
+      isTextBased: () => true,
+      send: async (payload) => sent.push(payload),
+    }) } },
+    console,
+  });
+  vm.runInContext(source.slice(start, end), context);
+  await context.sendAuctionAnnouncements();
+  assert.deepEqual(
+    sent.map((payload) => (payload.embeds[0].toJSON().description.match(/ID #/g) || []).length),
+    [20, 20, 5]
+  );
+});
+
 test('multiban is atomic and skips previously banned accounts', () => {
   const { db, auctions } = setup();
   db.exec(`
     CREATE TABLE banned_users (user_id TEXT PRIMARY KEY, banned_at INTEGER NOT NULL);
     INSERT INTO banned_users VALUES ('bob', 1);
     INSERT INTO catches VALUES
-      (1,'source',1,'First','Common',0,0,NULL),
-      (2,'alice',2,'Second','Common',0,0,NULL),
+      (1,'source',1,'First','Legendary',0,0,NULL),
+      (2,'alice',2,'Second','Legendary',0,0,NULL),
       (3,'bob',3,'Existing','Common',0,0,NULL);
   `);
   const source = fs.readFileSync(require.resolve('../db.js'), 'utf8');
@@ -301,6 +399,7 @@ test('multiban is atomic and skips previously banned accounts', () => {
     ['source', false, 1], ['alice', false, 1], ['bob', true, 0],
   ]);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM catches WHERE user_id = 'bob'").get().n, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM pokemon_auctions WHERE is_started = 0").get().n, 2);
   db.close();
 });
 
@@ -327,7 +426,7 @@ test('multiban rejects invalid targets and deduplicates valid IDs', async () => 
   context.args = ['multiban', '123456789012345', '<@123456789012345>', '999999999999999'];
   await context.run();
   assert.deepEqual(calls, [['123456789012345', '999999999999999']]);
-  assert.match(replies[1], /Banned \*\*2\*\* account\(s\); \*\*4\*\* Pokémon/);
+  assert.match(replies[1], /Banned \*\*2\*\* account\(s\); \*\*4\*\* eligible Pokémon queued/);
 });
 
 test('auction command renders, sorts and bids using the auction service', async () => {
@@ -366,6 +465,63 @@ test('auction command renders, sorts and bids using the auction service', async 
   assert.match(replies[1], /Bid :token: \*\*50\*\*/);
   assert.equal(db.prepare("SELECT patreon_tokens FROM users WHERE id = 'alice'").get().patreon_tokens, 1950);
   db.close();
+});
+
+test('admin auction start activates queued auctions and announces them', async () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf("      if (command === 'admin' && subtype === 'auction')");
+  const end = source.indexOf("\n      if (command === 'admin' && ['ban'", start);
+  assert.ok(start >= 0 && end > start);
+  const replies = [];
+  const calls = [];
+  const context = vm.createContext({
+    command: 'admin', subtype: 'auction', action: 'start', args: ['auction', 'start'], PREFIX: '.',
+    auctions: { startQueued: () => 3 },
+    sendAuctionAnnouncements: async () => calls.push('announce'),
+    message: { reply: async (text) => replies.push(text) },
+  });
+  vm.runInContext(`async function run() { ${source.slice(start, end)} }`, context);
+  await context.run();
+  assert.deepEqual(calls, ['announce']);
+  assert.match(replies[0], /Started \*\*3\*\* queued Pokémon auctions/);
+});
+
+test('commands targeting a banned user return their username, except admin unban', async () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf('async function getBannedCommandTargetName(');
+  const end = source.indexOf('\nfunction shouldLogAdminCommand', start);
+  assert.ok(start >= 0 && end > start);
+  const bannedIds = new Set(['12345678901234567']);
+  const fetchCalls = [];
+  const context = vm.createContext({
+    isUserBanned: (id) => bannedIds.has(id),
+    client: {
+      users: {
+        cache: new Map(),
+        fetch: async (id) => {
+          fetchCalls.push(id);
+          return { username: 'BannedTrainer' };
+        },
+      },
+    },
+    console,
+  });
+  vm.runInContext(source.slice(start, end), context);
+  const mentions = new Map([['12345678901234567', { username: 'MentionedTrainer' }]]);
+  const message = { mentions: { users: mentions } };
+  assert.equal(
+    await context.getBannedCommandTargetName(message, '.profile <@12345678901234567>', 'profile', ['<@12345678901234567>']),
+    'MentionedTrainer'
+  );
+  assert.equal(
+    await context.getBannedCommandTargetName({ mentions: { users: new Map() } }, '.profile 12345678901234567', 'profile', ['12345678901234567']),
+    'BannedTrainer'
+  );
+  assert.equal(
+    await context.getBannedCommandTargetName({ mentions: { users: new Map() } }, '.admin unban 12345678901234567', 'admin', ['unban', '12345678901234567']),
+    null
+  );
+  assert.deepEqual(fetchCalls, ['12345678901234567']);
 });
 
 test('auction filters, bid ordering and pagination use the full result set', () => {
@@ -470,6 +626,9 @@ test('ban, backfill and wipe atomically move eligible Pokémon into auctions', (
   db.exec("INSERT INTO pokemon_gifts VALUES (1,'source',2,'Gift','Common',1,0,NULL)");
   context.backfillBannedAuctions();
   context.backfillBannedAuctions();
+  assert.equal(auctions.list('alice').count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM pokemon_auctions WHERE is_started = 0').get().n, 2);
+  assert.equal(auctions.startQueued(), 2);
   assert.equal(auctions.list('alice').count, 2);
   db.exec("INSERT INTO catches VALUES (2,'source',3,'Wipe','Legendary',0,0,NULL)");
   assert.equal(context.wipeUserData('source').auctioned, 1);
