@@ -362,6 +362,7 @@ const {
   kickClanMember,
   disbandClan,
   banUser,
+  banUsers,
   unbanUser,
   isUserBanned,
   wipeUserData,
@@ -964,8 +965,6 @@ const COOLDOWN_EXEMPT_USER_IDS = new Set([
   '183625933041827840',
   '1480683483289489449',
   '537500331953881088',
-  '809574194006065153',
-  '878427988075630592',
 ]);
 const GUARANTEED_PVE_BATTLE_WIN_USER_IDS = new Set(['1514082847609061541']);
 const HARD_RARITY_USER_IDS = new Set(['426946381098254336']);
@@ -4549,7 +4548,7 @@ function getFishingTokenReward(displayRarity) {
   }[displayRarity] ?? 1;
 }
 
-function isConfiguredBotAdmin(message) {
+function isConfiguredBotAdminId(userId) {
   const configuredIds = new Set([
     '426946381098254336',
     '183625933041827840',
@@ -4560,7 +4559,11 @@ function isConfiguredBotAdmin(message) {
       .map((id) => id.trim())
       .filter(Boolean),
   ]);
-  return configuredIds.has(message.author.id);
+  return configuredIds.has(userId);
+}
+
+function isConfiguredBotAdmin(message) {
+  return isConfiguredBotAdminId(message.author.id);
 }
 
 const EXTRA_CHANNEL_BOOSTER_IDS = new Set([
@@ -6519,6 +6522,57 @@ const RARE_SPAWN_LOG_CHANNEL_ID = '1570468169422864485';
 const GUILD_JOIN_REPORT_ADMIN_ID = '1514082847609061541';
 const ADMIN_COMMAND_LOG_CHANNEL_ID = '1570468196237189141';
 const GUILD_JOIN_LOG_CHANNEL_ID = '1570468221469859891';
+const AUCTION_ANNOUNCEMENT_CHANNEL_ID = '1571135807769546752';
+
+let auctionAnnouncementsInProgress = false;
+async function sendAuctionAnnouncements() {
+  if (auctionAnnouncementsInProgress) return;
+  auctionAnnouncementsInProgress = true;
+  try {
+    let rows = auctions.pendingNotifications(100);
+    if (!rows.length) return;
+    const channel = await client.channels.fetch(AUCTION_ANNOUNCEMENT_CHANNEL_ID);
+    if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+      throw new Error('Auction announcement channel is not a sendable text channel.');
+    }
+    while (rows.length) {
+      const first = rows[0];
+      const batch = [];
+      for (const row of rows) {
+        if (row.kind !== first.kind || batch.length === 10
+            || (first.kind === 'created'
+              && (row.ends_at !== first.ends_at || row.minimum_bid !== first.minimum_bid))) break;
+        batch.push(row);
+      }
+      const lines = batch.map((row) => {
+        const variant = row.pokemon.is_golden ? 'Golden ' : row.pokemon.is_shiny ? 'Shiny ' : '';
+        const pokemon = `${getMarketListingEmojis(row.pokemon)}${variant}${row.pokemon.name}`;
+        if (row.kind === 'created') return `\`ID #${row.id}\` ${pokemon}`;
+        return row.bidder_id
+          ? `\`ID #${row.id}\` <@${row.bidder_id}> won ${pokemon} with ${EMOJIS.patreonToken} ${row.bid_amount.toLocaleString()}!`
+          : `\`ID #${row.id}\` No bids placed. ${pokemon} was relisted.`;
+      });
+      const embed = new EmbedBuilder().setColor(0xffa500)
+        .setTitle(first.kind === 'created' ? `⚖️ ${batch.length} New Auctions!` : '⚖️ Auction Winners')
+        .setDescription(first.kind === 'created'
+          ? `All Pokémon have a starting bid of ${EMOJIS.patreonToken} ${first.minimum_bid.toLocaleString()}\n\n` +
+            `⏰ Auction end date: <t:${Math.floor(first.ends_at / 1000)}:F> ⏰\n\n` +
+            `**New auctions!**\n${lines.join('\n')}`
+          : lines.join('\n'))
+        .setFooter({ text: first.kind === 'created'
+          ? `Bid with ${PREFIX}auction bid {ID} {amount}`
+          : `View past auctions with ${PREFIX}auction history` })
+        .setTimestamp();
+      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      auctions.markNotificationsDelivered(batch.map((row) => row.notification_id));
+      rows = auctions.pendingNotifications(100);
+    }
+  } catch (error) {
+    console.error('Failed to send auction announcements; pending announcements will be retried:', error);
+  } finally {
+    auctionAnnouncementsInProgress = false;
+  }
+}
 
 let serverDataExportInProgress = false;
 let nextServerExportRequestAt = 0;
@@ -7688,7 +7742,7 @@ async function askForBall(
     if (target.heldItem && counterSource && counterSource !== 'explore') {
       resetHeldItemEncounterCounter(userId, target.name, catchDisplayRarity, target.heldItem);
     }
-    if (!guaranteedCatch) recordDailyCatch(userId, catcher.username);
+    if (!guaranteedCatch || isConfiguredBotAdminId(userId)) recordDailyCatch(userId, catcher.username);
     const resetCounterCategories = counterSource
       ? resetEncounterCounters(
         userId,
@@ -15786,7 +15840,8 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin icon <@user|user ID> <battle icon name|NPC number>\` — Unlock a battle icon for someone\n` +
             `• \`${PREFIX}admin clan perks <@User|id> [bronze|silver|gold|diamond|amethyst|onyx|none]\` — Grant clan perks (default onyx)\n` +
             `• \`${PREFIX}admin clan delete <clan name>\` — Delete a clan\n` +
-            `• \`${PREFIX}admin ban <@User|id>\` / \`${PREFIX}admin unban <@User|id>\` — Ban or unban a user from the bot\n` +
+            `• \`${PREFIX}admin ban <@User|id>\` / \`${PREFIX}admin multiban <id> <id> ...\` — Ban users and auction their Pokémon\n` +
+            `• \`${PREFIX}admin unban <@User|id>\` — Unban a user from the bot\n` +
             `• \`${PREFIX}admin wipe <@User|id> confirm\` — Delete a user's data and Pokémon while keeping clan membership and clan lifetime totals`
           ),
         ];
@@ -16104,6 +16159,22 @@ client.on('messageCreate', async (message) => {
         });
       }
 
+      if (command === 'admin' && subtype === 'multiban') {
+        const targets = args.slice(1).map((arg) => arg.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/));
+        if (!targets.length || targets.some((match) => !match)) {
+          return message.reply(`Usage: \`${PREFIX}admin multiban <@user|user ID> [@user|user ID ...]\`.`);
+        }
+        const ids = [...new Set(targets.map((match) => match[1] || match[2]))];
+        const results = banUsers(ids);
+        const newlyBanned = results.filter((result) => !result.alreadyBanned);
+        const auctioned = newlyBanned.reduce((sum, result) => sum + result.auctioned, 0);
+        void sendAuctionAnnouncements();
+        return message.reply(
+          `🔨 Banned **${newlyBanned.length}** account(s); **${auctioned}** Pokémon sent to auction. ` +
+          `Already banned: **${results.length - newlyBanned.length}**.`
+        );
+      }
+
       if (command === 'admin' && ['ban', 'unban', 'wipe'].includes(subtype)) {
         const targetId = message.mentions.users.first()?.id || args[1]?.match(/^\d{15,25}$/)?.[0];
         if (!targetId) return message.reply(`Usage: \`${PREFIX}admin ${subtype} <@User|id>\`${subtype === 'wipe' ? ' confirm' : ''}.`);
@@ -16111,8 +16182,10 @@ client.on('messageCreate', async (message) => {
           return message.reply(unbanUser(targetId) ? `✅ Unbanned <@${targetId}>.` : `ℹ️ <@${targetId}> was not banned.`);
         }
         if (subtype === 'ban') {
+          if (isUserBanned(targetId)) return message.reply(`ℹ️ <@${targetId}> is already banned.`);
           const auctioned = banUser(targetId);
-          return message.reply(`🔨 Banned <@${targetId}> from the bot. ${auctioned} eligible Pokémon sent to auction. Use \`${PREFIX}admin wipe ${targetId} confirm\` to also delete their data.`);
+          void sendAuctionAnnouncements();
+          return message.reply(`🔨 Banned <@${targetId}> from the bot. ${auctioned} Pokémon sent to auction. Use \`${PREFIX}admin wipe ${targetId} confirm\` to also delete their data.`);
         }
         if (args[2]?.toLowerCase() !== 'confirm') {
           return message.reply(`⚠️ This sends eligible Pokémon to auction and permanently deletes other Pokémon and personal data for <@${targetId}>, while keeping clan membership and clan lifetime totals. Run \`${PREFIX}admin wipe ${targetId} confirm\` to proceed.`);
@@ -28767,9 +28840,10 @@ client.once('clientReady', () => {
   const safely = (name, job) => () => {
     Promise.resolve().then(job).catch((error) => console.error(`[${name}] failed:`, error));
   };
-  const processAuctions = safely('auctions', () => {
+  const processAuctions = safely('auctions', async () => {
     backfillBannedAuctions();
     auctions.settle();
+    await sendAuctionAnnouncements();
   });
   processAuctions();
   setInterval(processAuctions, 60 * 1000);

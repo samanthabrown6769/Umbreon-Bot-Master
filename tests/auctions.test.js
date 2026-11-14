@@ -173,6 +173,163 @@ test('unsold auctions relist and cancelled leading bids refund their escrow', ()
   db.close();
 });
 
+test('new bans auction all Pokémon at 10 tokens and preserve the price on relisting', () => {
+  const { db, auctions } = setup();
+  db.exec(`
+    INSERT INTO catches VALUES (1,'source',1,'Ordinary','Common',0,0,NULL);
+    INSERT INTO market VALUES (1,'source',2,'Market','Common',0,0,2);
+    INSERT INTO pokemon_gifts VALUES (1,'source',3,'Gift','Common',0,0,NULL);
+  `);
+  assert.equal(db.transaction(() => auctions.confiscate('source', 1000, auctions.getEligibility(),
+    { all: true, startingBid: 10 }))(), 4);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM catches WHERE user_id = 'source'").get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM market').get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM pokemon_gifts').get().n, 0);
+  assert.deepEqual(auctions.bid('alice', 1, 9, 2000), { error: 'too_low', minimum: 10 });
+  assert.equal(auctions.bid('alice', 1, 10, 2000).amount, 10);
+  auctions.settle(1000 + AUCTION_DURATION_MS);
+  assert.equal(auctions.list('alice').rows[0].minimum_bid, 10);
+  db.close();
+});
+
+test('auction notifications survive failures and include winners and relistings', () => {
+  const { db, auctions } = setup();
+  db.exec("INSERT INTO catches VALUES (1,'source',1,'First','Legendary',0,0,NULL), (2,'source',2,'Second','Legendary',0,0,NULL)");
+  db.transaction(() => auctions.confiscate('source', 1000))();
+  const created = auctions.pendingNotifications();
+  assert.deepEqual(created.map((row) => row.kind), ['created', 'created']);
+  auctions.markNotificationsDelivered([created[0].notification_id]);
+  assert.deepEqual(auctions.pendingNotifications().map((row) => row.id), [2]);
+  auctions.bid('alice', 1, 50, 2000);
+  auctions.settle(1000 + AUCTION_DURATION_MS);
+  const pending = auctions.pendingNotifications();
+  assert.deepEqual(pending.map((row) => [row.kind, row.id]), [
+    ['created', 2], ['settled', 1], ['settled', 2], ['created', 3],
+  ]);
+  assert.equal(pending[1].bidder_id, 'alice');
+  assert.equal(pending[1].bid_amount, 50);
+  assert.equal(pending[2].bidder_id, null);
+  auctions.settle(1000 + AUCTION_DURATION_MS);
+  assert.equal(auctions.pendingNotifications().length, 4);
+  db.close();
+});
+
+test('upgrading an existing auction table preserves its minimum and does not announce old auctions', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE market (seller_id TEXT);
+    CREATE TABLE pokemon_auctions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, pokemon_json TEXT NOT NULL, source_user_id TEXT NOT NULL,
+      starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, ended_at INTEGER, bidder_id TEXT,
+      bid_amount INTEGER NOT NULL DEFAULT 0, bid_count INTEGER NOT NULL DEFAULT 0, last_bid_at INTEGER
+    );
+    INSERT INTO pokemon_auctions (pokemon_json, source_user_id, starts_at, ends_at)
+    VALUES ('{"pokemon_id":1,"name":"Old","rarity":"Legendary","is_shiny":0,"is_golden":0}', 'source', 1, 100000);
+  `);
+  const dependencies = { db, getUser: () => ({ patreon_tokens: 1000 }) };
+  const auctions = createAuctions(dependencies);
+  createAuctions(dependencies);
+  assert.equal(auctions.list('alice').rows[0].minimum_bid, 50);
+  assert.equal(auctions.pendingNotifications().length, 0);
+  db.close();
+});
+
+test('announcement delivery retries failures and posts auction and winner details', async () => {
+  const { db, auctions } = setup();
+  db.exec("INSERT INTO catches VALUES (1,'source',1,'Test','Legendary',0,0,NULL)");
+  db.transaction(() => auctions.confiscate('source', 1000))();
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf('let auctionAnnouncementsInProgress = false;');
+  const end = source.indexOf('\nlet serverDataExportInProgress', start);
+  assert.ok(start >= 0 && end > start);
+  const sent = [];
+  const errors = [];
+  let fail = true;
+  const context = vm.createContext({
+    auctions, EmbedBuilder, PREFIX: '.', EMOJIS: { patreonToken: ':token:' },
+    getMarketListingEmojis: () => '',
+    AUCTION_ANNOUNCEMENT_CHANNEL_ID: 'channel',
+    client: { channels: { fetch: async (id) => {
+      assert.equal(id, 'channel');
+      return { isTextBased: () => true, send: async (payload) => {
+        if (fail) throw new Error('unavailable');
+        sent.push(payload);
+      } };
+    } } },
+    console: { error: (...args) => errors.push(args) },
+  });
+  vm.runInContext(source.slice(start, end), context);
+  await context.sendAuctionAnnouncements();
+  assert.equal(errors.length, 1);
+  assert.equal(auctions.pendingNotifications().length, 1);
+  fail = false;
+  await context.sendAuctionAnnouncements();
+  assert.match(sent[0].embeds[0].toJSON().description, /ID #1.*Test/);
+  assert.deepEqual(Array.from(sent[0].allowedMentions.parse), []);
+  auctions.bid('alice', 1, 50, 2000);
+  auctions.settle(1000 + AUCTION_DURATION_MS);
+  await context.sendAuctionAnnouncements();
+  assert.match(sent[1].embeds[0].toJSON().description, /<@alice> won .*Test.*50/);
+  assert.equal(auctions.pendingNotifications().length, 0);
+  db.close();
+});
+
+test('multiban is atomic and skips previously banned accounts', () => {
+  const { db, auctions } = setup();
+  db.exec(`
+    CREATE TABLE banned_users (user_id TEXT PRIMARY KEY, banned_at INTEGER NOT NULL);
+    INSERT INTO banned_users VALUES ('bob', 1);
+    INSERT INTO catches VALUES
+      (1,'source',1,'First','Common',0,0,NULL),
+      (2,'alice',2,'Second','Common',0,0,NULL),
+      (3,'bob',3,'Existing','Common',0,0,NULL);
+  `);
+  const source = fs.readFileSync(require.resolve('../db.js'), 'utf8');
+  const start = source.indexOf('function banUser(');
+  const end = source.indexOf('\nfunction wipeUserData(', start);
+  const context = vm.createContext({ db, auctions, Date });
+  vm.runInContext(source.slice(start, end), context);
+  db.exec(`CREATE TRIGGER reject_second BEFORE INSERT ON pokemon_auctions
+    WHEN NEW.source_user_id = 'alice' BEGIN SELECT RAISE(ABORT, 'queue failed'); END`);
+  assert.throws(() => context.banUsers(['source', 'alice']), /queue failed/);
+  assert.equal(context.isUserBanned('source'), false);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM pokemon_auctions').get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM catches').get().n, 3);
+  db.exec('DROP TRIGGER reject_second');
+  const results = context.banUsers(['source', 'alice', 'bob']);
+  assert.deepEqual(Array.from(results, (row) => [row.userId, row.alreadyBanned, row.auctioned]), [
+    ['source', false, 1], ['alice', false, 1], ['bob', true, 0],
+  ]);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM catches WHERE user_id = 'bob'").get().n, 1);
+  db.close();
+});
+
+test('multiban rejects invalid targets and deduplicates valid IDs', async () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf("      if (command === 'admin' && subtype === 'multiban')");
+  const end = source.indexOf("\n      if (command === 'admin' && ['ban'", start);
+  assert.ok(start >= 0 && end > start);
+  const calls = [];
+  const replies = [];
+  const context = vm.createContext({
+    command: 'admin', subtype: 'multiban', PREFIX: '.', args: ['multiban', '123456789012345', 'bad'],
+    banUsers: (ids) => {
+      calls.push(Array.from(ids));
+      return ids.map((userId) => ({ userId, alreadyBanned: false, auctioned: 2 }));
+    },
+    sendAuctionAnnouncements: async () => {},
+    message: { reply: async (text) => replies.push(text) },
+  });
+  vm.runInContext(`async function run() { ${source.slice(start, end)} }`, context);
+  await context.run();
+  assert.match(replies[0], /Usage/);
+  assert.equal(calls.length, 0);
+  context.args = ['multiban', '123456789012345', '<@123456789012345>', '999999999999999'];
+  await context.run();
+  assert.deepEqual(calls, [['123456789012345', '999999999999999']]);
+  assert.match(replies[1], /Banned \*\*2\*\* account\(s\); \*\*4\*\* Pokémon/);
+});
+
 test('auction command renders, sorts and bids using the auction service', async () => {
   const { db, auctions } = setup();
   db.exec(`

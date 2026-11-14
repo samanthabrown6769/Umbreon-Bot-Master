@@ -1,11 +1,11 @@
 const AUCTION_DURATION_MS = 48 * 60 * 60 * 1000;
-const AUCTION_STARTING_BID_SQL = `CASE
+const AUCTION_STARTING_BID_SQL = `COALESCE(a.starting_bid, CASE
   WHEN json_extract(a.pokemon_json, '$.pokemon_id') = 10190 THEN 1000
   WHEN lower(json_extract(a.pokemon_json, '$.rarity')) = 'gem' THEN 500
   WHEN json_extract(a.pokemon_json, '$.is_shiny') = 1
     OR json_extract(a.pokemon_json, '$.is_golden') = 1 THEN 100
   ELSE 50
-END`;
+END)`;
 const AUCTION_NEXT_BID_SQL = `MAX(${AUCTION_STARTING_BID_SQL}, a.bid_amount + 1)`;
 
 function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, rebaseTransferredPokemon, syncNewCatchState }) {
@@ -33,7 +33,19 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
       bid_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS pokemon_auction_bids_user_idx ON pokemon_auction_bids(bidder_id, auction_id);
+    CREATE TABLE IF NOT EXISTS pokemon_auction_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      auction_id INTEGER NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('created', 'settled')),
+      delivered_at INTEGER,
+      UNIQUE (auction_id, kind)
+    );
+    CREATE INDEX IF NOT EXISTS pokemon_auction_notifications_pending_idx
+      ON pokemon_auction_notifications(delivered_at, id);
   `);
+  if (!db.prepare('PRAGMA table_info(pokemon_auctions)').all().some((column) => column.name === 'starting_bid')) {
+    db.exec('ALTER TABLE pokemon_auctions ADD COLUMN starting_bid INTEGER');
+  }
 
   const normalize = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   function eventNames() {
@@ -52,11 +64,13 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
       || mon.pokemon_id === 10190
       || (String(mon.rarity).toLowerCase() === 'super rare' && names.has(normalize(mon.name)));
   }
-  function enqueue(mon, userId, now) {
-    db.prepare(`
-      INSERT INTO pokemon_auctions (pokemon_json, source_user_id, starts_at, ends_at)
-      VALUES (?, ?, ?, ?)
-    `).run(JSON.stringify(mon), userId, now, now + AUCTION_DURATION_MS);
+  function enqueue(mon, userId, now, startingBid = null) {
+    const result = db.prepare(`
+      INSERT INTO pokemon_auctions (pokemon_json, source_user_id, starts_at, ends_at, starting_bid)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(JSON.stringify(mon), userId, now, now + AUCTION_DURATION_MS, startingBid);
+    db.prepare("INSERT INTO pokemon_auction_notifications (auction_id, kind) VALUES (?, 'created')")
+      .run(result.lastInsertRowid);
   }
   function getEligibility() {
     const legendaryForms = new Set(db.prepare(`
@@ -68,16 +82,17 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
     `).all().map((row) => row.id));
     return { names: eventNames(), legendaryForms };
   }
-  function confiscate(userId, now = Date.now(), criteria = getEligibility()) {
+  function confiscate(userId, now = Date.now(), criteria = getEligibility(), options = {}) {
     const { names, legendaryForms } = criteria;
+    const shouldConfiscate = (mon) => options.all || eligible(mon, names, legendaryForms);
     let count = 0;
     const catches = db.prepare('SELECT * FROM catches WHERE user_id = ?').all(userId);
-    const selected = catches.filter((mon) => eligible(mon, names, legendaryForms));
+    const selected = catches.filter(shouldConfiscate);
     const heldGroups = new Map();
     for (const mon of catches) {
       const key = JSON.stringify([mon.pokemon_id, mon.is_shiny, mon.is_golden]);
       const group = heldGroups.get(key) || { remaining: false, item: null };
-      if (!eligible(mon, names, legendaryForms)) group.remaining = true;
+      if (!shouldConfiscate(mon)) group.remaining = true;
       else if (mon.held_item) group.item = mon.held_item;
       heldGroups.set(key, group);
     }
@@ -86,7 +101,7 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
     }
     const removed = new Set();
     for (const mon of selected) {
-      enqueue(mon, userId, now);
+      enqueue(mon, userId, now, options.startingBid);
       db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE id = ? AND buddy_catch_id = ?').run(userId, mon.id);
       db.prepare('DELETE FROM catches WHERE id = ? AND user_id = ?').run(mon.id, userId);
       removed.add(mon.id);
@@ -102,16 +117,16 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
       }
     }
     for (const listing of db.prepare('SELECT * FROM market WHERE seller_id = ?').all(userId)) {
-      if (!eligible(listing, names, legendaryForms)) continue;
+      if (!shouldConfiscate(listing)) continue;
       for (let i = 0; i < listing.amount; i++) {
-        enqueue(listing, userId, now);
+        enqueue(listing, userId, now, options.startingBid);
         count++;
       }
       db.prepare('DELETE FROM market WHERE id = ?').run(listing.id);
     }
     for (const gift of db.prepare('SELECT * FROM pokemon_gifts WHERE recipient_id = ?').all(userId)) {
-      if (!eligible(gift, names, legendaryForms)) continue;
-      enqueue(gift, userId, now);
+      if (!shouldConfiscate(gift)) continue;
+      enqueue(gift, userId, now, options.startingBid);
       db.prepare('DELETE FROM pokemon_gifts WHERE id = ?').run(gift.id);
       count++;
     }
@@ -143,10 +158,13 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
               || !syncNewCatchState(auction.bidder_id, catchId)) {
             throw new Error(`Could not restore Pokémon for auction ${auction.id}.`);
           }
-        } else {
-          enqueue(mon, auction.source_user_id, now);
         }
         db.prepare('UPDATE pokemon_auctions SET ended_at = ? WHERE id = ?').run(now, auction.id);
+        db.prepare("INSERT INTO pokemon_auction_notifications (auction_id, kind) VALUES (?, 'settled')")
+          .run(auction.id);
+        if (!auction.bidder_id) {
+          enqueue(mon, auction.source_user_id, now, auction.starting_bid);
+        }
       }
       return due.length;
     }).immediate();
@@ -221,7 +239,26 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
     return { rows, count, page: currentPage, pages };
   }
 
-  return { getEligibility, confiscate, cancelLeadingBids, settle, bid, list };
+  function pendingNotifications(limit = 100) {
+    return db.prepare(`
+      SELECT n.id AS notification_id, n.kind, a.*,
+        ${AUCTION_STARTING_BID_SQL} AS minimum_bid
+      FROM pokemon_auction_notifications n
+      JOIN pokemon_auctions a ON a.id = n.auction_id
+      WHERE n.delivered_at IS NULL
+      ORDER BY n.id LIMIT ?
+    `).all(limit).map((row) => ({ ...row, pokemon: JSON.parse(row.pokemon_json) }));
+  }
+
+  function markNotificationsDelivered(ids) {
+    const mark = db.prepare('UPDATE pokemon_auction_notifications SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL');
+    db.transaction(() => {
+      const now = Date.now();
+      for (const id of ids) mark.run(now, id);
+    }).immediate();
+  }
+
+  return { getEligibility, confiscate, cancelLeadingBids, settle, bid, list, pendingNotifications, markNotificationsDelivered };
 }
 
 module.exports = { createAuctions, AUCTION_DURATION_MS };

@@ -9477,11 +9477,20 @@ const auctions = require('./auctions').createAuctions({
 
 function banUser(userId) {
   return db.transaction(() => {
+    if (isUserBanned(userId)) return 0;
     auctions.settle();
     auctions.cancelLeadingBids(userId);
     db.prepare('INSERT OR REPLACE INTO banned_users (user_id, banned_at) VALUES (?, ?)').run(userId, Date.now());
-    return auctions.confiscate(userId);
+    return auctions.confiscate(userId, Date.now(), auctions.getEligibility(), { all: true, startingBid: 10 });
   }).immediate();
+}
+
+function banUsers(userIds) {
+  return db.transaction(() => userIds.map((userId) => ({
+    userId,
+    alreadyBanned: isUserBanned(userId),
+    auctioned: banUser(userId),
+  }))).immediate();
 }
 
 function backfillBannedAuctions() {
@@ -11146,6 +11155,7 @@ module.exports = {
   kickClanMember,
   disbandClan,
   banUser,
+  banUsers,
   unbanUser,
   isUserBanned,
   wipeUserData,
