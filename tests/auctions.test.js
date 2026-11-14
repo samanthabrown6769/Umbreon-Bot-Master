@@ -43,7 +43,7 @@ function setup(filename = ':memory:') {
   return { db, auctions, returnedItems };
 }
 
-test('confiscation selects eligible box, market and incoming gift Pokémon once', () => {
+test('confiscation selects only eligible box, market and incoming gift Pokémon once', () => {
   const { db, auctions } = setup();
   db.exec(`
     INSERT INTO catches VALUES
@@ -60,7 +60,7 @@ test('confiscation selects eligible box, market and incoming gift Pokémon once'
   const confiscate = db.transaction(() => auctions.confiscate('source', 1000));
   assert.equal(confiscate(), 8);
   assert.equal(confiscate(), 0);
-  assert.deepEqual(db.prepare('SELECT id FROM catches').all(), [{ id: 4 }]);
+  assert.deepEqual(db.prepare('SELECT id FROM catches ORDER BY id').all(), [{ id: 4 }]);
   assert.equal(db.prepare('SELECT buddy_catch_id FROM users WHERE id = ?').get('source').buddy_catch_id, null);
   assert.equal(db.prepare('SELECT pokemon_ids FROM saved_teams').get().pokemon_ids, '[4]');
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM market').get().n, 0);
@@ -104,6 +104,37 @@ test('ban auction queues exclude non-qualifying rarity and start only on admin a
   db.close();
 });
 
+test('ineligible auctions are removed, with bids refunded and event Super Rares kept', () => {
+  const { db, auctions } = setup();
+  db.exec(`
+    INSERT INTO pokemon_auctions
+      (id, pokemon_json, source_user_id, starts_at, ends_at, bidder_id, bid_amount, is_started)
+    VALUES
+      (1, '{"pokemon_id":1,"name":"Ordinary","rarity":"Common","is_shiny":0,"is_golden":0}',
+        'source', 1000, 5000, 'alice', 50, 1),
+      (2, '{"pokemon_id":2,"name":"Queued","rarity":"Rare","is_shiny":0,"is_golden":0}',
+        'source', 1000, 1000, NULL, 0, 0),
+      (5, '{"pokemon_id":5,"name":"Event Form","rarity":"Super Rare","is_shiny":0,"is_golden":0}',
+        'source', 1000, 5000, NULL, 0, 1),
+      (3, '{"pokemon_id":3,"name":"Shiny","rarity":"Common","is_shiny":1,"is_golden":0}',
+        'source', 1000, 5000, NULL, 0, 1),
+      (4, '{"pokemon_id":8,"name":"Legendary Form","rarity":"Rare","is_shiny":0,"is_golden":0}',
+        'source', 1000, 5000, NULL, 0, 1);
+    INSERT INTO pokemon_auction_bids (auction_id, bidder_id, amount, bid_at) VALUES (1, 'alice', 50, 1000);
+    INSERT INTO pokemon_auction_notifications (auction_id, kind) VALUES
+      (1, 'created'), (2, 'created'), (3, 'created'), (4, 'created'), (5, 'created');
+    UPDATE users SET patreon_tokens = 1950 WHERE id = 'alice';
+  `);
+
+  assert.equal(auctions.removeIneligibleAuctions(), 2);
+  assert.equal(auctions.removeIneligibleAuctions(), 0);
+  assert.equal(db.prepare('SELECT id FROM pokemon_auctions ORDER BY id').all().map(({ id }) => id).join(','), '3,4,5');
+  assert.equal(db.prepare("SELECT patreon_tokens FROM users WHERE id = 'alice'").get().patreon_tokens, 2000);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM pokemon_auction_bids').get().n, 0);
+  assert.deepEqual(auctions.pendingNotifications().map(({ id }) => id), [3, 4, 5]);
+  db.close();
+});
+
 test('one admin auction start activates at most 50 queued Pokémon', () => {
   const { db, auctions } = setup();
   const insert = db.prepare(`
@@ -128,7 +159,7 @@ test('auction minimum bids follow Pokémon category, including overlapping varia
   db.exec(`
     UPDATE users SET patreon_tokens = 10000 WHERE id = 'alice';
     INSERT INTO catches VALUES
-      (1,'source',1,'Special Form','Super Rare',0,0,NULL),
+      (1,'source',1,'Legend Form','Legendary',0,0,NULL),
       (2,'source',2,'Legend','Legendary',0,0,NULL),
       (3,'source',3,'Shiny Legend','Legendary',1,0,NULL),
       (4,'source',4,'Golden','Common',0,1,NULL),

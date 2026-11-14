@@ -28891,6 +28891,7 @@ client.once('clientReady', () => {
     Promise.resolve().then(job).catch((error) => console.error(`[${name}] failed:`, error));
   };
   const processAuctions = safely('auctions', async () => {
+    auctions.removeIneligibleAuctions();
     backfillBannedAuctions();
     auctions.settle();
     await sendAuctionAnnouncements();
