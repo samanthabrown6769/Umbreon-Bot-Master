@@ -196,7 +196,11 @@ function effectiveSpeed(m, field, side) {
 
 // Stat multiplier for outgoing damage calculations: stage-adjusted attack and defense for a move.
 // Sp. Atk / Sp. Def EVs add what they would to a dedicated special stat (this game stores only Atk and Def).
-const evBonus = (m, key) => Math.floor(Math.floor((m[key] || 0) / 4) * (m.level || 0) / 100);
+const evBonus = (m, key) => {
+  const bonus = Math.floor(Math.floor((m[key] || 0) / 4) * (m.level || 0) / 100);
+  const ivKey = key === 'ev_spa' ? 'spa_iv' : key === 'ev_spdef' ? 'spdef_iv' : null;
+  return ivKey && m[ivKey] === 31 ? Math.floor(bonus * 11 / 10) : bonus;
+};
 
 function damageStats(attacker, defender, move, field) {
   const af = fx(attacker); const df = fx(defender);
@@ -272,6 +276,10 @@ function changeStage(ctx, mon, side, key, delta, L, fromFoe = false) {
     if (AB.blocksStatDrop(mon, key)) { L(`${mon.name}'s **${mon.ability}** prevents its ${STAGE_NAMES[key]} from being lowered!`); return false; }
   }
   delta = AB.adjustStageDelta(mon, delta);
+  if (key === 'eva' && delta > 0 && f.miracleEye) {
+    L(`${mon.name}'s evasion cannot rise while Miracle Eye is active!`);
+    return false;
+  }
   const next = Math.max(-6, Math.min(6, f.stages[key] + delta));
   if (next === f.stages[key]) {
     L(`${mon.name}'s ${STAGE_NAMES[key]} won't go any ${delta > 0 ? 'higher' : 'lower'}!`);
@@ -882,6 +890,7 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     if (eff.flag === 'miracleEye' && target.miracleEye) { L('But it failed!'); return; }
     if (eff.flag === 'octolock' && target.octolock) { L('But it failed!'); return; }
     target[eff.flag] = eff.flag === 'octolock' ? { source: m } : true;
+    if (eff.flag === 'miracleEye') target.stages.eva = 0;
     L(`${owner.name} ${eff.text}`);
     if (eff.boost) { /* charge also boosts Sp. Def below */ }
   }
@@ -983,9 +992,12 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     if (f.sub > 0 || m.hp <= cost) L('But it failed!');
     else { m.hp -= cost; f.sub = cost; L(`${m.name} put in a substitute!`); }
   }
-  if (eff.topsy) { for (const k of STAGE_KEYS) tf.stages[k] = -tf.stages[k]; L(`${t.name}'s stat changes were reversed!`); }
-  if (eff.psychUp) { for (const k of STAGE_KEYS) f.stages[k] = tf.stages[k]; L(`${m.name} copied ${t.name}'s stat changes!`); }
-  if (eff.swap) { for (const k of eff.swap) { const tmp = f.stages[k]; f.stages[k] = tf.stages[k]; tf.stages[k] = tmp; } L('The battlers swapped stat changes!'); }
+  const setStage = (state, key, value) => {
+    if (key !== 'eva' || !state.miracleEye || value <= state.stages[key]) state.stages[key] = value;
+  };
+  if (eff.topsy) { for (const k of STAGE_KEYS) setStage(tf, k, -tf.stages[k]); L(`${t.name}'s stat changes were reversed!`); }
+  if (eff.psychUp) { for (const k of STAGE_KEYS) setStage(f, k, tf.stages[k]); L(`${m.name} copied ${t.name}'s stat changes!`); }
+  if (eff.swap) { for (const k of eff.swap) { const a = f.stages[k]; const b = tf.stages[k]; setStage(f, k, b); setStage(tf, k, a); } L('The battlers swapped stat changes!'); }
   if (eff.swapStat) { const a = baseStat(m, 'spd'); setBaseStat(m, 'spd', baseStat(t, 'spd')); setBaseStat(t, 'spd', a); L('The battlers swapped Speed!'); }
   if (eff.powerTrick) { const a = baseStat(m, 'atk'); setBaseStat(m, 'atk', baseStat(m, 'def')); setBaseStat(m, 'def', a); L(`${m.name} switched its Attack and Defense!`); }
   if (eff.split) {

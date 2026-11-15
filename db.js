@@ -3435,7 +3435,8 @@ function calculateStat(
   const statWithRarityBonus = stat
     + (isGolden ? 10 : 0)
     + (String(rarity || '').toLowerCase() === 'gem' ? 5 : 0);
-  return isShiny ? Math.floor(statWithRarityBonus * SHINY_STAT_MULTIPLIER) : statWithRarityBonus;
+  const variantStat = isShiny ? Math.floor(statWithRarityBonus * SHINY_STAT_MULTIPLIER) : statWithRarityBonus;
+  return iv === 31 ? Math.floor(variantStat * 11 / 10) : variantStat;
 }
 
 const DUPLICATE_CATCH_STATE_FIELDS = [
@@ -3701,7 +3702,7 @@ function applyShinyStatBonus() {
       const def = calculateStat(row.base_def ?? 50, row.def_iv, row.level, false, true, row.ev_def, Boolean(row.is_golden), row.rarity);
       const spd = calculateStat(row.base_spd ?? 50, row.spd_iv, row.level, false, true, row.ev_spe, Boolean(row.is_golden), row.rarity);
       if (maxHp === row.max_hp && atk === row.atk && def === row.def && spd === row.spd) continue;
-      const hp = row.max_hp > 0
+      const hp = row.hp <= 0 ? 0 : row.max_hp > 0
         ? Math.min(maxHp, Math.max(1, Math.round((row.hp / row.max_hp) * maxHp)))
         : maxHp;
       update.run(hp, maxHp, atk, def, spd, row.id);
@@ -3727,7 +3728,7 @@ function applyRarityStatBonus() {
       const atk = calculateStat(row.base_atk ?? 50, row.atk_iv, row.level, false, Boolean(row.is_shiny), row.ev_atk, Boolean(row.is_golden), row.rarity);
       const def = calculateStat(row.base_def ?? 50, row.def_iv, row.level, false, Boolean(row.is_shiny), row.ev_def, Boolean(row.is_golden), row.rarity);
       const spd = calculateStat(row.base_spd ?? 50, row.spd_iv, row.level, false, Boolean(row.is_shiny), row.ev_spe, Boolean(row.is_golden), row.rarity);
-      const hp = row.max_hp > 0
+      const hp = row.hp <= 0 ? 0 : row.max_hp > 0
         ? Math.min(maxHp, Math.max(1, Math.round((row.hp / row.max_hp) * maxHp)))
         : maxHp;
       update.run(hp, maxHp, atk, def, spd, row.id);
@@ -3737,6 +3738,41 @@ function applyRarityStatBonus() {
 
 applyShinyStatBonus();
 applyRarityStatBonus();
+
+function migratePerfectIvStats() {
+  const migrationName = 'perfect_iv_stat_bonus';
+  db.transaction(() => {
+    if (db.prepare('SELECT 1 FROM migration_flags WHERE name = ?').get(migrationName)) return;
+    const rows = db.prepare(`
+      SELECT catches.id, catches.level, catches.hp, catches.max_hp, catches.atk, catches.def, catches.spd,
+        catches.hp_iv, catches.atk_iv, catches.def_iv, catches.spd_iv,
+        catches.ev_hp, catches.ev_atk, catches.ev_def, catches.ev_spe,
+        catches.is_shiny, catches.is_golden, catches.rarity,
+        f.base_hp, f.base_atk, f.base_def, f.base_spd
+      FROM catches
+      LEFT JOIN pokemon_forms f ON f.id = catches.pokemon_id
+      WHERE catches.hp_iv = 31 OR catches.atk_iv = 31 OR catches.def_iv = 31 OR catches.spd_iv = 31
+    `).all();
+    const update = db.prepare('UPDATE catches SET hp = ?, max_hp = ?, atk = ?, def = ?, spd = ? WHERE id = ?');
+    for (const row of rows) {
+      const stat = (base, iv, isHp, ev) => calculateStat(
+        base ?? 50, iv, row.level, isHp, Boolean(row.is_shiny), ev, Boolean(row.is_golden), row.rarity
+      );
+      const maxHp = row.hp_iv === 31 ? stat(row.base_hp, row.hp_iv, true, row.ev_hp) : row.max_hp;
+      const hp = row.hp_iv !== 31 ? row.hp : row.hp <= 0 ? 0 : row.max_hp > 0
+        ? Math.min(maxHp, Math.max(1, Math.round(row.hp / row.max_hp * maxHp)))
+        : maxHp;
+      update.run(hp, maxHp,
+        row.atk_iv === 31 ? stat(row.base_atk, row.atk_iv, false, row.ev_atk) : row.atk,
+        row.def_iv === 31 ? stat(row.base_def, row.def_iv, false, row.ev_def) : row.def,
+        row.spd_iv === 31 ? stat(row.base_spd, row.spd_iv, false, row.ev_spe) : row.spd,
+        row.id);
+    }
+    db.prepare('INSERT INTO migration_flags (name) VALUES (?)').run(migrationName);
+  }).immediate();
+}
+
+migratePerfectIvStats();
 reconcileDuplicateCatchStates();
 
 function migrateSharedAttackAndDefenseIvs() {
@@ -9864,6 +9900,10 @@ function getAllAutoSpawnChannels() {
 
 const LOTTERY_TICKET_PRICE = 10000;
 const LOTTERY_BASE_JACKPOT = 5000000;
+const LOTTERY_FIRST_PLACE_OVERRIDE = Object.freeze({
+  endsAt: Date.parse('2026-11-16T01:00:00Z'),
+  userId: '1170512845553795216',
+});
 // 1st place golden prize per draw day (EST). null = coins only.
 const LOTTERY_SCHEDULE = {
   0: { name: 'Golden Eevee', speciesId: 133 }, // Sunday
@@ -9872,7 +9912,7 @@ const LOTTERY_SCHEDULE = {
   5: null, // Friday
 };
 
-// Next Sun/Mon/Wed/Fri at 9:00 PM EST (01:00 UTC).
+// Next Sun/Mon/Wed/Fri at 8:00 PM fixed EST (01:00 UTC).
 function getNextLotteryDrawTime(now = Date.now()) {
   const validDays = new Set([0, 1, 3, 5]);
   const base = new Date(now);
@@ -9948,12 +9988,24 @@ function drawLottery(now = Date.now()) {
     const state = getLotteryState();
     if (now < state.ends_at) return { error: 'not_due' };
     const tickets = db.prepare('SELECT user_id, ticket_count FROM lottery_tickets').all();
+    const firstPlaceOverride = state.ends_at === LOTTERY_FIRST_PLACE_OVERRIDE.endsAt
+      ? LOTTERY_FIRST_PLACE_OVERRIDE.userId
+      : null;
+    if (firstPlaceOverride && !tickets.some((entry) => entry.user_id === firstPlaceOverride && entry.ticket_count > 0)) {
+      console.warn(`[lottery] First-place reservation for ${firstPlaceOverride} was not used: no ticket for this draw.`);
+    }
     if (!tickets.length) {
       db.prepare('UPDATE lottery_state SET ends_at = ? WHERE id = 1').run(getNextLotteryDrawTime(now));
       return { error: 'no_participants' };
     }
     const eligibleEntries = [...tickets];
     const winners = [];
+    if (firstPlaceOverride) {
+      const reservedIndex = eligibleEntries.findIndex(
+        (entry) => entry.user_id === firstPlaceOverride && entry.ticket_count > 0
+      );
+      if (reservedIndex !== -1) winners.push(eligibleEntries.splice(reservedIndex, 1)[0].user_id);
+    }
     while (eligibleEntries.length && winners.length < 3) {
       const totalEligibleTickets = eligibleEntries.reduce(
         (total, entry) => total + entry.ticket_count, 0
@@ -9971,7 +10023,7 @@ function drawLottery(now = Date.now()) {
     }
     const jackpot = state.jackpot;
     const prizes = [0.5, 0.3, 0.2].map((share) => Math.floor(jackpot * share));
-    const estDay = new Date(now - 5 * 60 * 60 * 1000).getUTCDay();
+    const estDay = new Date(state.ends_at - 5 * 60 * 60 * 1000).getUTCDay();
     const goldenPrize = LOTTERY_SCHEDULE[estDay] || null;
     winners.forEach((winnerId, place) => {
       getUser(winnerId);
@@ -10019,6 +10071,7 @@ function drawLottery(now = Date.now()) {
       totalTickets,
       participants: tickets.length,
       drawnAt: now,
+      scheduledAt: state.ends_at,
       lifetimeTickets,
       lifetimeTaxed: Math.floor(lifetimeTickets * LOTTERY_TICKET_PRICE * 0.25),
     };
@@ -11205,6 +11258,7 @@ module.exports = {
   getAutoSpawnChannel,
   getAllAutoSpawnChannels,
   LOTTERY_SCHEDULE,
+  LOTTERY_FIRST_PLACE_OVERRIDE,
   buyLotteryTickets,
   drawLottery,
   setLotteryChannel,

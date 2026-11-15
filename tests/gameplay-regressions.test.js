@@ -25,6 +25,170 @@ function mon(name, types) {
   return { name, types, hp: 100, max_hp: 100, atk: 50, def: 50, spd: 50, level: 50 };
 }
 
+test('perfect IVs boost the calculated stat after variant bonuses', () => {
+  const ctx = vm.createContext({ SHINY_STAT_MULTIPLIER: 1.05 });
+  vm.runInContext(extract(dbSource, 'function calculateStat(', '\nconst DUPLICATE_CATCH_STATE_FIELDS'), ctx);
+  for (const isHp of [false, true]) {
+    for (const [shiny, golden, rarity] of [
+      [false, false, 'Common'], [true, false, 'Common'], [false, true, 'Common'],
+      [false, false, 'Gem'], [true, true, 'Gem'],
+    ]) {
+      const oldStat = (iv) => {
+        const points = 2 * 83 + iv + Math.floor(132 / 4);
+        const base = Math.floor(points * 73 / 100) + (isHp ? 73 + 10 : 5);
+        const variant = base + (golden ? 10 : 0) + (rarity === 'Gem' ? 5 : 0);
+        return shiny ? Math.floor(variant * 1.05) : variant;
+      };
+      assert.equal(ctx.calculateStat(83, 30, 73, isHp, shiny, 132, golden, rarity), oldStat(30));
+      assert.equal(ctx.calculateStat(83, 31, 73, isHp, shiny, 132, golden, rarity),
+        Math.floor(oldStat(31) * 11 / 10));
+    }
+  }
+});
+
+test('perfect IV migration updates existing stats once and preserves fainted HP', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE migration_flags (name TEXT PRIMARY KEY);
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, base_hp INTEGER, base_atk INTEGER,
+        base_def INTEGER, base_spd INTEGER);
+      INSERT INTO pokemon_forms VALUES (1, 80, 90, 100, 110);
+      CREATE TABLE catches (id INTEGER PRIMARY KEY, pokemon_id INTEGER, level INTEGER, hp INTEGER,
+        max_hp INTEGER, atk INTEGER, def INTEGER, spd INTEGER, hp_iv INTEGER, atk_iv INTEGER,
+        def_iv INTEGER, spd_iv INTEGER, ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER, ev_spe INTEGER,
+        is_shiny INTEGER, is_golden INTEGER, rarity TEXT);
+      INSERT INTO catches VALUES
+        (1, 1, 100, 100, 201, 216, 235, 255, 31, 31, 30, 30, 0, 0, 0, 0, 0, 0, 'Common'),
+        (2, 1, 100, 0, 211, 226, 246, 266, 31, 31, 31, 31, 0, 0, 0, 0, 0, 1, 'Gem'),
+        (3, 1, 100, 100, 201, 215, 235, 255, 30, 30, 30, 30, 0, 0, 0, 0, 0, 0, 'Common'),
+        (4, 1, 100, 0, 211, 226, 246, 266, 31, 31, 31, 31, 0, 0, 0, 0, 1, 0, 'Common');
+    `);
+    const ctx = vm.createContext({ db, SHINY_STAT_MULTIPLIER: 1.05 });
+    vm.runInContext(extract(dbSource, 'function calculateStat(', '\nconst DUPLICATE_CATCH_STATE_FIELDS'), ctx);
+    vm.runInContext(extract(dbSource, 'function applyShinyStatBonus()', '\nreconcileDuplicateCatchStates();'), ctx);
+    const get = (id) => db.prepare('SELECT * FROM catches WHERE id = ?').get(id);
+    const first = get(1);
+    assert.equal(first.max_hp, ctx.calculateStat(80, 31, 100, true));
+    assert.equal(first.hp, Math.round(100 / 201 * first.max_hp));
+    assert.equal(first.atk, ctx.calculateStat(90, 31, 100));
+    assert.equal(first.def, 235);
+    assert.equal(first.spd, 255);
+    assert.equal(get(2).hp, 0);
+    assert.equal(get(2).atk, ctx.calculateStat(90, 31, 100, false, false, 0, true, 'Gem'));
+    assert.equal(get(4).hp, 0);
+    assert.equal(get(4).atk, ctx.calculateStat(90, 31, 100, false, true));
+    assert.equal(get(3).atk, 215);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM migration_flags').get().count, 1);
+    db.prepare('UPDATE catches SET atk = 777 WHERE id = 1').run();
+    ctx.migratePerfectIvStats();
+    assert.equal(get(1).atk, 777);
+  } finally { db.close(); }
+});
+
+test('perfect IV migration rolls back stat updates and its flag on failure', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE migration_flags (name TEXT PRIMARY KEY);
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER);
+      INSERT INTO pokemon_forms VALUES (1, 50, 50, 50, 50);
+      CREATE TABLE catches (id INTEGER PRIMARY KEY, pokemon_id INTEGER, level INTEGER, hp INTEGER, max_hp INTEGER,
+        atk INTEGER, def INTEGER, spd INTEGER, hp_iv INTEGER, atk_iv INTEGER, def_iv INTEGER, spd_iv INTEGER,
+        ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER, ev_spe INTEGER, is_shiny INTEGER, is_golden INTEGER, rarity TEXT);
+      INSERT INTO catches VALUES (1, 1, 50, 100, 100, 100, 100, 100, 31, 31, 31, 31, 0, 0, 0, 0, 0, 0, 'Common');
+      CREATE TRIGGER reject_flag BEFORE INSERT ON migration_flags BEGIN SELECT RAISE(ABORT, 'test failure'); END;
+    `);
+    const ctx = vm.createContext({ db, SHINY_STAT_MULTIPLIER: 1.05 });
+    vm.runInContext(extract(dbSource, 'function calculateStat(', '\nconst DUPLICATE_CATCH_STATE_FIELDS'), ctx);
+    vm.runInContext(extract(dbSource, 'function migratePerfectIvStats()', '\nmigratePerfectIvStats();'), ctx);
+    assert.throws(() => ctx.migratePerfectIvStats(), /test failure/);
+    assert.equal(db.prepare('SELECT atk FROM catches').get().atk, 100);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM migration_flags').get().count, 0);
+  } finally { db.close(); }
+});
+
+test('special battle EV contributions also receive the perfect IV bonus', () => {
+  const attacker = { ...mon('attacker', ['normal']), level: 100, atk: 110, ev_spa: 200, spa_iv: 31 };
+  const defender = { ...mon('defender', ['normal']), level: 100, def: 110, ev_spdef: 200, spdef_iv: 31 };
+  const field = battle.createField();
+  let result = battle.damageStats(attacker, defender, { category: 'special' }, field);
+  assert.equal(result.atk, 165);
+  assert.equal(result.def, 165);
+  result = battle.damageStats(attacker, defender, { category: 'physical' }, field);
+  assert.equal(result.atk, 110);
+  assert.equal(result.def, 110);
+  attacker.spa_iv = 30;
+  defender.spdef_iv = 30;
+  result = battle.damageStats(attacker, defender, { category: 'special' }, field);
+  assert.equal(result.atk, 160);
+  assert.equal(result.def, 160);
+});
+
+test('one lottery draw reserves first place only for the specified ticket holder', () => {
+  const reservedId = '1170512845553795216';
+  const endsAt = Date.parse('2026-11-16T01:00:00Z');
+  const setup = (deadline, entries, random = 0) => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE lottery_state (id INTEGER PRIMARY KEY, jackpot INTEGER, ends_at INTEGER);
+      CREATE TABLE lottery_tickets (user_id TEXT PRIMARY KEY, ticket_count INTEGER);
+      CREATE TABLE lottery_user_stats (user_id TEXT PRIMARY KEY, wins_first INTEGER DEFAULT 0,
+        wins_second INTEGER DEFAULT 0, wins_third INTEGER DEFAULT 0, lifetime_winnings INTEGER DEFAULT 0,
+        lifetime_tickets INTEGER DEFAULT 0);
+      CREATE TABLE users (id TEXT PRIMARY KEY, lotteries_won INTEGER DEFAULT 0);
+      CREATE TABLE pokemon_forms (id INTEGER, species_id INTEGER, is_default INTEGER, name TEXT,
+        base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER);
+      INSERT INTO pokemon_forms VALUES (133, 133, 1, 'Eevee', 1, 1, 1, 1);
+    `);
+    db.prepare('INSERT INTO lottery_state VALUES (1, 1000, ?)').run(deadline);
+    for (const [id, count] of entries) {
+      db.prepare('INSERT INTO lottery_tickets VALUES (?, ?)').run(id, count);
+      db.prepare('INSERT INTO users (id) VALUES (?)').run(id);
+      db.prepare('INSERT INTO lottery_user_stats (user_id, lifetime_tickets) VALUES (?, ?)').run(id, count);
+    }
+    const saved = [];
+    const warnings = [];
+    const math = Object.create(Math);
+    math.random = () => random;
+    const context = vm.createContext({
+      db, Math: math, Date, console: { warn: (text) => warnings.push(text) },
+      LOTTERY_FIRST_PLACE_OVERRIDE: { endsAt, userId: reservedId },
+      LOTTERY_SCHEDULE: { 0: { name: 'Golden Eevee', speciesId: 133 } },
+      LOTTERY_TICKET_PRICE: 10000, LOTTERY_BASE_JACKPOT: 5000000,
+      getLotteryState: () => db.prepare('SELECT * FROM lottery_state').get(),
+      getNextLotteryDrawTime: (now) => now + 86400000,
+      getUser: () => {}, getUserLotteryStats: () => {},
+      awardCoinsWithBoost: (_id, amount) => ({ finalAmount: amount }),
+      saveGoldenCatch: (id) => saved.push(id),
+    });
+    vm.runInContext(extract(dbSource, 'function drawLottery(', '\nfunction setAutoSpawnChannel('), context);
+    return { db, context, saved, warnings };
+  };
+  const entries = [['other', 100], [reservedId, 1], ['third', 2]];
+  let state = setup(endsAt, entries);
+  try {
+    assert.equal(state.context.drawLottery(endsAt - 1).error, 'not_due');
+    const result = state.context.drawLottery(Date.parse('2026-11-17T06:00:00Z'));
+    assert.deepEqual(Array.from(result.winners, (winner) => winner.userId), [reservedId, 'other', 'third']);
+    assert.equal(result.goldenPrize.name, 'Golden Eevee');
+    assert.equal(result.scheduledAt, endsAt);
+    assert.deepEqual(state.saved, [reservedId]);
+    assert.equal(state.db.prepare('SELECT wins_first FROM lottery_user_stats WHERE user_id = ?').get(reservedId).wins_first, 1);
+    assert.equal(state.db.prepare('SELECT COUNT(*) AS n FROM lottery_tickets').get().n, 0);
+  } finally { state.db.close(); }
+  state = setup(endsAt, [['other', 1]]);
+  try {
+    assert.equal(state.context.drawLottery(endsAt).winners[0].userId, 'other');
+    assert.equal(state.warnings.length, 1);
+  } finally { state.db.close(); }
+  state = setup(endsAt + 86400000, entries);
+  try {
+    assert.equal(state.context.drawLottery(endsAt + 86400000).winners[0].userId, 'other');
+    assert.equal(state.warnings.length, 0);
+  } finally { state.db.close(); }
+});
+
 test('reply mentions do not become command targets unless explicitly mentioned', () => {
   const ctx = vm.createContext({});
   vm.runInContext(extract(indexSource, 'function ignoreImplicitReplyMention(', '\nconst originalResolveBody'), ctx);
@@ -1622,6 +1786,34 @@ test('World Boss damage uses accuracy stages and Skill Swap reports an ability-f
   assert.equal(bs.mon.ability, 'Insomnia');
 });
 
+test('World Boss battles carry perfect special IVs and apply them to special damage', () => {
+  const math = Object.create(Math);
+  math.random = () => 0.75;
+  const move = { name: 'Swift', type: 'normal', power: 60, category: 'special' };
+  const boss = { id: 42, name: 'Boss' };
+  const pokemon = { ...mon('Raider', ['normal']), id: 1, level: 100, atk: 110,
+    ev_spa: 200, ev_spdef: 200, spa_iv: 31, spdef_iv: 31 };
+  const ctx = vm.createContext({
+    Math: math, battleFx: battle, WORLD_BOSS_POOL: [{ id: 1, name: 'Boss', baseHp: 50, baseAtk: 50, baseDef: 50, baseSpd: 50 }],
+    WORLD_BOSS_DUMMY_HP: 1600, WORLD_BOSS_PLAYER_DAMAGE_MULTIPLIER: 0.25,
+    db: { prepare: () => ({ get: () => ({ types: '["normal"]' }) }) },
+    createBattleField: battle.createField, combatStats: () => ({}),
+    getWorldBossTeamMoves: (team) => team.map((entry) => ({ pokemon: entry, teamIndex: 0, types: ['normal'], moves: [move] })),
+    getHeldItemMoveType: (_name, type) => type, isPlateItem: () => false,
+    getHeldItemDamageMultiplier: () => 1, typeEffectiveness: () => 1,
+    CHOICE_ATTACK_ITEMS: new Set(), CHOICE_SPECIAL_ATTACK_ITEMS: new Set(),
+    applyWorldBossDamage: (_userId, _bossId, damage) => ({ damage, defeated: false, boss }),
+  });
+  vm.runInContext(extract(indexSource, 'function getWorldBossBattle(', '\nconst WORLD_BOSS_PROGRESS_INTERVAL_MS'), ctx);
+  const bs = ctx.getWorldBossBattle({ pokemon, hp: 100, types: ['normal'], moves: [move] }, boss);
+  assert.equal(bs.mon.spa_iv, 31);
+  assert.equal(bs.mon.spdef_iv, 31);
+  const boosted = ctx.runWorldBossMove('user', [pokemon], boss, 0, 0).damage;
+  pokemon.spa_iv = 30;
+  const unboosted = ctx.runWorldBossMove('user', [pokemon], boss, 0, 0).damage;
+  assert.ok(boosted > unboosted);
+});
+
 test('World Boss Baton Pass resumes the counterattack against the selected replacement', async () => {
   const source = extract(indexSource, "      if (action === 'choose') {", '\n      const pokemonId = Number(parts[3]);');
   const old = { ...mon('Old', ['normal']), id: 1, team_slot: 1 };
@@ -2216,7 +2408,7 @@ test('spawn selection applies chamber weights and Legendary Box exclusions', () 
     ctx.getRandomPokemon('Legendary', false, true, true, [], BOXES['Legendary Box'].excludedSpeciesNames).speciesId,
     898
   );
-  assert.match(indexSource, /box\.rarity, false, true, true, \[\], box\.excludedSpeciesNames \|\| \[\]/);
+  assert.match(indexSource, /box\.rarity, false, true, true, \[\],\s*\[\.\.\.SPECIAL_SPAWN_RESERVED_SPECIES, \.\.\.\(box\.excludedSpeciesNames \|\| \[\]\)\]/);
   db.close();
 });
 
@@ -2407,7 +2599,7 @@ test('wild and fishing pity uses boosted eligible rolls and persists separate co
 
   db.prepare("DELETE FROM wild_spawn_guarantees").run();
   eventActive = true;
-  eventBoost = 100;
+  eventBoost = 50;
   assert.equal(roll('pokemon').isEventSpawn, undefined);
   assert.equal(roll('pokemon').isEventSpawn, true);
   assert.equal(count('pokemon', 'event', 'user', 'event-b'), 0);
@@ -2422,12 +2614,12 @@ test('wild and fishing pity uses boosted eligible rolls and persists separate co
   ctx.LEGENDARY_BASE_CHANCE = 1 / 666;
   ctx.BASE_SHINY_RATE = 1 / 1500;
   const seed = db.prepare('INSERT INTO wild_spawn_guarantees VALUES (?, ?, ?, ?, ?, ?)');
-  seed.run('user', 'pokemon', 'legendary', '', 664, 0.999999);
-  seed.run('user', 'pokemon', 'shiny', '', 1498, 0.999999);
+  seed.run('user', 'pokemon', 'legendary', '', 730, 0.999999);
+  seed.run('user', 'pokemon', 'shiny', '', 1648, 0.999999);
   random = 0.999999;
   assert.equal(roll('pokemon').rarity, 'Common');
-  assert.equal(count('pokemon', 'legendary'), 665);
-  assert.equal(count('pokemon', 'shiny'), 1499);
+  assert.equal(count('pokemon', 'legendary'), 731);
+  assert.equal(count('pokemon', 'shiny'), 1649);
   const guaranteed = roll('pokemon');
   assert.equal(guaranteed.rarity, 'Legendary');
   assert.equal(guaranteed.isShiny, true);
@@ -2436,9 +2628,9 @@ test('wild and fishing pity uses boosted eligible rolls and persists separate co
 
   eventActive = true;
   ctx.getEventSpawnChance = () => 1 / 1000;
-  seed.run('user', 'pokemon', 'event', 'event-b', 998, 0.999999);
+  seed.run('user', 'pokemon', 'event', 'event-b', 1098, 0.999999);
   assert.equal(roll('pokemon').isEventSpawn, undefined);
-  assert.equal(count('pokemon', 'event', 'user', 'event-b'), 999);
+  assert.equal(count('pokemon', 'event', 'user', 'event-b'), 1099);
   assert.equal(roll('pokemon').isEventSpawn, true);
   assert.equal(count('pokemon', 'event', 'user', 'event-b'), 0);
   eventActive = false;
@@ -2471,14 +2663,14 @@ test('wild and fishing pity uses boosted eligible rolls and persists separate co
   ctx.recordWildSpawnGuarantees('missed', missed.spawnPity.source, missed.spawnPity.outcomes);
   assert.equal(count('pokemon', 'shiny', 'missed'), 1);
   db.prepare('DELETE FROM wild_spawn_guarantees').run();
-  seed.run('lower', 'pokemon', 'shiny', '', 98, 0);
-  seed.run('upper', 'pokemon', 'shiny', '', 1498, 0.999999);
+  seed.run('lower', 'pokemon', 'shiny', '', 748, 0);
+  seed.run('upper', 'pokemon', 'shiny', '', 1648, 0.999999);
   random = 0.999999;
   assert.equal(roll('pokemon', 'lower').isShiny, false);
   assert.equal(spawn('pokemon', 'lower').isShiny, true);
-  assert.equal(count('pokemon', 'shiny', 'lower'), 99);
+  assert.equal(count('pokemon', 'shiny', 'lower'), 749);
   assert.equal(spawn('pokemon', 'lower').isShiny, true);
-  assert.equal(count('pokemon', 'shiny', 'lower'), 99);
+  assert.equal(count('pokemon', 'shiny', 'lower'), 749);
   assert.equal(roll('pokemon', 'lower').isShiny, true);
   assert.equal(roll('pokemon', 'upper').isShiny, false);
   assert.equal(roll('pokemon', 'upper').isShiny, true);
@@ -2486,33 +2678,35 @@ test('wild and fishing pity uses boosted eligible rolls and persists separate co
   roll('pokemon', 'lower');
   assert.equal(ctx.getWildSpawnGuarantee('lower', 'pokemon', 'shiny').threshold_fraction, 0.2);
 
-  seed.run('legendary-missed', 'pokemon', 'legendary', '', 99, 0);
+  seed.run('legendary-missed', 'pokemon', 'legendary', '', 332, 0);
   random = 0.999999;
   assert.equal(spawn('pokemon', 'legendary-missed').rarity, 'Legendary');
-  assert.equal(count('pokemon', 'legendary', 'legendary-missed'), 99);
+  assert.equal(count('pokemon', 'legendary', 'legendary-missed'), 332);
   assert.equal(roll('pokemon', 'legendary-missed').rarity, 'Legendary');
   assert.equal(count('pokemon', 'legendary', 'legendary-missed'), 0);
 
-  seed.run('boosted', 'pokemon', 'shiny', '', 423, 0.5);
+  seed.run('boosted', 'pokemon', 'shiny', '', 598, 0.5);
   random = 0.999999;
   assert.equal(roll('pokemon', 'boosted', { channelRateBoost: 100 }).isShiny, false);
   state = ctx.getWildSpawnGuarantee('boosted', 'pokemon', 'shiny');
-  assert.equal(state.encounters_since_spawn, 424);
+  assert.equal(state.encounters_since_spawn, 599);
   assert.equal(state.threshold_fraction, 0.5);
   assert.equal(roll('pokemon', 'boosted', { channelRateBoost: 100 }).isShiny, true);
 
   eventActive = true;
   ctx.getEventSpawnChance = () => 1 / 563;
-  seed.run('event-lower', 'pokemon', 'event', 'event-b', 98, 0);
-  seed.run('event-upper', 'pokemon', 'event', 'event-b', 561, 0.999999);
+  seed.run('event-lower', 'pokemon', 'event', 'event-b', 280, 0);
+  seed.run('event-upper', 'pokemon', 'event', 'event-b', 617, 0.999999);
   assert.equal(roll('pokemon', 'event-lower').isEventSpawn, undefined);
   assert.equal(spawn('pokemon', 'event-lower').isEventSpawn, true);
-  assert.equal(count('pokemon', 'event', 'event-lower', 'event-b'), 99);
+  assert.equal(count('pokemon', 'event', 'event-lower', 'event-b'), 281);
   assert.equal(roll('pokemon', 'event-lower').isEventSpawn, true);
   assert.equal(roll('pokemon', 'event-upper').isEventSpawn, undefined);
   assert.equal(roll('pokemon', 'event-upper').isEventSpawn, true);
+  ctx.getEventSpawnChance = () => 2 / 3;
+  assert.equal(roll('pokemon', 'event-short').isEventSpawn, true);
   ctx.getEventSpawnChance = (_boost, eventPct) => (1 / 562.5) * (1 + eventPct / 100);
-  seed.run('event-boosted', 'pokemon', 'event', 'event-b', 273, 0.5);
+  seed.run('event-boosted', 'pokemon', 'event', 'event-b', 358, 0.5);
   eventBoost = 25;
   assert.equal(roll('pokemon', 'event-boosted').isEventSpawn, undefined);
   assert.equal(ctx.getWildSpawnGuarantee('event-boosted', 'pokemon', 'event', 'event-b').threshold_fraction, 0.5);
@@ -2941,17 +3135,40 @@ test('Miracle Eye marks the target until it switches, bypassing Dark immunity an
     battle.fx(ctx.enemy).stages.eva = 6;
     battle.performMove(ctx, player, enemy, eye, (text) => logs.push(text));
     assert.equal(battle.fx(ctx.enemy).miracleEye, true);
+    assert.equal(battle.fx(ctx.enemy).stages.eva, 0);
+    const doubleTeam = { name: 'Double Team', type: 'normal', power: 0, category: 'status', accuracy: 100 };
+    battle.performMove(ctx, enemy, player, doubleTeam, (text) => logs.push(text));
+    assert.equal(battle.fx(ctx.enemy).stages.eva, 0);
+    battle.fx(ctx.enemy).stages.eva = -2;
+    battle.performMove(ctx, enemy, player, doubleTeam, (text) => logs.push(text));
+    assert.equal(battle.fx(ctx.enemy).stages.eva, -2);
+    battle.performMove(ctx, player, enemy, { name: 'Topsy-Turvy', type: 'dark', power: 0, category: 'status', accuracy: 100 }, (text) => logs.push(text));
+    assert.equal(battle.fx(ctx.enemy).stages.eva, -2);
+    battle.fx(ctx.player).stages.eva = 3;
+    battle.performMove(ctx, player, enemy, { name: 'Heart Swap', type: 'psychic', power: 0, category: 'status', accuracy: 100 }, (text) => logs.push(text));
+    assert.equal(battle.fx(ctx.enemy).stages.eva, -2);
+    assert.equal(battle.fx(ctx.player).stages.eva, -2);
     battle.performMove(ctx, player, enemy, eye, (text) => logs.push(text));
     assert.match(logs.at(-1), /failed/i);
     battle.performMove(ctx, player, enemy, psychic, (text) => logs.push(text));
     assert.equal(ctx.enemy.hp, 80);
     battle.onSwitchIn(ctx, ctx.enemy, 'enemy', () => {});
     assert.equal(battle.fx(ctx.enemy).miracleEye, false);
+    battle.performMove(ctx, enemy, player, doubleTeam, (text) => logs.push(text));
+    assert.equal(battle.fx(ctx.enemy).stages.eva, -1);
     battle.performMove(ctx, player, enemy, psychic, (text) => logs.push(text));
     assert.equal(ctx.enemy.hp, 80);
   } finally {
     Math.random = originalRandom;
   }
+});
+
+test('Miracle Eye also resets negative evasion stages', () => {
+  const ctx = battleContext();
+  battle.fx(ctx.enemy).stages.eva = -3;
+  battle.performMove(ctx, { mon: ctx.player, side: 'player' }, { mon: ctx.enemy, side: 'enemy' },
+    { name: 'Miracle Eye', type: 'psychic', power: 0, category: 'status', accuracy: 100 }, () => {});
+  assert.equal(battle.fx(ctx.enemy).stages.eva, 0);
 });
 
 test('Simple Beam affects world boss stat changes across switches and damaging moves', () => {

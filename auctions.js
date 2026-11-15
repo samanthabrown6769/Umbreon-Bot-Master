@@ -250,7 +250,10 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
       `).run(userId, amount, now, id);
       db.prepare('INSERT INTO pokemon_auction_bids (auction_id, bidder_id, amount, bid_at) VALUES (?, ?, ?, ?)')
         .run(id, userId, amount, now);
-      return { amount };
+      return {
+        amount,
+        outbidUserId: auction.bidder_id && auction.bidder_id !== userId ? auction.bidder_id : null,
+      };
     }).immediate();
   }
 

@@ -367,6 +367,8 @@ test('Explore Legendary pools use matching default forms from Generations 1–4 
     }
   }
   assert.throws(() => context.getExploreLegendaryEntries('invalid'), /Unknown Explore map/);
+  context.SPECIAL_SPAWN_RESERVED_SPECIES.push('Kyogre');
+  assert.ok(!entries('water').some((row) => row.species_name === 'Kyogre'));
   db.close();
 });
 
@@ -660,6 +662,7 @@ test('ordinary encounter and swap pools allow regular Explore species but protec
     BASE_SPAWN_RESERVED_SPECIES: ['Base exclusive'],
     EGG_ONLY_SPECIES: ['Egg exclusive'],
     PALDEA_LEGENDARY_SPECIES: ['Legendary exclusive'],
+    RESEARCH_SHARD_BY_SPECIES: new Map([['research exclusive', {}]]),
   });
   vm.runInContext(extract('const exploreShinyIds =', '\nconst { createTopggWebhookServer'), context);
   const excluded = vm.runInContext('SPECIAL_SPAWN_RESERVED_SPECIES', context);
@@ -668,7 +671,7 @@ test('ordinary encounter and swap pools allow regular Explore species but protec
     assert.ok(!excluded.includes(`Pokemon ${id}`), `regular species ${id} is not Explore-exclusive`);
     assert.equal(exploreShinies.includes(`Pokemon ${id}`), data.EXPLORE_EXCLUSIVE_SHINY_IDS.has(id));
   }
-  for (const name of ['Base exclusive', 'Egg exclusive', 'Legendary exclusive']) {
+  for (const name of ['Base exclusive', 'Egg exclusive', 'Legendary exclusive', 'research exclusive']) {
     assert.ok(excluded.includes(name));
   }
   const dbSource = fs.readFileSync(require.resolve('../db.js'), 'utf8');
@@ -701,6 +704,22 @@ test('ordinary encounter and swap pools allow regular Explore species but protec
   assert.ok(!shinySwap.includes('Pokemon 2'));
   assert.ok(shinySwap.includes('Other shiny exclusive'));
   db.close();
+});
+
+test('egg reward exclusions cover every hatch pool and shiny reward without reserving unrelated regular species', () => {
+  const context = vm.createContext({});
+  vm.runInContext(extract('const EGG_HATCH_POOLS =', '\n// Paldea Legendaries'), context);
+  const { pools, specials, regular, shiny } = vm.runInContext(
+    '({ pools: EGG_HATCH_POOLS, specials: EGG_RARE_HATCHES, regular: EGG_ONLY_SPECIES, shiny: EGG_ONLY_SHINY_SPECIES })',
+    context
+  );
+  for (const name of Object.values(pools).flat()) assert.ok(regular.includes(name), name);
+  for (const entry of specials) {
+    if (entry.isShiny) assert.ok(shiny.includes(entry.name), entry.name);
+    else if (!entry.isGolden) assert.ok(regular.includes(entry.name), entry.name);
+  }
+  assert.ok(!regular.includes('Chansey'));
+  assert.ok(!regular.includes('Wynaut'));
 });
 
 test('wild starter encounters retain Explore shiny exclusivity', () => {
@@ -1321,8 +1340,9 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     getChannelCatchRateBoost: () => 5,
     rollExploreEncounter: (_id, map, boost) => {
       shinyBoost = boost;
-      return { name: 'Bulbasaur', rarity: 'Uncommon', isExplore: true, map, ...encounterVariant };
+      return { id: 1, name: 'Bulbasaur', rarity: 'Uncommon', isExplore: true, map, ...encounterVariant };
     },
+    getBallDexIconsForCatch: () => ':balldex:',
     rollWildHeldItem: () => { throw new Error('Explore must not roll held items'); },
     getDisplayRarity: (rarity) => rarity,
     getRarityEmojis: () => '',
@@ -1336,7 +1356,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
         await interaction.deferUpdate();
         options.onHandler(null);
         options.inline.onCatch(wild, 123);
-        await options.inline.onEdit('Caught Bulbasaur!');
+        await options.inline.onEdit('Caught Bulbasaur! :balldex:');
       });
     },
     replyToInteractionFailure: async (_interaction, text) => { throw new Error(text); },
@@ -1389,6 +1409,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(rollAbility, 'frisk');
   assert.equal(shinyBoost, 5);
   assert.match(payloads.at(-1).content, /❗ :uncommon: :pokemon: \*\*Bulbasaur\*\* appeared!/);
+  assert.match(payloads.at(-1).content, /:balldex:/);
   assert.doesNotMatch(payloads.at(-1).content, /\*\*Uncommon\*\*/);
   assert.doesNotMatch(payloads.at(-1).content, /\([^)]*\)/);
   assert.doesNotMatch(payloads.at(-1).content, /throw a ball with the buttons on the right/i);
@@ -1416,6 +1437,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   assert.equal(rendered.length, rendersBeforeCatch);
   assert.equal(payloads.at(-1).files.length, 0);
   assert.match(payloads.at(-1).content, /Caught Bulbasaur/);
+  assert.match(payloads.at(-1).content, /:balldex:/);
   await click('exp_down');
   await click('exp_ball:pb');
   encounterVariant = { isShiny: true };

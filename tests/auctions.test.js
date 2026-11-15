@@ -205,13 +205,13 @@ test('bids reserve tokens, refund outbid users, and settle exactly once', () => 
   db.exec("INSERT INTO catches VALUES (1,'source',1,'Test','Legendary',0,0,'pb')");
   db.transaction(() => auctions.confiscate('source', 1000))();
   const balance = (id) => db.prepare('SELECT patreon_tokens FROM users WHERE id = ?').get(id).patreon_tokens;
-  assert.equal(auctions.bid('alice', 1, 50, 2000).amount, 50);
+  assert.deepEqual(auctions.bid('alice', 1, 50, 2000), { amount: 50, outbidUserId: null });
   assert.equal(balance('alice'), 1950);
-  assert.equal(auctions.bid('alice', 1, 53, 3000).amount, 53);
+  assert.deepEqual(auctions.bid('alice', 1, 53, 3000), { amount: 53, outbidUserId: null });
   assert.equal(balance('alice'), 1947);
   assert.equal(auctions.bid('bob', 1, 53, 4000).error, 'too_low');
   assert.equal(auctions.bid('bob', 1, 3001, 4000).error, 'insufficient');
-  assert.equal(auctions.bid('bob', 1, 54, 4000).amount, 54);
+  assert.deepEqual(auctions.bid('bob', 1, 54, 4000), { amount: 54, outbidUserId: 'alice' });
   assert.equal(balance('alice'), 2000);
   assert.equal(balance('bob'), 2946);
   assert.equal(auctions.list('alice', 'recent').count, 1);
@@ -224,6 +224,39 @@ test('bids reserve tokens, refund outbid users, and settle exactly once', () => 
   assert.equal(balance('bob'), 2946);
   assert.equal(auctions.list('alice', 'default', true).rows[0].bid_count, 3);
   db.close();
+});
+
+test('auction command DMs the displaced bidder only after a successful outbid', async () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf("      if (action === 'bid') {", source.indexOf("    if (command === 'auction'"));
+  const end = source.indexOf('\n\n      const history =', start);
+  assert.ok(start >= 0 && end > start);
+  const dms = [];
+  const replies = [];
+  const errors = [];
+  let result = { amount: 54, outbidUserId: 'alice' };
+  const context = vm.createContext({
+    action: 'bid', args: ['bid', '1', '54'], userId: 'bob', PREFIX: '.', EMOJIS: { patreonToken: ':token:' },
+    auctions: { bid: () => result },
+    client: { users: { fetch: async (id) => ({ send: async (text) => dms.push([id, text]) }) } },
+    message: { reply: async (text) => replies.push(text) },
+    console: { error: (...args) => errors.push(args) },
+  });
+  vm.runInContext(`async function run() { ${source.slice(start, end)} }`, context);
+  await context.run();
+  assert.equal(dms.length, 1);
+  assert.equal(dms[0][0], 'alice');
+  assert.match(dms[0][1], /#1.*54.*refunded/);
+  result = { amount: 55, outbidUserId: null };
+  await context.run();
+  result = { error: 'too_low', minimum: 56 };
+  await context.run();
+  assert.equal(dms.length, 1);
+  context.client.users.fetch = async () => { throw new Error('DM unavailable'); };
+  result = { amount: 56, outbidUserId: 'alice' };
+  await context.run();
+  assert.equal(errors.length, 1);
+  assert.match(replies.at(-1), /Bid/);
 });
 
 test('confiscation returns a shared held item only when its last copy leaves', () => {

@@ -325,6 +325,7 @@ const {
   getAutoSpawnChannel,
   getAllAutoSpawnChannels,
   LOTTERY_SCHEDULE,
+  LOTTERY_FIRST_PLACE_OVERRIDE,
   buyLotteryTickets,
   drawLottery,
   setLotteryChannel,
@@ -507,16 +508,64 @@ const {
   getExploreStepStatus,
   getExploreCatchRate,
 } = require('./exploreData');
-// Egg-exclusive species never spawn from catching, fishing, swapping or CatchBot.
+const EGG_HATCH_POOLS = Object.freeze({
+  early: Object.freeze([
+    'Chingling', 'Bonsly', 'Mime Jr.', 'Happiny', 'Chatot', 'Munchlax', 'Riolu',
+    'Mantyke', 'Audino', 'Zorua', 'Emolga', 'Ferroseed', 'Golett', 'Pawniard',
+    'Larvesta', 'Pancham', 'Spritzee', 'Swirlix', 'Skrelp', 'Noibat', 'Crabrawler',
+    'Rockruff', 'Mareanie', 'Wimpod', 'Type: Null',
+  ]),
+  late: Object.freeze(['Carbink', 'Mimikyu']),
+});
+
+const EGG_RARE_HATCHES = Object.freeze([
+  { name: 'Nickit', denominator: 150, minTarget: 30, maxTarget: 90 },
+  { name: 'Yamper', denominator: 150, minTarget: 30, maxTarget: 90 },
+  { name: 'Toxel', denominator: 150, minTarget: 30, maxTarget: 90 },
+  { name: 'Morpeko', denominator: 100, minTarget: 30, maxTarget: 90 },
+  { name: "Sirfetch'd", denominator: 100, minTarget: 91, maxTarget: 130 },
+  { name: 'Phione', denominator: 150, minTarget: 91, maxTarget: 130 },
+  { name: 'Manaphy', denominator: 150, minTarget: 91, maxTarget: 130 },
+  { name: 'Victini', denominator: 500, minTarget: 91, maxTarget: 130 },
+  { name: 'Wynaut', denominator: 150, isGolden: true },
+  { name: 'Chansey', denominator: 100, isShiny: true },
+  { name: 'Scyther', denominator: 100, isShiny: true },
+  { name: 'Ditto', denominator: 100, isShiny: true },
+  { name: 'Aerodactyl', denominator: 100, isShiny: true },
+  { name: 'Togepi', denominator: 100, isShiny: true },
+  { name: 'Elekid', denominator: 100, isShiny: true },
+  { name: 'Magby', denominator: 100, isShiny: true },
+  { name: 'Bonsly', denominator: 100, isShiny: true },
+  { name: 'Chatot', denominator: 100, isShiny: true, patreonOnly: true },
+  { name: 'Gible', denominator: 100, isShiny: true },
+  { name: 'Phione', denominator: 750, isShiny: true },
+  { name: 'Manaphy', denominator: 750, isShiny: true },
+  { name: 'Victini', denominator: 1000, isShiny: true },
+  { name: 'Zorua', denominator: 100, isShiny: true },
+  { name: 'Pawniard', denominator: 100, isShiny: true },
+  { name: 'Larvesta', denominator: 100, isShiny: true },
+  { name: 'Noibat', denominator: 100, isShiny: true, patreonOnly: true },
+  { name: 'Nickit', denominator: 100, isShiny: true },
+  { name: 'Wooloo', denominator: 100, isShiny: true },
+  { name: 'Silicobra', denominator: 100, isShiny: true },
+  { name: 'Impidimp', denominator: 100, isShiny: true },
+  { name: 'Toxel', denominator: 100, isShiny: true },
+  { name: 'Perrserker', denominator: 100, isShiny: true },
+  { name: 'Cursola', denominator: 100, isShiny: true },
+  { name: 'Milcery', denominator: 100, isShiny: true },
+]);
+
+
+// Regular egg rewards are reserved for hatching; shiny-only rewards reserve only that variant.
 const EGG_ONLY_SPECIES = Object.freeze([
-  'Chingling', 'Bonsly', 'Mime Jr.', 'Happiny', 'Chatot', 'Munchlax', 'Riolu', 'Audino',
-  'Zorua', 'Emolga', 'Ferroseed', 'Golett', 'Pawniard', 'Pancham', 'Spritzee', 'Swirlix',
-  'Noibat', 'Crabrawler', 'Rockruff', 'Type: Null', 'Yamper', 'Carbink',
-  'Mimikyu', 'Manaphy', 'Phione', 'Victini',
+  ...new Set([
+    ...Object.values(EGG_HATCH_POOLS).flat(),
+    ...EGG_RARE_HATCHES.filter((entry) => !entry.isShiny && !entry.isGolden).map((entry) => entry.name),
+  ]),
 ]);
 // Species whose shiny version is egg-exclusive (the regular version can still spawn).
 const EGG_ONLY_SHINY_SPECIES = Object.freeze([
-  'Chansey', 'Ditto', 'Scyther', 'Togepi', 'Gible', 'Larvesta', 'Elekid', 'Magby',
+  ...EGG_RARE_HATCHES.filter((entry) => entry.isShiny).map((entry) => entry.name),
 ]);
 // Species whose shiny version is swap-exclusive (the regular version can still spawn).
 const SWAP_ONLY_SHINY_SPECIES = Object.freeze([
@@ -558,6 +607,7 @@ const SPECIAL_SPAWN_RESERVED_SPECIES = Object.freeze([
   ...BASE_SPAWN_RESERVED_SPECIES,
   ...EGG_ONLY_SPECIES,
   ...PALDEA_LEGENDARY_SPECIES,
+  ...RESEARCH_SHARD_BY_SPECIES.keys(),
 ]);
 const { createTopggWebhookServer } = require('./vote-webhook');
 
@@ -2178,52 +2228,6 @@ const CLAN_RANK_EMOJIS = {
 };
 const CLAN_PERK_RANKS = ['bronze', 'silver', 'gold', 'diamond', 'amethyst', 'onyx'];
 
-const EGG_HATCH_POOLS = Object.freeze({
-  early: Object.freeze([
-    'Chingling', 'Bonsly', 'Mime Jr.', 'Happiny', 'Chatot', 'Munchlax', 'Riolu',
-    'Mantyke', 'Audino', 'Zorua', 'Emolga', 'Ferroseed', 'Golett', 'Pawniard',
-    'Larvesta', 'Pancham', 'Spritzee', 'Swirlix', 'Skrelp', 'Noibat', 'Crabrawler',
-    'Rockruff', 'Mareanie', 'Wimpod', 'Type: Null',
-  ]),
-  late: Object.freeze(['Carbink', 'Mimikyu']),
-});
-
-const EGG_RARE_HATCHES = Object.freeze([
-  { name: 'Nickit', denominator: 150, minTarget: 30, maxTarget: 90 },
-  { name: 'Yamper', denominator: 150, minTarget: 30, maxTarget: 90 },
-  { name: 'Toxel', denominator: 150, minTarget: 30, maxTarget: 90 },
-  { name: 'Morpeko', denominator: 100, minTarget: 30, maxTarget: 90 },
-  { name: "Sirfetch'd", denominator: 100, minTarget: 91, maxTarget: 130 },
-  { name: 'Phione', denominator: 150, minTarget: 91, maxTarget: 130 },
-  { name: 'Manaphy', denominator: 150, minTarget: 91, maxTarget: 130 },
-  { name: 'Victini', denominator: 500, minTarget: 91, maxTarget: 130 },
-  { name: 'Wynaut', denominator: 150, isGolden: true },
-  { name: 'Chansey', denominator: 100, isShiny: true },
-  { name: 'Scyther', denominator: 100, isShiny: true },
-  { name: 'Ditto', denominator: 100, isShiny: true },
-  { name: 'Aerodactyl', denominator: 100, isShiny: true },
-  { name: 'Togepi', denominator: 100, isShiny: true },
-  { name: 'Elekid', denominator: 100, isShiny: true },
-  { name: 'Magby', denominator: 100, isShiny: true },
-  { name: 'Bonsly', denominator: 100, isShiny: true },
-  { name: 'Chatot', denominator: 100, isShiny: true, patreonOnly: true },
-  { name: 'Gible', denominator: 100, isShiny: true },
-  { name: 'Phione', denominator: 750, isShiny: true },
-  { name: 'Manaphy', denominator: 750, isShiny: true },
-  { name: 'Victini', denominator: 1000, isShiny: true },
-  { name: 'Zorua', denominator: 100, isShiny: true },
-  { name: 'Pawniard', denominator: 100, isShiny: true },
-  { name: 'Larvesta', denominator: 100, isShiny: true },
-  { name: 'Noibat', denominator: 100, isShiny: true, patreonOnly: true },
-  { name: 'Nickit', denominator: 100, isShiny: true },
-  { name: 'Wooloo', denominator: 100, isShiny: true },
-  { name: 'Silicobra', denominator: 100, isShiny: true },
-  { name: 'Impidimp', denominator: 100, isShiny: true },
-  { name: 'Toxel', denominator: 100, isShiny: true },
-  { name: 'Perrserker', denominator: 100, isShiny: true },
-  { name: 'Cursola', denominator: 100, isShiny: true },
-  { name: 'Milcery', denominator: 100, isShiny: true },
-]);
 
 const SWAP_EXCLUSIVE_SHINIES = Object.freeze([
   { name: 'Oddish' },
@@ -3638,8 +3642,13 @@ function rollSpawn(
       });
     }
     const { count, fraction } = pityStates.get(key);
-    const maximum = Math.ceil(1 / Math.min(1, chance));
-    const minimum = Math.min(100, maximum);
+    const rate = 1 / Math.min(1, chance);
+    let minimum = Math.max(1, Math.ceil(rate * 0.5));
+    let maximum = Math.floor(rate * 1.1);
+    if (maximum < minimum) {
+      minimum = Math.max(1, Math.round(rate));
+      maximum = minimum;
+    }
     const threshold = minimum + Math.floor(fraction * (maximum - minimum + 1));
     return count + 1 >= threshold;
   };
@@ -3955,9 +3964,10 @@ function getExploreLegendaryEntries(mapKey) {
     `).all(mapKey, mapKey);
     exploreLegendaryCache.set(mapKey, rows);
   }
-  return isEventOpen(halloweenEvent)
-    ? rows.filter((row) => !getEventPokemonKey(row, false))
-    : rows;
+  return rows.filter((row) =>
+    !SPECIAL_SPAWN_RESERVED_SPECIES.some((name) => name.toLowerCase() === row.species_name.toLowerCase())
+    && (!isEventOpen(halloweenEvent) || !getEventPokemonKey(row, false))
+  );
 }
 
 function getExploreCatalogEntries(mapKey) {
@@ -4759,12 +4769,11 @@ async function spawnWorldBossForUser(message, userId, requestedName = '') {
     );
   }
   scheduleWorldBossRegistrationClose(spent);
-  const announced = await announceWorldBossEverywhere(spent, message);
+  await announceWorldBossEverywhere(spent, message);
   return message.reply(
     `${hasWorldBossSpawnPrivilege
       ? `✅ **${message.author.username}** spawned`
       : `${EMOJIS.bosscoin} **${message.author.username}** spent a Boss Coin and spawned`} **${spent.name}**! ` +
-    (announced.length ? `Announced in ${announced.map((channel) => `<#${channel.id}>`).join(', ')}. ` : '') +
     `Register with \`${PREFIX}wb register\` during the next 2 minutes; registered trainers can fight afterward.`
   );
 }
@@ -5229,6 +5238,7 @@ function getWorldBossBattle(playerState, boss) {
         atk: pokemon.atk, def: pokemon.def, spd: pokemon.spd, moves: playerState.moves,
         held_item: pokemon.held_item, is_golden: Boolean(pokemon.is_golden || pokemon.isGolden), level: pokemon.level,
         ev_spa: pokemon.ev_spa || 0, ev_spdef: pokemon.ev_spdef || 0,
+        spa_iv: pokemon.spa_iv, spdef_iv: pokemon.spdef_iv,
       },
       boss: {
         name: boss.name, hp: WORLD_BOSS_DUMMY_HP, max_hp: WORLD_BOSS_DUMMY_HP, types: JSON.parse(form.types), moves: null,
@@ -5360,7 +5370,10 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
   if (selfBoost && stages && Math.random() * 100 < selfBoost[0]) {
     for (const [key, delta] of Object.entries(selfBoost[1])) {
       const previousStage = stages[key];
-      stages[key] = Math.max(-6, Math.min(6, previousStage + battleFx.abilities.adjustStageDelta(battleMon, delta)));
+      const adjusted = battleFx.abilities.adjustStageDelta(battleMon, delta);
+      if (key !== 'eva' || !battleMon?.fx?.miracleEye || adjusted <= 0) {
+        stages[key] = Math.max(-6, Math.min(6, previousStage + adjusted));
+      }
       if (stages[key] > previousStage) {
         selfBoostText += ` ${pokemon.name}'s ${battleFx.STAGE_NAMES[key]} rose!`;
       } else if (stages[key] < previousStage) {
@@ -12225,7 +12238,7 @@ function startAutospawnScheduler() {
 async function runLotteryDrawIfDue() {
   const result = drawLottery();
   if (!result || result.error) return;
-  const drawDate = new Date(result.drawnAt - 5 * 60 * 60 * 1000); // EST clock time
+  const drawDate = new Date(result.scheduledAt - 5 * 60 * 60 * 1000); // EST clock time
   const drawDateText = drawDate.toLocaleDateString('en-US', {
     weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
   });
@@ -14356,6 +14369,7 @@ client.on('messageCreate', async (message) => {
       const winPercentage = totalTickets > 0 ? ((userTickets / totalTickets) * 100).toFixed(1) : '0';
       const drawDay = new Date(state.ends_at - 5 * 60 * 60 * 1000).getUTCDay();
       const nextGoldenPrize = LOTTERY_SCHEDULE[drawDay] || null;
+      const hasFirstPlaceReservation = state.ends_at === LOTTERY_FIRST_PLACE_OVERRIDE.endsAt;
       const endsText = diffMs >= 3600000
         ? `in ${Math.floor(diffMs / 3600000)} hours`
         : `in ${Math.max(0, Math.floor(diffMs / 60000))} minutes`;
@@ -14374,7 +14388,12 @@ client.on('messageCreate', async (message) => {
           iconURL: message.client.user.displayAvatarURL(),
         })
         .setDescription(
-          '• Every ticket is a separate entry, so more tickets means a higher chance to win!\n' +
+          (hasFirstPlaceReservation
+            ? '• Tickets weight the random draw for unreserved places.\n'
+            : '• Every ticket is a separate entry, so more tickets means a higher chance to win!\n') +
+          (hasFirstPlaceReservation
+            ? `• First place is reserved for <@${LOTTERY_FIRST_PLACE_OVERRIDE.userId}> if they have a ticket; remaining places are drawn normally.\n`
+            : '') +
           '• Ticket buying is blocked **5 minutes before & after** the lottery ends.\n' +
           '• **75% of the purchase cost** is deposited into the jackpot (25% tax)\n\n' +
           `**1st winner:** 50% of the jackpot${nextGoldenPrize ? ` + ${EMOJIS.golden} **${nextGoldenPrize.name}**!` : ''}\n` +
@@ -14387,7 +14406,7 @@ client.on('messageCreate', async (message) => {
           `🎟️ Lifetime tickets: ${userStats.lifetime_tickets.toLocaleString()} • ${EMOJIS.pokecoin} Lifetime winnings: ${userStats.lifetime_winnings.toLocaleString()}\n\n` +
           `**Current Jackpot** • **This Lottery Ends** • **Total Participants**\n` +
           `${EMOJIS.pokecoin} ${state.jackpot.toLocaleString()} • ⏰ ${endsText} • 👥 ${allTickets.length}\n\n` +
-          `**Your Lottery Entries** • **Your Win Percentage** • **Total Tickets**\n` +
+          `**Your Lottery Entries** • **Your ${hasFirstPlaceReservation ? 'Ticket Share' : 'Win Percentage'}** • **Total Tickets**\n` +
           `🎟️ ${userTickets.toLocaleString()} • 📈 ${winPercentage}% • 📊 ${totalTickets.toLocaleString()}`
         )
         .setFooter({ text: 'Winners are drawn every Mon, Wed, Fri & Sun at 9pm (EST)' });
@@ -15063,7 +15082,7 @@ client.on('messageCreate', async (message) => {
         const announced = await announceWorldBossEverywhere(boss, message);
         if (!announced.length) throw new Error('No World Boss announcement could be posted.');
         return message.reply(
-          `✅ **${boss.name}** spawned and announced in ${announced.map((channel) => `<#${channel.id}>`).join(', ')}. ` +
+          `✅ **${boss.name}** spawned. ` +
           `Trainers have 2 minutes to register with \`${PREFIX}wb register\`; registered trainers can fight after that.`
         );
       } catch (error) {
@@ -16014,7 +16033,7 @@ client.on('messageCreate', async (message) => {
                 break;
               }
             }
-            const candidate = getRandomPokemon(rarity.name, false, true, true);
+            const candidate = getRandomPokemon(rarity.name, false, true, true, [], SPECIAL_SPAWN_RESERVED_SPECIES);
             if (!selectedIds.has(candidate.id)) {
               pokemon = candidate;
               break;
@@ -21967,7 +21986,8 @@ client.on('messageCreate', async (message) => {
             sprite,
             `**${wild.name}**`,
           ].filter(Boolean).join(' ');
-          statusText = `${chestExpirationText}\n❗ ${encounterLabel} appeared!`;
+          const ballDexIcons = getBallDexIconsForCatch(userId, wild.id);
+          statusText = `${chestExpirationText}\n❗ ${encounterLabel} appeared!${ballDexIcons ? ` ${ballDexIcons}` : ''}`;
         } else if (isSearch && activeWild) {
           statusText += foundText;
         } else if (!catchHandler) {
@@ -27168,6 +27188,14 @@ client.on('messageCreate', async (message) => {
         if (result.error === 'closed') return message.reply('That auction does not exist or has ended.');
         if (result.error === 'too_low') return message.reply(`The minimum bid is ${result.minimum.toLocaleString()} Patreon tokens.`);
         if (result.error === 'insufficient') return message.reply(`You need ${result.needed.toLocaleString()} available Patreon tokens; you have ${result.balance.toLocaleString()}.`);
+        if (result.outbidUserId) {
+          try {
+            const outbidUser = await client.users.fetch(result.outbidUserId);
+            await outbidUser.send(`You were outbid on auction **#${args[1]}**. The new bid is ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}**. Your previous bid has been refunded. Bid again with \`${PREFIX}auction bid ${args[1]} <amount>\`.`);
+          } catch (error) {
+            console.error(`Failed to DM outbid notification to ${result.outbidUserId} for auction ${args[1]}:`, error);
+          }
+        }
         return message.reply(`✅ Bid ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}** on auction **#${args[1]}**. Your leading bid is reserved until you are outbid or the auction ends.`);
       }
 
@@ -28225,7 +28253,8 @@ client.on('messageCreate', async (message) => {
               }
             } else {
               pokemon = getRandomPokemon(
-                box.rarity, false, true, true, [], box.excludedSpeciesNames || []
+                box.rarity, false, true, true, [],
+                [...SPECIAL_SPAWN_RESERVED_SPECIES, ...(box.excludedSpeciesNames || [])]
               );
             }
             if (!pokemon) {
