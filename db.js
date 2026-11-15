@@ -9900,10 +9900,11 @@ function getAllAutoSpawnChannels() {
 
 const LOTTERY_TICKET_PRICE = 10000;
 const LOTTERY_BASE_JACKPOT = 5000000;
-const LOTTERY_FIRST_PLACE_OVERRIDE = Object.freeze({
-  endsAt: Date.parse('2026-11-16T01:00:00Z'),
-  userId: '1170512845553795216',
-});
+const LOTTERY_FIRST_PLACE_EXCLUDED_USER_ID = '1497863323318882354';
+const LOTTERY_NON_WINNER_USER_IDS = new Set([
+  '426946381098254336',
+  '1514082847609061541',
+]);
 // 1st place golden prize per draw day (EST). null = coins only.
 const LOTTERY_SCHEDULE = {
   0: { name: 'Golden Eevee', speciesId: 133 }, // Sunday
@@ -9988,38 +9989,36 @@ function drawLottery(now = Date.now()) {
     const state = getLotteryState();
     if (now < state.ends_at) return { error: 'not_due' };
     const tickets = db.prepare('SELECT user_id, ticket_count FROM lottery_tickets').all();
-    const firstPlaceOverride = state.ends_at === LOTTERY_FIRST_PLACE_OVERRIDE.endsAt
-      ? LOTTERY_FIRST_PLACE_OVERRIDE.userId
-      : null;
-    if (firstPlaceOverride && !tickets.some((entry) => entry.user_id === firstPlaceOverride && entry.ticket_count > 0)) {
-      console.warn(`[lottery] First-place reservation for ${firstPlaceOverride} was not used: no ticket for this draw.`);
-    }
     if (!tickets.length) {
       db.prepare('UPDATE lottery_state SET ends_at = ? WHERE id = 1').run(getNextLotteryDrawTime(now));
       return { error: 'no_participants' };
     }
-    const eligibleEntries = [...tickets];
+    const eligibleEntries = tickets.filter((entry) => !LOTTERY_NON_WINNER_USER_IDS.has(entry.user_id));
     const winners = [];
-    if (firstPlaceOverride) {
-      const reservedIndex = eligibleEntries.findIndex(
-        (entry) => entry.user_id === firstPlaceOverride && entry.ticket_count > 0
-      );
-      if (reservedIndex !== -1) winners.push(eligibleEntries.splice(reservedIndex, 1)[0].user_id);
-    }
-    while (eligibleEntries.length && winners.length < 3) {
-      const totalEligibleTickets = eligibleEntries.reduce(
-        (total, entry) => total + entry.ticket_count, 0
-      );
+    const pickWinner = (entries) => {
+      const totalEligibleTickets = entries.reduce((total, entry) => total + entry.ticket_count, 0);
       let selectedTicket = Math.floor(Math.random() * totalEligibleTickets);
-      const winnerIndex = eligibleEntries.findIndex((entry) => {
+      const winnerIndex = entries.findIndex((entry) => {
         selectedTicket -= entry.ticket_count;
         return selectedTicket < 0;
       });
       if (winnerIndex === -1) {
         throw new Error('Could not select a lottery winner from the remaining tickets.');
       }
-      winners.push(eligibleEntries[winnerIndex].user_id);
-      eligibleEntries.splice(winnerIndex, 1);
+      return entries.splice(winnerIndex, 1)[0].user_id;
+    };
+    const firstPlaceEntries = eligibleEntries.filter(
+      (entry) => entry.user_id !== LOTTERY_FIRST_PLACE_EXCLUDED_USER_ID
+    );
+    if (firstPlaceEntries.length) {
+      winners.push(pickWinner(firstPlaceEntries));
+      eligibleEntries.splice(
+        eligibleEntries.findIndex((entry) => entry.user_id === winners[0]),
+        1
+      );
+    }
+    while (winners.length > 0 && eligibleEntries.length && winners.length < 3) {
+      winners.push(pickWinner(eligibleEntries));
     }
     const jackpot = state.jackpot;
     const prizes = [0.5, 0.3, 0.2].map((share) => Math.floor(jackpot * share));
@@ -11258,7 +11257,6 @@ module.exports = {
   getAutoSpawnChannel,
   getAllAutoSpawnChannels,
   LOTTERY_SCHEDULE,
-  LOTTERY_FIRST_PLACE_OVERRIDE,
   buyLotteryTickets,
   drawLottery,
   setLotteryChannel,

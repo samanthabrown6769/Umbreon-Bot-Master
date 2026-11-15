@@ -125,8 +125,9 @@ test('special battle EV contributions also receive the perfect IV bonus', () => 
   assert.equal(result.def, 160);
 });
 
-test('one lottery draw reserves first place only for the specified ticket holder', () => {
-  const reservedId = '1170512845553795216';
+test('lottery draw selects all winners from ticket-weighted entries', () => {
+  const smallTicketHolderId = 'small-ticket-holder';
+  const adminIds = new Set(['admin-one', 'admin-two']);
   const endsAt = Date.parse('2026-11-16T01:00:00Z');
   const setup = (deadline, entries, random = 0) => {
     const db = new Database(':memory:');
@@ -153,7 +154,8 @@ test('one lottery draw reserves first place only for the specified ticket holder
     math.random = () => random;
     const context = vm.createContext({
       db, Math: math, Date, console: { warn: (text) => warnings.push(text) },
-      LOTTERY_FIRST_PLACE_OVERRIDE: { endsAt, userId: reservedId },
+      LOTTERY_FIRST_PLACE_EXCLUDED_USER_ID: smallTicketHolderId,
+      LOTTERY_NON_WINNER_USER_IDS: adminIds,
       LOTTERY_SCHEDULE: { 0: { name: 'Golden Eevee', speciesId: 133 } },
       LOTTERY_TICKET_PRICE: 10000, LOTTERY_BASE_JACKPOT: 5000000,
       getLotteryState: () => db.prepare('SELECT * FROM lottery_state').get(),
@@ -165,26 +167,25 @@ test('one lottery draw reserves first place only for the specified ticket holder
     vm.runInContext(extract(dbSource, 'function drawLottery(', '\nfunction setAutoSpawnChannel('), context);
     return { db, context, saved, warnings };
   };
-  const entries = [['other', 100], [reservedId, 1], ['third', 2]];
+  const entries = [
+    ['other', 100],
+    [smallTicketHolderId, 1],
+    ['third', 2],
+    ['admin-one', 200],
+    ['admin-two', 300],
+  ];
   let state = setup(endsAt, entries);
   try {
     assert.equal(state.context.drawLottery(endsAt - 1).error, 'not_due');
     const result = state.context.drawLottery(Date.parse('2026-11-17T06:00:00Z'));
-    assert.deepEqual(Array.from(result.winners, (winner) => winner.userId), [reservedId, 'other', 'third']);
+    assert.deepEqual(Array.from(result.winners, (winner) => winner.userId), ['other', smallTicketHolderId, 'third']);
+    assert.equal(result.winners.some((winner) => adminIds.has(winner.userId)), false);
+    assert.equal(result.totalTickets, 603);
     assert.equal(result.goldenPrize.name, 'Golden Eevee');
     assert.equal(result.scheduledAt, endsAt);
-    assert.deepEqual(state.saved, [reservedId]);
-    assert.equal(state.db.prepare('SELECT wins_first FROM lottery_user_stats WHERE user_id = ?').get(reservedId).wins_first, 1);
+    assert.deepEqual(state.saved, ['other']);
+    assert.equal(state.db.prepare('SELECT wins_first FROM lottery_user_stats WHERE user_id = ?').get('other').wins_first, 1);
     assert.equal(state.db.prepare('SELECT COUNT(*) AS n FROM lottery_tickets').get().n, 0);
-  } finally { state.db.close(); }
-  state = setup(endsAt, [['other', 1]]);
-  try {
-    assert.equal(state.context.drawLottery(endsAt).winners[0].userId, 'other');
-    assert.equal(state.warnings.length, 1);
-  } finally { state.db.close(); }
-  state = setup(endsAt + 86400000, entries);
-  try {
-    assert.equal(state.context.drawLottery(endsAt + 86400000).winners[0].userId, 'other');
     assert.equal(state.warnings.length, 0);
   } finally { state.db.close(); }
 });

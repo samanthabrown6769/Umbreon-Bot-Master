@@ -325,7 +325,6 @@ const {
   getAutoSpawnChannel,
   getAllAutoSpawnChannels,
   LOTTERY_SCHEDULE,
-  LOTTERY_FIRST_PLACE_OVERRIDE,
   buyLotteryTickets,
   drawLottery,
   setLotteryChannel,
@@ -14369,7 +14368,6 @@ client.on('messageCreate', async (message) => {
       const winPercentage = totalTickets > 0 ? ((userTickets / totalTickets) * 100).toFixed(1) : '0';
       const drawDay = new Date(state.ends_at - 5 * 60 * 60 * 1000).getUTCDay();
       const nextGoldenPrize = LOTTERY_SCHEDULE[drawDay] || null;
-      const hasFirstPlaceReservation = state.ends_at === LOTTERY_FIRST_PLACE_OVERRIDE.endsAt;
       const endsText = diffMs >= 3600000
         ? `in ${Math.floor(diffMs / 3600000)} hours`
         : `in ${Math.max(0, Math.floor(diffMs / 60000))} minutes`;
@@ -14388,12 +14386,7 @@ client.on('messageCreate', async (message) => {
           iconURL: message.client.user.displayAvatarURL(),
         })
         .setDescription(
-          (hasFirstPlaceReservation
-            ? '• Tickets weight the random draw for unreserved places.\n'
-            : '• Every ticket is a separate entry, so more tickets means a higher chance to win!\n') +
-          (hasFirstPlaceReservation
-            ? `• First place is reserved for <@${LOTTERY_FIRST_PLACE_OVERRIDE.userId}> if they have a ticket; remaining places are drawn normally.\n`
-            : '') +
+          '• Every ticket is a separate entry, so more tickets means a higher chance to win!\n' +
           '• Ticket buying is blocked **5 minutes before & after** the lottery ends.\n' +
           '• **75% of the purchase cost** is deposited into the jackpot (25% tax)\n\n' +
           `**1st winner:** 50% of the jackpot${nextGoldenPrize ? ` + ${EMOJIS.golden} **${nextGoldenPrize.name}**!` : ''}\n` +
@@ -14406,7 +14399,7 @@ client.on('messageCreate', async (message) => {
           `🎟️ Lifetime tickets: ${userStats.lifetime_tickets.toLocaleString()} • ${EMOJIS.pokecoin} Lifetime winnings: ${userStats.lifetime_winnings.toLocaleString()}\n\n` +
           `**Current Jackpot** • **This Lottery Ends** • **Total Participants**\n` +
           `${EMOJIS.pokecoin} ${state.jackpot.toLocaleString()} • ⏰ ${endsText} • 👥 ${allTickets.length}\n\n` +
-          `**Your Lottery Entries** • **Your ${hasFirstPlaceReservation ? 'Ticket Share' : 'Win Percentage'}** • **Total Tickets**\n` +
+          `**Your Lottery Entries** • **Your Win Percentage** • **Total Tickets**\n` +
           `🎟️ ${userTickets.toLocaleString()} • 📈 ${winPercentage}% • 📊 ${totalTickets.toLocaleString()}`
         )
         .setFooter({ text: 'Winners are drawn every Mon, Wed, Fri & Sun at 9pm (EST)' });

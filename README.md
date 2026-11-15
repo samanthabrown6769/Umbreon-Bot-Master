@@ -147,8 +147,6 @@ The event checklist and shop are configured in the files under `events/`. Wild e
 
 ## Commands
 
-The November 15, 2026 lottery draw at 8 PM fixed EST reserves first place for user `1170512845553795216` if they have a ticket. Other places are drawn normally; if they do not enter, all places are drawn normally.
-
 - `.p` / `.pokemon`, `.fish` / `.f`, `.box`, `.team`, `.battle`; select Pokémon with a name or Pokédex number. Use `.team add <Pokédex number|name> [slot 1-3]` to add it to the next available slot or a chosen slot (replacing its occupant); name selection matches the exact form and variant, defaults to the regular non-Golden default form, and accepts `shiny` or `golden` prefixes (for example, `.team add grimer 1` or `.team add shiny garchomp 1`). `.team remove <name>` removes a matching team member, `.team remove dex <Pokédex number>` selects by Dex number (including 1–3), and `.team remove slot <slot 1-3>` removes by team slot
 - `.toggle cooldown` — Choose a ping, username message, or ✅ reaction when a cooldown is ready. Reactions go on the spawn message; for a failed fishing attempt they go on the result, and for a battle they go on the command message. A Cooldown Machine can make the command available early for one charge.
 - `.pc dex` / `.pc sort dex` — Sort the Pokémon box by displayed Pokédex number, including shiny, Golden, and form numbers. The box's sort button also cycles through Dex order; rarity buttons still filter the results.
