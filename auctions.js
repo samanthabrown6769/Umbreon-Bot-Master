@@ -151,6 +151,7 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
     if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError('Invalid auction start limit.');
     const startLimit = Math.min(limit, 50);
     removeIneligibleAuctions();
+    settle(now);
     return db.transaction(() => {
       const queued = db.prepare(`
         SELECT id FROM pokemon_auctions WHERE ended_at IS NULL AND is_started = 0 ORDER BY id LIMIT ?
@@ -215,10 +216,11 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
           }
         }
         db.prepare('UPDATE pokemon_auctions SET ended_at = ? WHERE id = ?').run(now, auction.id);
-        db.prepare("INSERT INTO pokemon_auction_notifications (auction_id, kind) VALUES (?, 'settled')")
-          .run(auction.id);
-        if (!auction.bidder_id) {
-          enqueue(mon, auction.source_user_id, now, auction.starting_bid);
+        if (auction.bidder_id) {
+          db.prepare("INSERT INTO pokemon_auction_notifications (auction_id, kind) VALUES (?, 'settled')")
+            .run(auction.id);
+        } else {
+          enqueue(mon, auction.source_user_id, now, auction.starting_bid, true);
         }
       }
       return due.length;
@@ -305,6 +307,7 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
       FROM pokemon_auction_notifications n
       JOIN pokemon_auctions a ON a.id = n.auction_id
       WHERE n.delivered_at IS NULL
+        AND (n.kind != 'settled' OR a.bidder_id IS NOT NULL)
       ORDER BY n.id LIMIT ?
     `).all(limit).map((row) => ({ ...row, pokemon: JSON.parse(row.pokemon_json) }));
   }

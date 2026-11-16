@@ -773,7 +773,6 @@ const userDefinitions = {
   has_golden_rod: 'INTEGER NOT NULL DEFAULT 0',
   black_market_charm: 'INTEGER NOT NULL DEFAULT 0',
   has_patreon: 'INTEGER NOT NULL DEFAULT 0',
-  cooldown_exemption_disabled: 'INTEGER NOT NULL DEFAULT 0',
   patreon_tokens: 'INTEGER NOT NULL DEFAULT 0',
   patreon_tier: 'TEXT',
   patreon_rewards_available_at: 'INTEGER NOT NULL DEFAULT 0',

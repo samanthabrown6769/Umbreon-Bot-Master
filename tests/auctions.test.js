@@ -275,7 +275,7 @@ test('confiscation returns a shared held item only when its last copy leaves', (
   db.close();
 });
 
-test('unsold auctions relist and cancelled leading bids refund their escrow', () => {
+test('unsold auctions queue for a later start and cancelled leading bids refund their escrow', () => {
   const { db, auctions } = setup();
   db.exec("INSERT INTO catches VALUES (1,'source',1,'Test','Legendary',0,0,NULL)");
   db.transaction(() => auctions.confiscate('source', 1000))();
@@ -283,15 +283,30 @@ test('unsold auctions relist and cancelled leading bids refund their escrow', ()
   db.transaction(() => auctions.cancelLeadingBids('alice'))();
   assert.equal(db.prepare("SELECT patreon_tokens FROM users WHERE id = 'alice'").get().patreon_tokens, 2000);
   assert.equal(auctions.settle(1000 + AUCTION_DURATION_MS), 1);
+  assert.equal(auctions.list('alice').count, 0);
+  assert.equal(auctions.startQueued(2000 + AUCTION_DURATION_MS), 1);
   const active = auctions.list('alice').rows;
   assert.equal(active.length, 1);
   assert.equal(active[0].bid_amount, 0);
-  assert.equal(active[0].ends_at, 1000 + 2 * AUCTION_DURATION_MS);
+  assert.equal(active[0].ends_at, 2000 + 2 * AUCTION_DURATION_MS);
   assert.equal(auctions.list('alice', 'default', true).count, 1);
   db.close();
 });
 
-test('eligible auctions start at 10 tokens and preserve the price on relisting', () => {
+test('starting auctions settles overdue auctions before starting the queued batch', () => {
+  const { db, auctions } = setup();
+  db.exec("INSERT INTO catches VALUES (1,'source',1,'Test','Legendary',0,0,NULL)");
+  db.transaction(() => auctions.confiscate('source', 1000))();
+  assert.equal(auctions.startQueued(1000 + AUCTION_DURATION_MS), 1);
+  assert.equal(auctions.list('alice', 'default', true).count, 1);
+  assert.equal(auctions.list('alice').rows[0].ends_at, 1000 + 2 * AUCTION_DURATION_MS);
+  assert.deepEqual(auctions.pendingNotifications().map((row) => [row.kind, row.id]), [
+    ['created', 1], ['created', 2],
+  ]);
+  db.close();
+});
+
+test('eligible auctions start at 10 tokens and preserve the price when queued again', () => {
   const { db, auctions } = setup();
   db.exec(`
     INSERT INTO catches VALUES (1,'source',1,'Legendary','Legendary',0,0,NULL);
@@ -306,11 +321,12 @@ test('eligible auctions start at 10 tokens and preserve the price on relisting',
   assert.deepEqual(auctions.bid('alice', 1, 9, 2000), { error: 'too_low', minimum: 10 });
   assert.equal(auctions.bid('alice', 1, 10, 2000).amount, 10);
   auctions.settle(1000 + AUCTION_DURATION_MS);
+  assert.equal(auctions.startQueued(2000 + AUCTION_DURATION_MS), 3);
   assert.equal(auctions.list('alice').rows[0].minimum_bid, 10);
   db.close();
 });
 
-test('auction notifications survive failures and include winners and relistings', () => {
+test('auction notifications include winners but not unsold auctions until restarted', () => {
   const { db, auctions } = setup();
   db.exec("INSERT INTO catches VALUES (1,'source',1,'First','Legendary',0,0,NULL), (2,'source',2,'Second','Legendary',0,0,NULL)");
   db.transaction(() => auctions.confiscate('source', 1000))();
@@ -322,13 +338,18 @@ test('auction notifications survive failures and include winners and relistings'
   auctions.settle(1000 + AUCTION_DURATION_MS);
   const pending = auctions.pendingNotifications();
   assert.deepEqual(pending.map((row) => [row.kind, row.id]), [
-    ['created', 2], ['settled', 1], ['settled', 2], ['created', 3],
+    ['created', 2], ['settled', 1],
   ]);
   assert.equal(pending[1].bidder_id, 'alice');
   assert.equal(pending[1].bid_amount, 50);
-  assert.equal(pending[2].bidder_id, null);
   auctions.settle(1000 + AUCTION_DURATION_MS);
-  assert.equal(auctions.pendingNotifications().length, 4);
+  assert.equal(auctions.pendingNotifications().length, 2);
+  db.prepare("INSERT INTO pokemon_auction_notifications (auction_id, kind) VALUES (2, 'settled')").run();
+  assert.equal(auctions.pendingNotifications().length, 2);
+  assert.equal(auctions.startQueued(2000 + AUCTION_DURATION_MS), 1);
+  assert.deepEqual(auctions.pendingNotifications().map((row) => [row.kind, row.id]), [
+    ['created', 2], ['settled', 1], ['created', 3],
+  ]);
   db.close();
 });
 

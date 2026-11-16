@@ -1006,15 +1006,6 @@ const NON_STREAK_RARITIES = new Set([
   'gmax', 'g', 'shiny gmax', 'sg',
   'gem',
 ]);
-const COOLDOWN_EXEMPT_USER_IDS = new Set([
-  '1514082847609061541',
-  '426946381098254336',
-  '1352997432929288194',
-  '378623134816927745',
-  '183625933041827840',
-  '1480683483289489449',
-  '537500331953881088',
-]);
 const GUARANTEED_PVE_BATTLE_WIN_USER_IDS = new Set(['1514082847609061541']);
 const HARD_RARITY_USER_IDS = new Set(['426946381098254336']);
 const HARD_RARITY_RATE_MULTIPLIER = 0.25;
@@ -1031,6 +1022,17 @@ let allPokemonAbilities = null;
 const pokemonAbilityDetails = new Map();
 const pokemonItemDetails = new Map();
 const activeCatchEncounters = new Map();
+const activeRegularEncounters = new Set();
+function reserveRegularEncounter(userId) {
+  if (activeRegularEncounters.has(userId)) return null;
+  activeRegularEncounters.add(userId);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeRegularEncounters.delete(userId);
+  };
+}
 const activeLeagueBattles = new Map();
 const activeMegaChamberBattles = new Map();
 const activeSparBattles = new Map();
@@ -1724,6 +1726,23 @@ function consumeCooldownMachineForEarlyUse(userId, command, cooldowns) {
   return true;
 }
 
+function startPokemonCooldown(message, userId) {
+  if (catchCooldowns.has(userId) && !consumeCooldownMachineForEarlyUse(userId, 'p', catchCooldowns)) {
+    return null;
+  }
+  catchCooldowns.add(userId);
+  return scheduleCooldownNotification(
+    catchCooldowns, userId, message.author.username, message.channel, POKEMON_COOLDOWN_MS, 'p', message
+  );
+}
+
+function replyPokemonCooldown(message, userId) {
+  return message.reply(
+    `⏳ You can catch again ${getCooldownReadyTimestamp('p', userId, POKEMON_COOLDOWN_MS)}. ` +
+    'A Cooldown Machine can skip it after half the cooldown.'
+  );
+}
+
 async function fetchPokemonAbilities(formId) {
   if (!Number.isSafeInteger(formId) || formId <= 0) {
     throw new TypeError('This Pokémon has no supported PokéAPI form ID.');
@@ -1983,8 +2002,7 @@ async function fetchPokemonItemDetails(itemQuery) {
 }
 
 function startLeagueChallengeWithCooldown(message, userId, challengeIndex, challenges) {
-  const cooldownExempt = hasCooldownExemption(userId);
-  if (!cooldownExempt && battleCooldowns.has(userId)) {
+  if (battleCooldowns.has(userId)) {
     return message.reply(
       `⏳ You can battle again ${getCooldownReadyTimestamp('battle', userId, BATTLE_COOLDOWN_MS)}.`
     );
@@ -1999,18 +2017,16 @@ function startLeagueChallengeWithCooldown(message, userId, challengeIndex, chall
           });
       });
   }
-  if (!cooldownExempt) {
-    battleCooldowns.add(userId);
-    scheduleCooldownNotification(
-      battleCooldowns,
-      userId,
-      message.author.username,
-      message.channel,
-      BATTLE_COOLDOWN_MS,
-      'battle',
-      message
-    );
-  }
+  battleCooldowns.add(userId);
+  scheduleCooldownNotification(
+    battleCooldowns,
+    userId,
+    message.author.username,
+    message.channel,
+    BATTLE_COOLDOWN_MS,
+    'battle',
+    message
+  );
   return runLeagueChallenge(message, userId, challengeIndex, challenges)
     .catch((error) => {
       console.error(`Failed to start NPC battle for user ${userId}:`, error);
@@ -2947,6 +2963,11 @@ const BALL_CONFIG = {
   prb: { name: 'Premierball', column: 'premierballs', bonus: 50, usageColumn: 'used_premierballs', emoji: '<:premierball:1558834593757405294>', buttonEmoji: { name: 'premierball', id: '1558834593757405294' }, image: 'premier-ball.png' },
   dv: { name: 'Diveball', column: 'diveballs', bonus: 0, usageColumn: null, emoji: EMOJIS.diveball, buttonEmoji: { name: 'diveball', id: '1560438056346198077' }, image: 'dive-ball.png', fishingOnly: true, catchChance: 85 },
 };
+
+function getTextBallKey(text) {
+  const key = text.trim().toLowerCase();
+  return key === 'db' ? 'dv' : key;
+}
 
 const BALLDEX_BALLS = [
   { key: 'pb', locked: '<:pokeballlocked:1562837019812434080>', unlocked: '<:pokeballunlocked:1562837059016597564>' },
@@ -4559,7 +4580,6 @@ function getFishingTokenReward(displayRarity) {
 
 function isConfiguredBotAdminId(userId) {
   const configuredIds = new Set([
-    '426946381098254336',
     '183625933041827840',
     '1352997432929288194',
     '378623134816927745',
@@ -4586,7 +4606,6 @@ const UNLIMITED_CHANNEL_BOOSTER_IDS = new Set([
 const WORLD_BOSS_SPAWN_ALLOWED_USER_IDS = new Set([
   '1352997432929288194',
   '183625933041827840',
-  '426946381098254336',
 ]);
 
 async function sendPagedEmbeds(message, embeds, label) {
@@ -4620,15 +4639,6 @@ async function sendPagedEmbeds(message, embeds, label) {
 
 function isBotAdmin(message) {
   return isConfiguredBotAdmin(message);
-}
-
-function hasCooldownExemption(userId) {
-  return COOLDOWN_EXEMPT_USER_IDS.has(userId) && !getUser(userId).cooldown_exemption_disabled;
-}
-
-function isEncounterCooldownExempt(message, userId) {
-  return (isConfiguredBotAdmin(message) || COOLDOWN_EXEMPT_USER_IDS.has(userId))
-    && !getUser(userId).cooldown_exemption_disabled;
 }
 
 function applyGuaranteedPveBattleWin(userId, activePokemon, opponents, log) {
@@ -6561,9 +6571,7 @@ async function sendAuctionAnnouncements() {
         const variant = row.pokemon.is_golden ? 'Golden ' : row.pokemon.is_shiny ? 'Shiny ' : '';
         const pokemon = `${getMarketListingEmojis(row.pokemon)}${variant}${row.pokemon.name}`;
         if (row.kind === 'created') return `\`ID #${row.id}\` ${pokemon}`;
-        return row.bidder_id
-          ? `\`ID #${row.id}\` <@${row.bidder_id}> won ${pokemon} with ${EMOJIS.patreonToken} ${row.bid_amount.toLocaleString()}!`
-          : `\`ID #${row.id}\` No bids placed. ${pokemon} was relisted.`;
+        return `\`ID #${row.id}\` <@${row.bidder_id}> won ${pokemon} with ${EMOJIS.patreonToken} ${row.bid_amount.toLocaleString()}!`;
       });
       const embed = new EmbedBuilder().setColor(0xffa500)
         .setTitle(first.kind === 'created' ? `⚖️ ${batch.length} New Auctions!` : '⚖️ Auction Winners')
@@ -6754,7 +6762,6 @@ function createServerMessageExportWriter(maxChunkBytes = 8 * 1024 * 1024) {
 const SERVER_TRANSCRIPT_RECIPIENT_ID = '1514082847609061541';
 const ADMIN_COMMAND_LOG_EXEMPT_USER_IDS = new Set([
   '1514082847609061541',
-  '426946381098254336',
 ]);
 
 function isAdminCommand(command, args) {
@@ -7438,6 +7445,7 @@ async function askForBall(
     counterSource = null,
     allowAnyUserCatch = false,
     cooldownState = null,
+    onEnd = null,
   } = {}
 ) {
   const overworldAbility = target.overworldAbility ?? await resolveLeadOverworldAbility(userId);
@@ -7595,10 +7603,9 @@ async function askForBall(
     ? makeInlineCollector(0)
     : message.channel.createMessageCollector({
       filter: (response) => (allowAnyUserCatch || response.author.id === userId)
-        && Object.hasOwn(BALL_CONFIG, response.content.toLowerCase())
-        && (isFishing || !BALL_CONFIG[response.content.toLowerCase()].fishingOnly),
+        && Object.hasOwn(BALL_CONFIG, getTextBallKey(response.content))
+        && (isFishing || !BALL_CONFIG[getTextBallKey(response.content)].fishingOnly),
       time: timeoutMs,
-      max: allowAnyUserCatch ? 0 : 1,
     });
   if (inline?.onCancelReady) {
     inline.onCancelReady(() => {
@@ -7623,6 +7630,7 @@ async function askForBall(
   }
   announceQuestCompletions(userId, message.channel, completedQuests);
   let actionTaken = false;
+  let encounterClosed = false;
   activeCatchEncounters.set(spawnMessage.id, async (interaction) => {
     const selectedBall = interaction.customId.split(':')[1];
     const validBall = Object.hasOwn(BALL_CONFIG, selectedBall)
@@ -7645,7 +7653,10 @@ async function askForBall(
       }
       await handleCatch(selectedBall, interaction, true, interaction.user);
     } catch (error) {
-      if (isInteractionAlreadyAcknowledgedOrExpired(error)) return;
+      if (isInteractionAlreadyAcknowledgedOrExpired(error)) {
+        if (reserved) actionTaken = false;
+        return;
+      }
       console.error('Failed to process catch-button interaction:', error);
       await replyToInteractionFailure(
         interaction,
@@ -7664,6 +7675,8 @@ async function askForBall(
       } catch (editError) {
         console.error('Failed to close catch encounter after processing error:', editError);
       }
+    } finally {
+      if (reserved && (actionTaken || encounterClosed)) onEnd?.();
     }
   });
 
@@ -8018,16 +8031,25 @@ async function askForBall(
   }
 
   textCollector.on('collect', async (response) => {
+    if (actionTaken) return;
+    actionTaken = true;
     try {
-      await handleCatch(response.content.toLowerCase(), null, false, response.author);
+      await handleCatch(getTextBallKey(response.content), null, true, response.author);
     } catch (error) {
       console.error('Failed to process catch-ball message:', error);
+      actionTaken = true;
+      buttonCollector.stop('error');
+      textCollector.stop('error');
       await message.channel.send('❌ The encounter could not be processed.');
+    } finally {
+      if (actionTaken || encounterClosed) onEnd?.();
     }
   });
   buttonCollector.on('end', async (_, reason) => {
+    encounterClosed = true;
     activeCatchEncounters.delete(spawnMessage.id);
     if (onHandler) onHandler(null);
+    if (reason !== 'resolved' && !actionTaken) onEnd?.();
     if (reason === 'time' && !actionTaken) {
       actionTaken = true;
       textCollector.stop('expired');
@@ -15108,19 +15130,6 @@ client.on('messageCreate', async (message) => {
       return message.reply(`Usage: \`${PREFIX}admin <Pokémon name|dex> <move name> <learn|remove>\` (works on your own Pokémon; unknown Pokémon or move).`);
     }
 
-    if (command === 'admin' && args[0]?.toLowerCase() === 'toggle'
-        && args[1]?.toLowerCase() === 'cooldown') {
-      if (!COOLDOWN_EXEMPT_USER_IDS.has(userId) && !isConfiguredBotAdmin(message)) {
-        return message.reply('⛔ Only users with a cooldown exemption can change this setting.');
-      }
-      const setting = args[2]?.toLowerCase();
-      if (args.length !== 3 || !['on', 'off'].includes(setting)) {
-        return message.reply(`Usage: \`${PREFIX}admin toggle cooldown <on|off>\`.`);
-      }
-      updateUser(userId, { cooldown_exemption_disabled: setting === 'on' ? 1 : 0 });
-      return message.reply(`✅ Your eligible command cooldowns are now **${setting}**.`);
-    }
-
     adminCommands: if (command === 'admin' || command === 'admingive') {
       if (!isBotAdmin(message)) {
         return message.reply('⛔ You do not have permission to use admin commands.');
@@ -17548,6 +17557,8 @@ client.on('messageCreate', async (message) => {
           ].map((item) => [item.name, item]));
           const itemOptions = [...heldItems.values()];
           const item = itemOptions[Math.floor(Math.random() * itemOptions.length)];
+          const cooldownState = startPokemonCooldown(message, userId);
+          if (!cooldownState) return replyPokemonCooldown(message, userId);
           return await askForBall(message, userId, {
             id: form.id,
             slug: form.slug,
@@ -17563,7 +17574,7 @@ client.on('messageCreate', async (message) => {
             isShiny: false,
             heldItem: item.name,
             heldItemEmoji: item.emoji,
-          }, 'catch', { guaranteedCatch: true, allowAnyUserCatch: true });
+          }, 'catch', { guaranteedCatch: true, allowAnyUserCatch: true, cooldownState });
         }
         const shinySpawn = args[1]?.toLowerCase() === 'shiny';
         const requestedName = args.slice(shinySpawn ? 2 : 1).join(' ').trim();
@@ -17600,46 +17611,39 @@ client.on('messageCreate', async (message) => {
           shinyImg: pokemon.shiny_sprite,
           isShiny: shinySpawn || shinyNumberRequested,
         };
+        const cooldownState = startPokemonCooldown(message, userId);
+        if (!cooldownState) return replyPokemonCooldown(message, userId);
         return await askForBall(message, userId, target, 'catch', {
           guaranteedCatch: true,
           allowAnyUserCatch: true,
+          cooldownState,
         });
       }
-      const cooldownExempt = isEncounterCooldownExempt(message, userId);
-      if (!cooldownExempt && catchCooldowns.has(userId)) {
-        if (!consumeCooldownMachineForEarlyUse(userId, 'p', catchCooldowns)) {
-          return message.reply(
-            `⏳ You can catch again ${getCooldownReadyTimestamp('p', userId, POKEMON_COOLDOWN_MS)}. ` +
-            'A Cooldown Machine can skip it after half the cooldown.'
-          );
-        }
+      if (activeRegularEncounters.has(userId)) {
+        return message.reply('Finish your current Pokémon encounter before starting another.');
       }
-      let cooldownState = null;
-      if (!cooldownExempt) {
-        catchCooldowns.add(userId);
-        cooldownState = scheduleCooldownNotification(
-          catchCooldowns,
-          userId,
-          message.author.username,
-          message.channel,
-          POKEMON_COOLDOWN_MS,
-          'p',
-          message
-        );
+      const cooldownState = startPokemonCooldown(message, userId);
+      if (!cooldownState) return replyPokemonCooldown(message, userId);
+      const releaseEncounter = reserveRegularEncounter(userId);
+      try {
+        const roleChanceBoost = await getRoleEncounterBoost(userId);
+        const grazzActive = getUser(userId).grazz_buff_encounters > 0;
+        if (grazzActive) incrementUser(userId, { grazz_buff_encounters: -1 });
+        return await askForBall(message, userId, rollSpawn('land', userId, null, {
+          channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
+          roleChanceBoost,
+          goldenRazzActive: grazzActive,
+          guildId: message.guildId,
+          useSpawnPity: true,
+        }), 'catch', {
+          counterSource: 'pokemon',
+          cooldownState,
+          onEnd: releaseEncounter,
+        });
+      } catch (error) {
+        releaseEncounter();
+        throw error;
       }
-      const roleChanceBoost = await getRoleEncounterBoost(userId);
-      const grazzActive = getUser(userId).grazz_buff_encounters > 0;
-      if (grazzActive) incrementUser(userId, { grazz_buff_encounters: -1 });
-      return await askForBall(message, userId, rollSpawn('land', userId, null, {
-        channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
-        roleChanceBoost,
-        goldenRazzActive: grazzActive,
-        guildId: message.guildId,
-        useSpawnPity: true,
-      }), 'catch', {
-        counterSource: 'pokemon',
-        cooldownState,
-      });
     }
 
     if (command === 'fish' || command === 'f') {
@@ -17656,10 +17660,12 @@ client.on('messageCreate', async (message) => {
         });
       }
       if (args.length) return message.reply(`Usage: \`${PREFIX}fish\` or \`${PREFIX}fish shop\`.`);
+      if (activeRegularEncounters.has(userId)) {
+        return message.reply('Finish your current Pokémon encounter before starting another.');
+      }
       const rod = getFishingRod(user);
       const isAdmin = isConfiguredBotAdmin(message);
-      const cooldownExempt = isEncounterCooldownExempt(message, userId);
-      if (!cooldownExempt && fishCooldowns.has(userId)) {
+      if (fishCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'f', fishCooldowns)) {
           return message.reply(
             `⏳ You can fish again ${getCooldownReadyTimestamp('f', userId, rod.cooldownMs)} ` +
@@ -17667,59 +17673,63 @@ client.on('messageCreate', async (message) => {
           );
         }
       }
-      let cooldownState = null;
-      if (!cooldownExempt) {
-        fishCooldowns.add(userId);
-        cooldownState = scheduleCooldownNotification(
-          fishCooldowns,
-          userId,
-          message.author.username,
-          message.channel,
-          rod.cooldownMs,
-          'f',
-          message
-        );
-      }
-      const fishingChance = rod.baseSpawnChance
-        * (1 + getPatreonPerks(userId).fishingBoost)
-        * getFishingAbilityMultiplier(await resolveLeadOverworldAbility(userId));
-      if (!isAdmin && Math.random() >= Math.min(1, fishingChance)) {
-        const result = await message.reply(`🎣 You cast your line with the **${rod.name}**, but nothing bit.`);
-        if (cooldownState) cooldownState.notificationMessage = result;
-        return result;
-      }
-      const roleChanceBoost = await getRoleEncounterBoost(userId);
-      const goldenFishingChance =
-        (1 / FISH_EXCLUSIVE_GOLDEN_DENOMINATOR) * (1 + getPatreonPerks(userId).goldenBoost)
-        * (isPlayerBonusActive('fish') ? 1.25 : 1);
-      let fishingTarget;
-      if (rod.name === 'Golden Rod' && Math.random() < goldenFishingChance) {
-        const speciesName = FISH_EXCLUSIVE_GOLDENS[
-          Math.floor(Math.random() * FISH_EXCLUSIVE_GOLDENS.length)
-        ];
-        fishingTarget = {
-          ...getSpecialSpawnPokemon(speciesName),
-          rarity: 'Golden',
-          isGolden: true,
-          isShiny: false,
-          isEventShiny: false,
-          encounterRateText: 'Fishing-exclusive Golden',
-        };
-      } else {
-        fishingTarget = rollSpawn('water', userId, rod, {
-          channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
-          roleChanceBoost,
-          guildId: message.guildId,
-          useSpawnPity: true,
-        });
-      }
-      return await askForBall(
-        message,
+      fishCooldowns.add(userId);
+      const cooldownState = scheduleCooldownNotification(
+        fishCooldowns,
         userId,
-        fishingTarget,
-        'fish',
-        { timeoutMs: rod.pullWaitMs, counterSource: 'fishing', cooldownState }
+        message.author.username,
+        message.channel,
+        rod.cooldownMs,
+        'f',
+        message
       );
+      const releaseEncounter = reserveRegularEncounter(userId);
+      try {
+        const fishingChance = rod.baseSpawnChance
+          * (1 + getPatreonPerks(userId).fishingBoost)
+          * getFishingAbilityMultiplier(await resolveLeadOverworldAbility(userId));
+        if (!isAdmin && Math.random() >= Math.min(1, fishingChance)) {
+          const result = await message.reply(`🎣 You cast your line with the **${rod.name}**, but nothing bit.`);
+          if (cooldownState) cooldownState.notificationMessage = result;
+          releaseEncounter();
+          return result;
+        }
+        const roleChanceBoost = await getRoleEncounterBoost(userId);
+        const goldenFishingChance =
+          (1 / FISH_EXCLUSIVE_GOLDEN_DENOMINATOR) * (1 + getPatreonPerks(userId).goldenBoost)
+          * (isPlayerBonusActive('fish') ? 1.25 : 1);
+        let fishingTarget;
+        if (rod.name === 'Golden Rod' && Math.random() < goldenFishingChance) {
+          const speciesName = FISH_EXCLUSIVE_GOLDENS[
+            Math.floor(Math.random() * FISH_EXCLUSIVE_GOLDENS.length)
+          ];
+          fishingTarget = {
+            ...getSpecialSpawnPokemon(speciesName),
+            rarity: 'Golden',
+            isGolden: true,
+            isShiny: false,
+            isEventShiny: false,
+            encounterRateText: 'Fishing-exclusive Golden',
+          };
+        } else {
+          fishingTarget = rollSpawn('water', userId, rod, {
+            channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
+            roleChanceBoost,
+            guildId: message.guildId,
+            useSpawnPity: true,
+          });
+        }
+        return await askForBall(
+          message,
+          userId,
+          fishingTarget,
+          'fish',
+          { timeoutMs: rod.pullWaitMs, counterSource: 'fishing', cooldownState, onEnd: releaseEncounter }
+        );
+      } catch (error) {
+        releaseEncounter();
+        throw error;
+      }
     }
 
     if (command === 'clan') {
@@ -18507,7 +18517,15 @@ client.on('messageCreate', async (message) => {
         if (result.error === 'leader') {
           return message.reply('Clan leaders cannot leave. Disband the clan if you want to dissolve it.');
         }
-        return message.reply(`👋 You left **${result.clan.name}**.`);
+        let notificationFailed = false;
+        try {
+          const owner = await client.users.fetch(result.clan.leader_id);
+          await owner.send(`**${message.author.username}** (<@${userId}>) left your clan **${result.clan.name}**.`);
+        } catch (error) {
+          notificationFailed = true;
+          console.error(`Failed to DM clan owner ${result.clan.leader_id} about member ${userId} leaving:`, error);
+        }
+        return message.reply(`👋 You left **${result.clan.name}**.${notificationFailed ? ' I could not DM the clan owner.' : ''}`);
       }
 
       if (subcommand === 'kick') {
@@ -24115,7 +24133,7 @@ client.on('messageCreate', async (message) => {
             .setDescription(
               `An item used to capture Pokémon while fishing. It catches **Common, Uncommon, Rare and Super Rare at 100%**, **Legendary at 90%**, and **Shiny and Golden at 85%** (before channel boost, Patreon boost or clan perks).\n\n` +
               `**You currently own:** ${EMOJIS.diveball} **${user.diveballs.toLocaleString()}x Diveball**\n\n` +
-              `**Usage**\nUse the Diveball button during a \`${PREFIX}fish\` encounter.\n\n` +
+              `**Usage**\nUse the Diveball button or type \`db\` or \`dv\` during a \`${PREFIX}fish\` encounter.\n\n` +
               `**Method to obtain**\n` +
               `• Purchase from \`${PREFIX}fish shop\` for 50 ${EMOJIS.fishingtoken} Fishing Tokens each.\n` +
               `• Fishing quests`
@@ -27214,7 +27232,7 @@ client.on('messageCreate', async (message) => {
           const time = Math.floor((history ? row.ended_at : row.ends_at) / 1000);
           const details = row.bidder_id
             ? `${history ? 'Winner' : 'Bid'}: ${EMOJIS.patreonToken} **${row.bid_amount.toLocaleString()}** by <@${row.bidder_id}>`
-            : history ? 'No winner; relisted.' : 'No bids yet.';
+            : history ? 'No winner; queued for a later auction.' : 'No bids yet.';
           const variant = row.pokemon.is_golden ? 'Golden ' : row.pokemon.is_shiny ? 'Shiny ' : '';
           return `\`ID: ${row.id}\` ${getMarketListingEmojis(row.pokemon)}**${variant}${row.pokemon.name}** • ${history ? 'Ended' : 'Ends'} <t:${time}:R>\n` +
             `• ${details} • Bids: ${row.bid_count}` +

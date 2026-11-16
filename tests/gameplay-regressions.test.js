@@ -265,8 +265,12 @@ test('ordinary admin catches use normal rates while shared admin spawns stay gua
   const spawnOptions = [];
   const ctx = vm.createContext({
     command: 'p', args: [], userId: '1514082847609061541',
-    message: { author: { id: '1514082847609061541', username: 'Admin' }, guildId: 'guild', channelId: 'channel' },
-    isBotAdmin: () => true, isConfiguredBotAdmin: () => true, isEncounterCooldownExempt: () => true,
+    message: { author: { id: '1514082847609061541', username: 'Admin' }, guildId: 'guild', channelId: 'channel',
+      reply: async (text) => text },
+    isBotAdmin: () => true, isConfiguredBotAdmin: () => true,
+    catchCooldowns: new Set(), fishCooldowns: new Set(),
+    consumeCooldownMachineForEarlyUse: () => false, getCooldownReadyTimestamp: () => 'later',
+    scheduleCooldownNotification: () => ({}), POKEMON_COOLDOWN_MS: 8000, PREFIX: '.',
     getUser: () => ({ grazz_buff_encounters: 0 }), getRoleEncounterBoost: async () => 0,
     getChannelCatchRateBoost: () => 0, rollSpawn: (_pool, _user, _rod, options) => {
       spawnOptions.push(options);
@@ -277,24 +281,179 @@ test('ordinary admin catches use normal rates while shared admin spawns stay gua
     resolveLeadOverworldAbility: async () => null, getFishingAbilityMultiplier: () => 1,
     FISH_EXCLUSIVE_GOLDEN_DENOMINATOR: 1000, isPlayerBonusActive: () => false,
     resolvePokemonForm: () => ({ id: 1, name: 'Test', rarity: 'Common', types: '[]' }),
+    WILD_HELD_ITEM_GROUPS: [{ name: 'Item', emoji: ':item:' }],
+    RESEARCH_HOLDABLE_ITEM_NAMES: [], RESEARCH_ITEM_EMOJIS: {}, RESEARCH_VALUABLES: [], RESEARCH_RELICS: [],
+    activeRegularEncounters: new Set(),
+    reserveRegularEncounter: () => () => {},
     askForBall: async (_message, _userId, _target, _mode, options) => options,
   });
+  vm.runInContext(extract(indexSource, 'function startPokemonCooldown(', '\nasync function fetchPokemonAbilities('), ctx);
   vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'pokemon' || command === 'p') {", "\n    if (command === 'clan') {")} }`, ctx);
   assert.notEqual((await ctx.run()).guaranteedCatch, true);
   assert.equal(spawnOptions.at(-1).useSpawnPity, true);
   ctx.command = 'fish';
   assert.notEqual((await ctx.run()).guaranteedCatch, true);
   assert.equal(spawnOptions.at(-1).useSpawnPity, true);
+  assert.match(await ctx.run(), /fish again later/);
   ctx.command = 'p';
   ctx.args = ['admin', 'Test'];
+  assert.match(await ctx.run(), /catch again later/);
+  ctx.catchCooldowns.clear();
   const shared = await ctx.run();
   assert.equal(shared.guaranteedCatch, true);
   assert.equal(shared.allowAnyUserCatch, true);
+  ctx.args = ['admin', 'helditem', 'Test'];
+  assert.match(await ctx.run(), /catch again later/);
+  ctx.catchCooldowns.clear();
+  assert.equal((await ctx.run()).guaranteedCatch, true);
 
   const prefix = extract(indexSource, 'async function askForBall(', '\n  const overworldAbility =');
   vm.runInContext(`${prefix}\n  return guaranteedCatch;\n}`, ctx);
   assert.equal(await ctx.askForBall(null, ctx.userId, {}, 'catch'), false);
   assert.equal(await ctx.askForBall(null, ctx.userId, {}, 'catch', { guaranteedCatch: true, allowAnyUserCatch: true }), true);
+});
+
+test('regular encounters block both spawn commands until finished without bypassing cooldowns', async () => {
+  const replies = [];
+  let endEncounter;
+  let rollFails = false;
+  const ctx = vm.createContext({
+    command: 'p', args: [], userId: '537500331953881088',
+    message: { author: { id: '537500331953881088', username: 'Player' }, guildId: 'guild', channelId: 'channel',
+      reply: async (text) => { replies.push(text); return text; } },
+    isConfiguredBotAdmin: () => false,
+    catchCooldowns: new Set(), fishCooldowns: new Set(),
+    consumeCooldownMachineForEarlyUse: () => false, getCooldownReadyTimestamp: () => 'later',
+    scheduleCooldownNotification: () => ({}), POKEMON_COOLDOWN_MS: 8000, PREFIX: '.',
+    getUser: () => ({ grazz_buff_encounters: 0 }), getRoleEncounterBoost: async () => {
+      if (rollFails) throw new Error('spawn failed');
+      return 0;
+    },
+    getChannelCatchRateBoost: () => 0, rollSpawn: () => ({ name: 'Test' }),
+    getFishingRod: () => ({ name: 'Rod', cooldownMs: 20000, baseSpawnChance: 1, pullWaitMs: 20000 }),
+    getPatreonPerks: () => ({ fishingBoost: 0, goldenBoost: 0 }),
+    resolveLeadOverworldAbility: async () => null, getFishingAbilityMultiplier: () => 1,
+    FISH_EXCLUSIVE_GOLDEN_DENOMINATOR: 1000, isPlayerBonusActive: () => false,
+    askForBall: async (_message, _userId, _target, _mode, options) => { endEncounter = options.onEnd; },
+  });
+  vm.runInContext(extract(indexSource, 'const activeRegularEncounters = new Set();', '\nconst activeLeagueBattles'), ctx);
+  vm.runInContext(extract(indexSource, 'function startPokemonCooldown(', '\nasync function fetchPokemonAbilities('), ctx);
+  vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'pokemon' || command === 'p') {", "\n    if (command === 'clan') {")} }`, ctx);
+  await ctx.run();
+  ctx.command = 'fish';
+  await ctx.run();
+  assert.match(replies.at(-1), /Finish your current/);
+  assert.equal(ctx.fishCooldowns.size, 0);
+  endEncounter();
+  ctx.command = 'p';
+  await ctx.run();
+  assert.match(replies.at(-1), /catch again later/);
+  ctx.catchCooldowns.clear();
+  rollFails = true;
+  await assert.rejects(ctx.run(), /spawn failed/);
+  ctx.catchCooldowns.clear();
+  rollFails = false;
+  await ctx.run();
+  endEncounter();
+  ctx.command = 'fish';
+  await ctx.run();
+  assert.equal(ctx.fishCooldowns.has(ctx.userId), true);
+  endEncounter();
+  await ctx.run();
+  assert.match(replies.at(-1), /fish again later/);
+  ctx.fishCooldowns.clear();
+  ctx.isConfiguredBotAdmin = () => false;
+  ctx.getFishingRod = () => ({ name: 'Rod', cooldownMs: 20000, baseSpawnChance: 0, pullWaitMs: 20000 });
+  await ctx.run();
+  assert.match(replies.at(-1), /nothing bit/);
+  ctx.command = 'p';
+  await ctx.run();
+  assert.doesNotMatch(replies.at(-1), /Finish your current/);
+});
+
+test('Diveball text alias resolves to the fishing-only ball and supports retrying empty balls', async () => {
+  const ctx = vm.createContext({ BALL_CONFIG: { pb: {}, dv: { fishingOnly: true } } });
+  vm.runInContext(extract(indexSource, 'function getTextBallKey(', '\nconst BALLDEX_BALLS'), ctx);
+  assert.equal(ctx.getTextBallKey(' DB '), 'dv');
+  assert.equal(ctx.getTextBallKey('dv'), 'dv');
+  const filter = extract(indexSource, '      filter: (response) => (allowAnyUserCatch || response.author.id === userId)', '\n      time: timeoutMs,');
+  ctx.userId = 'player';
+  ctx.allowAnyUserCatch = false;
+  ctx.isFishing = true;
+  vm.runInContext(`function makeFilter() { return { ${filter} }; }`, ctx);
+  const response = { author: { id: 'player' }, content: 'db' };
+  assert.equal(ctx.makeFilter().filter(response), true);
+  ctx.isFishing = false;
+  assert.equal(ctx.makeFilter().filter(response), false);
+  assert.doesNotMatch(extract(indexSource, '    : message.channel.createMessageCollector({', '\n  if (inline?.onCancelReady)'), /max:/);
+});
+
+test('encounter lock releases on resolution or expiry, not when an empty ball is selected', async () => {
+  const handlers = {};
+  const actions = [];
+  let releaseCount = 0;
+  let resolveCatch;
+  const ctx = vm.createContext({
+    activeCatchEncounters: new Map(), spawnMessage: { id: 'spawn', edit: async () => {} },
+    BALL_CONFIG: { dv: { fishingOnly: true } }, isFishing: true, allowAnyUserCatch: false, userId: 'player',
+    onHandler: null, target: { name: 'Test' }, console,
+    buttonCollector: { on: (event, fn) => { handlers[`button-${event}`] = fn; }, stop: () => {} },
+    textCollector: { on: (event, fn) => { handlers[`text-${event}`] = fn; }, stop: () => {} },
+    onEnd: () => { releaseCount++; },
+    getTextBallKey: (text) => text.toLowerCase() === 'db' ? 'dv' : text.toLowerCase(),
+    message: { channel: { send: async () => {} } },
+    handleCatch: async (ball) => {
+      actions.push(ball);
+      if (actions.length === 1) {
+        vm.runInContext('actionTaken = false', ctx);
+      } else {
+        await new Promise((resolve) => { resolveCatch = resolve; });
+      }
+    },
+  });
+  vm.runInContext('let actionTaken = false; let encounterClosed = false;', ctx);
+  vm.runInContext(extract(indexSource, "  textCollector.on('collect'", '\n}\n\nconst TYPE_EFFECTIVENESS'), ctx);
+  await handlers['text-collect']({ content: 'db', author: { id: 'player' } });
+  assert.deepEqual(actions, ['dv']);
+  assert.equal(releaseCount, 0);
+  const pending = handlers['text-collect']({ content: 'db', author: { id: 'player' } });
+  await handlers['button-end']([], 'time');
+  assert.equal(releaseCount, 0);
+  resolveCatch();
+  await pending;
+  assert.equal(releaseCount, 1);
+  vm.runInContext('actionTaken = false; encounterClosed = false;', ctx);
+  await handlers['button-end']([], 'time');
+  assert.equal(releaseCount, 2);
+});
+
+test('leaving a clan notifies its leader and reports DM failures', async () => {
+  const replies = [];
+  const dms = [];
+  const errors = [];
+  let result = { clan: { name: 'Team', leader_id: 'owner' } };
+  let fail = false;
+  const ctx = vm.createContext({
+    subcommand: 'leave', userId: 'member', leaveClan: () => result,
+    message: { author: { username: 'Trainer' }, reply: async (text) => replies.push(text) },
+    client: { users: { fetch: async (id) => ({ send: async (text) => {
+      if (fail) throw new Error('DM closed');
+      dms.push([id, text]);
+    } }) } },
+    console: { error: (...args) => errors.push(args) },
+  });
+  vm.runInContext(`async function run() { ${extract(indexSource, "      if (subcommand === 'leave') {", "\n      if (subcommand === 'kick') {")} }`, ctx);
+  await ctx.run();
+  assert.equal(dms[0][0], 'owner');
+  assert.match(dms[0][1], /Trainer.*member.*Team/);
+  result = { error: 'leader' };
+  await ctx.run();
+  assert.equal(dms.length, 1);
+  result = { clan: { name: 'Team', leader_id: 'owner' } };
+  fail = true;
+  await ctx.run();
+  assert.equal(errors.length, 1);
+  assert.match(replies.at(-1), /could not DM/);
 });
 
 test('collection commands resolve normal, shiny and Golden Dex numbers to the correct variants', async () => {
@@ -555,6 +714,44 @@ test('cooldown notification modes persist and react to the encounter instead of 
   assert.match(sent[0].content, /\*\*Trainer\*\*/);
   assert.deepEqual(Array.from(sent[0].allowedMentions.parse), []);
   db.close();
+});
+
+test('all users can still use Cooldown Machines after half the encounter cooldown', () => {
+  let now = 10000;
+  const user = { cooldown_machine_catch_charges: 1, cooldown_machine_fish_charges: 1 };
+  const ctx = vm.createContext({
+    Date: class extends Date { static now() { return now; } },
+    catchCooldowns: new Set(), fishCooldowns: new Set(),
+    cooldownEndsAt: { p: new Map(), f: new Map(), battle: new Map() },
+    pokemonCooldownStates: { p: new Map(), f: new Map() },
+    POKEMON_COOLDOWN_MS: 8000, getUser: () => user,
+    incrementUser: (_id, changes) => {
+      for (const [field, amount] of Object.entries(changes)) user[field] += amount;
+    },
+    setTimeout: () => ({}), clearTimeout: () => {}, getCooldownNotificationMode: () => 'ping',
+    console, PREFIX: '.', EMOJIS: { cooldownMachine: 'machine' },
+  });
+  vm.runInContext(extract(indexSource, 'function scheduleCooldownNotification(', '\nasync function fetchPokemonAbilities('), ctx);
+  const message = { author: { username: 'Admin' }, channel: {} };
+  const id = '1514082847609061541';
+  assert.ok(ctx.startPokemonCooldown(message, id));
+  now += 3999;
+  assert.equal(ctx.startPokemonCooldown(message, id), null);
+  assert.equal(user.cooldown_machine_catch_charges, 1);
+  now += 1;
+  assert.ok(ctx.startPokemonCooldown(message, id));
+  assert.equal(user.cooldown_machine_catch_charges, 0);
+  assert.equal(ctx.startPokemonCooldown(message, id), null);
+  now += 8000;
+  assert.ok(ctx.startPokemonCooldown(message, id));
+
+  ctx.fishCooldowns.add(id);
+  ctx.scheduleCooldownNotification(ctx.fishCooldowns, id, 'Admin', {}, 20000, 'f', message);
+  now += 9999;
+  assert.equal(ctx.consumeCooldownMachineForEarlyUse(id, 'f', ctx.fishCooldowns), false);
+  now += 1;
+  assert.equal(ctx.consumeCooldownMachineForEarlyUse(id, 'f', ctx.fishCooldowns), true);
+  assert.equal(user.cooldown_machine_fish_charges, 0);
 });
 
 test('cooldown toggle offers all three modes and only its owner can change them', async () => {
@@ -1077,13 +1274,42 @@ test('vitamin use accepts multiword names and all, and the token market displays
   assert.match(embed.fields.at(-1).value, /<:patreontoken:1560376902374522980>/);
 });
 
-test('built-in bot admins retain access alongside configured admin IDs', () => {
+test('revoked admin loses built-in access while other configured admins retain it', () => {
   const context = vm.createContext({ process: { env: { ADMIN_IDS: 'extra-admin' } } });
-  vm.runInContext(extract(indexSource, 'function isConfiguredBotAdmin(', '\nconst EXTRA_CHANNEL_BOOSTER_IDS'), context);
-  for (const id of ['426946381098254336', '183625933041827840', '1352997432929288194', '378623134816927745', 'extra-admin']) {
+  vm.runInContext(extract(indexSource, 'function isConfiguredBotAdminId(', '\nasync function sendPagedEmbeds('), context);
+  for (const id of ['183625933041827840', '1352997432929288194', '378623134816927745', 'extra-admin']) {
     assert.equal(context.isConfiguredBotAdmin({ author: { id } }), true);
   }
+  assert.equal(context.isConfiguredBotAdmin({ author: { id: '426946381098254336' } }), false);
+  assert.equal(vm.runInContext("WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has('426946381098254336')", context), false);
+  assert.equal(vm.runInContext("WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has('1352997432929288194')", context), true);
   assert.equal(context.isConfiguredBotAdmin({ author: { id: 'other' } }), false);
+});
+
+test('revoked admin is denied admin, admin spawn, and admin boss commands', async () => {
+  const context = vm.createContext({
+    process: { env: {} }, userId: '426946381098254336',
+    message: { author: { id: '426946381098254336' }, reply: async (text) => text },
+  });
+  vm.runInContext(
+    extract(indexSource, 'function isConfiguredBotAdminId(', '\nasync function sendPagedEmbeds(') +
+    '\nfunction isBotAdmin(message) { return isConfiguredBotAdmin(message); }',
+    context
+  );
+  const admin = extract(indexSource, "    adminCommands: if (command === 'admin' || command === 'admingive') {",
+    '\n      const subtype =');
+  const spawn = extract(indexSource, "    if (command === 'pokemon' || command === 'p') {",
+    '\n        const heldItemSpawn =');
+  const boss = extract(indexSource, "    if (\n      command === 'adminboss'",
+    '\n      const query =');
+  vm.runInContext(`
+    async function adminCommand() { const command = 'admin'; ${admin} } }
+    async function adminSpawn() { const command = 'p'; const args = ['admin']; ${spawn} } } }
+    async function adminBoss() { const command = 'adminboss'; const args = []; ${boss} } }
+  `, context);
+  for (const command of ['adminCommand', 'adminSpawn', 'adminBoss']) {
+    assert.match(await context[command](), /Only a configured bot admin|do not have permission/);
+  }
 });
 
 test('admin command attempts are classified and logged with their original text', async () => {
@@ -1128,13 +1354,14 @@ test('selected users only log admin ban and wipe commands', () => {
   );
   const message = (id) => ({ author: { id } });
 
-  for (const id of ['1514082847609061541', '426946381098254336']) {
+  for (const id of ['1514082847609061541']) {
     assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['coins']), false);
     assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['unban']), false);
     assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['BAN']), true);
     assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['wipe']), true);
     assert.equal(context.shouldLogAdminCommand(message(id), 'adminboss', []), false);
   }
+  assert.equal(context.shouldLogAdminCommand(message('426946381098254336'), 'admin', ['coins']), true);
   assert.equal(context.shouldLogAdminCommand(message('other'), 'admin', ['coins']), true);
 });
 
@@ -3301,46 +3528,28 @@ test('NPC coin rewards are halved for first clears, rematches, challengers and V
   assert.match(indexSource, /Rematch won![\s\S]*?\$\{reward\.toLocaleString\(\)\}/);
 });
 
-test('cooldown exemption toggle is self-only, restricted, and applies to eligible commands', async () => {
-  const users = {
-    exempt: { cooldown_exemption_disabled: 0 },
-    admin: { cooldown_exemption_disabled: 0 },
-    ordinary: { cooldown_exemption_disabled: 0 },
-  };
+test('battle cooldown applies equally to admins, former exempt users, and ordinary users', async () => {
+  const notifications = [];
+  let teamReady = true;
   const ctx = vm.createContext({
-    COOLDOWN_EXEMPT_USER_IDS: new Set(['exempt']),
-    isConfiguredBotAdmin: (message) => message.author.id === 'admin',
-    getUser: (id) => users[id],
-    updateUser: (id, values) => Object.assign(users[id], values),
-    PREFIX: '.',
+    battleCooldowns: new Set(), BATTLE_COOLDOWN_MS: 45000,
+    getCooldownReadyTimestamp: () => 'later',
+    getUserTeam: () => teamReady ? [{}] : [],
+    runLeagueChallenge: async () => 'started',
+    scheduleCooldownNotification: (_cooldowns, id) => notifications.push(id),
+    console,
   });
-  vm.runInContext(
-    extract(indexSource, 'function hasCooldownExemption(', '\nfunction applyGuaranteedPveBattleWin(')
-      + `\nasync function toggle(message, userId, args) {
-        const command = 'admin';
-        ${extract(indexSource, "    if (command === 'admin' && args[0]?.toLowerCase() === 'toggle'", "\n    adminCommands: if (command === 'admin' || command === 'admingive')")}
-      }`,
-    ctx
-  );
-  const message = (id) => ({ author: { id }, reply: (text) => text });
-  assert.equal(ctx.hasCooldownExemption('exempt'), true);
-  assert.equal(ctx.isEncounterCooldownExempt(message('admin'), 'admin'), true);
-  assert.equal(ctx.hasCooldownExemption('admin'), false);
-  assert.match(await ctx.toggle(message('ordinary'), 'ordinary', ['toggle', 'cooldown', 'off']), /Only users/);
-  assert.match(await ctx.toggle(message('exempt'), 'exempt', ['toggle', 'cooldown', 'off', 'ordinary']), /Usage/);
-  assert.match(await ctx.toggle(message('exempt'), 'exempt', ['toggle', 'cooldown', 'on']), /now \*\*on/);
-  assert.equal(ctx.hasCooldownExemption('exempt'), false);
-  assert.equal(ctx.isEncounterCooldownExempt(message('exempt'), 'exempt'), false);
-  assert.match(await ctx.toggle(message('exempt'), 'exempt', ['toggle', 'cooldown', 'off']), /now \*\*off/);
-  assert.equal(ctx.hasCooldownExemption('exempt'), true);
-  await ctx.toggle(message('admin'), 'admin', ['toggle', 'cooldown', 'on']);
-  assert.equal(ctx.isEncounterCooldownExempt(message('admin'), 'admin'), false);
-  await ctx.toggle(message('admin'), 'admin', ['toggle', 'cooldown', 'off']);
-  assert.equal(ctx.isEncounterCooldownExempt(message('admin'), 'admin'), true);
-  assert.equal(users.ordinary.cooldown_exemption_disabled, 0);
-  assert.match(indexSource, /const cooldownExempt = hasCooldownExemption\(userId\);/);
-  assert.equal((indexSource.match(/const cooldownExempt = isEncounterCooldownExempt\(message, userId\);/g) || []).length, 2);
-  assert.match(dbSource, /cooldown_exemption_disabled: 'INTEGER NOT NULL DEFAULT 0'/);
+  vm.runInContext(extract(indexSource, 'function startLeagueChallengeWithCooldown(', '\nconst ROD_CONFIGS'), ctx);
+  const message = { author: { username: 'Trainer' }, channel: {}, reply: (text) => text };
+  for (const id of ['1514082847609061541', '537500331953881088', 'ordinary']) {
+    assert.equal(await ctx.startLeagueChallengeWithCooldown(message, id, 0, []), 'started');
+    assert.match(await ctx.startLeagueChallengeWithCooldown(message, id, 0, []), /battle again later/);
+  }
+  assert.deepEqual(notifications, ['1514082847609061541', '537500331953881088', 'ordinary']);
+  teamReady = false;
+  assert.equal(await ctx.startLeagueChallengeWithCooldown(message, 'no-team', 0, []), 'started');
+  assert.equal(ctx.battleCooldowns.has('no-team'), false);
+  assert.doesNotMatch(indexSource, /COOLDOWN_EXEMPT_USER_IDS|cooldown_exemption_disabled|admin toggle cooldown/);
 });
 
 test('Patreon reward wait starts on activation, survives tier changes and restarts on reactivation', () => {

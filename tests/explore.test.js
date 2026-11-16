@@ -602,7 +602,7 @@ test('Golden Patreon applies a 25% relative bonus to fishing, swap and promo rat
     userId: 'trainer', multiplier: 1, goldenBonus: 1, swapBonus: 1,
   });
   vm.runInContext(extract('function getPromoChanceMultiplier(', '\n// Battles and egg hatches'), ctx);
-  const fishExpression = extract('const goldenFishingChance =', '\n      if (rod.name');
+  const fishExpression = extract('const goldenFishingChance =', '\n        if (rod.name');
   const swapExpression = extract('const goldenChance = Math.min(1, multiplier * goldenBonus', '\n          const exclusiveShinyHits');
   const rates = () => ({
     fish: vm.runInContext(`(() => { ${fishExpression}\nreturn goldenFishingChance; })()`, ctx),
@@ -632,7 +632,7 @@ test('Golden fishing does not consume an unseen wild or event pity encounter', (
     getChannelCatchRateBoost: () => 0, message: { guildId: 'guild', channelId: 'channel' },
     rollSpawn: () => { spawnCalls += 1; return { name: 'Ordinary' }; },
   });
-  const code = extract('const goldenFishingChance =', '\n      return await askForBall(');
+  const code = extract('const goldenFishingChance =', '\n        return await askForBall(');
   const fish = () => vm.runInContext(`(() => { ${code}\nreturn fishingTarget; })()`, ctx);
   assert.equal(fish().isGolden, true);
   assert.equal(spawnCalls, 0);
