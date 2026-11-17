@@ -925,6 +925,55 @@ test('clan stats shortcuts select the same periods as their full names', async (
   }
 });
 
+test('clan joining by name is disabled in favor of invitations', async () => {
+  let lookups = 0;
+  let joins = 0;
+  const ctx = vm.createContext({
+    args: ['join', 'Some Clan'],
+    userId: 'user',
+    subcommand: 'join',
+    playerClan: null,
+    getClanByName: () => { lookups += 1; return { id: 1 }; },
+    joinClan: () => { joins += 1; return {}; },
+  });
+  vm.runInContext(`async function joinCommand(message) {
+    ${extract(indexSource, "      if (subcommand === 'join') {", "\n      if (subcommand === 'leave') {")}
+  }`, ctx);
+
+  const reply = await ctx.joinCommand({ reply: async (content) => content });
+  assert.match(reply, /Joining by clan name is disabled/);
+  assert.equal(lookups, 0);
+  assert.equal(joins, 0);
+});
+
+test('bare clan-name lookup is restricted to bot admins', () => {
+  const requestedNames = [];
+  const clan = { id: 2, name: 'Mewtwos Multiverse' };
+  const ctx = vm.createContext({
+    args: ['Mewtwos', 'Multiverse'],
+    subcommand: 'mewtwos',
+    playerClan: null,
+    message: { reply: (content) => content },
+    isBotAdmin: () => ctx.isAdmin,
+    isAdmin: false,
+    getClanByName: (name) => {
+      requestedNames.push(name);
+      return clan;
+    },
+  });
+  vm.runInContext(`function bareClanLookup() {
+    ${extract(indexSource, "      const clanQuery = subcommand === 'info'", "\n      const members = getClanMembers(clan.id);")}
+    return clan;
+  }`, ctx);
+
+  assert.equal(ctx.bareClanLookup(), 'Only bot admins can view another clan by name.');
+  assert.deepEqual(requestedNames, []);
+
+  ctx.isAdmin = true;
+  assert.equal(ctx.bareClanLookup(), clan);
+  assert.deepEqual(requestedNames, ['Mewtwos Multiverse']);
+});
+
 test('counters advance and reset only after a successful catch', async () => {
   const calls = [];
   const ctx = vm.createContext({

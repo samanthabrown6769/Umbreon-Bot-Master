@@ -9878,15 +9878,15 @@
   },
   {
     "id": 20103,
-    "dex_number": 6161,
-    "shiny_dex_number": 7161,
+    "dex_number": 6325,
+    "shiny_dex_number": 6326,
     "name": "Deerling Autumn",
     "rarity": "Common"
   },
   {
     "id": 20104,
-    "dex_number": 6162,
-    "shiny_dex_number": 7162,
+    "dex_number": 6327,
+    "shiny_dex_number": 6328,
     "name": "Sawsbuck Autumn",
     "rarity": "Rare"
   },
@@ -9922,5 +9922,33 @@
     "dex_number": 10217,
     "name": "Topaz Ursaring",
     "rarity": "Gem"
+  },
+  {
+    "id": 20110,
+    "name": "Deerling Summer",
+    "rarity": "Common",
+    "dex_number": 6321,
+    "shiny_dex_number": 6322
+  },
+  {
+    "id": 20111,
+    "name": "Sawsbuck Summer",
+    "rarity": "Rare",
+    "dex_number": 6323,
+    "shiny_dex_number": 6324
+  },
+  {
+    "id": 20112,
+    "name": "Deerling Winter",
+    "rarity": "Common",
+    "dex_number": 6329,
+    "shiny_dex_number": 6330
+  },
+  {
+    "id": 20113,
+    "name": "Sawsbuck Winter",
+    "rarity": "Rare",
+    "dex_number": 6331,
+    "shiny_dex_number": 6332
   }
 ]

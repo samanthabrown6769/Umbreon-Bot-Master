@@ -114,5 +114,9 @@
   { "id": 20106, "slug": "spiky-eared-pichu", "species_slug": "pichu" },
   { "id": 20107, "slug": "darmanitan-galar-standard", "species_slug": "darmanitan-standard" },
   { "id": 20108, "slug": "topaz-teddiursa", "species_slug": "teddiursa", "rarity": "Gem" },
-  { "id": 20109, "slug": "topaz-ursaring", "species_slug": "ursaring", "rarity": "Gem" }
+  { "id": 20109, "slug": "topaz-ursaring", "species_slug": "ursaring", "rarity": "Gem" },
+  { "id": 20110, "slug": "deerling-summer", "species_slug": "deerling" },
+  { "id": 20111, "slug": "sawsbuck-summer", "species_slug": "sawsbuck" },
+  { "id": 20112, "slug": "deerling-winter", "species_slug": "deerling" },
+  { "id": 20113, "slug": "sawsbuck-winter", "species_slug": "sawsbuck" }
 ]

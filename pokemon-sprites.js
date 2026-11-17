@@ -84,8 +84,16 @@ const ARCEUS_SPRITE_SLUGS = [
 ].map((type) => `arceus-${type}`);
 for (const slug of ARCEUS_SPRITE_SLUGS) FORM_ALIASES[slug] = slug;
 
+const SEASONAL_DEER_SPRITE_SLUGS = [
+  'deerling-summer', 'sawsbuck-summer',
+  'deerling-autumn', 'sawsbuck-autumn',
+  'deerling-winter', 'sawsbuck-winter',
+];
+for (const slug of SEASONAL_DEER_SPRITE_SLUGS) FORM_ALIASES[slug] = slug;
+
 const DIRECT_SHOWDOWN_SLUGS = new Set([
   ...ARCEUS_SPRITE_SLUGS,
+  ...SEASONAL_DEER_SPRITE_SLUGS,
   'indeedee-male',
   'indeedee-female',
   'oinkologne-male',

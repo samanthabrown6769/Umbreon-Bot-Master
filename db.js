@@ -703,6 +703,7 @@ const CB_CONFIG = Object.freeze({
 
 const userDefinitions = {
   coins: 'INTEGER NOT NULL DEFAULT 1000',
+  clan_perk_rank: 'INTEGER NOT NULL DEFAULT 0',
   research_points: 'INTEGER NOT NULL DEFAULT 0',
   research_relic_unlock_until: 'INTEGER NOT NULL DEFAULT 0',
   pc_locked: 'INTEGER NOT NULL DEFAULT 0',
@@ -1517,8 +1518,9 @@ ensureColumns('clan_members', {
 });
 const desiredClanIds = new Map([
   ['ascension', 1],
-  ['shadow garden', 2],
-  ['feral faeries', 3],
+  ['mewtwos multiverse', 2],
+  ['shadow garden', 3],
+  ['feral faeries', 4],
 ]);
 const normalizeClanName = (name) => name.normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -2269,6 +2271,19 @@ function getUser(userId) {
 // One-time fix: joined_at used to come from the Discord server join date.
 // Use each user's earliest catch instead, or now if they have none.
 db.exec('CREATE TABLE IF NOT EXISTS migration_flags (name TEXT PRIMARY KEY)');
+if (!db.prepare("SELECT 1 FROM migration_flags WHERE name = 'clan_perks_user_profile'").get()) {
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE users
+      SET clan_perk_rank = MAX(
+        clan_perk_rank,
+        COALESCE((SELECT perk_rank FROM clan_members WHERE clan_members.user_id = users.id), 0)
+      )
+    `).run();
+    db.prepare('UPDATE clan_members SET perk_rank = 0').run();
+    db.prepare("INSERT INTO migration_flags (name) VALUES ('clan_perks_user_profile')").run();
+  }).immediate();
+}
 if (!db.prepare("SELECT 1 FROM migration_flags WHERE name = 'joined_at_first_command'").get()) {
   db.transaction(() => {
     db.prepare(`
@@ -2609,9 +2624,8 @@ function getPatreonUserIds() {
 }
 function getAmuletCoinBoost(userId) {
   const user = getUser(userId);
-  const clan = getPlayerClan(userId);
   const owned = Math.max(0, user.amulet_coins || 0);
-  const invisible = getClanPerkMultipliers(clan).amuletCoins + getPatreonPerks(userId).amuletCoins;
+  const invisible = getClanPerkMultipliers(user).amuletCoins + getPatreonPerks(userId).amuletCoins;
   const explore = user.explore_amulet_coin ? 1 : 0;
   const totalEffective = owned + invisible + explore;
 
@@ -3104,7 +3118,7 @@ db.transaction(() => {
 
 function getUserQuestSlots(userId) {
   const patreonSlots = (PATREON_TIER_PERKS[getUser(userId).patreon_tier] || NO_PATREON_PERKS).questSlots;
-  const clanSlots = getClanPerkMultipliers(getPlayerClan(userId)).questSlotBonus;
+  const clanSlots = getClanPerkMultipliers(getUser(userId)).questSlotBonus;
   return Math.min(MAX_QUEST_SLOTS, patreonSlots + clanSlots);
 }
 
@@ -8932,15 +8946,17 @@ function getUserEventProgress(eventId, userId) {
 
 function getPlayerClan(userId) {
   return db.prepare(`
-    SELECT clans.*, clan_members.catches, clan_members.fishes, clan_members.perk_rank
+    SELECT clans.*, clan_members.catches, clan_members.fishes,
+      COALESCE(users.clan_perk_rank, clan_members.perk_rank, 0) AS perk_rank
     FROM clan_members
     JOIN clans ON clans.id = clan_members.clan_id
+    LEFT JOIN users ON users.id = clan_members.user_id
     WHERE clan_members.user_id = ?
   `).get(userId) || null;
 }
 
-function getClanPerkMultipliers(clan) {
-  if (!clan) {
+function getClanPerkMultipliers(profile) {
+  if (!profile) {
     return {
       crBonus: 0, srBonus: 0, erBonus: 0, prBonus: 0, shopDiscount: 0, amuletBoost: 0,
       amuletCoins: 0, questSlotBonus: 0, eggHatchBonus: 0,
@@ -8950,8 +8966,11 @@ function getClanPerkMultipliers(clan) {
   const srTable = [0, 1, 3, 5, 10];
   const erTable = [0, 5, 10, 15, 20];
   const prTable = [0, 5, 10];
-  const purchasedRank = Number.isSafeInteger(clan.perk_rank)
-    ? Math.max(0, Math.min(clan.perk_rank, CLAN_RANKS.length - 1))
+  const profileRank = Number.isSafeInteger(profile.clan_perk_rank)
+    ? profile.clan_perk_rank
+    : profile.perk_rank;
+  const purchasedRank = Number.isSafeInteger(profileRank)
+    ? Math.max(0, Math.min(profileRank, CLAN_RANKS.length - 1))
     : 0;
   const purchasedPerks = CLAN_RANKS[purchasedRank];
   return {
@@ -8970,7 +8989,7 @@ function getClanPerkMultipliers(clan) {
 
 function getTotalEffectiveShinyBonus(userId) {
   const user = getUser(userId);
-  const clanPerks = getClanPerkMultipliers(getPlayerClan(userId));
+  const clanPerks = getClanPerkMultipliers(user);
   return Math.max(0, user.shiny_charms || 0)
     + (user.black_market_charm ? 1 : 0)
     + (user.explore_shiny_charm ? 1 : 0)
@@ -9152,15 +9171,15 @@ function purchaseClanPerks(userId, rank) {
       };
     }
     incrementUser(userId, { coins: -selected.perkCost });
-    db.prepare('UPDATE clan_members SET perk_rank = ? WHERE user_id = ? AND clan_id = ?')
-      .run(selectedIndex, userId, clan.id);
+    db.prepare('UPDATE users SET clan_perk_rank = ? WHERE id = ?')
+      .run(selectedIndex, userId);
     return {
       clan,
       rank: selected.name,
       cost: selected.perkCost,
       requiredCatches,
       memberCount,
-      perks: getClanPerkMultipliers({ ...clan, perk_rank: selectedIndex }),
+      perks: getClanPerkMultipliers({ clan_perk_rank: selectedIndex }),
     };
   }).immediate();
 }

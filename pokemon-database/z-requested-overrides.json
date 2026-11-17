@@ -1,5 +1,35 @@
 [
   {
+    "slug": "deerling-summer",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/deerling-summer.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/deerling-summer.gif"
+  },
+  {
+    "slug": "sawsbuck-summer",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/sawsbuck-summer.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/sawsbuck-summer.gif"
+  },
+  {
+    "slug": "deerling-autumn",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/deerling-autumn.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/deerling-autumn.gif"
+  },
+  {
+    "slug": "sawsbuck-autumn",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/sawsbuck-autumn.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/sawsbuck-autumn.gif"
+  },
+  {
+    "slug": "deerling-winter",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/deerling-winter.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/deerling-winter.gif"
+  },
+  {
+    "slug": "sawsbuck-winter",
+    "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/sawsbuck-winter.gif",
+    "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/sawsbuck-winter.gif"
+  },
+  {
     "slug": "maushold-family-of-three",
     "dex_number": 925,
     "shiny_dex_number": 2925

@@ -3694,7 +3694,7 @@ function rollSpawn(
     && Boolean(getUser(userId).event_ticket);
   const clanPerks = userId === null
     ? getClanPerkMultipliers(null)
-    : getClanPerkMultipliers(getPlayerClan(userId));
+    : getClanPerkMultipliers(getUser(userId));
   const shinyBonus = userId === null ? 0 : getTotalEffectiveShinyBonus(userId);
   const encounterModifier = !catchbot
     && poolName === 'land'
@@ -6983,7 +6983,7 @@ async function announcePromoItemFound(guild, user, promo, source, newTotal) {
 
 // Promo drop odds scale with active server incense and the Patreon golden perk.
 function getPromoChanceMultiplier(userId, incenseActive) {
-  const clanPromoBonus = getClanPerkMultipliers(getPlayerClan(userId)).prBonus;
+  const clanPromoBonus = getClanPerkMultipliers(getUser(userId)).prBonus;
   return (incenseActive ? INCENSE_BOOST : 1)
     * (1 + getPatreonPerks(userId).goldenBoost)
     * (1 + clanPromoBonus / 100);
@@ -7495,7 +7495,7 @@ async function askForBall(
     target.isEventShiny,
     target.encounterRateText
   );
-  const clanPerks = getClanPerkMultipliers(getPlayerClan(userId));
+  const clanPerks = getClanPerkMultipliers(getUser(userId));
   const ninjaBonus = getPatreonPerks(userId).catchBoost;
   const encounterCatchBonus = getEncounterCatchBonus(target, clanPerks.crBonus, ninjaBonus);
   const channelCatchRateBoost = getChannelCatchRateBoost(userId, message.guildId, message.channelId);
@@ -7817,7 +7817,7 @@ async function askForBall(
     // The hatch bonus combined with an egg ability is capped at +4 progress per catch.
     const eggProgressCapped = eggAbilityBoost && isPlayerBonusActive('hatch');
     // Onyx clan perk: eggs hatch 2x faster (extra progress on every catch).
-    if (!eggProgressCapped && getClanPerkMultipliers(getPlayerClan(userId)).eggHatchBonus > 0) {
+    if (!eggProgressCapped && getClanPerkMultipliers(getUser(userId)).eggHatchBonus > 0) {
       advanceEggCatchProgress(userId, 1, message.channel, eggAbilityBoost);
     }
     const eggPerks = getPatreonPerks(userId);
@@ -13149,11 +13149,10 @@ client.on('messageCreate', async (message) => {
       };      const overviewEmbed = () => {
         const charms = user.shiny_charms || 0;
         const amulet = getAmuletCoinBoost(targetId);
-        const clan = getPlayerClan(targetId);
-        const clanAmuletCoins = getClanPerkMultipliers(clan).amuletCoins;
+        const clanAmuletCoins = getClanPerkMultipliers(user).amuletCoins;
         const clanText = clanAmuletCoins
-          ? `• **${clan.name || 'Clan'}:** +${clanAmuletCoins} invisible Amulet Coin${clanAmuletCoins === 1 ? '' : 's'}`
-          : '*No active clan perks.*';
+          ? `• **Purchased Clan Perks:** +${clanAmuletCoins} invisible Amulet Coin${clanAmuletCoins === 1 ? '' : 's'}`
+          : '*No active clan-perk Amulet Boost.*';
         const patreonPerks = getPatreonPerks(targetId);
         const patreonText = user.patreon_tier
           ? `✅ **Active ${userTier} Perks:** +${patreonPerks.amuletCoins} Amulet Coins, +${patreonPerks.shinyCharms} Shiny Charms`
@@ -13867,8 +13866,9 @@ client.on('messageCreate', async (message) => {
           title: '🏰 Clan Commands',
           description:
             `• \`${PREFIX}clan\` — View your clan overview and personal contributions\n` +
-            `• \`${PREFIX}clan create <name>\`, \`${PREFIX}clan join <name>\`, \`${PREFIX}clan leave\`, \`${PREFIX}clan disband\`\n` +
-            `• \`${PREFIX}clan invite @user\` — Invite a player to your clan\n` +
+            `• \`${PREFIX}clan create <name>\`, \`${PREFIX}clan leave\`, \`${PREFIX}clan disband\`\n` +
+            `• \`${PREFIX}clan invite @user\` — Invite a player; joining is by invitation only\n` +
+            `• \`${PREFIX}clan <name>\` — Bare-name clan lookup (bot admins only)\n` +
             `• \`${PREFIX}clan donate <amount>\` — Donate PokéCoins to the clan treasury\n` +
             `• \`${PREFIX}clan stats [daily|weekly|monthly|yearly]\` (or d/w/m/y) — View ranked clan activity\n` +
             `• \`${PREFIX}clan hs [daily|monthly|yearly|all time]\` — View clans ranked by catches for a period (default all time)\n` +
@@ -16315,10 +16315,8 @@ client.on('messageCreate', async (message) => {
             `Usage: \`${PREFIX}admin clan perks <@User|id> [${CLAN_PERK_RANKS.join('|')}|none]\` (default onyx).`
           );
         }
-        if (!getPlayerClan(targetId)) {
-          return message.reply(`<@${targetId}> is not in a clan on this bot's database.`);
-        }
-        db.prepare('UPDATE clan_members SET perk_rank = ? WHERE user_id = ?').run(rankIndex, targetId);
+        getUser(targetId);
+        db.prepare('UPDATE users SET clan_perk_rank = ? WHERE id = ?').run(rankIndex, targetId);
         return message.reply(
           `✅ Set <@${targetId}>'s clan perks to **${rankName}** (rank ${rankIndex}).`
         );
@@ -17905,7 +17903,7 @@ client.on('messageCreate', async (message) => {
       if (subcommand === 'members') {
         const memberClan = args.length > 1 ? getClanByName(args.slice(1).join(' ').trim()) : playerClan;
         if (!memberClan) {
-          return message.reply(args.length > 1 ? 'Clan not found.' : `You are not in a clan. Join one with \`${PREFIX}clan join <name>\`.`);
+          return message.reply(args.length > 1 ? 'Clan not found.' : 'You are not in a clan. Ask a clan member to invite you.');
         }
         const ranked = getClanMembers(memberClan.id)
           .map((member) => ({ ...member, total: member.catches + member.fishes }))
@@ -18453,7 +18451,7 @@ client.on('messageCreate', async (message) => {
       if (subcommand === 'info' && args[1]?.toLowerCase() === 'perks') {
         const embed = makeEmbed(
           '🛡️ Clan Perks',
-          '**Perks are unlocked by clan rank, then purchased individually by each member.** Rank upgrades do not grant perks automatically.\n\n' +
+          '**Perks are unlocked by clan rank, then purchased individually by each member.** Rank upgrades do not grant perks automatically. Purchased perks stay on your profile and remain active even if you leave your clan.\n\n' +
           '• Bronze: Catch Rate I (+1%), Shiny Rate I (+1%)\n' +
           '• Silver: Catch Rate II (+3% total), Shiny Rate II (+3% total)\n' +
           '• Gold: Catch/Shiny Rate III (+5% total), Event Rate I, Amulet Boost I (+5%)\n' +
@@ -18493,22 +18491,7 @@ client.on('messageCreate', async (message) => {
       }
 
       if (subcommand === 'join') {
-        const clanName = args.slice(1).join(' ').trim();
-        if (!clanName) return message.reply(`Usage: \`${PREFIX}clan join <Clan Name>\``);
-        if (playerClan) return message.reply(`You are already a member of **${playerClan.name}**!`);
-        const clan = getClanByName(clanName);
-        if (!clan) return message.reply('Clan not found.');
-        const result = joinClan(userId, clan.id);
-        if (result.error === 'already_member') {
-          return message.reply(`You are already a member of **${getPlayerClan(userId).name}**!`);
-        }
-        if (result.error === 'not_found') return message.reply('Clan not found.');
-        if (result.error === 'full') {
-          return message.reply(`That clan is full (${result.memberLimit} members).`);
-        }
-        return message.reply(
-          `✅ You joined **${result.clan.name}**. Successful catches and fishing will count toward clan stats.`
-        );
+        return message.reply('Joining by clan name is disabled. Ask a clan member to invite you.');
       }
 
       if (subcommand === 'leave') {
@@ -18564,12 +18547,15 @@ client.on('messageCreate', async (message) => {
       const clanQuery = subcommand === 'info'
         ? args.slice(1).join(' ').trim()
         : args.join(' ').trim();
+      if (clanQuery && subcommand !== 'info' && !isBotAdmin(message)) {
+        return message.reply('Only bot admins can view another clan by name.');
+      }
       const clan = clanQuery ? getClanByName(clanQuery) : playerClan;
       if (clanQuery && !clan) return message.reply('Clan not found.');
       if (!clan) {
         return message.reply(
           `You are not in a clan. Create one with \`${PREFIX}clan create <name>\` ` +
-          `or join one with \`${PREFIX}clan join <name>\`.`
+          'or ask a clan member to invite you.'
         );
       }
 
@@ -25402,7 +25388,7 @@ client.on('messageCreate', async (message) => {
         return message.reply(`You can only buy one ${item === 'megabracelet' ? 'Mega Bracelet' : item.replace('rod', ' Rod')} at a time.`);
       }
       const baseCost = (prices[item] || 0) * amount;
-      const shopDiscount = Math.min(0.9, getClanPerkMultipliers(getPlayerClan(userId)).shopDiscount + getPatreonPerks(userId).shopDiscount);
+      const shopDiscount = Math.min(0.9, getClanPerkMultipliers(getUser(userId)).shopDiscount + getPatreonPerks(userId).shopDiscount);
       const cost = Object.hasOwn(fishingTokenPrices, item) ? 0 : Math.floor(baseCost * (1 - shopDiscount));
       const tokenCost = (fishingTokenPrices[item] || 0) * amount;
       if (!Number.isSafeInteger(cost)) return message.reply('That purchase amount is too large.');
@@ -28536,20 +28522,17 @@ client.on('messageCreate', async (message) => {
           ? `<:${profileFaction.team.emojiName}:${profileFaction.team.emojiId}>`
           : null);
       if (factionEmoji) badges.push(factionEmoji);
-      const profileClan = getPlayerClan(profileId);
       const clanPerkBadges = [];
-      if (profileClan) {
-        const perkRank = Number.isSafeInteger(profileClan.perk_rank)
-          ? Math.max(0, Math.min(profileClan.perk_rank, CLAN_PERK_RANKS.length))
-          : 0;
-        if (perkRank > 0) {
-          const rankName = CLAN_PERK_RANKS[perkRank - 1];
-          const rankLabel = `${rankName[0].toUpperCase()}${rankName.slice(1)}`;
-          const rankEmojiKey = Object.keys(CLAN_RANK_EMOJIS).find((key) =>
-            normalizeBadgeKey(key) === normalizeBadgeKey(rankName)
-          );
-          if (rankEmojiKey) clanPerkBadges.push(`${CLAN_RANK_EMOJIS[rankEmojiKey]} ${rankLabel}`);
-        }
+      const perkRank = Number.isSafeInteger(user.clan_perk_rank)
+        ? Math.max(0, Math.min(user.clan_perk_rank, CLAN_PERK_RANKS.length))
+        : 0;
+      if (perkRank > 0) {
+        const rankName = CLAN_PERK_RANKS[perkRank - 1];
+        const rankLabel = `${rankName[0].toUpperCase()}${rankName.slice(1)}`;
+        const rankEmojiKey = Object.keys(CLAN_RANK_EMOJIS).find((key) =>
+          normalizeBadgeKey(key) === normalizeBadgeKey(rankName)
+        );
+        if (rankEmojiKey) clanPerkBadges.push(`${CLAN_RANK_EMOJIS[rankEmojiKey]} ${rankLabel}`);
       }
 
       const favorites = db.prepare(
