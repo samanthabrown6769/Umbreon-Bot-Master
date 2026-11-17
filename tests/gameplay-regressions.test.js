@@ -427,15 +427,27 @@ test('encounter lock releases on resolution or expiry, not when an empty ball is
   assert.equal(releaseCount, 2);
 });
 
-test('leaving a clan notifies its leader and reports DM failures', async () => {
-  const replies = [];
+test('clan leave requires confirmation and notifies its leader', async () => {
+  const edits = [];
   const dms = [];
   const errors = [];
-  let result = { clan: { name: 'Team', leader_id: 'owner' } };
+  const events = {};
+  const leaveCalls = [];
+  const clan = { id: 1, name: 'Team', leader_id: 'owner' };
+  let result = { clan };
   let fail = false;
+  const confirmation = {
+    createMessageComponentCollector: () => ({
+      on: (event, handler) => { events[event] = handler; },
+      stop: () => {},
+    }),
+    edit: async (payload) => edits.push(payload),
+  };
   const ctx = vm.createContext({
-    subcommand: 'leave', userId: 'member', leaveClan: () => result,
-    message: { author: { username: 'Trainer' }, reply: async (text) => replies.push(text) },
+    subcommand: 'leave', userId: 'member', playerClan: clan, PREFIX: '.',
+    ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType,
+    leaveClan: (...args) => { leaveCalls.push(args); return result; },
+    message: { author: { username: 'Trainer' }, reply: async () => confirmation },
     client: { users: { fetch: async (id) => ({ send: async (text) => {
       if (fail) throw new Error('DM closed');
       dms.push([id, text]);
@@ -443,17 +455,66 @@ test('leaving a clan notifies its leader and reports DM failures', async () => {
     console: { error: (...args) => errors.push(args) },
   });
   vm.runInContext(`async function run() { ${extract(indexSource, "      if (subcommand === 'leave') {", "\n      if (subcommand === 'kick') {")} }`, ctx);
+  const interaction = (id, customId) => ({
+    user: { id }, customId,
+    deferUpdate: async () => {},
+    reply: async (payload) => payload,
+  });
+
   await ctx.run();
+  assert.equal(leaveCalls.length, 0);
+  const denied = await events.collect(interaction('other', 'clan-leave:confirm'));
+  assert.equal(denied.ephemeral, true);
+  assert.equal(leaveCalls.length, 0);
+  await events.collect(interaction('member', 'clan-leave:cancel'));
+  assert.equal(leaveCalls.length, 0);
+  assert.match(edits.at(-1).content, /cancelled/);
+
+  await ctx.run();
+  await events.end([], 'time');
+  await events.collect(interaction('member', 'clan-leave:confirm'));
+  assert.equal(leaveCalls.length, 0);
+  assert.match(edits.at(-1).content, /expired/);
+
+  await ctx.run();
+  await events.collect(interaction('member', 'clan-leave:confirm'));
+  assert.deepEqual(leaveCalls[0], ['member', 1]);
   assert.equal(dms[0][0], 'owner');
   assert.match(dms[0][1], /Trainer.*member.*Team/);
+  assert.match(edits.at(-1).content, /You left/);
+  await events.collect(interaction('member', 'clan-leave:confirm'));
+  assert.equal(leaveCalls.length, 1);
+
+  result = { error: 'clan_changed' };
+  await ctx.run();
+  await events.collect(interaction('member', 'clan-leave:confirm'));
+  assert.match(edits.at(-1).content, /membership changed/);
+  assert.equal(dms.length, 1);
   result = { error: 'leader' };
   await ctx.run();
+  await events.collect(interaction('member', 'clan-leave:confirm'));
+  assert.match(edits.at(-1).content, /leaders cannot leave/);
   assert.equal(dms.length, 1);
-  result = { clan: { name: 'Team', leader_id: 'owner' } };
+  result = { clan };
   fail = true;
   await ctx.run();
+  await events.collect(interaction('member', 'clan-leave:confirm'));
   assert.equal(errors.length, 1);
-  assert.match(replies.at(-1), /could not DM/);
+  assert.match(edits.at(-1).content, /could not DM/);
+});
+
+test('clan leave rejects a confirmation for a previous clan', () => {
+  const db = new Database(':memory:');
+  try {
+    let clan = { id: 2, leader_id: 'owner' };
+    const ctx = vm.createContext({ db, getPlayerClan: () => clan });
+    vm.runInContext(extract(dbSource, 'function leaveClan(', '\nfunction kickClanMember('), ctx);
+    assert.equal(ctx.leaveClan('member', 1).error, 'clan_changed');
+    clan = { id: 1, leader_id: 'member' };
+    assert.equal(ctx.leaveClan('member', 1).error, 'leader');
+  } finally {
+    db.close();
+  }
 });
 
 test('collection commands resolve normal, shiny and Golden Dex numbers to the correct variants', async () => {

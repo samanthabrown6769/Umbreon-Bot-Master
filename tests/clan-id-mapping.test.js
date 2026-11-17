@@ -13,7 +13,8 @@ function extract(source, start, end) {
   return source.slice(first, last);
 }
 
-test('clan ID renumbering assigns Mewtwos Multiverse ID 2 and preserves references', () => {
+for (const clanName of ["Mewtwo's Multiverse", 'Mewtwo’s Multiverse', 'Mewtwos Multiverse']) {
+test(`clan ID renumbering assigns ${clanName} ID 2 and preserves references`, () => {
   const db = new Database(':memory:');
   try {
     db.pragma('foreign_keys = ON');
@@ -27,8 +28,10 @@ test('clan ID renumbering assigns Mewtwos Multiverse ID 2 and preserves referenc
         PRIMARY KEY (clan_id, user_id)
       );
       INSERT INTO clans (id, name) VALUES
-        (1, 'Ascension'), (2, 'Shadow Garden'), (3, 'Feral Faeries'),
-        (5, 'Mewtwos Multiverse');
+        (1, 'Ascension'), (2, 'Shadow Garden'), (3, 'Feral Faeries');
+    `);
+    db.prepare('INSERT INTO clans (id, name) VALUES (5, ?)').run(clanName);
+    db.exec(`
       INSERT INTO clan_members VALUES
         ('ascension-member', 1), ('shadow-member', 2),
         ('faeries-member', 3), ('mewtwo-member', 5);
@@ -44,7 +47,7 @@ test('clan ID renumbering assigns Mewtwos Multiverse ID 2 and preserves referenc
 
     assert.deepEqual(db.prepare('SELECT id, name FROM clans ORDER BY id').all(), [
       { id: 1, name: 'Ascension' },
-      { id: 2, name: 'Mewtwos Multiverse' },
+      { id: 2, name: clanName },
       { id: 3, name: 'Shadow Garden' },
       { id: 4, name: 'Feral Faeries' },
     ]);
@@ -64,3 +67,4 @@ test('clan ID renumbering assigns Mewtwos Multiverse ID 2 and preserves referenc
     db.close();
   }
 });
+}

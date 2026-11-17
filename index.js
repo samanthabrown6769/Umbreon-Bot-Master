@@ -18495,20 +18495,84 @@ client.on('messageCreate', async (message) => {
       }
 
       if (subcommand === 'leave') {
-        const result = leaveClan(userId);
-        if (result.error === 'not_member') return message.reply('You are not in a clan.');
-        if (result.error === 'leader') {
+        if (!playerClan) return message.reply('You are not in a clan.');
+        if (playerClan.leader_id === userId) {
           return message.reply('Clan leaders cannot leave. Disband the clan if you want to dissolve it.');
         }
-        let notificationFailed = false;
-        try {
-          const owner = await client.users.fetch(result.clan.leader_id);
-          await owner.send(`**${message.author.username}** (<@${userId}>) left your clan **${result.clan.name}**.`);
-        } catch (error) {
-          notificationFailed = true;
-          console.error(`Failed to DM clan owner ${result.clan.leader_id} about member ${userId} leaving:`, error);
-        }
-        return message.reply(`👋 You left **${result.clan.name}**.${notificationFailed ? ' I could not DM the clan owner.' : ''}`);
+        const confirmation = await message.reply({
+          content: `Are you sure you want to leave **${playerClan.name}**?`,
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('clan-leave:confirm').setLabel('Leave Clan').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('clan-leave:cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+          )],
+        });
+        const collector = confirmation.createMessageComponentCollector({
+          componentType: ComponentType.Button,
+          time: 60000,
+        });
+        let settled = false;
+        collector.on('collect', async (interaction) => {
+          if (interaction.user.id !== userId) {
+            return interaction.reply({ content: 'Only the player who requested this can confirm or cancel.', ephemeral: true });
+          }
+          if (settled) {
+            return interaction.reply({ content: 'This confirmation has already been answered.', ephemeral: true });
+          }
+          if (!['clan-leave:confirm', 'clan-leave:cancel'].includes(interaction.customId)) return;
+          settled = true;
+          collector.stop('resolved');
+          try {
+            await interaction.deferUpdate();
+            if (interaction.customId === 'clan-leave:cancel') {
+              return await confirmation.edit({ content: 'Clan leave cancelled.', components: [] });
+            }
+            const result = leaveClan(userId, playerClan.id);
+            if (result.error === 'not_member' || result.error === 'clan_changed') {
+              return await confirmation.edit({
+                content: 'Your clan membership changed; the leave request was cancelled.',
+                components: [],
+              });
+            }
+            if (result.error === 'leader') {
+              return await confirmation.edit({
+                content: 'Clan leaders cannot leave. Disband the clan if you want to dissolve it.',
+                components: [],
+              });
+            }
+            let notificationFailed = false;
+            try {
+              const owner = await client.users.fetch(result.clan.leader_id);
+              await owner.send(`**${message.author.username}** (<@${userId}>) left your clan **${result.clan.name}**.`);
+            } catch (error) {
+              notificationFailed = true;
+              console.error(`Failed to DM clan owner ${result.clan.leader_id} about member ${userId} leaving:`, error);
+            }
+            return await confirmation.edit({
+              content: `👋 You left **${result.clan.name}**.${notificationFailed ? ' I could not DM the clan owner.' : ''}`,
+              components: [],
+            });
+          } catch (error) {
+            console.error(`Failed to process clan leave confirmation for user ${userId}:`, error);
+            try {
+              await confirmation.edit({
+                content: `The leave request could not be completed. Check \`${PREFIX}clan\` before trying again.`,
+                components: [],
+              });
+            } catch (editError) {
+              console.error(`Failed to report clan leave confirmation error for user ${userId}:`, editError);
+            }
+          }
+        });
+        collector.on('end', async (_collected, reason) => {
+          if (reason === 'resolved') return;
+          settled = true;
+          try {
+            await confirmation.edit({ content: 'Clan leave confirmation expired.', components: [] });
+          } catch (error) {
+            console.error(`Failed to expire clan leave confirmation for user ${userId}:`, error);
+          }
+        });
+        return;
       }
 
       if (subcommand === 'kick') {
@@ -27188,7 +27252,8 @@ client.on('messageCreate', async (message) => {
         if (result.outbidUserId) {
           try {
             const outbidUser = await client.users.fetch(result.outbidUserId);
-            await outbidUser.send(`You were outbid on auction **#${args[1]}**. The new bid is ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}**. Your previous bid has been refunded. Bid again with \`${PREFIX}auction bid ${args[1]} <amount>\`.`);
+            const variant = result.pokemon.is_golden ? 'Golden ' : result.pokemon.is_shiny ? 'Shiny ' : '';
+            await outbidUser.send(`You were outbid on **${variant}${result.pokemon.name}** in auction **#${args[1]}**. The new bid is ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}**. Your previous bid has been refunded. Bid again with \`${PREFIX}auction bid ${args[1]} <amount>\`.`);
           } catch (error) {
             console.error(`Failed to DM outbid notification to ${result.outbidUserId} for auction ${args[1]}:`, error);
           }

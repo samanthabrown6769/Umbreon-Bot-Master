@@ -242,6 +242,8 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
       const needed = amount - alreadyReserved;
       const user = getUser(userId);
       if (user.patreon_tokens < needed) return { error: 'insufficient', needed, balance: user.patreon_tokens };
+      const outbidUserId = auction.bidder_id && auction.bidder_id !== userId ? auction.bidder_id : null;
+      const pokemon = outbidUserId ? JSON.parse(auction.pokemon_json) : null;
       incrementUser(userId, { patreon_tokens: -needed });
       if (auction.bidder_id && auction.bidder_id !== userId) {
         incrementUser(auction.bidder_id, { patreon_tokens: auction.bid_amount });
@@ -254,7 +256,8 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
         .run(id, userId, amount, now);
       return {
         amount,
-        outbidUserId: auction.bidder_id && auction.bidder_id !== userId ? auction.bidder_id : null,
+        outbidUserId,
+        ...(outbidUserId ? { pokemon } : {}),
       };
     }).immediate();
   }

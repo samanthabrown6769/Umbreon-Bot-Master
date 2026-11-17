@@ -1525,6 +1525,7 @@ const desiredClanIds = new Map([
 const normalizeClanName = (name) => name.normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/æ/gi, 'ae')
+  .replace(/['’]/g, '')
   .trim()
   .toLowerCase();
 const clansToRenumber = db.prepare('SELECT id, name FROM clans').all()
@@ -9465,10 +9466,11 @@ function preserveClanMemberCatches(clanId, userId) {
   `).run(userId, clanId, clanId);
 }
 
-function leaveClan(userId) {
+function leaveClan(userId, expectedClanId = null) {
   return db.transaction(() => {
     const clan = getPlayerClan(userId);
     if (!clan) return { error: 'not_member' };
+    if (expectedClanId !== null && clan.id !== expectedClanId) return { error: 'clan_changed' };
     if (clan.leader_id === userId) return { error: 'leader' };
     const coLeaders = getClanCoLeaderIds(clan);
     if (coLeaders.includes(userId)) {

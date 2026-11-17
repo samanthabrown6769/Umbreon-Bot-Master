@@ -211,7 +211,10 @@ test('bids reserve tokens, refund outbid users, and settle exactly once', () => 
   assert.equal(balance('alice'), 1947);
   assert.equal(auctions.bid('bob', 1, 53, 4000).error, 'too_low');
   assert.equal(auctions.bid('bob', 1, 3001, 4000).error, 'insufficient');
-  assert.deepEqual(auctions.bid('bob', 1, 54, 4000), { amount: 54, outbidUserId: 'alice' });
+  const outbid = auctions.bid('bob', 1, 54, 4000);
+  assert.equal(outbid.amount, 54);
+  assert.equal(outbid.outbidUserId, 'alice');
+  assert.equal(outbid.pokemon.name, 'Test');
   assert.equal(balance('alice'), 2000);
   assert.equal(balance('bob'), 2946);
   assert.equal(auctions.list('alice', 'recent').count, 1);
@@ -234,7 +237,7 @@ test('auction command DMs the displaced bidder only after a successful outbid', 
   const dms = [];
   const replies = [];
   const errors = [];
-  let result = { amount: 54, outbidUserId: 'alice' };
+  let result = { amount: 54, outbidUserId: 'alice', pokemon: { name: 'Mewtwo', is_shiny: 1, is_golden: 0 } };
   const context = vm.createContext({
     action: 'bid', args: ['bid', '1', '54'], userId: 'bob', PREFIX: '.', EMOJIS: { patreonToken: ':token:' },
     auctions: { bid: () => result },
@@ -246,12 +249,15 @@ test('auction command DMs the displaced bidder only after a successful outbid', 
   await context.run();
   assert.equal(dms.length, 1);
   assert.equal(dms[0][0], 'alice');
-  assert.match(dms[0][1], /#1.*54.*refunded/);
+  assert.match(dms[0][1], /Shiny Mewtwo.*#1.*54.*refunded/);
+  result = { amount: 55, outbidUserId: 'alice', pokemon: { name: 'Mewtwo', is_shiny: 0, is_golden: 1 } };
+  await context.run();
+  assert.match(dms[1][1], /Golden Mewtwo.*#1/);
   result = { amount: 55, outbidUserId: null };
   await context.run();
   result = { error: 'too_low', minimum: 56 };
   await context.run();
-  assert.equal(dms.length, 1);
+  assert.equal(dms.length, 2);
   context.client.users.fetch = async () => { throw new Error('DM unavailable'); };
   result = { amount: 56, outbidUserId: 'alice' };
   await context.run();
