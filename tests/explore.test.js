@@ -270,7 +270,7 @@ test('rare Pokémon receipt logs include the recipient, Pokémon, method, and co
     console: { error: (...args) => { throw new Error(args.join(' ')); } },
   });
   vm.runInContext(
-    extract('const RARE_SPAWN_LOG_CHANNEL_ID', '\nasync function notifyAdminIfRareGrant('),
+    extract('const BOT_LOG_CHANNEL_ID', '\nasync function notifyAdminIfRareGrant('),
     ctx
   );
   await ctx.notifyAdminOfRareSpawn(
@@ -280,7 +280,7 @@ test('rare Pokémon receipt logs include the recipient, Pokémon, method, and co
     '.p',
     false
   );
-  assert.deepEqual(channelIds, ['1570468169422864485']);
+  assert.deepEqual(channelIds, ['1572366596524081192']);
   assert.match(messages[0].content, /Ash.*Pikachu/);
   assert.match(messages[0].content, /Method: `\.p`/);
 });

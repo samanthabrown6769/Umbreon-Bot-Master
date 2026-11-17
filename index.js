@@ -6540,10 +6540,7 @@ async function announceEventChecklistCompletion(guild, user, rewardPokemon, prog
   }
 }
 
-const RARE_SPAWN_LOG_CHANNEL_ID = '1570468169422864485';
-const GUILD_JOIN_REPORT_ADMIN_ID = '1514082847609061541';
-const ADMIN_COMMAND_LOG_CHANNEL_ID = '1570468196237189141';
-const GUILD_JOIN_LOG_CHANNEL_ID = '1570468221469859891';
+const BOT_LOG_CHANNEL_ID = '1572366596524081192';
 const AUCTION_ANNOUNCEMENT_CHANNEL_ID = '1571138032793296896';
 const AUCTION_PING_ROLE_ID = '1571138319054667888';
 
@@ -6799,7 +6796,7 @@ function shouldLogAdminCommand(message, command, args) {
 
 async function sendAdminCommandLog(message) {
   try {
-    const channel = await client.channels.fetch(ADMIN_COMMAND_LOG_CHANNEL_ID);
+    const channel = await client.channels.fetch(BOT_LOG_CHANNEL_ID);
     if (!channel?.isTextBased()) throw new Error('not a text channel');
     await channel.send({
       embeds: [{
@@ -6824,7 +6821,7 @@ async function notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden) {
     `Method: \`${source || 'unknown'}\`\n` +
     (guild ? `Server: ${guild.name} (\`${guild.id}\`)` : 'Server: unavailable');
   try {
-    const channel = await client.channels.fetch(RARE_SPAWN_LOG_CHANNEL_ID);
+    const channel = await client.channels.fetch(BOT_LOG_CHANNEL_ID);
     if (!channel?.isTextBased()) throw new Error('not a text channel');
     await channel.send({ content, allowedMentions: { parse: [] } });
   } catch (error) {
@@ -12372,7 +12369,6 @@ const USER_COMMAND_GAP_MS = Number(process.env.USER_COMMAND_GAP_MS) || 1000;
 const GLOBAL_COMMANDS_PER_10S = Number(process.env.GLOBAL_COMMANDS_PER_10S) || 40;
 const COMMAND_CADENCE_WINDOW_MS = 5 * 60 * 1000;
 const COMMAND_CADENCE_TOLERANCE_MS = 10;
-const COMMAND_CADENCE_ALERT_CHANNEL_ID = '1570490554096160957';
 const lastCommandAt = new Map();
 const commandCadenceByUser = new Map();
 let globalWindowStart = 0;
@@ -12436,7 +12432,7 @@ function recordCommandCadence(message) {
 }
 
 async function logCommandCadence(userId, activity) {
-  const channel = await client.channels.fetch(COMMAND_CADENCE_ALERT_CHANNEL_ID);
+  const channel = await client.channels.fetch(BOT_LOG_CHANNEL_ID);
   if (!channel?.isTextBased()) throw new Error('not a text channel');
   await channel.send({
     content:
@@ -12516,7 +12512,7 @@ client.on('messageCreate', async (message) => {
   if (automatedActivityAlert) {
     void logCommandCadence(message.author.id, automatedActivityAlert)
       .catch((error) => {
-        console.error(`Failed to log automated activity alert for user ${message.author.id} in channel ${COMMAND_CADENCE_ALERT_CHANNEL_ID}:`, error);
+        console.error(`Failed to log automated activity alert for user ${message.author.id} in channel ${BOT_LOG_CHANNEL_ID}:`, error);
       });
   }
   if (!message.content.startsWith(PREFIX)) {
@@ -28879,16 +28875,6 @@ async function reportGuildJoin(guild) {
     adder = 'Unknown (audit log unavailable)';
     console.warn(`Could not read bot-add audit log in server ${guild.id}:`, error);
   }
-  const content =
-    `📥 Bot joined **${guild.name}** (\`${guild.id}\`)${BLOCKED_GUILD_IDS.has(guild.id) ? ' — BLOCKED, leaving' : ''}\n` +
-    `Added by: ${adder}\nMembers: ${guild.memberCount}`;
-  try {
-    const channel = await client.channels.fetch(GUILD_JOIN_LOG_CHANNEL_ID);
-    if (!channel?.isTextBased()) throw new Error('not a text channel');
-    await channel.send({ content, allowedMentions: { parse: [] } });
-  } catch (error) {
-    console.error(`Failed to send guild join log for server ${guild.id}:`, error);
-  }
   let ownerText = 'unknown';
   try {
     const owner = await guild.fetchOwner();
@@ -28896,11 +28882,15 @@ async function reportGuildJoin(guild) {
   } catch (error) {
     console.warn(`Could not fetch owner of server ${guild.id}:`, error);
   }
+  const content =
+    `📥 Bot joined **${guild.name}** (\`${guild.id}\`)${BLOCKED_GUILD_IDS.has(guild.id) ? ' — BLOCKED, leaving' : ''}\n` +
+    `Added by: ${adder}\nMembers: ${guild.memberCount}\nOwner: ${ownerText}`;
   try {
-    const admin = await client.users.fetch(GUILD_JOIN_REPORT_ADMIN_ID);
-    await admin.send({ content: `${content}\nOwner: ${ownerText}`, allowedMentions: { parse: [] } });
+    const channel = await client.channels.fetch(BOT_LOG_CHANNEL_ID);
+    if (!channel?.isTextBased()) throw new Error('not a text channel');
+    await channel.send({ content, allowedMentions: { parse: [] } });
   } catch (error) {
-    console.error(`Failed to DM guild join report for server ${guild.id}:`, error);
+    console.error(`Failed to send guild join log for server ${guild.id}:`, error);
   }
 }
 

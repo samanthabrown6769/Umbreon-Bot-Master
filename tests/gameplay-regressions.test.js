@@ -1432,7 +1432,7 @@ test('admin command attempts are classified and logged with their original text'
     console,
   });
   vm.runInContext(
-    extract(indexSource, 'const ADMIN_COMMAND_LOG_CHANNEL_ID', '\nasync function notifyAdminOfRareSpawn('),
+    extract(indexSource, 'const BOT_LOG_CHANNEL_ID', '\nasync function notifyAdminOfRareSpawn('),
     context
   );
   for (const [command, args] of [
@@ -1450,7 +1450,7 @@ test('admin command attempts are classified and logged with their original text'
     author: { id: '123', username: 'Trainer' },
     guild: { id: '456', name: 'Server' },
   });
-  assert.equal(sent[0].id, '1570468196237189141');
+  assert.equal(sent[0].id, '1572366596524081192');
   assert.equal(sent[0].payload.embeds[0].description, '.admin pokemon <@123> shiny Mew');
   assert.match(sent[0].payload.embeds[0].fields[0].value, /Trainer \(123\)/);
   assert.equal(sent[0].payload.allowedMentions.parse.length, 0);
@@ -1484,7 +1484,11 @@ test('automated command patterns are logged to the configured channel rather tha
       send: async (payload) => sent.push({ id, payload }),
     }) } },
   });
-  vm.runInContext(extract(indexSource, 'const USER_COMMAND_GAP_MS', '\nfunction isCommandThrottled('), context);
+  vm.runInContext(
+    extract(indexSource, 'const BOT_LOG_CHANNEL_ID', '\nconst AUCTION_ANNOUNCEMENT_CHANNEL_ID') +
+      extract(indexSource, 'const USER_COMMAND_GAP_MS', '\nfunction isCommandThrottled('),
+    context,
+  );
   let activity;
   for (let i = 0; i < 6; i++) {
     activity = context.recordCommandCadence({
@@ -1494,7 +1498,7 @@ test('automated command patterns are logged to the configured channel rather tha
   }
   await context.logCommandCadence('123', activity);
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].id, '1570490554096160957');
+  assert.equal(sent[0].id, '1572366596524081192');
   assert.match(sent[0].payload.content, /Username: Trainer\nUser ID: 123\nServer: Server \(456\)/);
   assert.match(sent[0].payload.content, /Pattern: \.catch repeated 6 times/);
   assert.equal(sent[0].payload.allowedMentions.parse.length, 0);
@@ -1511,17 +1515,19 @@ test('guild join logs identify recent bot inviters and report unavailable audit 
       channels: { fetch: async (id) => ({
         isTextBased: () => true, send: async (payload) => messages.push({ id, payload }),
       }) },
-      users: { fetch: async () => ({ send: async () => {} }) },
+      users: { fetch: async () => { throw new Error('Guild join reports must not be sent by DM'); } },
     },
     AuditLogEvent: { BotAdd: 'bot-add' },
-    GUILD_JOIN_LOG_CHANNEL_ID: '1570468221469859891',
-    GUILD_JOIN_REPORT_ADMIN_ID: 'admin',
     BLOCKED_GUILD_IDS: new Set(),
     console: { warn: (...args) => warnings.push(args), error: (...args) => { throw new Error(args.join(' ')); } },
     Date,
     setTimeout: (callback) => callback(),
   });
-  vm.runInContext(extract(indexSource, 'async function reportGuildJoin(', "\nclient.on('guildCreate'"), context);
+  vm.runInContext(
+    extract(indexSource, 'const BOT_LOG_CHANNEL_ID', '\nconst AUCTION_ANNOUNCEMENT_CHANNEL_ID') +
+      extract(indexSource, 'async function reportGuildJoin(', "\nclient.on('guildCreate'"),
+    context,
+  );
   const guild = {
     id: '456', name: 'Server', memberCount: 42,
     fetchOwner: async () => ({ id: 'owner', user: { username: 'Owner' } }),
@@ -1533,9 +1539,10 @@ test('guild join logs identify recent bot inviters and report unavailable audit 
     }),
   };
   await context.reportGuildJoin(guild);
-  assert.equal(messages[0].id, '1570468221469859891');
+  assert.equal(messages[0].id, '1572366596524081192');
   assert.match(messages[0].payload.content, /Server.*456/);
   assert.match(messages[0].payload.content, /Added by: Inviter \(`123`\)/);
+  assert.match(messages[0].payload.content, /Owner: Owner \(`owner`\)/);
   guild.fetchAuditLogs = async () => ({
     entries: [{ target: { id: 'bot' }, createdTimestamp: Date.now() - 600000, executor: { id: 'old', username: 'Old' } }],
   });

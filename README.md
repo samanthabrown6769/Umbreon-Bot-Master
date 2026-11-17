@@ -47,7 +47,7 @@ Bot admins can use `.admin server info <server ID>` to receive a paginated membe
 
 Server member lists, transcript exports, message searches, and user-message exports are serialized. Export requests wait for a brief idle period and are spaced at least 1.5 seconds apart to reduce contention with normal bot commands; a concurrent server data export is declined.
 
-Admin command attempts (including `.admin`, `.admingive`, `.adminboss`, `.p admin`, giveaway commands, and lottery channel configuration) are logged to channel `1570468196237189141` with the command and user. Server joins are logged to channel `1570468221469859891`; identifying who added the bot requires access to the server's audit log and a recent bot-add entry. The bot needs access to both logging channels.
+Rare spawn logs, eligible admin command attempts (including `.admin`, `.admingive`, `.adminboss`, `.p admin`, giveaway commands, and lottery channel configuration), server join logs, and possible automated-command pattern alerts are sent only to channel `1572366596524081192`. Server join logs include the server owner; identifying who added the bot requires access to the server's audit log and a recent bot-add entry. The bot needs access to the logging channel.
 
 ### Optional: Cloudinary sprite hosting
 
