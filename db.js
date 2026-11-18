@@ -2532,7 +2532,7 @@ function addIncenseCharges(guildId, charges) {
   `).run(guildId, charges);
 }
 
-// Uses one shared server charge; returns false when none are left.
+// Uses one shared server or DM charge; returns false when none are left.
 function consumeIncenseCharge(guildId) {
   if (!guildId) return false;
   return db.prepare(

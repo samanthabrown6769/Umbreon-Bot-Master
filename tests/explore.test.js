@@ -371,7 +371,7 @@ test('Explore Legendary pools use matching default forms from Generations 1–4 
   db.close();
 });
 
-test('Explore Legendary roll has a 1/666 boundary and allows eligible Shinies', () => {
+test('Explore Legendary roll has a 1/333 boundary and allows eligible Shinies', () => {
   const math = Object.create(Math);
   let rolls = [];
   math.random = () => { assert.ok(rolls.length); return rolls.shift(); };
@@ -389,15 +389,16 @@ test('Explore Legendary roll has a 1/666 boundary and allows eligible Shinies', 
     EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
     advanceEncounterPity: () => 1, resetEncounterPity: () => {}, FULL_ODDS_SHINY_PITY_LIMIT: 2000,
   });
-  vm.runInContext(extract('const LEGENDARY_BASE_CHANCE =', '\n// A hunt') + '\n'
+  vm.runInContext(extract('function getChanceFromFlooredOdds(', '\nconst EVENT_SPAWN_ODDS') + '\n'
+    + extract('const LEGENDARY_BASE_CHANCE =', '\n// A hunt') + '\n'
     + extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), ctx);
-  rolls = [1 / 666 - 0.0000001, 0, 0];
+  rolls = [1 / 333 - 0.0000001, 0, 0];
   const shiny = ctx.rollExploreEncounter('user', 'fire');
   assert.equal(shiny.speciesId, 146);
   assert.equal(shiny.rarity, 'Legendary');
   assert.equal(shiny.isShiny, true);
   assert.equal(shiny.isExplore, true);
-  rolls = [1 / 666, 0];
+  rolls = [1 / 333, 0];
   assert.equal(ctx.rollExploreEncounter('user', 'fire').speciesId, 4);
 });
 
@@ -579,7 +580,8 @@ test('Explore overworld abilities apply their own rates and repel only Common en
     advanceEncounterPity: () => { throw new Error('Repelled encounter must not advance shiny pity'); },
     resetEncounterPity: () => {}, FULL_ODDS_SHINY_PITY_LIMIT: 750,
   });
-  vm.runInContext(extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), context);
+  vm.runInContext(extract('function getChanceFromFlooredOdds(', '\nconst EVENT_SPAWN_ODDS') + '\n'
+    + extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), context);
   for (const ability of ['intimidate', 'keen-eye']) {
     rolls = [0, 0.299999];
     assert.equal(context.rollExploreEncounter('user', 'grass', 0, ability), null);
@@ -628,7 +630,8 @@ test('Golden fishing does not consume an unseen wild or event pity encounter', (
     getPatreonPerks: () => ({ goldenBoost: 0 }), isPlayerBonusActive: () => false,
     FISH_EXCLUSIVE_GOLDEN_DENOMINATOR: 5000, FISH_EXCLUSIVE_GOLDENS: ['Poliwag'],
     getSpecialSpawnPokemon: (name) => ({ name }), roleChanceBoost: 0,
-    getChannelCatchRateBoost: () => 0, message: { guildId: 'guild', channelId: 'channel' },
+    getMessageChannelCatchRateBoost: () => 0, getMessageIncenseScope: (message) => message.guildId,
+    message: { guildId: 'guild', channelId: 'channel' },
     rollSpawn: () => { spawnCalls += 1; return { name: 'Ordinary' }; },
   });
   const code = extract('const goldenFishingChance =', '\n        return await askForBall(');
@@ -769,7 +772,8 @@ test('wild starter encounters retain Explore shiny exclusivity', () => {
     CATCHBOT_RARITY_WEIGHTS: { Common: 55 }, CATCHBOT_SHINY_DENOMINATORS: [100000],
     CATCHBOT_LEGENDARY_DENOMINATORS: [6666],
   });
-  vm.runInContext(extract('function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE'), ctx);
+  vm.runInContext(extract('function getChanceFromFlooredOdds(', '\nconst EVENT_SPAWN_ODDS') + '\n'
+    + extract('function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE'), ctx);
   for (const [pool, id] of [['land', 1], ['water', 7]]) {
     speciesId = id;
     const result = ctx.rollSpawn(pool, 'user', pool === 'water' ? { enablesShiny: true, baseShinyRate: 0.001 } : null);
@@ -832,7 +836,8 @@ test('wild Shiny and event rolls do not use old pity counters', () => {
     EVENT_TICKET_SHINY_RATES: { standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02, nonEvent: 0.002 } },
     BASE_SHINY_RATE: 0.001, PATREON_SHINY_RATE: 0.002, CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
   });
-  vm.runInContext(extract('function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE'), ctx);
+  vm.runInContext(extract('function getChanceFromFlooredOdds(', '\nconst EVENT_SPAWN_ODDS') + '\n'
+    + extract('function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE'), ctx);
   const rod = { enablesLegendary: false, enablesShiny: true, baseShinyRate: 0.001 };
   shinyCount = 998;
   assert.equal(ctx.rollSpawn('land', 'user').isShiny, true);
@@ -1208,7 +1213,8 @@ test('Explore uses map data, configured shiny eligibility and Patreon rates', ()
     FULL_ODDS_SHINY_PITY_LIMIT: 750,
   });
   assert.match(source, /const EXPLORE_GOLDEN_CHANCE = 1 \/ 5000;/);
-  vm.runInContext(extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), ctx);
+  vm.runInContext(extract('function getChanceFromFlooredOdds(', '\nconst EVENT_SPAWN_ODDS') + '\n'
+    + extract('const EXPLORE_GOLDEN_CHANCE', '\nfunction getEventPokemonKey('), ctx);
   for (const [map, expected] of [['grass', 1], ['fire', 4], ['water', 7]]) {
     rolls = [0, 0.5];
     const result = ctx.rollExploreEncounter('user', map);
@@ -1336,7 +1342,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
     incrementUser: (_id, fields) => { for (const [key, amount] of Object.entries(fields)) user[key] += amount; },
     getTrainerIconUrl: () => 'trainer-icon', resolveLeadOverworldAbility: async () => { abilityResolutions++; return 'frisk'; },
     getExploreEncounterMultiplier: (ability) => { rollAbility = ability; return 1; },
-    getChannelCatchRateBoost: () => 5,
+    getMessageChannelCatchRateBoost: () => 5,
     rollExploreEncounter: (_id, map, boost) => {
       shinyBoost = boost;
       return { id: 1, name: 'Bulbasaur', rarity: 'Uncommon', isExplore: true, map, ...encounterVariant };

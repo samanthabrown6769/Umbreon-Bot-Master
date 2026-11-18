@@ -205,9 +205,12 @@ test('bids reserve tokens, refund outbid users, and settle exactly once', () => 
   db.exec("INSERT INTO catches VALUES (1,'source',1,'Test','Legendary',0,0,'pb')");
   db.transaction(() => auctions.confiscate('source', 1000))();
   const balance = (id) => db.prepare('SELECT patreon_tokens FROM users WHERE id = ?').get(id).patreon_tokens;
-  assert.deepEqual(auctions.bid('alice', 1, 50, 2000), { amount: 50, outbidUserId: null });
+  const firstBid = auctions.bid('alice', 1, 50, 2000);
+  assert.equal(firstBid.amount, 50);
+  assert.equal(firstBid.outbidUserId, null);
+  assert.equal(firstBid.pokemon.name, 'Test');
   assert.equal(balance('alice'), 1950);
-  assert.deepEqual(auctions.bid('alice', 1, 53, 3000), { amount: 53, outbidUserId: null });
+  assert.equal(auctions.bid('alice', 1, 53, 3000).pokemon.name, 'Test');
   assert.equal(balance('alice'), 1947);
   assert.equal(auctions.bid('bob', 1, 53, 4000).error, 'too_low');
   assert.equal(auctions.bid('bob', 1, 3001, 4000).error, 'insufficient');
@@ -249,20 +252,28 @@ test('auction command DMs the displaced bidder only after a successful outbid', 
   await context.run();
   assert.equal(dms.length, 1);
   assert.equal(dms[0][0], 'alice');
-  assert.match(dms[0][1], /Shiny Mewtwo.*#1.*54.*refunded/);
+  assert.match(dms[0][1], /Shiny Mewtwo.*#1.*54.*refunded.*\.auc bid 1 55/);
+  assert.match(replies[0], /Shiny Mewtwo.*#1/);
   result = { amount: 55, outbidUserId: 'alice', pokemon: { name: 'Mewtwo', is_shiny: 0, is_golden: 1 } };
   await context.run();
   assert.match(dms[1][1], /Golden Mewtwo.*#1/);
   result = { amount: 55, outbidUserId: null };
+  result.pokemon = { name: 'Mewtwo', is_shiny: 1, is_golden: 0 };
   await context.run();
   result = { error: 'too_low', minimum: 56 };
   await context.run();
   assert.equal(dms.length, 2);
   context.client.users.fetch = async () => { throw new Error('DM unavailable'); };
-  result = { amount: 56, outbidUserId: 'alice' };
+  result = { amount: 56, outbidUserId: 'alice', pokemon: { name: 'Mewtwo', is_shiny: 0, is_golden: 0 } };
   await context.run();
   assert.equal(errors.length, 1);
   assert.match(replies.at(-1), /Bid/);
+});
+
+test('message client receives DM commands through channel partials', () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  assert.match(source, /GatewayIntentBits\.DirectMessages/);
+  assert.match(source, /partials:\s*\[Partials\.Channel\]/);
 });
 
 test('confiscation returns a shared held item only when its last copy leaves', () => {

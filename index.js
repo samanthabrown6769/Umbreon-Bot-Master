@@ -100,6 +100,7 @@ const {
   Message,
   MessageFlags,
   MessagePayload,
+  Partials,
   PermissionsBitField,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
@@ -132,9 +133,6 @@ const {
   getRaritySettings,
   getUserRarityStreak,
   resetRarityStreaks,
-  getWildSpawnGuarantee,
-  initializeWildSpawnGuarantees,
-  recordWildSpawnGuarantees,
   getUser,
   getAmuletCoinBoost,
   getPatreonPerks,
@@ -647,12 +645,27 @@ function getSwapRewardExcludedSpecies(isShiny) {
 }
 for (const event of ALL_EVENTS) registerEvent(event);
 
+function getChanceFromFlooredOdds(chance) {
+  if (chance <= 0) return 0;
+  const denominator = 1 / chance;
+  const nearestInteger = Math.round(denominator);
+  const tolerance = Number.EPSILON * Math.abs(denominator);
+  const flooredDenominator = Math.abs(denominator - nearestInteger) <= tolerance
+    ? nearestInteger
+    : Math.floor(denominator);
+  return 1 / Math.max(1, flooredDenominator);
+}
+
 const EVENT_SPAWN_ODDS = 1000;
+const EVENT_SPAWN_RATE_MULTIPLIER = 2;
 function getEventSpawnChance(roleChanceBoost = 0, eventShinyPct = 0, shinyBonusActive = false) {
-  // Scale the existing tier perks so Legendary (+30%) and the shiny bonus reach 1/450.
   const tierMultiplier = 1 + (eventShinyPct / 100) * (70 / 27);
-  return Math.min(1 / 450, (1 + roleChanceBoost / 100) * tierMultiplier
-    * (shinyBonusActive ? 1.25 : 1) / EVENT_SPAWN_ODDS);
+  const chance = EVENT_SPAWN_RATE_MULTIPLIER
+    * (1 + roleChanceBoost / 100)
+    * tierMultiplier
+    * (shinyBonusActive ? 1.25 : 1)
+    / EVENT_SPAWN_ODDS;
+  return getChanceFromFlooredOdds(chance);
 }
 let eventSpawnFormIds = [];
 let eventSpawnEntries = [];
@@ -741,8 +754,10 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
   ],
+  partials: [Partials.Channel],
   rest: {
     globalRequestsPerSecond: 5,
   },
@@ -790,7 +805,7 @@ const BONUS_ANNOUNCEMENT_CHANNEL_ID = '1565712507287371846';
 const BONUS_ANNOUNCEMENT_ROLE_ID = '1565712717833052180';
 const BONUS_EFFECT_TEXT = Object.freeze({
   swap: '+25% increased Golden and Shiny swap rates.',
-  shiny: '+25% event spawn roll and selection weight for shiny event checklist Pokémon (event roll capped at 1/450).',
+  shiny: '+25% event spawn roll and selection weight for shiny event checklist Pokémon.',
   wb: '+25% World Boss Pokémon drop rate.',
   dxp: 'Double EXP from catches.',
   fish: '+25% Golden Fishing spawn rate.',
@@ -3194,7 +3209,7 @@ const ICONS = {
 
 // Event tickets and fishing rods have separate boosted shiny rates.
 const BASE_SHINY_RATE = 1 / 1500;
-// Incense: +10% shiny encounter rate and +10% promo item drop rate while server charges last.
+// Incense: +10% shiny encounter rate and +10% promo item drop rate while context charges last.
 const INCENSE_BOOST = 1.1;
 const EVENT_TICKET_SHINY_RATES = Object.freeze({
   patreon: { event: 1 / 50, nonEvent: 1 / 250 },
@@ -3228,8 +3243,8 @@ const LEGENDARY_GENERATION_ORDER = Object.freeze([
   { generation: 'generation-vi', rollChance: 1 / 5 },
   { generation: 'generation-vii', rollChance: 1 / 5 },
 ]);
-const LEGENDARY_BASE_CHANCE = 1 / 666;
-const LEGENDARY_GOLDEN_RAZZ_CHANCE = 1 / 500;
+const LEGENDARY_BASE_CHANCE = 2 / 666;
+const LEGENDARY_GOLDEN_RAZZ_CHANCE = 2 / 500;
 // A hunt targets one specific Pokémon; the catches needed depend on its rarity.
 const DAILY_HUNT_CONFIG = Object.freeze({
   Common: { chance: 1, required: 5, rewards: { pokeballs: 2, greatballs: 1 } },
@@ -3274,8 +3289,7 @@ function getLegendaryEncounterRateText(
   roleChanceBoost = 0,
   userId = null
 ) {
-  const chance = Math.min(
-    1,
+  const chance = getChanceFromFlooredOdds(
     (goldenRazzActive ? LEGENDARY_GOLDEN_RAZZ_CHANCE : LEGENDARY_BASE_CHANCE)
       * (1 + channelRateBoost / 100)
       * (1 + roleChanceBoost / 100)
@@ -3397,17 +3411,15 @@ function parseEncounterModifierAmount(command, amountArg, ownedRepels) {
   return amountArg === undefined ? 1 : parseAmount(amountArg);
 }
 
-function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, roleChanceBoost = 0, userId = null, legendaryRoll = null) {
+function chooseEncounterRarity(modifier, goldenRazzActive, channelRateBoost, roleChanceBoost = 0, userId = null) {
   const hardRarity = userId !== null && HARD_RARITY_USER_IDS.has(userId);
-  const legendaryChance = Math.min(
-    1,
+  const legendaryChance = getChanceFromFlooredOdds(
     (goldenRazzActive ? LEGENDARY_GOLDEN_RAZZ_CHANCE : LEGENDARY_BASE_CHANCE)
       * (1 + channelRateBoost / 100)
       * (1 + roleChanceBoost / 100)
       * (hardRarity ? HARD_RARITY_RATE_MULTIPLIER : 1)
   );
-  const rolledLegendary = Math.random() < legendaryChance;
-  if (legendaryRoll ? legendaryRoll(legendaryChance, rolledLegendary) : rolledLegendary) return 'Legendary';
+  if (Math.random() < legendaryChance) return 'Legendary';
 
   const baseWeights = ENCOUNTER_RARITY_WEIGHTS[modifier] || ENCOUNTER_RARITY_WEIGHTS.normal;
   const weights = hardRarity
@@ -3600,10 +3612,10 @@ function rollSpecialLegendarySpawn(
       ? Math.random() < 0.1
       : entry.shinyMode === 'one-in-two'
         ? Math.random() < 0.5
-        : Math.random() < BASE_SHINY_RATE
+        : Math.random() < getChanceFromFlooredOdds(BASE_SHINY_RATE
           * (1 / (1 - shinyBonus / 100))
           * (1 + getPatreonPerks(userId).shinyRatePct / 100)
-          * (1 + channelRateBoost / 100);
+          * (1 + channelRateBoost / 100));
     pokemon.encounterRateText =
       `1/${Math.round(
         denominator / ((1 + channelRateBoost / 100) * (1 + roleChanceBoost / 100))
@@ -3641,50 +3653,12 @@ function rollSpawn(
     roleChanceBoost = 0,
     goldenRazzActive = false,
     guildId = null,
-    useSpawnPity = false,
   } = {}
 ) {
   if (poolName !== 'land' && poolName !== 'water') {
     throw new TypeError(`Unknown spawn pool: ${poolName}`);
   }
-  const pityEnabled = useSpawnPity && !catchbot && userId !== null;
-  const pitySource = poolName === 'land' ? 'pokemon' : 'fishing';
-  const pityStates = new Map();
-  const pityRoll = (category, chance, rolled, eventId = '') => {
-    if (rolled) return true;
-    if (!pityEnabled || chance <= 0) return false;
-    const key = JSON.stringify([category, eventId]);
-    if (!pityStates.has(key)) {
-      const state = getWildSpawnGuarantee(userId, pitySource, category, eventId);
-      pityStates.set(key, {
-        count: state?.encounters_since_spawn ?? 0,
-        fraction: state?.threshold_fraction ?? Math.random(),
-      });
-    }
-    const { count, fraction } = pityStates.get(key);
-    const rate = 1 / Math.min(1, chance);
-    let minimum = Math.max(1, Math.ceil(rate * 0.5));
-    let maximum = Math.floor(rate * 1.1);
-    if (maximum < minimum) {
-      minimum = Math.max(1, Math.round(rate));
-      maximum = minimum;
-    }
-    const threshold = minimum + Math.floor(fraction * (maximum - minimum + 1));
-    return count + 1 >= threshold;
-  };
-  const outcomes = [];
-  const finishSpawn = (pokemon) => {
-    if (pityEnabled && outcomes.length) {
-      const pityOutcomes = outcomes.map((outcome) => ({
-        ...outcome,
-        thresholdFraction: pityStates.get(JSON.stringify([outcome.category, outcome.eventId ?? '']))?.fraction,
-      }));
-      initializeWildSpawnGuarantees(userId, pitySource, pityOutcomes);
-      pokemon.spawnPity = { source: pitySource, outcomes: pityOutcomes };
-    }
-    return pokemon;
-  };
-  // One shared server charge per boosted encounter.
+  // One shared server or personal DM charge per boosted encounter.
   const incenseActive = !catchbot && consumeIncenseCharge(guildId);
   const pokeradarActive = !catchbot && userId !== null && consumePokeradarCharge(userId);
 
@@ -3717,12 +3691,7 @@ function rollSpawn(
   const eventChance = eventSpawnEligible ? getEventSpawnChance(
     roleChanceBoost, getPatreonPerks(userId).eventShinyPct, isPlayerBonusActive('shiny')
   ) : 0;
-  const eventSpawned = eventSpawnEligible && pityRoll(
-    'event', eventChance, Math.random() < eventChance, halloweenEvent.id
-  );
-  if (pityEnabled && eventSpawnEligible && eventChance > 0) {
-    outcomes.push({ category: 'event', eventId: halloweenEvent.id, spawned: eventSpawned });
-  }
+  const eventSpawned = eventSpawnEligible && Math.random() < eventChance;
   if (eventSpawned) {
     const isPatreonUser = Boolean(getUser(userId).has_patreon);
     const eventShinyWeight = (isPatreonUser
@@ -3748,7 +3717,7 @@ function rollSpawn(
       roleChanceBoost
     );
     if (specialPokemon) {
-      return finishSpawn(specialPokemon);
+      return specialPokemon;
     }
   }
 
@@ -3757,7 +3726,6 @@ function rollSpawn(
     let pokemon;
     let isForcedEventSpawn = false;
     let forcedShiny = false;
-    let legendaryAttempt = false;
     if (forcedEvent) {
       pokemon = getRandomPokemon(null, false, true, true, null, [], forcedEvent.ids);
       pokemon.encounterModifier = encounterModifier;
@@ -3774,11 +3742,7 @@ function rollSpawn(
           goldenRazzActive,
           channelRateBoost,
           roleChanceBoost,
-          userId,
-          pityEnabled && !huntTarget ? (chance, rolled) => {
-            legendaryAttempt = chance > 0;
-            return pityRoll('legendary', chance, rolled);
-          } : null
+          userId
         );
       if (huntTarget) {
         pokemon = getRandomPokemon(null, false, false, false, null, [], [huntTarget.id]);
@@ -3832,17 +3796,18 @@ function rollSpawn(
       }));
       const totalWeight = rarityPool.reduce((total, entry) => total + entry.spawn_weight, 0);
       if (!totalWeight) throw new Error('No Pokémon rarities have a positive spawn weight.');
-      const legendaryChance = Math.min(1,
-        (catchbot
-          ? 1 / CATCHBOT_LEGENDARY_DENOMINATORS[catchbotLuckLevel]
-          : goldenRazzActive ? LEGENDARY_GOLDEN_RAZZ_CHANCE : LEGENDARY_BASE_CHANCE)
-        * (1 + (catchbot ? 0 : channelRateBoost) / 100)
+      const legendaryChanceModifiers = (1 + (catchbot ? 0 : channelRateBoost) / 100)
         * (1 + roleChanceBoost / 100)
-        * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
-      );
+        * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1);
+      const legendaryBaseChance = catchbot
+        ? 1 / CATCHBOT_LEGENDARY_DENOMINATORS[catchbotLuckLevel]
+        : goldenRazzActive ? LEGENDARY_GOLDEN_RAZZ_CHANCE : LEGENDARY_BASE_CHANCE;
+      const rawLegendaryChance = legendaryBaseChance * legendaryChanceModifiers;
+      const legendaryChance = catchbot
+        ? Math.min(1, rawLegendaryChance)
+        : getChanceFromFlooredOdds(rawLegendaryChance);
       const legendaryEligible = legendaryEnabled && (!rod || rod.enablesLegendary);
-      if (pityEnabled && legendaryEligible && legendaryChance > 0) legendaryAttempt = true;
-      if (legendaryEligible && pityRoll('legendary', legendaryChance, Math.random() < legendaryChance)) {
+      if (legendaryEligible && Math.random() < legendaryChance) {
         rarity = 'Legendary';
       } else {
         let random = Math.random() * totalWeight;
@@ -3910,11 +3875,12 @@ function rollSpawn(
       * patreonShinyMultiplier
       * shinyBonusMultiplier
       * eventTicketShinyMultiplier;
-    const shinyChance = baseShinyChance
+    const rawShinyChance = baseShinyChance
       * (userId !== null && HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1)
       * (catchbot ? 1 : 1 + channelRateBoost / 100)
       * (incenseActive ? INCENSE_BOOST : 1)
       * (pokeradarActive ? 1.1 : 1);
+    const shinyChance = catchbot ? rawShinyChance : getChanceFromFlooredOdds(rawShinyChance);
     const shinySpeciesKey = String(pokemon.speciesName).toLowerCase();
     const wildShinyEligible = !catchbot
       && userId !== null
@@ -3931,7 +3897,7 @@ function rollSpawn(
       ? forcedShiny
       : catchbot
         ? Math.random() < shinyChance
-        : wildShinyEligible && pityRoll('shiny', shinyChance, Math.random() < shinyChance);
+        : wildShinyEligible && Math.random() < shinyChance;
     if (pokemon.isShiny && !isForcedEventSpawn
         && (EGG_ONLY_SHINY_SPECIES_KEYS.has(String(pokemon.speciesName).toLowerCase())
           || EXPLORE_EXCLUSIVE_SHINY_IDS.has(pokemon.speciesId))) {
@@ -3953,15 +3919,7 @@ function rollSpawn(
       && eventTicketActive
       && isEventShinyTarget(pokemon)
     );
-    if (isForcedEventSpawn || !eventTicketActive || !getEventPokemonKey(pokemon, false)) {
-      if (pityEnabled && legendaryAttempt) {
-        outcomes.push({ category: 'legendary', spawned: rarity === 'Legendary' });
-      }
-      if (pityEnabled && wildShinyEligible && shinyChance > 0) {
-        outcomes.push({ category: 'shiny', spawned: pokemon.isShiny });
-      }
-      return finishSpawn(pokemon);
-    }
+    if (isForcedEventSpawn || !eventTicketActive || !getEventPokemonKey(pokemon, false)) return pokemon;
   }
 }
 
@@ -4061,7 +4019,8 @@ function rollExploreExclusive(mapKey) {
 
 function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0, ability = '') {
   const legends = getExploreLegendaryEntries(mapKey);
-  const legendary = legends.length && Math.random() < LEGENDARY_BASE_CHANCE
+  const legendary = legends.length
+    && Math.random() < getChanceFromFlooredOdds(LEGENDARY_BASE_CHANCE)
     ? legends[Math.floor(Math.random() * legends.length)]
     : null;
   const exclusive = legendary
@@ -4084,10 +4043,10 @@ function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0, ab
     return pokemon;
   }
   const shinyBonus = getTotalEffectiveShinyBonus(userId);
-  const shinyRate = BASE_SHINY_RATE
+  const shinyRate = getChanceFromFlooredOdds(BASE_SHINY_RATE
     * (1 + perks.shinyRatePct / 100) / (1 - shinyBonus / 100)
     * (1 + channelRateBoost / 100)
-    * (HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1);
+    * (HARD_RARITY_USER_IDS.has(userId) ? HARD_RARITY_RATE_MULTIPLIER : 1));
   const speciesKey = String(pokemon.speciesName).toLowerCase();
   const fullOddsShinyEligible = canShiny
     && !EGG_ONLY_SHINY_SPECIES_KEYS.has(speciesKey)
@@ -4603,6 +4562,21 @@ const UNLIMITED_CHANNEL_BOOSTER_IDS = new Set([
   '1514082847609061541',
   '426946381098254336',
 ]);
+const DIRECT_MESSAGE_CHANNEL_GUILD_ID = '@me';
+function getMessageChannelCatchRateBoost(userId, message) {
+  const guildId = message.guildId || DIRECT_MESSAGE_CHANNEL_GUILD_ID;
+  const channelBoost = getChannelCatchRateBoost(userId, guildId, message.channelId);
+  if (message.guildId) return channelBoost;
+  const legendaryTier = PATREON_TIER_ORDER.indexOf('legendary');
+  const userTier = PATREON_TIER_ORDER.indexOf(getUser(userId).patreon_tier);
+  return channelBoost + (userTier >= legendaryTier ? 5 : 0);
+}
+function getIncenseScope(guildId, userId) {
+  return guildId || `dm:${userId}`;
+}
+function getMessageIncenseScope(message) {
+  return getIncenseScope(message.guildId, message.author.id);
+}
 const WORLD_BOSS_SPAWN_ALLOWED_USER_IDS = new Set([
   '1352997432929288194',
   '183625933041827840',
@@ -6978,7 +6952,7 @@ async function announcePromoItemFound(guild, user, promo, source, newTotal) {
   return sendRareSpawnChannelEmbed(guild, embed);
 }
 
-// Promo drop odds scale with active server incense and the Patreon golden perk.
+// Promo drop odds scale with active incense and the Patreon golden perk.
 function getPromoChanceMultiplier(userId, incenseActive) {
   const clanPromoBonus = getClanPerkMultipliers(getUser(userId)).prBonus;
   return (incenseActive ? INCENSE_BOOST : 1)
@@ -6986,13 +6960,13 @@ function getPromoChanceMultiplier(userId, incenseActive) {
     * (1 + clanPromoBonus / 100);
 }
 
-// Battles and egg hatches roll promo drops too; one server incense charge is used (for +10%)
+// Battles and egg hatches roll promo drops too; one server or DM charge is used (for +10%)
 // only while an active promo drops from that activity.
 async function rollActivityPromoDrops(user, guild, channel, source) {
   try {
     const promos = getActivePromos().filter((promo) => promo.drops?.[source] && promo.drops[source].enabled !== false);
     if (!promos.length) return;
-    const incenseActive = Boolean(guild) && consumeIncenseCharge(guild.id);
+    const incenseActive = consumeIncenseCharge(getIncenseScope(guild?.id, user.id));
     const multiplier = getPromoChanceMultiplier(user.id, incenseActive);
     const verb = { battle: 'battling', egg: 'hatching an Egg' }[source] || source;
     for (const promo of promos) {
@@ -7495,7 +7469,7 @@ async function askForBall(
   const clanPerks = getClanPerkMultipliers(getUser(userId));
   const ninjaBonus = getPatreonPerks(userId).catchBoost;
   const encounterCatchBonus = getEncounterCatchBonus(clanPerks.crBonus, ninjaBonus);
-  const channelCatchRateBoost = getChannelCatchRateBoost(userId, message.guildId, message.channelId);
+  const channelCatchRateBoost = getMessageChannelCatchRateBoost(userId, message);
   const ninjaBoostText = ninjaBonus > 0 ? ` (+${ninjaBonus}% catch rate)` : '';
   const catchRateText = mode === 'catch' || isFishing
     ? (ninjaBoostText ? `**Catch rate boost:**${ninjaBoostText}\n` : '')
@@ -7783,9 +7757,6 @@ async function askForBall(
       LIMIT 1
     `).get(userId, target.id, target.isShiny ? 1 : 0, target.isGolden ? 1 : 0);
     saveCatch(userId, target, Boolean(target.isShiny), true, Boolean(target.isGolden), selectedBall, !allowAnyUserCatch);
-    if (target.spawnPity) {
-      recordWildSpawnGuarantees(userId, target.spawnPity.source, target.spawnPity.outcomes);
-    }
     if (counterSource) {
       recordWildEncounterCounter(userId, counterSource);
       if (counterSource !== 'explore') recordHeldItemEncounterCounter(userId);
@@ -7795,7 +7766,7 @@ async function askForBall(
       resetHeldItemEncounterCounter(userId, target.name, catchDisplayRarity, target.heldItem);
     }
     if (!guaranteedCatch || isConfiguredBotAdminId(userId)) recordDailyCatch(userId, catcher.username);
-    const resetCounterCategories = counterSource
+    const resetCounterCategories = counterSource && !target.isEventSpawn
       ? resetEncounterCounters(
         userId,
         counterSource,
@@ -14141,7 +14112,7 @@ client.on('messageCreate', async (message) => {
           `• \`${PREFIX}cooldown [quantity]\` — Add Cooldown Machine charges\n` +
           `• \`${PREFIX}doublexp [amount]\` / \`${PREFIX}dxp\` — View or add Double XP catches\n` +
           `• \`${PREFIX}pokeradar [amount]\` / \`${PREFIX}radar\` — View or add Pokeradar charges\n` +
-          `• \`${PREFIX}incense [use <amount|all>]\` / \`${PREFIX}inc\` — Use Incense in this server\n` +
+          `• \`${PREFIX}incense [use <amount|all>]\` / \`${PREFIX}inc\` — Use Incense in this server or DM\n` +
           `• \`${PREFIX}token buy|sell <amount> [price]\` / \`${PREFIX}tokens\` — Patreon Token trading\n` +
           `• \`${PREFIX}patreon shop\` — Patreon shop\n` +
           `• \`${PREFIX}promo\` — View and claim the active promo\n` +
@@ -14529,7 +14500,7 @@ client.on('messageCreate', async (message) => {
         battle: '⚔️ Battling',
         egg: '🥚 Hatching Eggs',
       };
-      const incenseOn = Boolean(message.guildId) && getIncenseCharges(message.guildId) > 0;
+      const incenseOn = getIncenseCharges(getMessageIncenseScope(message)) > 0;
       const promoMultiplier = getPromoChanceMultiplier(userId, incenseOn);
       const boostParts = [];
       if (incenseOn) boostParts.push(`${EMOJIS.incense} Incense +10%`);
@@ -14740,6 +14711,9 @@ client.on('messageCreate', async (message) => {
       if (args.length === 1 && action === 'boost') {
         const boostedChannels = getBoostedChannels(userId);
         const channelLines = boostedChannels.map(({ guild_id: guildId, channel_id: channelId }) => {
+          if (guildId === DIRECT_MESSAGE_CHANNEL_GUILD_ID) {
+            return `• [Your DM channel](https://discord.com/channels/@me/${channelId}) — **Direct Messages**`;
+          }
           const guild = client.guilds.cache.get(guildId);
           const channel = guild?.channels.cache.get(channelId);
           const channelName = channel?.name ? `#${channel.name}` : `#${channelId}`;
@@ -14748,7 +14722,7 @@ client.on('messageCreate', async (message) => {
         });
         const boostsPerPage = 10;
         const totalBoostPages = Math.max(1, Math.ceil(channelLines.length / boostsPerPage));
-        const currentChannelBoost = getChannelCatchRateBoost(userId, message.guildId, message.channelId);
+        const currentChannelBoost = getMessageChannelCatchRateBoost(userId, message);
         let boostPage = 0;
         const buildBoostPayload = (disabled = false) => {
           const pageLines = channelLines.slice(boostPage * boostsPerPage, (boostPage + 1) * boostsPerPage);
@@ -14763,14 +14737,13 @@ client.on('messageCreate', async (message) => {
             .setFooter({
               text: `Page ${boostPage + 1}/${totalBoostPages} • ${boostedChannels.length} / ${UNLIMITED_CHANNEL_BOOSTER_IDS.has(userId) ? '∞' : '10'} channels boosted`,
             });
-          if (message.guildId) {
-            embed.addFields({
-              name: 'Current channel',
-              value: currentChannelBoost > 0
-                ? `+${currentChannelBoost} percentage points catch rate and +${currentChannelBoost}% relative shiny and Legendary rates for everyone, including any server-wide boost.`
-                : 'No channel or server-wide rate boost is active here.',
-            });
-          }
+          embed.addFields({
+            name: message.guildId ? 'Current channel' : 'Your DM channel',
+            value: currentChannelBoost > 0
+              ? `+${currentChannelBoost} percentage points catch rate and +${currentChannelBoost}% relative shiny and Legendary rates` +
+                (message.guildId ? ' for everyone, including any server-wide boost.' : ' in this DM.')
+              : message.guildId ? 'No channel or server-wide rate boost is active here.' : 'No rate boost is active in this DM.',
+          });
           const payload = { embeds: [embed], components: [] };
           if (totalBoostPages > 1) {
             payload.components = [new ActionRowBuilder().addComponents(
@@ -14808,9 +14781,6 @@ client.on('messageCreate', async (message) => {
           ? `✅ Removed all **${removed}** personal channel boost${removed === 1 ? '' : 's'} across all servers.`
           : 'You do not have any personal channel boosts to remove.');
       }
-      if (!message.guildId) {
-        return message.reply('Add or remove channel boosts from the server channel you want to manage.');
-      }
       // Re-sync the Patreon role from the main server so the check works in any server.
       try {
         await getPatreonTier(userId);
@@ -14827,10 +14797,15 @@ client.on('messageCreate', async (message) => {
       ) {
         return message.reply('⛔ Channel boosts are available to Legendary-, Shiny-, and Golden-tier Patreon supporters and configured bot admins.');
       }
+      const boostGuildId = message.guildId || DIRECT_MESSAGE_CHANNEL_GUILD_ID;
+      const boostChannelLabel = message.guildId ? `<#${message.channelId}>` : 'your DM channel';
       if (args.length === 2 && action === 'add' && setting === 'boost') {
+        if (!message.guildId && canManageBoost) {
+          return message.reply('Your DM channel automatically has a **+5% catch, shiny, and Legendary rate boost** with Legendary-tier Patreon or above.');
+        }
         const result = addChannelCatchRateBoost(
           userId,
-          message.guildId,
+          boostGuildId,
           message.channelId,
           UNLIMITED_CHANNEL_BOOSTER_IDS.has(userId) ? null : 10
         );
@@ -14843,14 +14818,16 @@ client.on('messageCreate', async (message) => {
           );
         }
         return message.reply(
-          `✅ Added a **+5% catch, shiny, and Legendary rate boost** for **everyone** in <#${message.channelId}>.`
+          `✅ Added a **+5% catch, shiny, and Legendary rate boost** for **everyone** in ${boostChannelLabel}.`
         );
       }
       if (args.length === 2 && action === 'remove' && setting === 'boost') {
-        const removed = setChannelCatchRateBoost(userId, message.guildId, message.channelId, false);
+        const removed = setChannelCatchRateBoost(userId, boostGuildId, message.channelId, false);
         return message.reply(removed
-          ? `✅ Removed your catch, shiny, and Legendary rate boost for <#${message.channelId}>.`
-          : `You do not have a rate boost configured for <#${message.channelId}>.`);
+          ? `✅ Removed your manual catch, shiny, and Legendary rate boost for ${boostChannelLabel}.`
+          : !message.guildId && canManageBoost
+            ? 'The +5% DM boost is automatic for Legendary-tier Patreon and above and cannot be removed.'
+            : `You do not have a rate boost configured for ${boostChannelLabel}.`);
       }
       return message.reply(
         `Usage: \`${PREFIX}channel add boost\`, \`${PREFIX}channel remove boost|all\`, ` +
@@ -15856,7 +15833,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin research points <@user|user ID> [amount]\` — Check or adjust a user's Research Points\n` +
             `• \`${PREFIX}admin item <@user|user ID> <item or currency> <amount>\` — Give or remove items (including Research items) and balances\n` +
             `• \`${PREFIX}admin globalreward confirm\` — One-time reward for all existing users\n` +
-            `• \`${PREFIX}admin incense [amount]\` — Add 1,000 shared Incense charges per amount to this server\n` +
+            `• \`${PREFIX}admin incense [amount]\` — Add 1,000 shared Incense charges per amount to this server or DM\n` +
             `• \`${PREFIX}admin pokemon @User|user ID <Pokémon|form|number> [amount] [shiny|golden]\` — Give Pokémon\n` +
             `• \`${PREFIX}admin pokemon multi @User|user ID <Pokémon, Pokémon...>\` — Give up to 100 Pokémon; prefix entries with \`shiny\` or \`golden\`\n` +
             `• \`${PREFIX}admin pokemon remove @User|user ID <Pokémon|form|dex>\` — Remove one matching Pokémon from a user\n` +
@@ -15903,9 +15880,6 @@ client.on('messageCreate', async (message) => {
       }
 
       if (command === 'admin' && subtype === 'incense') {
-        if (!message.guildId) {
-          return message.reply('❌ Admin incense can only be activated in a server.');
-        }
         const amount = args[1] === undefined ? 1 : parseAmount(args[1]);
         if (args.length > 2 || !Number.isSafeInteger(amount) || amount <= 0) {
           return message.reply(`Usage: \`${PREFIX}admin incense [amount]\`.`);
@@ -15914,10 +15888,10 @@ client.on('messageCreate', async (message) => {
         if (!Number.isSafeInteger(charges)) {
           return message.reply('❌ The requested incense amount is too large.');
         }
-        addIncenseCharges(message.guildId, charges);
+        addIncenseCharges(getMessageIncenseScope(message), charges);
         return message.reply(
           `${EMOJIS.incense} Admin activated **${amount.toLocaleString()}x Incense**, adding ` +
-          `**${charges.toLocaleString()}** shared charges to this server.`
+          `**${charges.toLocaleString()}** shared charges to ${message.guildId ? 'this server' : 'your DM channel'}.`
         );
       }
 
@@ -17624,11 +17598,10 @@ client.on('messageCreate', async (message) => {
         const grazzActive = getUser(userId).grazz_buff_encounters > 0;
         if (grazzActive) incrementUser(userId, { grazz_buff_encounters: -1 });
         return await askForBall(message, userId, rollSpawn('land', userId, null, {
-          channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
+          channelRateBoost: getMessageChannelCatchRateBoost(userId, message),
           roleChanceBoost,
           goldenRazzActive: grazzActive,
-          guildId: message.guildId,
-          useSpawnPity: true,
+          guildId: getMessageIncenseScope(message),
         }), 'catch', {
           counterSource: 'pokemon',
           cooldownState,
@@ -17707,10 +17680,9 @@ client.on('messageCreate', async (message) => {
           };
         } else {
           fishingTarget = rollSpawn('water', userId, rod, {
-            channelRateBoost: getChannelCatchRateBoost(userId, message.guildId, message.channelId),
+            channelRateBoost: getMessageChannelCatchRateBoost(userId, message),
             roleChanceBoost,
-            guildId: message.guildId,
-            useSpawnPity: true,
+            guildId: getMessageIncenseScope(message),
           });
         }
         return await askForBall(
@@ -22054,7 +22026,7 @@ client.on('messageCreate', async (message) => {
             }
           }
           if (Math.random() < Math.min(1, EXPLORE_ENCOUNTER_CHANCE * getExploreEncounterMultiplier(ability))) {
-            wild = rollExploreEncounter(userId, mapKey, getChannelCatchRateBoost(userId, message.guildId, message.channelId), ability);
+            wild = rollExploreEncounter(userId, mapKey, getMessageChannelCatchRateBoost(userId, message), ability);
           }
           if (wild) {
             wild.overworldAbility = ability;
@@ -23012,9 +22984,13 @@ client.on('messageCreate', async (message) => {
               chargeItems.get('Cooldown Machine') || 0
             ),
             `• ${EMOJIS.cooldownMachine} **Cooldown Machine:** ${chargeUser.cooldown_machine_fish_charges.toLocaleString()} ${PREFIX}fish`,
-            ...(message.guildId
-              ? [chargeLine(EMOJIS.incense, 'Incense', getIncenseCharges(message.guildId), 'server uses', chargeItems.get('Incense') || 0)]
-              : []),
+            chargeLine(
+              EMOJIS.incense,
+              'Incense',
+              getIncenseCharges(getMessageIncenseScope(message)),
+              message.guild ? 'server uses' : 'DM uses',
+              chargeItems.get('Incense') || 0
+            ),
           ].join('\n'),
           inline: false,
         },
@@ -23025,7 +23001,11 @@ client.on('messageCreate', async (message) => {
           .setAuthor({ name: `${message.author.username}'s Item Charges`, iconURL: message.author.displayAvatarURL() })
           .setDescription('Active uses remaining are shown alongside any unused items you own.')
           .addFields(fields)
-          .setFooter({ text: message.guildId ? 'Incense charges are shared with this server.' : `Use ${PREFIX}incense in a server to check shared Incense charges.` })],
+          .setFooter({
+            text: message.guild
+              ? 'Incense charges are shared with this server.'
+              : 'Incense charges in your DM are separate from server charges.',
+          })],
       });
     }
 
@@ -24141,8 +24121,8 @@ client.on('messageCreate', async (message) => {
             ?? (isMegaStone ? 0 : null)
             ?? (userField ? getUser(userId)[userField] : null)
             ?? (ballEntry ? getUser(userId)[ballEntry[1].column] : null);
-          const sharedIncenseCharges = onlineItem.name === 'incense' && message.guildId
-            ? getIncenseCharges(message.guildId)
+          const sharedIncenseCharges = onlineItem.name === 'incense'
+            ? getIncenseCharges(getMessageIncenseScope(message))
             : null;
           if (heldByPokemon) {
             const heldEmojiImage = itemEmoji.match(/<a?:[a-zA-Z0-9_]+:(\d+)>/);
@@ -24178,7 +24158,7 @@ client.on('messageCreate', async (message) => {
               : isMegaStone
                 ? `Use \`${PREFIX}mega evo [shiny] <Pokémon>\` or \`${PREFIX}use <Mega Stone> <Pokémon>\`.`
                 : onlineItem.name === 'incense'
-                  ? `Check shared server charges with \`${PREFIX}incense\`; activate with \`${PREFIX}incense [amount]\`.`
+                  ? `Check this server or DM's charges with \`${PREFIX}incense\`; activate with \`${PREFIX}incense [amount]\`.`
                   : `See \`${PREFIX}help\` for how this item is used in the bot.`;
           const detailText = onlineItem.effect || onlineItem.flavor;
           const embed = new EmbedBuilder()
@@ -24190,7 +24170,7 @@ client.on('messageCreate', async (message) => {
               `${onlineItem.shortEffect || detailText}\n\n` +
               `**Category:** ${onlineItem.category}\n` +
               `${onlineItem.flavor && onlineItem.effect ? `**Game description:** ${onlineItem.flavor}\n` : ''}` +
-              `${sharedIncenseCharges === null ? '' : `**Shared charges in this server:** ${sharedIncenseCharges.toLocaleString()}\n`}` +
+              `${sharedIncenseCharges === null ? '' : `**Incense charges here:** ${sharedIncenseCharges.toLocaleString()}\n`}` +
               `${owned === null ? '' : `**You currently own:** ${owned.toLocaleString()}x ${onlineItem.name.replace(/-/g, ' ')}\n`}` +
               `\n**In this bot**\n${useInstruction}`
             )
@@ -24471,7 +24451,7 @@ client.on('messageCreate', async (message) => {
               `**You currently own:** ${EMOJIS.incense} **${owned.toLocaleString()}x Incense**\n\n` +
               `**Usage**\nTo use an incense, type \`${PREFIX}incense {amt}\`. Each incense provides a base amount of ` +
               `${BASE_INCENSE_CHARGES} charges. Higher Patreon tiers provide extra charges. Check \`${PREFIX}perks\` for more information.\n` +
-              `• Check available incense charges in this server using \`${PREFIX}incense\`\n\n` +
+              `• Check available incense charges in this server or DM using \`${PREFIX}incense\`\n\n` +
               `**Method to obtain**\n• Buy for 100 ${EMOJIS.patreonToken} Patreon Tokens: \`${PREFIX}shop buy 47\``
             )
             .setFooter({ text: `Item info: ${PREFIX}item info <item>` })],
@@ -26301,25 +26281,28 @@ client.on('messageCreate', async (message) => {
     }
 
     if (command === 'incense' || command === 'inc') {
-      if (!message.guildId) return message.reply('Incense can only be used in a server.');
       const incenseArgs = args[0]?.toLowerCase() === 'use' ? args.slice(1) : args;
       const usage = `Usage: \`${PREFIX}incense [use {amount|all}]\`.`;
       if (incenseArgs.length > 1 || (args[0]?.toLowerCase() === 'use' && incenseArgs.length === 0)) {
         return message.reply(usage);
       }
       if (incenseArgs[0] === undefined) {
-        const charges = getIncenseCharges(message.guildId);
-        const { recent, top } = getIncenseContributors(message.guildId);
+        const incenseScope = getMessageIncenseScope(message);
+        const scopeName = message.guild ? message.guild.name : 'Your DM channel';
+        const charges = getIncenseCharges(incenseScope);
+        const { recent, top } = getIncenseContributors(incenseScope);
         const nameFor = async (id) => (await client.users.fetch(id).catch(() => null))?.username || `User ${id}`;
         const recentName = recent ? await nameFor(recent.user_id) : null;
         const topNames = await Promise.all(top.map((row) => nameFor(row.user_id)));
-        const serverName = message.guild.name;
         const code = (text) => `\`${text}\``;
         const embed = new EmbedBuilder()
           .setColor(0x3498db)
-          .setAuthor({ name: `${serverName}'s Incenses`, iconURL: message.guild.iconURL() || undefined })
+          .setAuthor({
+            name: message.guild ? `${scopeName}'s Incenses` : `${message.author.username}'s DM Incense`,
+            iconURL: message.guild?.iconURL() || undefined,
+          })
           .setDescription(
-            `**${serverName}** has ${charges > 0 ? '✅' : '❌'} ${EMOJIS.incense} **${charges.toLocaleString()}** incense charges remaining.\n` +
+            `**${scopeName}** has ${charges > 0 ? '✅' : '❌'} ${EMOJIS.incense} **${charges.toLocaleString()}** incense charges remaining.\n` +
             `• 1 charge is consumed per ${code(`${PREFIX}pokemon`)} & ${code(`${PREFIX}fish`)} encounter, ${code(`${PREFIX}battle`)}, or ${code(`${PREFIX}egg`)} hatch\n` +
             `• Use an incense with ${code(`${PREFIX}incense use {amount}`)} or ${code(`${PREFIX}incense all`)}\n\n` +
             `${EMOJIS.incense} Incense benefits:\n` +
@@ -26330,12 +26313,16 @@ client.on('messageCreate', async (message) => {
             `• ${recent
               ? `${recentName} — ${(recent.last_charges || recent.charges).toLocaleString()} charges (last used <t:${Math.floor(recent.last_used_at / 1000)}:R>)`
               : 'None'}\n\n` +
-            `Top 5 contributors for ${serverName}\n` +
+            `${message.guild ? `Top 5 contributors for ${scopeName}` : 'Your DM contributions'}\n` +
             (top.length
               ? top.map((row, index) => `• **${index + 1}.** ${topNames[index]} — ${row.charges.toLocaleString()} charges`).join('\n')
               : '• None')
           )
-          .setFooter({ text: 'Incense charges are shared & used by every player in this server' });
+          .setFooter({
+            text: message.guild
+              ? 'Incense charges are shared & used by every player in this server'
+              : 'These incense charges are used only in your DM with the bot.',
+          });
         return message.reply({ embeds: [embed], allowedMentions: { parse: [] } });
       }
       const useAll = incenseArgs[0].toLowerCase() === 'all';
@@ -26350,8 +26337,9 @@ client.on('messageCreate', async (message) => {
           if (amount <= 0) return false;
         }
         if (!takeUserItem(userId, 'Incense', amount)) return false;
-        addIncenseCharges(message.guildId, amount * chargesPerIncense);
-        recordIncenseContribution(message.guildId, userId, amount, amount * chargesPerIncense);
+        const incenseScope = getMessageIncenseScope(message);
+        addIncenseCharges(incenseScope, amount * chargesPerIncense);
+        recordIncenseContribution(incenseScope, userId, amount, amount * chargesPerIncense);
         return true;
       })();
       if (!added) {
@@ -26360,7 +26348,7 @@ client.on('messageCreate', async (message) => {
       }
       return message.reply(
         `${EMOJIS.incense} Used **${amount}x Incense** (**${(amount * chargesPerIncense).toLocaleString()}** charges). ` +
-        `This server now has **${getIncenseCharges(message.guildId).toLocaleString()}** charges.`
+        `${message.guild ? 'This server' : 'Your DM channel'} now has **${getIncenseCharges(getMessageIncenseScope(message)).toLocaleString()}** charges.`
       );
     }
 
@@ -27278,12 +27266,13 @@ client.on('messageCreate', async (message) => {
           try {
             const outbidUser = await client.users.fetch(result.outbidUserId);
             const variant = result.pokemon.is_golden ? 'Golden ' : result.pokemon.is_shiny ? 'Shiny ' : '';
-            await outbidUser.send(`You were outbid on **${variant}${result.pokemon.name}** in auction **#${args[1]}**. The new bid is ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}**. Your previous bid has been refunded. Bid again with \`${PREFIX}auction bid ${args[1]} <amount>\`.`);
+            await outbidUser.send(`You were outbid on **${variant}${result.pokemon.name}** in auction **#${args[1]}**. The new bid is ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}**. Your previous bid has been refunded. Bid again with \`${PREFIX}auc bid ${args[1]} ${result.amount + 1}\`.`);
           } catch (error) {
             console.error(`Failed to DM outbid notification to ${result.outbidUserId} for auction ${args[1]}:`, error);
           }
         }
-        return message.reply(`✅ Bid ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}** on auction **#${args[1]}**. Your leading bid is reserved until you are outbid or the auction ends.`);
+        const variant = result.pokemon.is_golden ? 'Golden ' : result.pokemon.is_shiny ? 'Shiny ' : '';
+        return message.reply(`✅ Bid ${EMOJIS.patreonToken} **${result.amount.toLocaleString()}** on **${variant}${result.pokemon.name}** in auction **#${args[1]}**. Your leading bid is reserved until you are outbid or the auction ends.`);
       }
 
       const history = action === 'history';
