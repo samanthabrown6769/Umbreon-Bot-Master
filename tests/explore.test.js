@@ -77,7 +77,7 @@ test('Explore reward bonuses add to existing Amulet and Shiny totals without mod
     getPatreonPerks: () => ({ amuletCoins: 4, shinyCharms: 1 }),
   });
   vm.runInContext(section('function getAmuletCoinBoost(', '\nfunction awardCoinsWithBoost('), ctx);
-  vm.runInContext(section('function getTotalEffectiveShinyBonus(', '\n// perkCatches'), ctx);
+  vm.runInContext(section('function getTotalEffectiveShinyBonus(', '\n// Amethyst and Onyx split'), ctx);
   assert.equal(ctx.getAmuletCoinBoost('user').totalEffective, 17);
   assert.equal(ctx.getAmuletCoinBoost('user').owned, 10);
   assert.equal(ctx.getTotalEffectiveShinyBonus('user'), 10);
@@ -147,23 +147,22 @@ test('Explore unlocks and their ownership are shown in the utility bag', () => {
   }
 });
 
-test('Explore catch bonuses exclude clan perks but retain Patreon and channel bonuses', () => {
+test('Explore catch bonuses include clan, Patreon and channel bonuses', () => {
   const ctx = vm.createContext({ getExploreCatchRate: data.getExploreCatchRate, HELD_ITEM_CATCH_RATES: { Rare: { pb: 25 } },
     PREMIERBALL_RATES: {} });
   vm.runInContext(extract('function getEncounterCatchBonus(', '\nfunction getCatchCoinReward('), ctx);
   const ball = { bonus: 0 };
   const explore = { isExplore: true };
   const ordinary = { isExplore: false };
-  assert.equal(ctx.getEncounterCatchBonus(explore, 20, 5), 5);
-  assert.equal(ctx.getEncounterCatchBonus(ordinary, 20, 5), 25);
+  assert.equal(ctx.getEncounterCatchBonus(20, 5), 25);
   assert.equal(ctx.getBallCatchRate('pb', ball, explore, 'Rare', 42,
-    ctx.getEncounterCatchBonus(explore, 20, 5), 3), 50);
+    ctx.getEncounterCatchBonus(20, 5), 3), 70);
   assert.equal(ctx.getBallCatchRate('pb', ball, { isExplore: true, heldItem: 'Seed' }, 'Rare', 42,
-    ctx.getEncounterCatchBonus(explore, 20, 5), 3), 33);
+    ctx.getEncounterCatchBonus(20, 5), 3), 53);
   assert.equal(ctx.getBallCatchRate('pb', ball, { heldItem: 'Seed' }, 'Rare', 42,
-    ctx.getEncounterCatchBonus(ordinary, 20, 5), 3), 53);
+    ctx.getEncounterCatchBonus(20, 5), 3), 53);
   assert.equal(ctx.getBallCatchRate('pb', ball, ordinary, 'Rare', 42,
-    ctx.getEncounterCatchBonus(ordinary, 20, 5), 3), 70);
+    ctx.getEncounterCatchBonus(20, 5), 3), 70);
 });
 
 test('Explore encounters skip held-item rolls and faction-hunt bonuses without removing base faction points', () => {
@@ -596,7 +595,7 @@ test('Explore overworld abilities apply their own rates and repel only Common en
 test('Golden Patreon applies a 25% relative bonus to fishing, swap and promo rates', () => {
   let goldenBoost = 0;
   const ctx = vm.createContext({
-    getPatreonPerks: () => ({ goldenBoost }), getPlayerClan: () => null,
+    getUser: () => ({}), getPatreonPerks: () => ({ goldenBoost }), getPlayerClan: () => null,
     getClanPerkMultipliers: () => ({ prBonus: 0 }), INCENSE_BOOST: 1.1,
     FISH_EXCLUSIVE_GOLDEN_DENOMINATOR: 5000, isPlayerBonusActive: () => false,
     userId: 'trainer', multiplier: 1, goldenBonus: 1, swapBonus: 1,

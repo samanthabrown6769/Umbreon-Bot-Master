@@ -4160,8 +4160,8 @@ const PREMIERBALL_RATES = {
   Legendary: 55,
 };
 
-function getEncounterCatchBonus(target, clanBonus, patreonBonus) {
-  return (target.isExplore ? 0 : clanBonus) + patreonBonus;
+function getEncounterCatchBonus(clanBonus, patreonBonus) {
+  return clanBonus + patreonBonus;
 }
 
 function getBallCatchRate(ballKey, ball, target, displayRarity, baseCatchChance, clanBonus, channelBoost) {
@@ -7494,7 +7494,7 @@ async function askForBall(
   );
   const clanPerks = getClanPerkMultipliers(getUser(userId));
   const ninjaBonus = getPatreonPerks(userId).catchBoost;
-  const encounterCatchBonus = getEncounterCatchBonus(target, clanPerks.crBonus, ninjaBonus);
+  const encounterCatchBonus = getEncounterCatchBonus(clanPerks.crBonus, ninjaBonus);
   const channelCatchRateBoost = getChannelCatchRateBoost(userId, message.guildId, message.channelId);
   const ninjaBoostText = ninjaBonus > 0 ? ` (+${ninjaBonus}% catch rate)` : '';
   const catchRateText = mode === 'catch' || isFishing
@@ -18445,17 +18445,46 @@ client.on('messageCreate', async (message) => {
       }
 
       if (subcommand === 'info' && args[1]?.toLowerCase() === 'perks') {
+        const perkDescription = [
+          '**All clan perks are cumulative; each unlock adds to the previous ones.**',
+          '',
+          `🔴 Catch Rate perks (CR) — applies to \`${PREFIX}pokemon\`, \`${PREFIX}fish\`, and \`${PREFIX}explore\``,
+          `• ${CLAN_RANK_EMOJIS.bronze} Catch Rate I: +1%`,
+          `• ${CLAN_RANK_EMOJIS.silver} Catch Rate II: +2% (total +3%)`,
+          `• ${CLAN_RANK_EMOJIS.gold} Catch Rate III: +2% (total +5%)`,
+          `• ${CLAN_RANK_EMOJIS.diamond} Catch Rate IV: +5% (total +10%)`,
+          '',
+          `🧬 Shiny Rate perks (SR) — applies to \`${PREFIX}pokemon\`, \`${PREFIX}fish\`, and \`${PREFIX}explore\``,
+          `• ${CLAN_RANK_EMOJIS.bronze} Shiny Rate I: +1%`,
+          `• ${CLAN_RANK_EMOJIS.silver} Shiny Rate II: +2% (total +3%)`,
+          `• ${CLAN_RANK_EMOJIS.gold} Shiny Rate III: +2% (total +5%)`,
+          `• ${CLAN_RANK_EMOJIS.diamond} Shiny Rate IV: +5% (total +10%)`,
+          '',
+          `🎟️ Event Rate perks (ER) — applies to \`${PREFIX}pokemon\``,
+          `• ${CLAN_RANK_EMOJIS.gold} Event Rate I, ${CLAN_RANK_EMOJIS.diamond} Event Rate II, ${CLAN_RANK_EMOJIS.amethyst} Event Rate III, ${CLAN_RANK_EMOJIS.onyx} Event Rate IV`,
+          '• Each tier adds +5% event shiny rate (total +20%).',
+          '',
+          `🟡 Promo Rate perks (PR) — applies to \`${PREFIX}pokemon\`, \`${PREFIX}battle\`, \`${PREFIX}fish\`, and \`${PREFIX}egg\``,
+          `• ${CLAN_RANK_EMOJIS.amethyst} Promo Rate I and ${CLAN_RANK_EMOJIS.onyx} Promo Rate II`,
+          '• Each tier adds +5% promo rate (total +10%).',
+          '',
+          '🍀 Other perks',
+          `• ${CLAN_RANK_EMOJIS.gold} Amulet Boost I and ${CLAN_RANK_EMOJIS.onyx} Amulet Boost II add an invisible Amulet Coin boost.`,
+          `• ${CLAN_RANK_EMOJIS.diamond} Shop Boost I and ${CLAN_RANK_EMOJIS.onyx} Shop Boost II each reduce prices in \`${PREFIX}shop\` by 5%.`,
+          `• ${CLAN_RANK_EMOJIS.amethyst} Quest bonus gives an extra 📜 quest slot.`,
+          `• ${CLAN_RANK_EMOJIS.onyx} Hatch bonus makes ${EMOJIS.pokeEgg} eggs hatch 2× faster and stacks with \`${PREFIX}bonuses\`.`,
+          '',
+          '**Personal purchase requirements**',
+          `• ${CLAN_RANK_EMOJIS.bronze}${CLAN_RANK_EMOJIS.silver}${CLAN_RANK_EMOJIS.gold}${CLAN_RANK_EMOJIS.diamond}: next-rank requirement ÷ total clan members.`,
+          '  Example: Bronze with 20 members requires 5,000 catches.',
+          `• ${CLAN_RANK_EMOJIS.amethyst}${CLAN_RANK_EMOJIS.onyx}: next-rank requirement ÷ (total clan members × 2).`,
+          '  Example: Amethyst with 65 members requires 115,384 catches.',
+          '',
+          `Use \`${PREFIX}clan purchase {rank}\` to purchase perks. For example: \`${PREFIX}clan purchase bronze\`.`,
+        ].join('\n');
         const embed = makeEmbed(
           '🛡️ Clan Perks',
-          '**Perks are unlocked by clan rank, then purchased individually by each member.** Rank upgrades do not grant perks automatically. Purchased perks stay on your profile and remain active even if you leave your clan.\n\n' +
-          '• Bronze: Catch Rate I (+1%), Shiny Rate I (+1%)\n' +
-          '• Silver: Catch Rate II (+3% total), Shiny Rate II (+3% total)\n' +
-          '• Gold: Catch/Shiny Rate III (+5% total), Event Rate I, Amulet Boost I (+5%)\n' +
-          '• Diamond: Catch/Shiny Rate IV (+10% total), Event Rate II, Shop Boost I (-5%)\n' +
-          '• Amethyst: Event Rate III, Promo Rate I (+5%), +1 quest slot\n' +
-          '• Onyx: Event Rate IV, Amulet Boost II (+10%), Shop Boost II (-10%), Promo Rate II (+10%), eggs hatch 2x faster\n\n' +
-          'Purchase unlocked perk tiers in order with `.clan purchase <rank>`. Each tier costs PokéCoins and requires personal catches: required catches are `floor(rank catch target ÷ current clan members)`. For example, Bronze requires 5,000 catches in a 20-member clan; Amethyst requires 230,769 in a 65-member clan. Catch Rate applies to `.p` and `.fish`; Shiny Rate applies to encounters and stacks with Shiny Charms. Event Rate boosts shiny checklist selection weight within event spawns. Amulet Boost increases coin rewards; Shop Boost discounts eligible purchases.\n\n' +
-          'Clan owners/co-owners upgrade the clan rank with `.clan upgrade <rank>`; donate with `.clan donate <amount>`.',
+          perkDescription,
           0x3498db
         );
         return message.reply({ embeds: [embed] });

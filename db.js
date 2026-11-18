@@ -1179,7 +1179,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS active_quests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
-    slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 5),
+    slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 6),
     quest_type TEXT NOT NULL,
     target_type TEXT NOT NULL,
     progress INTEGER NOT NULL DEFAULT 0,
@@ -1634,9 +1634,11 @@ ensureColumns('active_quests', {
   reward_items: "TEXT NOT NULL DEFAULT '{}'",
   refresh_at: 'INTEGER NOT NULL DEFAULT 0',
 });
-// Patreon tiers unlock up to 5 quest slots, so widen the slot CHECK constraint.
-if (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'active_quests'").get()
-  ?.sql.includes('BETWEEN 1 AND 3')) {
+// Patreon and clan perks can grant up to 6 quest slots, so widen the slot CHECK constraint.
+const activeQuestSlotSql = db.prepare(
+  "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'active_quests'"
+).get()?.sql || '';
+if (activeQuestSlotSql.includes('BETWEEN 1 AND 3') || activeQuestSlotSql.includes('BETWEEN 1 AND 5')) {
   db.transaction(() => {
     db.exec(`
       ALTER TABLE active_quests RENAME TO active_quests_legacy;
@@ -1644,7 +1646,7 @@ if (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'a
       CREATE TABLE active_quests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT NOT NULL,
-        slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 5),
+        slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 6),
         quest_type TEXT NOT NULL,
         target_type TEXT NOT NULL,
         progress INTEGER NOT NULL DEFAULT 0,
@@ -1656,16 +1658,17 @@ if (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'a
         reward_ultraballs INTEGER NOT NULL DEFAULT 0,
         reward_grazz INTEGER NOT NULL DEFAULT 0,
         reward_items TEXT NOT NULL DEFAULT '{}',
+        refresh_at INTEGER NOT NULL DEFAULT 0,
         UNIQUE (user_id, slot)
       );
       INSERT INTO active_quests (
         id, user_id, slot, quest_type, target_type, progress, target,
-        reward_coins, reward_candies, reward_lootboxes,
-        reward_masterballs, reward_ultraballs, reward_grazz, reward_items
+        reward_coins, reward_candies, reward_lootboxes, reward_masterballs,
+        reward_ultraballs, reward_grazz, reward_items, refresh_at
       )
       SELECT id, user_id, slot, quest_type, target_type, progress, target,
         reward_coins, reward_candies, reward_lootboxes,
-        reward_masterballs, reward_ultraballs, reward_grazz, reward_items
+        reward_masterballs, reward_ultraballs, reward_grazz, reward_items, refresh_at
       FROM active_quests_legacy;
       DROP TABLE active_quests_legacy;
     `);
@@ -3103,7 +3106,7 @@ db.transaction(() => {
   );
 }).immediate();
 
-const MAX_QUEST_SLOTS = 5;
+const MAX_QUEST_SLOTS = 6;
 
 // Active quests created from templates that previously paid 0 coins keep that value; backfill them.
 db.transaction(() => {
@@ -9011,7 +9014,7 @@ function getTotalEffectiveShinyBonus(userId) {
     + clanPerks.srBonus;
 }
 
-// perkCatches/perkCost are the per-member purchase requirements (catches are divided by member count).
+// Amethyst and Onyx split their perk catch targets across twice the clan member count.
 const CLAN_RANKS = [
   { name: 'starter', catches: 0, cost: 0, perkCatches: 0, perkCost: 0, memberLimit: 25, cr: 0, sr: 0, er: 0, pr: 0, shop: 0, amulet: 0, quest: 0, hatch: 0 },
   { name: 'bronze', catches: 100000, cost: 2500000, perkCatches: 100000, perkCost: 100000, memberLimit: 35, cr: 1, sr: 1, er: 0, pr: 0, shop: 0, amulet: 0, quest: 0, hatch: 0 },
@@ -9021,6 +9024,11 @@ const CLAN_RANKS = [
   { name: 'amethyst', catches: 15000000, cost: 375000000, perkCatches: 15000000, perkCost: 10000000, memberLimit: 65, cr: 4, sr: 4, er: 3, pr: 1, shop: 1, amulet: 1, quest: 1, hatch: 0 },
   { name: 'onyx', catches: 30000000, cost: 750000000, perkCatches: 30000000, perkCost: 25000000, memberLimit: 75, cr: 4, sr: 4, er: 4, pr: 2, shop: 2, amulet: 2, quest: 1, hatch: 1 },
 ];
+
+function getClanPerkCatchRequirement(rank, memberCount) {
+  const memberMultiplier = rank.name === 'amethyst' || rank.name === 'onyx' ? 2 : 1;
+  return Math.floor(rank.perkCatches / (memberCount * memberMultiplier));
+}
 
 function getClanRankInfo(clan) {
   const rankName = clan?.clan_rank || 'starter';
@@ -9163,7 +9171,7 @@ function purchaseClanPerks(userId, rank) {
     const memberCount = db.prepare(
       'SELECT COUNT(*) AS count FROM clan_members WHERE clan_id = ?'
     ).get(clan.id).count;
-    const requiredCatches = Math.floor(selected.perkCatches / memberCount);
+    const requiredCatches = getClanPerkCatchRequirement(selected, memberCount);
     const clanCatchTotal = clan.catches + clan.fishes;
     if (clanCatchTotal < requiredCatches) {
       return {
@@ -9212,7 +9220,7 @@ function getClanPerkPurchaseInfo(userId) {
     nextRank,
     unlocked: clanRankIndex >= clan.perk_rank + 1,
     memberCount,
-    requiredCatches: Math.floor(nextRank.perkCatches / memberCount),
+    requiredCatches: getClanPerkCatchRequirement(nextRank, memberCount),
   };
 }
 
