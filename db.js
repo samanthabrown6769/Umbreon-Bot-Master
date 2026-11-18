@@ -882,6 +882,7 @@ const catchDefinitions = {
   sketched_moves: "TEXT NOT NULL DEFAULT '[]'",
   caught_at: 'DATETIME DEFAULT CURRENT_TIMESTAMP',
   caught_ball: 'TEXT',
+  counted_as_catch: 'INTEGER NOT NULL DEFAULT 1',
 };
 
 function ensureColumns(table, definitions) {
@@ -934,6 +935,7 @@ db.exec(`
     name TEXT,
     rarity TEXT NOT NULL DEFAULT 'Common',
     is_shiny INTEGER NOT NULL DEFAULT 0,
+    counted_as_catch INTEGER NOT NULL DEFAULT 1,
     level INTEGER NOT NULL DEFAULT 5,
     hp_iv INTEGER NOT NULL DEFAULT 0,
     atk_iv INTEGER NOT NULL DEFAULT 0,
@@ -3805,13 +3807,17 @@ function migrateSharedAttackAndDefenseIvs() {
 
 migrateSharedAttackAndDefenseIvs();
 
-function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolden = false, caughtBall = null, countTransferCatch = recordSeen) {
+function saveCatch(
+  userId, pokemon, isShiny = false, recordSeen = false, isGolden = false,
+  caughtBall = null, countTransferCatch = recordSeen, countAsCatch = true
+) {
   assertUserId(userId);
   if (!pokemon || !Number.isSafeInteger(pokemon.id) || typeof pokemon.name !== 'string') {
     throw new TypeError('pokemon must include a valid id and name.');
   }
-  if (typeof recordSeen !== 'boolean' || typeof isGolden !== 'boolean' || typeof countTransferCatch !== 'boolean') {
-    throw new TypeError('recordSeen, isGolden and countTransferCatch must be booleans.');
+  if (typeof recordSeen !== 'boolean' || typeof isGolden !== 'boolean' ||
+      typeof countTransferCatch !== 'boolean' || typeof countAsCatch !== 'boolean') {
+    throw new TypeError('recordSeen, isGolden, countTransferCatch and countAsCatch must be booleans.');
   }
 
   const hpIv = Math.floor(Math.random() * 32);
@@ -3843,9 +3849,9 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
       INSERT INTO catches (
         user_id, pokemon_id, name, rarity, is_shiny, is_golden, level,
         hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv,
-        hp, max_hp, atk, def, spd, in_team, team_slot, moves, caught_ball
+        hp, max_hp, atk, def, spd, in_team, team_slot, moves, caught_ball, counted_as_catch
       )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
       pokemon.id,
@@ -3868,7 +3874,8 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
       0,
       null,
       JSON.stringify(startingMoves),
-      caughtBall
+      caughtBall,
+      countAsCatch ? 1 : 0
     );
     syncNewCatchState(userId, Number(result.lastInsertRowid));
 
@@ -3895,8 +3902,8 @@ function saveCatch(userId, pokemon, isShiny = false, recordSeen = false, isGolde
     }
 
     incrementUser(userId, {
-      total_catches: 1,
-      shiny_catches: isShiny || pokemon.isShiny ? 1 : 0,
+      total_catches: countAsCatch ? 1 : 0,
+      shiny_catches: countAsCatch && (isShiny || pokemon.isShiny) ? 1 : 0,
       transfer_wild_catches: countTransferCatch ? 1 : 0,
     });
     return Number(result.lastInsertRowid);
@@ -7679,7 +7686,13 @@ function claimPokemonGifts(recipientId, senderId = null) {
         spa_iv: gift.spa_iv,
         spdef_iv: gift.spdef_iv,
         spd_iv: gift.spd_iv,
-      }, Boolean(gift.is_shiny), false, Boolean(gift.is_golden), gift.caught_ball);
+      }, Boolean(gift.is_shiny), false, Boolean(gift.is_golden), gift.caught_ball, false, false);
+      recordPokemonSeen(
+        recipientId,
+        gift.pokemon_id,
+        Boolean(gift.is_shiny),
+        Boolean(gift.is_golden)
+      );
       rebaseTransferredPokemon(recipientId, newCatchId);
       syncNewCatchState(recipientId, newCatchId);
       db.prepare('DELETE FROM pokemon_gifts WHERE id = ?').run(gift.id);
@@ -10315,17 +10328,17 @@ db.exec(`
 function getUserStatsSummary(userId) {
   const user = getUser(userId);
   const currentlyOwned = db.prepare(
-    'SELECT COUNT(*) AS count FROM catches WHERE user_id = ?'
+    'SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND counted_as_catch = 1'
   ).get(userId).count;
   const lifetimeCaught = Math.max(user.total_catches, currentlyOwned);
   const uniqueInBox = db.prepare(
     'SELECT COUNT(DISTINCT pokemon_id) AS count FROM catches WHERE user_id = ?'
   ).get(userId).count;
   const shiniesCaught = db.prepare(
-    'SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND is_shiny = 1'
+    'SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND is_shiny = 1 AND counted_as_catch = 1'
   ).get(userId).count;
   const legendariesCaught = db.prepare(
-    "SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND rarity = 'Legendary'"
+    "SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND rarity = 'Legendary' AND counted_as_catch = 1"
   ).get(userId).count;
 
   return {

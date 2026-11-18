@@ -2592,7 +2592,10 @@ test('wiping a trainer clears catches, stats and snapshots while preserving clan
       clan_id INTEGER, user_id TEXT, period TEXT, period_start INTEGER,
       catches INTEGER DEFAULT 0, fishes INTEGER DEFAULT 0
     );
-    CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, rarity TEXT);
+    CREATE TABLE catches (
+      id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, rarity TEXT,
+      counted_as_catch INTEGER NOT NULL DEFAULT 1
+    );
     CREATE TABLE users (id TEXT PRIMARY KEY, total_catches INTEGER, unique_caught_base INTEGER,
       shiny_catches INTEGER, legendaries_caught INTEGER);
     CREATE TABLE user_items (user_id TEXT, item_name TEXT, amount INTEGER);
@@ -2604,8 +2607,8 @@ test('wiping a trainer clears catches, stats and snapshots while preserving clan
     INSERT INTO clans (id, name, clan_rank) VALUES (1, 'Test Clan', 'starter');
     INSERT INTO clan_members VALUES ('trainer', 1, 10, 3, 4, 5, 6, 7, 8);
     INSERT INTO clan_activity_periods VALUES (1, 'trainer', 'weekly', 1, 10, 0);
-    INSERT INTO catches VALUES (1, 'trainer', 1, 1, 'Legendary');
-    INSERT INTO catches VALUES (2, 'other', 2, 0, 'Common');
+    INSERT INTO catches VALUES (1, 'trainer', 1, 1, 'Legendary', 1);
+    INSERT INTO catches VALUES (2, 'other', 2, 0, 'Common', 1);
     INSERT INTO users VALUES ('trainer', 10, 5, 2, 1), ('other', 1, 1, 0, 0);
     INSERT INTO user_items VALUES ('trainer', 'Candy', 2);
     INSERT INTO pokemon_gifts VALUES ('other', 'trainer');
@@ -4559,7 +4562,7 @@ test('new accounts start the seven-day clock and only actual catches count towar
     CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, rarity TEXT, is_shiny INTEGER,
       is_golden INTEGER, level INTEGER, hp_iv INTEGER, atk_iv INTEGER, def_iv INTEGER, spa_iv INTEGER, spdef_iv INTEGER,
       spd_iv INTEGER, hp INTEGER, max_hp INTEGER, atk INTEGER, def INTEGER, spd INTEGER, in_team INTEGER, team_slot INTEGER,
-      moves TEXT, caught_ball TEXT);
+      moves TEXT, caught_ball TEXT, counted_as_catch INTEGER NOT NULL DEFAULT 1);
   `);
   const now = 1800000000000;
   const ctx = vm.createContext({
@@ -4578,7 +4581,74 @@ test('new accounts start the seven-day clock and only actual catches count towar
   assert.equal(ctx.getUser('new').transfer_wild_catches, 1);
   ctx.saveCatch('new', { id: 1, name: 'Pikachu' }, false, true, false, 'mb', false);
   assert.equal(ctx.getUser('new').transfer_wild_catches, 1);
+  ctx.saveCatch('new', { id: 1, name: 'Shiny Mewtwo', rarity: 'Legendary' }, true, false, false, null, false, false);
   assert.equal(ctx.getUser('new').total_catches, 3);
+  assert.equal(ctx.getUser('new').shiny_catches, 0);
+  assert.equal(db.prepare('SELECT counted_as_catch FROM catches WHERE name = ?').get('Shiny Mewtwo').counted_as_catch, 0);
+  db.close();
+});
+
+test('claiming a gifted shiny legendary records it as seen but not caught', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_gifts (
+      id INTEGER PRIMARY KEY, recipient_id TEXT, sender_id TEXT, pokemon_id INTEGER, name TEXT, rarity TEXT,
+      is_shiny INTEGER, is_golden INTEGER, caught_ball TEXT
+    );
+    INSERT INTO pokemon_gifts VALUES (1, 'recipient', 'sender', 150, 'Mewtwo', 'Legendary', 1, 0, 'mb');
+    CREATE TABLE pokemon_gift_history (gift_id INTEGER PRIMARY KEY, claimed_at TEXT);
+  `);
+  const saveCalls = [];
+  const seen = [];
+  const ctx = vm.createContext({
+    db,
+    assertUserId: () => {},
+    saveCatch: (...args) => { saveCalls.push(args); return 42; },
+    rebaseTransferredPokemon: () => {},
+    syncNewCatchState: () => {},
+    recordPokemonSeen: (...args) => seen.push(args),
+  });
+  vm.runInContext(
+    extract(dbSource, 'function getUserGifts(', '\n// Claims pending gifts')
+      + '\n' + extract(dbSource, 'function claimPokemonGifts(', '\nconst BASE_MARKET_LISTING_LIMIT'),
+    ctx
+  );
+
+  ctx.claimPokemonGifts('recipient');
+
+  assert.equal(saveCalls.length, 1);
+  assert.deepEqual(saveCalls[0].slice(2), [true, false, false, 'mb', false, false]);
+  assert.deepEqual(seen, [['recipient', 150, true, false]]);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM pokemon_gifts').get().count, 0);
+  db.close();
+});
+
+test('gifted shinies and legendaries are excluded from caught stats', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE catches (
+      user_id TEXT, pokemon_id INTEGER, is_shiny INTEGER, rarity TEXT, counted_as_catch INTEGER NOT NULL DEFAULT 1
+    );
+    INSERT INTO catches VALUES
+      ('trainer', 150, 1, 'Legendary', 1),
+      ('trainer', 150, 1, 'Legendary', 0);
+  `);
+  const user = {
+    total_catches: 0, unique_caught_base: 0, shiny_catches: 0, legendaries_caught: 0,
+  };
+  const ctx = vm.createContext({
+    db,
+    getUser: () => user,
+    assertUserId: () => {},
+  });
+  vm.runInContext(extract(dbSource, 'function getUserStatsSummary(', '\ntry {'), ctx);
+
+  const summary = ctx.getUserStatsSummary('trainer');
+
+  assert.deepEqual(
+    [summary.lifetimeCaught, summary.shiniesCaught, summary.legendariesCaught],
+    [1, 1, 1]
+  );
   db.close();
 });
 
