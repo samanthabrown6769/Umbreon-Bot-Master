@@ -1758,6 +1758,9 @@ if (!worldBossRewardColumns.has('pokemon_drop')) {
 if (!worldBossRewardColumns.has('coins_awarded')) {
   db.exec('ALTER TABLE world_boss_rewards ADD COLUMN coins_awarded INTEGER');
 }
+if (!worldBossRewardColumns.has('bonus_pokemon_json')) {
+  db.exec("ALTER TABLE world_boss_rewards ADD COLUMN bonus_pokemon_json TEXT NOT NULL DEFAULT '[]'");
+}
 db.exec(`
   INSERT OR IGNORE INTO world_boss_contributions (boss_id, user_id, boss_name, damage)
   SELECT boss_id, user_id, boss_name, damage FROM world_boss_rewards;
@@ -7481,6 +7484,11 @@ const ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS = new Set([
   '1020738345791410276',
 ]);
 
+const WORLD_BOSS_BONUS_POKEMON = [
+  { id: 95, golden: true },
+  ...[131, 187, 216, 241, 335, 336, 357, 415, 433, 599].map((id) => ({ id, golden: false })),
+];
+
 function distributeWorldBossRewards(bossId) {
   if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
   return db.transaction(() => {
@@ -7497,6 +7505,7 @@ function distributeWorldBossRewards(bossId) {
     const drops = [];
     const boxDrops = [];
     const extraDrops = [];
+    const bonusPokemonDrops = [];
     for (const [index, entry] of leaderboard.entries()) {
       const isMvp = index === 0;
       trackClanActivity(entry.user_id, 'battle');
@@ -7530,8 +7539,9 @@ function distributeWorldBossRewards(bossId) {
       const isSpawner = boss.spawned_by === entry.user_id;
       const isSpawnerBoosted = !isMvp && isSpawner;
       const dropChance = Math.min(1, (isMvp ? 0.12 : isSpawnerBoosted ? 0.12 : 0.03) * (isSpawnerBoosted ? 1.8 : 1));
+      const worldBossBonus = isPlayerBonusActive('wb') ? 1.25 : 1;
       let gotPokemon = false;
-      const rolledPokemonDrop = Math.random() < Math.min(1, dropChance * 0.8 * (isSpawner && isMvp ? 1.25 : 1) * (isPlayerBonusActive('wb') ? 1.25 : 1));
+      const rolledPokemonDrop = Math.random() < Math.min(1, dropChance * 0.8 * (isSpawner && isMvp ? 1.25 : 1) * worldBossBonus);
       const isExcludedEternatusDrop = ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS.has(entry.user_id)
         && /eternatus/i.test(template.catchName);
       if (rolledPokemonDrop && !isExcludedEternatusDrop) {
@@ -7543,6 +7553,29 @@ function distributeWorldBossRewards(bossId) {
           rarity: template.isShiny ? template.catchRarity : template.rarity,
         }, template.isShiny);
         drops.push(entry.user_id);
+      }
+      const bonusPokemon = [];
+      for (const drop of WORLD_BOSS_BONUS_POKEMON) {
+        const chance = (isMvp ? 3 : 1) * worldBossBonus / (drop.golden ? 10000 : 5000);
+        if (Math.random() >= chance) continue;
+        const form = db.prepare(`
+          SELECT id, name, slug, rarity, base_hp, base_atk, base_def, base_spd
+          FROM pokemon_forms WHERE id = ? AND is_default = 1
+        `).get(drop.id);
+        if (!form) throw new Error(`Missing World Boss bonus Pokémon form ${drop.id}.`);
+        const pokemon = {
+          id: form.id, name: form.name, rarity: form.rarity,
+          baseHp: form.base_hp, baseAtk: form.base_atk, baseDef: form.base_def, baseSpd: form.base_spd,
+        };
+        if (drop.golden) saveGoldenCatch(entry.user_id, pokemon);
+        else saveCatch(entry.user_id, pokemon, true);
+        recordPokemonSeen(entry.user_id, form.id, !drop.golden, drop.golden);
+        const reward = {
+          id: form.id, name: form.name, slug: form.slug, rarity: drop.golden ? 'Golden' : form.rarity,
+          isShiny: !drop.golden, isGolden: drop.golden,
+        };
+        bonusPokemon.push(reward);
+        bonusPokemonDrops.push({ userId: entry.user_id, ...reward });
       }
       const boxRolls = isSpawnerBoosted ? 5 : 1;
       for (let roll = 0; roll < boxRolls; roll += 1) {
@@ -7568,12 +7601,12 @@ function distributeWorldBossRewards(bossId) {
         received.push(extra);
       }
       db.prepare(`
-        UPDATE world_boss_rewards SET items_json = ?, pokemon_drop = ?, coins_awarded = ?
+        UPDATE world_boss_rewards SET items_json = ?, pokemon_drop = ?, coins_awarded = ?, bonus_pokemon_json = ?
         WHERE boss_id = ? AND user_id = ?
-      `).run(JSON.stringify(received), gotPokemon ? 1 : 0, coinsAwarded, bossId, entry.user_id);
+      `).run(JSON.stringify(received), gotPokemon ? 1 : 0, coinsAwarded, JSON.stringify(bonusPokemon), bossId, entry.user_id);
     }
     db.prepare('UPDATE world_boss SET rewards_claimed = 1 WHERE id = ?').run(bossId);
-    return { boss, leaderboard, mvp, drops, boxDrops, extraDrops };
+    return { boss, leaderboard, mvp, drops, boxDrops, extraDrops, bonusPokemonDrops };
   }).immediate();
 }
 
@@ -7594,7 +7627,7 @@ function getWorldBossStats(userId) {
     GROUP BY boss_name ORDER BY boss_name
   `).all(userId);
   const rewards = db.prepare(`
-    SELECT boss_name, rank, coins, coins_awarded, items_json, pokemon_drop
+    SELECT boss_name, rank, coins, coins_awarded, items_json, pokemon_drop, bonus_pokemon_json
     FROM world_boss_rewards WHERE user_id = ? ORDER BY boss_id
   `).all(userId);
   return { contributions, rewards };

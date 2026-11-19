@@ -25,7 +25,7 @@ function setupDatabase() {
       damage INTEGER, PRIMARY KEY (boss_id, user_id));
     CREATE TABLE world_boss_rewards (boss_id INTEGER, user_id TEXT, boss_name TEXT, max_hp INTEGER,
       damage INTEGER, rank INTEGER, total_players INTEGER, coins INTEGER, claimed INTEGER DEFAULT 0,
-      items_json TEXT DEFAULT '', pokemon_drop INTEGER DEFAULT 0, coins_awarded INTEGER,
+      items_json TEXT DEFAULT '', pokemon_drop INTEGER DEFAULT 0, coins_awarded INTEGER, bonus_pokemon_json TEXT DEFAULT '[]',
       PRIMARY KEY (boss_id, user_id));
   `);
   return db;
@@ -47,6 +47,20 @@ test('historical rewards and the latest raid backfill contributions without dupl
     vm.runInNewContext(migration, { db });
     assert.deepEqual(db.prepare('SELECT boss_id, damage FROM world_boss_contributions ORDER BY boss_id').all(),
       [{ boss_id: 1, damage: 100 }, { boss_id: 2, damage: 50 }]);
+  } finally { db.close(); }
+});
+
+test('bonus Pokémon history migration preserves old rewards and is repeatable', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec("CREATE TABLE world_boss_rewards (boss_id INTEGER, user_id TEXT); INSERT INTO world_boss_rewards VALUES (1, 'alice')");
+    const migration = extract(dbSource, "if (!worldBossRewardColumns.has('bonus_pokemon_json')) {",
+      '\ndb.exec(`\n  INSERT OR IGNORE INTO world_boss_contributions');
+    for (let i = 0; i < 2; i++) {
+      const worldBossRewardColumns = new Set(db.prepare('PRAGMA table_info(world_boss_rewards)').all().map((column) => column.name));
+      vm.runInNewContext(migration, { db, worldBossRewardColumns });
+    }
+    assert.equal(db.prepare('SELECT bonus_pokemon_json FROM world_boss_rewards').get().bonus_pokemon_json, '[]');
   } finally { db.close(); }
 });
 
@@ -105,6 +119,141 @@ test('reward stats store actual boosted coins including the spawner bonus exactl
   } finally { db.close(); }
 });
 
+test('bonus Pokémon roll independently with MVP and World Boss bonuses and persist for claims', () => {
+  const db = setupDatabase();
+  try {
+    db.exec(`
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, rarity TEXT,
+        base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER, is_default INTEGER);
+      INSERT INTO world_boss VALUES (1, 'Charizard Gmax', 0, 100, 0, 0, NULL);
+      INSERT INTO boss_damage VALUES ('alice', 60, 1), ('bob', 40, 2);
+    `);
+    const formIds = [95, 131, 187, 216, 241, 335, 336, 357, 415, 433, 599];
+    const insertForm = db.prepare('INSERT INTO pokemon_forms VALUES (?, ?, ?, ?, 40, 50, 60, 70, 1)');
+    for (const id of formIds) insertForm.run(id, `Pokemon ${id}`, `pokemon-${id}`, 'Common');
+    const randomValues = [
+      0.99, 0.99, 0.000375, 0.00075, ...Array(9).fill(0.000749), 0.99,
+      0.99, 0.99, 0.000124, 0.000249, ...Array(9).fill(0.00025), 0.99,
+    ];
+    const math = Object.create(Math);
+    math.random = () => {
+      assert.ok(randomValues.length, 'Unexpected random roll');
+      return randomValues.shift();
+    };
+    const saved = [];
+    const seen = [];
+    const ctx = vm.createContext({
+      db, Math: math, assertUserId: () => {},
+      WORLD_BOSS_POOL: [{ name: 'Charizard Gmax', catchName: 'Charizard Gmax', formId: 1, rarity: 'Gmax' }],
+      BOXES: {}, trackClanActivity: () => {}, recordPokemonSeen: (...args) => seen.push(args),
+      addFactionPoints: () => 0, incrementUser: () => ({ world_bosses_fought: 1 }),
+      awardCoinsWithBoost: (_id, amount) => ({ finalAmount: amount }),
+      isPlayerBonusActive: () => true, rollWorldBossExtraDrops: () => [],
+      saveGoldenCatch: (userId, pokemon) => saved.push({ userId, pokemon, variant: 'golden' }),
+      saveCatch: (userId, pokemon, shiny) => saved.push({ userId, pokemon, variant: shiny ? 'shiny' : 'normal' }),
+    });
+    vm.runInContext(extract(dbSource, 'function getBossLeaderboard(', '\n// XS, S and M only'), ctx);
+    vm.runInContext(extract(dbSource, 'function claimWorldBossReward(', '\ndb.exec(`\n  CREATE TABLE IF NOT EXISTS pokemon_gifts'), ctx);
+    const result = ctx.distributeWorldBossRewards(1);
+    assert.equal(randomValues.length, 0);
+    assert.equal(result.drops.length, 0);
+    assert.equal(result.bonusPokemonDrops.length, 11);
+    assert.deepEqual(saved.filter((entry) => entry.userId === 'alice').map((entry) => entry.pokemon.id), formIds.slice(2));
+    assert.deepEqual(saved.filter((entry) => entry.userId === 'bob').map((entry) => [entry.pokemon.id, entry.variant]),
+      [[95, 'golden'], [131, 'shiny']]);
+    assert.equal(saved[0].pokemon.baseDef, 60);
+    assert.ok(seen.some(([id, formId, shiny, golden]) => id === 'bob' && formId === 95 && !shiny && golden));
+    const claim = ctx.claimWorldBossReward('bob');
+    const recorded = JSON.parse(claim.record.bonus_pokemon_json);
+    assert.deepEqual(recorded.map((entry) => [entry.id, entry.isGolden, entry.isShiny]),
+      [[95, true, false], [131, false, true]]);
+    assert.equal(ctx.claimWorldBossReward('bob'), null);
+    assert.equal(saved.length, 11);
+  } finally { db.close(); }
+});
+
+test('a missing bonus form rolls back the entire World Boss reward', () => {
+  const db = setupDatabase();
+  try {
+    db.exec(`
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, rarity TEXT,
+        base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER, is_default INTEGER);
+      CREATE TABLE saved_pokemon (user_id TEXT, pokemon_id INTEGER);
+      INSERT INTO pokemon_forms VALUES (95, 'Onix', 'onix', 'Rare', 35, 45, 160, 70, 1);
+      INSERT INTO world_boss VALUES (1, 'Charizard Gmax', 0, 100, 0, 0, NULL);
+      INSERT INTO boss_damage VALUES ('alice', 100, 1);
+    `);
+    const rolls = [0.99, 0.99, 0, 0];
+    const math = Object.create(Math);
+    math.random = () => rolls.shift();
+    const ctx = vm.createContext({
+      db, Math: math, assertUserId: () => {},
+      WORLD_BOSS_POOL: [{ name: 'Charizard Gmax', catchName: 'Charizard Gmax', formId: 1, rarity: 'Gmax' }],
+      BOXES: {}, trackClanActivity: () => {}, recordPokemonSeen: () => {}, addFactionPoints: () => 0,
+      incrementUser: () => {}, awardCoinsWithBoost: (_id, amount) => ({ finalAmount: amount }),
+      isPlayerBonusActive: () => false,
+      saveGoldenCatch: (id, pokemon) => db.prepare('INSERT INTO saved_pokemon VALUES (?, ?)').run(id, pokemon.id),
+    });
+    vm.runInContext(extract(dbSource, 'function getBossLeaderboard(', '\nfunction getUnclaimedWorldBossReward('), ctx);
+    assert.throws(() => ctx.distributeWorldBossRewards(1), /Missing World Boss bonus Pokémon form 131/);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM saved_pokemon').get().count, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM world_boss_rewards').get().count, 0);
+    assert.equal(db.prepare('SELECT rewards_claimed FROM world_boss').get().rewards_claimed, 0);
+  } finally { db.close(); }
+});
+
+test('provided World Boss reward sprite emojis preserve variant and form distinctions', () => {
+  const ctx = vm.createContext({});
+  vm.runInContext(extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), ctx);
+  const shiny = {
+    lapras: '1573100226305196244', hoppip: '1573100223884951552', teddiursa: '1573100221418709022',
+    miltank: '1573100219187597342', zangoose: '1573100217132126348', seviper: '1573100214565216397',
+    tropius: '1573100211943772221', combee: '1573100209167405127', chingling: '1573100206138986516',
+    klink: '1573100203760951346',
+  };
+  for (const [name, id] of Object.entries(shiny)) {
+    assert.match(ctx.getPokemonSpriteEmoji({ name, isShiny: true }), new RegExp(`:${id}>$`));
+  }
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Onix', isGolden: true }), '<:gonix:1573100201831436398>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Lapras Gmax', isShiny: true }),
+    '<:sgmaxlapras:1573093915848998952>');
+});
+
+test('claim displays and logs the boss and each bonus Pokémon together', async () => {
+  const logged = [];
+  let payload;
+  const bonus = [
+    { id: 95, name: 'Onix', slug: 'onix', rarity: 'Golden', isGolden: true, isShiny: false },
+    { id: 131, name: 'Lapras', slug: 'lapras', rarity: 'Super Rare', isGolden: false, isShiny: true },
+  ];
+  const ctx = vm.createContext({
+    command: 'wb', args: ['claim'], userId: 'alice', PREFIX: '.', EmbedBuilder,
+    EMOJIS: { pokecoin: '🪙' }, HELD_ITEM_EMOJI: '📦', WORLD_BOSS_EMOJI: '⚔️',
+    WORLD_BOSS_POOL: [{ name: 'Shiny Charizard Gmax', catchName: 'Charizard Gmax',
+      formId: 1, isShiny: true, catchRarity: 'Gmax' }],
+    claimWorldBossReward: () => ({
+      record: { boss_name: 'Shiny Charizard Gmax', boss_id: 1, coins: 30000, rank: 1,
+        total_players: 1, damage: 100, max_hp: 100, bonus_pokemon_json: JSON.stringify(bonus) },
+      items: [], bossesFought: 1, pokemonDrop: true,
+    }),
+    message: { guild: {}, author: { id: 'alice' }, reply: async (value) => { payload = value; } },
+    getItemEmoji: () => '', notifyAdminIfRareGrant: async (...args) => logged.push(args),
+  });
+  vm.runInContext(extract(indexSource, 'function parseWorldBossBonusPokemon(', '\nasync function handleWorldBossStats('), ctx);
+  const branch = extract(indexSource,
+    "    if (command === 'worldboss' || command === 'wb') {",
+    "      if (subCommand === 'spawn')") + '    }\n';
+  await vm.runInContext(`(async () => {\n${branch}\n})()`, ctx);
+  const description = payload.embeds[0].toJSON().description;
+  assert.match(description, /Shiny Charizard Gmax/);
+  assert.match(description, /Golden Onix/);
+  assert.match(description, /Shiny Lapras/);
+  assert.equal(logged.length, 3);
+  assert.equal(logged[1][2].rarity, 'Golden');
+  assert.equal(logged[1][5], true);
+  assert.equal(logged[2][4], true);
+});
+
 test('stats pages aggregate rewards, paginate and restrict controls to their owner', async () => {
   const handlers = {};
   const payloads = [];
@@ -115,13 +264,23 @@ test('stats pages aggregate rewards, paginate and restrict controls to their own
   }));
   const pool = forms.flatMap((form) => [form, { ...form, name: `Shiny ${form.name}`, isShiny: true }]);
   const items = Array.from({ length: 15 }, (_, i) => ({ name: `Item ${i}`, amount: 2 }));
+  const bonusPokemon = [
+    { id: 95, name: 'Onix', slug: 'onix', rarity: 'Golden', isGolden: true, isShiny: false },
+    ...Array.from({ length: 12 }, (_, i) => ({
+      id: 200 + i, name: `Bonus${i}`, slug: `bonus${i}`, rarity: 'Common', isGolden: false, isShiny: true,
+    })),
+  ];
   const ctx = vm.createContext({
     ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, WORLD_BOSS_POOL: pool,
-    EMOJIS: { pokecoin: '🪙' }, getPokemonSpriteEmoji: () => '', getItemEmoji: () => '', console,
+    EMOJIS: { pokecoin: '🪙', gmax: '<:gmax:1558841134996791387>', golden: '<:golden:1559951535062909128>',
+      shiny: '<:shiny:1558841136905326784>' },
+    HELD_ITEM_EMOJI: '<:helditem:1561412843272937472>',
+    getPokemonSpriteEmoji: () => '', getItemEmoji: () => '', console,
     getWorldBossStats: () => ({
       contributions: [{ boss_name: 'Mon0 Gmax', fights: 2, damage: 40 }, { boss_name: 'Shiny Mon0 Gmax', fights: 1, damage: 5 }],
       rewards: [
         { boss_name: 'Shiny Mon0 Gmax', rank: 1, coins: 30000, coins_awarded: 45000, pokemon_drop: 1,
+          bonus_pokemon_json: JSON.stringify(bonusPokemon),
           items_json: JSON.stringify([...items, { name: 'Metronome', amount: 1 }, { name: 'Faction Points', amount: 100 }]) },
         { boss_name: 'Mon0 Gmax', rank: 2, coins: 12000, coins_awarded: null, pokemon_drop: 1, items_json: '' },
       ],
@@ -134,26 +293,39 @@ test('stats pages aggregate rewards, paginate and restrict controls to their own
   assert.match(first.description, /World Bosses fought: 3/);
   assert.match(first.description, /Lifetime DMG dealt: 45/);
   assert.match(first.fields[0].value, /Mon0: 2 \/ 1/);
-  assert.equal(first.fields.length, 3);
+  assert.equal(first.fields.length, 4);
   assert.ok(first.fields.every((field) => field.value.length <= 1024));
+  assert.equal(payloads[0].components[0].toJSON().components.length, 3);
   let denied;
   await handlers.collect({ user: { id: 'other' }, reply: async (payload) => { denied = payload; } });
   assert.equal(denied.ephemeral, true);
   const press = async (action) => handlers.collect({ user: { id: 'alice' }, customId: `wbstats:${action}`,
     update: async (payload) => payloads.push(payload) });
   await press('pokemon');
-  assert.match(payloads.at(-1).embeds[0].toJSON().description, /Shiny Pokémon received: 1/);
+  const pokemonPage = payloads.at(-1);
+  const pokemonDescription = pokemonPage.embeds[0].toJSON().description;
+  assert.match(pokemonDescription, /<:gmax:1558841134996791387> Boss Pokémon received: 2/);
+  assert.match(pokemonDescription, /<:golden:1559951535062909128> Golden Pokémon received: 1/);
+  assert.match(pokemonDescription, /<:shiny:1558841136905326784> Shiny Pokémon received: 13/);
+  assert.match(pokemonDescription, /<:caught:1560340176713031711> Total Pokémon received: 15/);
+  const pokemonButtons = pokemonPage.components[0].toJSON().components;
+  assert.equal(pokemonButtons.length, 5);
+  assert.equal(pokemonButtons[1].emoji.id, '1560340176713031711');
+  assert.equal(pokemonButtons[2].emoji.id, '1561412843272937472');
+  assert.equal(pokemonButtons[3].emoji.name, '◀️');
+  assert.equal(pokemonButtons[4].emoji.name, '▶️');
+  await press('next');
+  assert.match(payloads.at(-1).embeds[0].toJSON().footer.text, /Page 2\/2/);
   await press('items');
   const itemsPage = payloads.at(-1).embeds[0].toJSON();
   assert.match(itemsPage.description, /PokéCoins rewarded: 57,000/);
   assert.match(itemsPage.description, /Items rewarded: 31/);
   assert.match(itemsPage.description, /Mega Rare items rewarded: 1/);
   assert.match(itemsPage.footer.text, /Older coin rewards/);
-  await press('next');
-  assert.match(payloads.at(-1).embeds[0].toJSON().footer.text, /Page 2\/2/);
+  assert.match(itemsPage.fields.map((field) => field.value).join('\n'), /Item 14/);
+  assert.equal(payloads.at(-1).components[0].toJSON().components.length, 3);
   await press('basic');
-  await press('next');
-  assert.match(payloads.at(-1).embeds[0].toJSON().fields[0].value, /Mon30/);
+  assert.match(payloads.at(-1).embeds[0].toJSON().fields.at(-1).value, /Mon30/);
 });
 
 test('both stats aliases work without an active boss', async () => {
@@ -178,7 +350,8 @@ test('boss columns stay within Discord field limits for long names and large cou
   const payloads = [];
   const ctx = vm.createContext({
     ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, WORLD_BOSS_POOL: pool,
-    EMOJIS: { pokecoin: '🪙' }, getPokemonSpriteEmoji: () => '<:sgmaxurshifushinglestrike:1573093823238897725>',
+    EMOJIS: { pokecoin: '🪙' }, HELD_ITEM_EMOJI: '<:helditem:1561412843272937472>',
+    getPokemonSpriteEmoji: () => '<:sgmaxurshifushinglestrike:1573093823238897725>',
     getItemEmoji: () => '', console,
     getWorldBossStats: () => ({
       contributions: pool.map((entry) => ({ boss_name: entry.name, fights: 999999999, damage: 1 })), rewards: [],
@@ -189,12 +362,10 @@ test('boss columns stay within Discord field limits for long names and large cou
     payloads.push(payload);
     return { createMessageComponentCollector: () => ({ on: (event, handler) => { handlers[event] = handler; } }) };
   } }, 'alice');
-  await handlers.collect({ user: { id: 'alice' }, customId: 'wbstats:next',
-    update: async (payload) => payloads.push(payload) });
   for (const payload of payloads) {
     assert.ok(payload.embeds[0].toJSON().fields.every((field) => field.value.length <= 1024));
   }
-  assert.match(payloads[1].embeds[0].toJSON().footer.text, /Page 2\//);
+  assert.equal(payloads[0].components[0].toJSON().components.length, 3);
 });
 
 test('highscores rank independent MVP and damage totals and limit results to 100', () => {

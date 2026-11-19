@@ -2819,6 +2819,17 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'deoxys speed': { normal: '<:DeoxysSpeed:1567600493327421641>' },
   meltan: { normal: '<:Meltan:1567600491586781294>' },
   timburr: { golden: '<:GTimburr:1567575644496203877>' },
+  lapras: { shiny: '<:slapras:1573100226305196244>' },
+  hoppip: { shiny: '<:shoppip:1573100223884951552>' },
+  teddiursa: { shiny: '<:steddiursa:1573100221418709022>' },
+  miltank: { shiny: '<:smiltank:1573100219187597342>' },
+  zangoose: { shiny: '<:szangoose:1573100217132126348>' },
+  seviper: { shiny: '<:sseviper:1573100214565216397>' },
+  tropius: { shiny: '<:stropius:1573100211943772221>' },
+  combee: { shiny: '<:scombee:1573100209167405127>' },
+  chingling: { shiny: '<:schingling:1573100206138986516>' },
+  klink: { shiny: '<:sklink:1573100203760951346>' },
+  onix: { golden: '<:gonix:1573100201831436398>' },
   'mega zygarde': { normal: '<:MegaZygarde:1567575569783193640>' },
   'zygarde mega': { normal: '<:MegaZygarde:1567575569783193640>' },
   ...Object.fromEntries([
@@ -4651,7 +4662,7 @@ function summarizeWorldBossStats(stats) {
   const result = {
     fights: 0, damage: 0, mvps: 0, second: 0, third: 0, qualifications: stats.rewards.length,
     coins: 0, historicalCoins: false, incompleteItems: false,
-    bosses: new Map(), pokemon: new Map(), items: new Map(),
+    bossPokemon: 0, bosses: new Map(), pokemon: new Map(), items: new Map(),
   };
   for (const entry of stats.contributions) {
     result.fights += entry.fights;
@@ -4665,7 +4676,12 @@ function summarizeWorldBossStats(stats) {
     result.coins += reward.coins_awarded ?? reward.coins;
     if (reward.coins_awarded == null) result.historicalCoins = true;
     if (reward.pokemon_drop) {
+      result.bossPokemon++;
       result.pokemon.set(reward.boss_name, (result.pokemon.get(reward.boss_name) || 0) + 1);
+    }
+    for (const pokemon of parseWorldBossBonusPokemon(reward)) {
+      const name = `${pokemon.isGolden ? 'Golden' : 'Shiny'} ${pokemon.name}`;
+      result.pokemon.set(name, (result.pokemon.get(name) || 0) + 1);
     }
     if (!reward.items_json) {
       result.incompleteItems = true;
@@ -4682,6 +4698,18 @@ function summarizeWorldBossStats(stats) {
     }
   }
   return result;
+}
+
+function parseWorldBossBonusPokemon(record) {
+  const pokemon = JSON.parse(record.bonus_pokemon_json ?? '[]');
+  if (!Array.isArray(pokemon) || pokemon.some((entry) =>
+    !entry || !Number.isSafeInteger(entry.id) || typeof entry.name !== 'string'
+      || typeof entry.slug !== 'string' || typeof entry.rarity !== 'string' || typeof entry.isShiny !== 'boolean'
+      || typeof entry.isGolden !== 'boolean' || entry.isShiny === entry.isGolden
+  )) {
+    throw new TypeError('Invalid World Boss bonus Pokémon history.');
+  }
+  return pokemon;
 }
 
 async function handleWorldBossStats(message, userId) {
@@ -4717,31 +4745,36 @@ async function handleWorldBossStats(message, userId) {
   });
   const megaRareItems = new Set(['Ability Shield', 'Big Root', 'Choice Cloak', 'Loaded Dice', 'Metronome', 'Wise Glasses']);
   const itemEntries = [...stats.items.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const itemLines = [];
+  const itemFields = [];
   for (const [heading, entries] of [
     ['Mega Rare items', itemEntries.filter(([name]) => megaRareItems.has(name))],
     ['Items received', itemEntries.filter(([name]) => !megaRareItems.has(name))],
   ]) {
-    itemLines.push(`**${heading}:**`);
-    if (!entries.length) itemLines.push('• None');
+    let lines = [];
     for (const [name, count] of entries) {
       const emoji = getItemEmoji(name);
-      itemLines.push(`• ${emoji ? `${emoji} ` : ''}${name}: ${count.toLocaleString()}`);
+      const line = `• ${emoji ? `${emoji} ` : ''}${name}: ${count.toLocaleString()}`;
+      if ([...lines, line].join('\n').length > 1024) {
+        itemFields.push({ name: heading, value: lines.join('\n') });
+        lines = [];
+      }
+      lines.push(line);
     }
+    itemFields.push({ name: heading, value: lines.join('\n') || '• None' });
   }
   const pokemonCount = [...stats.pokemon.values()].reduce((sum, count) => sum + count, 0);
   const shinyCount = [...stats.pokemon.entries()]
     .reduce((sum, [name, count]) => sum + (/^shiny\s/i.test(name) ? count : 0), 0);
+  const goldenCount = [...stats.pokemon.entries()]
+    .reduce((sum, [name, count]) => sum + (/^golden\s/i.test(name) ? count : 0), 0);
   const itemCount = itemEntries.reduce((sum, [, count]) => sum + count, 0);
   const megaRareCount = itemEntries.reduce((sum, [name, count]) => sum + (megaRareItems.has(name) ? count : 0), 0);
   let section = 'basic';
   let page = 0;
   const buildPayload = (disabled = false) => {
-    const lines = section === 'basic' ? bossFields : section === 'pokemon' ? pokemonLines : itemLines;
-    const pageSize = section === 'basic' ? 3 : 12;
-    const totalPages = Math.max(1, Math.ceil(lines.length / pageSize));
+    const totalPages = Math.max(1, Math.ceil(pokemonLines.length / 12));
     page = Math.max(0, Math.min(page, totalPages - 1));
-    const currentLines = lines.slice(page * pageSize, (page + 1) * pageSize);
+    const currentLines = pokemonLines.slice(page * 12, (page + 1) * 12);
     const embed = new EmbedBuilder()
       .setColor(0x592770)
       .setTitle(`${message.author.username}'s Personal World Boss stats`)
@@ -4753,41 +4786,45 @@ async function handleWorldBossStats(message, userId) {
         `⚔️ World Bosses fought: ${stats.fights.toLocaleString()}\n` +
         `💥 Lifetime DMG dealt: ${stats.damage.toLocaleString()}\n🎁 Reward qualifications: ${stats.qualifications.toLocaleString()}`
       );
-      for (const value of currentLines) embed.addFields({ name: '⚔️ Bosses fought', value, inline: true });
-      if (!currentLines.length) embed.addFields({ name: '⚔️ Bosses fought', value: 'None yet.' });
+      for (const value of bossFields) embed.addFields({ name: '⚔️ Bosses fought', value, inline: true });
+      if (!bossFields.length) embed.addFields({ name: '⚔️ Bosses fought', value: 'None yet.' });
     } else if (section === 'pokemon') {
       embed.setDescription(
-        `**Pokémon stats**\n⚔️ Boss Pokémon received: ${pokemonCount.toLocaleString()}\n` +
-        `🟡 Golden Pokémon received: 0\n✨ Shiny Pokémon received: ${shinyCount.toLocaleString()}\n` +
-        `🔴 Total Pokémon received: ${pokemonCount.toLocaleString()}\n\n**Pokémon received:**\n` +
+        `**Pokémon stats**\n${EMOJIS.gmax} Boss Pokémon received: ${stats.bossPokemon.toLocaleString()}\n` +
+        `${EMOJIS.golden} Golden Pokémon received: ${goldenCount.toLocaleString()}\n` +
+        `${EMOJIS.shiny} Shiny Pokémon received: ${shinyCount.toLocaleString()}\n` +
+        `<:caught:1560340176713031711> Total Pokémon received: ${pokemonCount.toLocaleString()}\n\n**Pokémon received:**\n` +
         (currentLines.join('\n') || '• None')
       );
     } else {
       embed.setDescription(
         `**Item stats**\n${EMOJIS.pokecoin} PokéCoins rewarded: ${stats.coins.toLocaleString()}\n` +
-        `📦 Items rewarded: ${itemCount.toLocaleString()}\n🎉 Mega Rare items rewarded: ${megaRareCount.toLocaleString()}\n\n` +
-        currentLines.join('\n')
+        `📦 Items rewarded: ${itemCount.toLocaleString()}\n🎉 Mega Rare items rewarded: ${megaRareCount.toLocaleString()}`
       );
+      embed.addFields(itemFields);
     }
     const notes = [];
-    if (totalPages > 1) notes.push(`Page ${page + 1}/${totalPages}`);
+    if (section === 'pokemon' && totalPages > 1) notes.push(`Page ${page + 1}/${totalPages}`);
     if (stats.historicalCoins) notes.push('Older coin rewards use recorded base amounts');
     if (stats.incompleteItems) notes.push('Some older item details are unavailable');
     if (notes.length) embed.setFooter({ text: notes.join(' • ') });
+    const buttons = [
+      new ButtonBuilder().setCustomId('wbstats:basic').setLabel('Basic stats').setEmoji('🏠')
+        .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'basic'),
+      new ButtonBuilder().setCustomId('wbstats:pokemon').setLabel('Pokemon').setEmoji('<:caught:1560340176713031711>')
+        .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'pokemon'),
+      new ButtonBuilder().setCustomId('wbstats:items').setLabel('Items').setEmoji(HELD_ITEM_EMOJI)
+        .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'items'),
+    ];
+    if (section === 'pokemon') buttons.push(
+      new ButtonBuilder().setCustomId('wbstats:prev').setEmoji('◀️')
+        .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page === 0),
+      new ButtonBuilder().setCustomId('wbstats:next').setEmoji('▶️')
+        .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page >= totalPages - 1)
+    );
     return {
       embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('wbstats:basic').setLabel('Basic stats').setEmoji('🏠')
-          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'basic'),
-        new ButtonBuilder().setCustomId('wbstats:pokemon').setLabel('Pokemon').setEmoji('🔴')
-          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'pokemon'),
-        new ButtonBuilder().setCustomId('wbstats:items').setLabel('Items').setEmoji('📦')
-          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'items'),
-        new ButtonBuilder().setCustomId('wbstats:prev').setLabel('Previous')
-          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page === 0),
-        new ButtonBuilder().setCustomId('wbstats:next').setLabel('Next')
-          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page >= totalPages - 1)
-      )],
+      components: [new ActionRowBuilder().addComponents(buttons)],
       allowedMentions: { parse: [] },
     };
   };
@@ -4801,7 +4838,7 @@ async function handleWorldBossStats(message, userId) {
     if (['basic', 'pokemon', 'items'].includes(action)) {
       section = action;
       page = 0;
-    } else if (action === 'prev' || action === 'next') {
+    } else if (section === 'pokemon' && (action === 'prev' || action === 'next')) {
       page += action === 'next' ? 1 : -1;
     } else {
       return interaction.reply({ content: 'Unknown stats action.', ephemeral: true });
@@ -5271,6 +5308,10 @@ function createWorldBossAttackResult(attack, rewards = null) {
     const specialDrops = [
       ...rewards.drops.map((id) =>
         `• <@${id}> ${rarityEmojis} **${attack.boss.name}**! 🎉`
+      ),
+      ...(rewards.bonusPokemonDrops || []).map((pokemon) =>
+        `• <@${pokemon.userId}> ${pokemon.isGolden ? EMOJIS.golden : EMOJIS.shiny} ` +
+        `${getPokemonSpriteEmoji(pokemon)} **${pokemon.isGolden ? 'Golden' : 'Shiny'} ${pokemon.name}**! 🎉`
       ),
       ...rewards.boxDrops
         .filter(({ itemName }) => /legendary box|shiny box/i.test(itemName))
@@ -17512,6 +17553,7 @@ client.on('messageCreate', async (message) => {
         const itemCount = rewardItems.reduce((sum, item) => sum + item.amount, 0);
         const itemEmoji = getItemEmoji;
         const bossTemplate = WORLD_BOSS_POOL.find((entry) => entry.name === record.boss_name);
+        const bonusPokemon = parseWorldBossBonusPokemon(record);
         if (pokemonDrop && bossTemplate) {
           await notifyAdminIfRareGrant(message.guild, message.author, {
             id: bossTemplate.formId,
@@ -17519,6 +17561,14 @@ client.on('messageCreate', async (message) => {
             rarity: bossTemplate.isShiny ? bossTemplate.catchRarity : bossTemplate.rarity,
           }, `${PREFIX}wb claim`, Boolean(bossTemplate.isShiny), false);
         }
+        for (const pokemon of bonusPokemon) {
+          await notifyAdminIfRareGrant(message.guild, message.author, pokemon,
+            `${PREFIX}wb claim`, pokemon.isShiny, pokemon.isGolden);
+        }
+        const receivedPokemon = [
+          ...(pokemonDrop ? [bossTemplate?.name || record.boss_name] : []),
+          ...bonusPokemon.map((pokemon) => `${pokemon.isGolden ? 'Golden' : 'Shiny'} ${pokemon.name}`),
+        ];
         return message.reply({
           embeds: [new EmbedBuilder()
             .setColor(0x2ECC71)
@@ -17526,8 +17576,8 @@ client.on('messageCreate', async (message) => {
             .setDescription(
               `${HELD_ITEM_EMOJI} **Items received (${itemCount}):**\n` +
               (rewardItems.length ? rewardItems.map((item) => `• ${item.amount}x ${itemEmoji(item.name)} **${item.name}**`).join('\n') : '• *None*') + '\n\n' +
-              (pokemonDrop
-                ? `<:caught:1560340176713031711> **Pokémon received:** **${bossTemplate?.catchName || record.boss_name}**!\n\n`
+              (receivedPokemon.length
+                ? `<:caught:1560340176713031711> **Pokémon received:** ${receivedPokemon.map((name) => `**${name}**`).join(', ')}!\n\n`
                 : '<:caught:1560340176713031711> **Pokémon received:** None this time.\n\n') +
               `${EMOJIS.pokecoin} **PokéCoins earned:** ${record.coins.toLocaleString()}\n\n` +
               (factionPoints ? `**Faction points earned:** ${factionPoints.toLocaleString()}\n\n` : '') +
