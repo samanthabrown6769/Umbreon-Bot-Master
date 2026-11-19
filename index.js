@@ -2819,6 +2819,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'deoxys speed': { normal: '<:DeoxysSpeed:1567600493327421641>' },
   meltan: { normal: '<:Meltan:1567600491586781294>' },
   timburr: { golden: '<:GTimburr:1567575644496203877>' },
+  smeargle: { normal: '<:smeargle:1573101965418958899>' },
   lapras: { shiny: '<:slapras:1573100226305196244>' },
   hoppip: { shiny: '<:shoppip:1573100223884951552>' },
   teddiursa: { shiny: '<:steddiursa:1573100221418709022>' },

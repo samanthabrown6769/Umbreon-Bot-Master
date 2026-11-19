@@ -491,6 +491,8 @@ test('provided Pokémon emojis map to the correct normal and Golden variants', (
   for (const [name, id] of Object.entries(normal)) assert.match(context.getPokemonSpriteEmoji({ name }), new RegExp(id));
   for (const [name, id] of Object.entries(golden)) assert.match(context.getPokemonSpriteEmoji({ name, isGolden: true }), new RegExp(id));
   assert.match(context.getPokemonSpriteEmoji({ name: 'Sprigatito', isShiny: true }), /1567588638194409512/);
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle' }), '<:smeargle:1573101965418958899>');
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle', isShiny: true }), '');
 });
 
 test('Gigantamax sprite emojis resolve for each form and variant without affecting base forms', () => {
