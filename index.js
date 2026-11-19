@@ -256,6 +256,9 @@ const {
   getWorldBossAnnouncementPosts,
   setWorldBossAnnouncementPost,
   getBossLeaderboard,
+  recordWorldBossFight,
+  getWorldBossStats,
+  getWorldBossHighscores,
   applyWorldBossDamage,
   distributeWorldBossRewards,
   claimWorldBossReward,
@@ -389,7 +392,6 @@ const {
   recordHeldItemEncounterCounter,
   resetHeldItemEncounterCounter,
   getHeldItemEncounterCounter,
-  incrementEventSpawnCatchCounter,
   recordEventSpawnCatch,
   getEventSpawnCatch,
   resetChecklistIfNewDay,
@@ -965,7 +967,7 @@ async function autoHatchReadyEggs(userId, channel) {
   });
   if (channel.guild) {
     for (const pokemon of hatchedPokemon) {
-      await announceRareSpawn(channel.guild, discordUser, pokemon, `${PREFIX}egg auto-hatch`);
+      await announceRareSpawn(channel.guild, discordUser, pokemon, `${PREFIX}egg auto-hatch`, { activity: 'egg' });
     }
   }
 }
@@ -2819,12 +2821,46 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   timburr: { golden: '<:GTimburr:1567575644496203877>' },
   'mega zygarde': { normal: '<:MegaZygarde:1567575569783193640>' },
   'zygarde mega': { normal: '<:MegaZygarde:1567575569783193640>' },
-  'eevee gmax': { normal: '<:GMAXEevee:1567575573763588268>' },
-  'gmax eevee': { normal: '<:GMAXEevee:1567575573763588268>' },
-  'inteleon gmax': { normal: '<:GMAXInteleon:1567575576401674520>' },
-  'gmax inteleon': { normal: '<:GMAXInteleon:1567575576401674520>' },
-  'appletun gmax': { normal: '<:GMAXAppletun:1567575579933413536>' },
-  'gmax appletun': { normal: '<:GMAXAppletun:1567575579933413536>' },
+  ...Object.fromEntries([
+    ['charizard', '<:gmaxcharizard:1573093971868254358>', '<:sgmaxcharizard:1573093969338835035>'],
+    ['cinderace', '<:gmaxcinderace:1573093966478573680>', '<:sgmaxcinderace:1573093963936833578>'],
+    ['gengar', '<:gmaxgengar:1573093961604800632>', '<:sgmaxgengar:1573093958874304653>'],
+    ['eevee', '<:gmaxeevee:1573093956365852772>', '<:sgmaxeevee:1573093954239463444>'],
+    ['machamp', '<:gmaxmachamp:1573093951978610728>', '<:sgmaxmachamp:1573093949101572196>'],
+    ['blastoise', '<:gmaxblastoise:1573093946035273769>', '<:sgmaxblastoise:1573093943560634369>'],
+    ['venusaur', '<:gmaxvenusaur:1573093940557512784>', '<:sgmaxvenusaur:1573093938154438767>'],
+    ['butterfree', '<:gmaxbutterfree:1573093935851507742>', '<:sgmaxbutterfree:1573093933624590406>'],
+    ['pikachu', '<:gmaxpikachu:1573093930818473984>', '<:sgmaxpikachu:1573093928176062645>'],
+    ['meowth', '<:gmaxmeowth:1573093925701296278>', '<:sgmaxmeowth:1573093923180777574>'],
+    ['lapras', '<:gmaxlapras:1573093918277501008>', '<:sgmaxlapras:1573093915848998952>'],
+    ['snorlax', '<:gmaxsnorlax:1573093911952621669>', '<:sgmaxsnorlax:1573093908668485642>'],
+    ['kingler', '<:gmaxkingler:1573093905354858646>', '<:sgmaxkingler:1573093902951645264>'],
+    ['corviknight', '<:gmaxcorviknight:1573093900707438592>', '<:sgmaxcorviknight:1573093898698494072>'],
+    ['melmetal', '<:gmaxmelmetal:1573093896718651494>', '<:sgmaxmelmetal:1573093894353322004>'],
+    ['garbodor', '<:gmaxgarbodor:1573093892121825311>', '<:sgmaxgarbodor:1573093890268078110>'],
+    ['alcremie', '<:gmaxalcremie:1573093888132907209>', '<:sgmaxalcremie:1573093885624848394>'],
+    ['toxtricity', '<:gmaxtoxtricity:1573093882860802188>', '<:sgmaxtoxtricity:1573093880545681448>'],
+    ['toxtricity amped', '<:gmaxtoxtricity:1573093882860802188>', '<:sgmaxtoxtricity:1573093880545681448>'],
+    ['toxtricity low key', '<:gmaxtoxtricity:1573093882860802188>', '<:sgmaxtoxtricity:1573093880545681448>'],
+    ['coalossal', '<:gmaxcoalossal:1573093876778930188>', '<:sgmaxcoalossal:1573093874803417219>'],
+    ['grimmsnarl', '<:gmaxgrimmsnarl:1573093872182104154>', '<:sgmaxgrimmsnarl:1573093869640220852>'],
+    ['rillaboom', '<:gmaxrillaboom:1573093866976972800>', '<:sgmaxrilaboom:1573093864800260168>'],
+    ['sandaconda', '<:gmaxsandaconda:1573093863063822547>', '<:sgmaxsandaconda:1573093860513423492>'],
+    ['centiskorch', '<:gmaxcentiskorch:1573093857502167081>', '<:sgmaxcentiskorch:1573093854901440553>'],
+    ['duraludon', '<:gmaxduraludon:1573093852833779813>', '<:sgmaxduraludon:1573093850195566702>'],
+    ['inteleon', '<:gmaxinteleon:1573093847620132904>', '<:sgmaxinteleon:1573093845271580792>'],
+    ['orbeetle', '<:gmaxorbeetle:1573093843224629461>', '<:sgmaxorbeetle:1573093841035333703>'],
+    ['drednaw', '<:gmaxdrednaw:1573093838879199322>', '<:sgmaxdrednaw:1573093837084303481>'],
+    ['copperajah', '<:gmaxcopperajah:1573093834898939984>', '<:sgmaxcopperajah:1573093832621301793>'],
+    ['flapple', '<:gmaxflapple:1573093830683533477>', '<:sgmaxflapple:1573093828364341298>'],
+    ['urshifu single strike', '<:gmaxurshifushinglestrike:1573093825923121342>', '<:sgmaxurshifushinglestrike:1573093823238897725>'],
+    ['urshifu rapid strike', '<:gmaxurshifurapidstrike:1573093820772515920>', '<:sgmaxurshifurapidstrike:1573093818709053511>'],
+    ['hatterene', '<:gmaxhatterene:1573093816473485493>', '<:sgmaxhatterene:1573093813914964109>'],
+    ['appletun', '<:gmaxappletun:1573093810181771375>', '<:sgmaxappletun:1573093807686160394>'],
+  ].flatMap(([name, normal, shiny]) => [
+    [`${name} gmax`, { normal, shiny }],
+    [`gmax ${name}`, { normal, shiny }],
+  ])),
 });
 
 const EXACT_ONLY_SPRITE_KEYS = new Set([
@@ -4609,6 +4645,255 @@ async function sendPagedEmbeds(message, embeds, label) {
     sent.edit({ components: [buttons(true)] }).catch(() => {});
   });
   return sent;
+}
+
+function summarizeWorldBossStats(stats) {
+  const result = {
+    fights: 0, damage: 0, mvps: 0, second: 0, third: 0, qualifications: stats.rewards.length,
+    coins: 0, historicalCoins: false, incompleteItems: false,
+    bosses: new Map(), pokemon: new Map(), items: new Map(),
+  };
+  for (const entry of stats.contributions) {
+    result.fights += entry.fights;
+    result.damage += entry.damage;
+    result.bosses.set(entry.boss_name, entry.fights);
+  }
+  for (const reward of stats.rewards) {
+    if (reward.rank === 1) result.mvps++;
+    else if (reward.rank === 2) result.second++;
+    else if (reward.rank === 3) result.third++;
+    result.coins += reward.coins_awarded ?? reward.coins;
+    if (reward.coins_awarded == null) result.historicalCoins = true;
+    if (reward.pokemon_drop) {
+      result.pokemon.set(reward.boss_name, (result.pokemon.get(reward.boss_name) || 0) + 1);
+    }
+    if (!reward.items_json) {
+      result.incompleteItems = true;
+      continue;
+    }
+    const items = JSON.parse(reward.items_json);
+    if (!Array.isArray(items)) throw new TypeError('Invalid World Boss reward item history.');
+    for (const item of items) {
+      if (item.name === 'Faction Points') continue;
+      if (typeof item.name !== 'string' || !Number.isSafeInteger(item.amount) || item.amount <= 0) {
+        throw new TypeError('Invalid World Boss reward item entry.');
+      }
+      result.items.set(item.name, (result.items.get(item.name) || 0) + item.amount);
+    }
+  }
+  return result;
+}
+
+async function handleWorldBossStats(message, userId) {
+  const stats = summarizeWorldBossStats(getWorldBossStats(userId));
+  const templates = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny);
+  const knownBosses = new Set(WORLD_BOSS_POOL.map((entry) => entry.name));
+  const bossLines = templates.map((template) => {
+    const shiny = WORLD_BOSS_POOL.find((entry) => entry.formId === template.formId && entry.isShiny);
+    const normalEmoji = getPokemonSpriteEmoji({ name: template.catchName, form_slug: template.formSlug }) || '⚔️';
+    const shinyEmoji = getPokemonSpriteEmoji({ name: template.catchName, form_slug: template.formSlug, isShiny: true }) || '✨';
+    const label = template.catchName.replace(/^Gigantamax\s+/i, '').replace(/\s+Gmax$/i, '').slice(0, 100);
+    return `${normalEmoji} ${shinyEmoji} ${label}: ${(stats.bosses.get(template.name) || 0).toLocaleString()} / ${(stats.bosses.get(shiny?.name) || 0).toLocaleString()}`;
+  });
+  for (const [name, count] of stats.bosses) {
+    if (!knownBosses.has(name)) bossLines.push(`⚔️ ${name.slice(0, 100)}: ${count.toLocaleString()}`);
+  }
+  const bossFields = [];
+  let fieldLines = [];
+  for (const line of bossLines) {
+    if (fieldLines.length === 10 || [...fieldLines, line].join('\n').length > 1024) {
+      bossFields.push(fieldLines.join('\n'));
+      fieldLines = [];
+    }
+    fieldLines.push(line);
+  }
+  if (fieldLines.length) bossFields.push(fieldLines.join('\n'));
+  const pokemonLines = [...stats.pokemon.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, count]) => {
+    const template = WORLD_BOSS_POOL.find((entry) => entry.name === name);
+    const emoji = getPokemonSpriteEmoji({
+      name, form_slug: template?.formSlug, isShiny: template?.isShiny,
+    });
+    return `• ${emoji ? `${emoji} ` : ''}${name}: ${count.toLocaleString()}`;
+  });
+  const megaRareItems = new Set(['Ability Shield', 'Big Root', 'Choice Cloak', 'Loaded Dice', 'Metronome', 'Wise Glasses']);
+  const itemEntries = [...stats.items.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const itemLines = [];
+  for (const [heading, entries] of [
+    ['Mega Rare items', itemEntries.filter(([name]) => megaRareItems.has(name))],
+    ['Items received', itemEntries.filter(([name]) => !megaRareItems.has(name))],
+  ]) {
+    itemLines.push(`**${heading}:**`);
+    if (!entries.length) itemLines.push('• None');
+    for (const [name, count] of entries) {
+      const emoji = getItemEmoji(name);
+      itemLines.push(`• ${emoji ? `${emoji} ` : ''}${name}: ${count.toLocaleString()}`);
+    }
+  }
+  const pokemonCount = [...stats.pokemon.values()].reduce((sum, count) => sum + count, 0);
+  const shinyCount = [...stats.pokemon.entries()]
+    .reduce((sum, [name, count]) => sum + (/^shiny\s/i.test(name) ? count : 0), 0);
+  const itemCount = itemEntries.reduce((sum, [, count]) => sum + count, 0);
+  const megaRareCount = itemEntries.reduce((sum, [name, count]) => sum + (megaRareItems.has(name) ? count : 0), 0);
+  let section = 'basic';
+  let page = 0;
+  const buildPayload = (disabled = false) => {
+    const lines = section === 'basic' ? bossFields : section === 'pokemon' ? pokemonLines : itemLines;
+    const pageSize = section === 'basic' ? 3 : 12;
+    const totalPages = Math.max(1, Math.ceil(lines.length / pageSize));
+    page = Math.max(0, Math.min(page, totalPages - 1));
+    const currentLines = lines.slice(page * pageSize, (page + 1) * pageSize);
+    const embed = new EmbedBuilder()
+      .setColor(0x592770)
+      .setTitle(`${message.author.username}'s Personal World Boss stats`)
+      .setTimestamp();
+    if (section === 'basic') {
+      embed.setDescription(
+        `**Player stats**\n👑 MVPs earned: ${stats.mvps.toLocaleString()}\n` +
+        `• 🥈 2nd place: ${stats.second.toLocaleString()}\n• 🥉 3rd place: ${stats.third.toLocaleString()}\n` +
+        `⚔️ World Bosses fought: ${stats.fights.toLocaleString()}\n` +
+        `💥 Lifetime DMG dealt: ${stats.damage.toLocaleString()}\n🎁 Reward qualifications: ${stats.qualifications.toLocaleString()}`
+      );
+      for (const value of currentLines) embed.addFields({ name: '⚔️ Bosses fought', value, inline: true });
+      if (!currentLines.length) embed.addFields({ name: '⚔️ Bosses fought', value: 'None yet.' });
+    } else if (section === 'pokemon') {
+      embed.setDescription(
+        `**Pokémon stats**\n⚔️ Boss Pokémon received: ${pokemonCount.toLocaleString()}\n` +
+        `🟡 Golden Pokémon received: 0\n✨ Shiny Pokémon received: ${shinyCount.toLocaleString()}\n` +
+        `🔴 Total Pokémon received: ${pokemonCount.toLocaleString()}\n\n**Pokémon received:**\n` +
+        (currentLines.join('\n') || '• None')
+      );
+    } else {
+      embed.setDescription(
+        `**Item stats**\n${EMOJIS.pokecoin} PokéCoins rewarded: ${stats.coins.toLocaleString()}\n` +
+        `📦 Items rewarded: ${itemCount.toLocaleString()}\n🎉 Mega Rare items rewarded: ${megaRareCount.toLocaleString()}\n\n` +
+        currentLines.join('\n')
+      );
+    }
+    const notes = [];
+    if (totalPages > 1) notes.push(`Page ${page + 1}/${totalPages}`);
+    if (stats.historicalCoins) notes.push('Older coin rewards use recorded base amounts');
+    if (stats.incompleteItems) notes.push('Some older item details are unavailable');
+    if (notes.length) embed.setFooter({ text: notes.join(' • ') });
+    return {
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('wbstats:basic').setLabel('Basic stats').setEmoji('🏠')
+          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'basic'),
+        new ButtonBuilder().setCustomId('wbstats:pokemon').setLabel('Pokemon').setEmoji('🔴')
+          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'pokemon'),
+        new ButtonBuilder().setCustomId('wbstats:items').setLabel('Items').setEmoji('📦')
+          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || section === 'items'),
+        new ButtonBuilder().setCustomId('wbstats:prev').setLabel('Previous')
+          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page === 0),
+        new ButtonBuilder().setCustomId('wbstats:next').setLabel('Next')
+          .setStyle(ButtonStyle.Secondary).setDisabled(disabled || page >= totalPages - 1)
+      )],
+      allowedMentions: { parse: [] },
+    };
+  };
+  const sent = await message.reply(buildPayload());
+  const collector = sent.createMessageComponentCollector({ componentType: ComponentType.Button, time: 120000 });
+  collector.on('collect', async (interaction) => {
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: 'These buttons are not for you.', ephemeral: true });
+    }
+    const action = interaction.customId.split(':')[1];
+    if (['basic', 'pokemon', 'items'].includes(action)) {
+      section = action;
+      page = 0;
+    } else if (action === 'prev' || action === 'next') {
+      page += action === 'next' ? 1 : -1;
+    } else {
+      return interaction.reply({ content: 'Unknown stats action.', ephemeral: true });
+    }
+    return interaction.update(buildPayload());
+  });
+  collector.on('end', () => {
+    sent.edit(buildPayload(true)).catch((error) => console.error('Failed to disable World Boss stats buttons:', error));
+  });
+}
+
+const WORLD_BOSS_HIGHSCORES_REFRESH_MS = 5 * 60 * 1000;
+let worldBossHighscoresCache = null;
+
+function getCachedWorldBossHighscores(now = Date.now()) {
+  if (!worldBossHighscoresCache || now < worldBossHighscoresCache.time
+      || now - worldBossHighscoresCache.time >= WORLD_BOSS_HIGHSCORES_REFRESH_MS) {
+    worldBossHighscoresCache = { time: now, rows: getWorldBossHighscores() };
+  }
+  return worldBossHighscoresCache.rows;
+}
+
+async function handleWorldBossHighscores(message, userId) {
+  const pageSize = 15;
+  let page = 0;
+  const buildPayload = () => {
+    const rows = getCachedWorldBossHighscores();
+    const rank = rows.findIndex((entry) => entry.user_id === userId) + 1;
+    const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+    page = Math.max(0, Math.min(page, pageCount - 1));
+    const pageRows = rows.slice(page * pageSize, (page + 1) * pageSize);
+    const embed = new EmbedBuilder()
+      .setColor(0x592770)
+      .setTitle('🏆 Top 100 World Boss Highscores')
+      .setDescription(rank
+        ? `You are ranked **#${rank}** in the Top 100 World Boss highscores.`
+        : 'You are **not ranked** in the Top 100 World Boss highscores.')
+      .setFooter({ text: `Page ${page + 1}/${pageCount} • Results refresh every 5 minutes` });
+    if (pageRows.length) {
+      const playerLines = pageRows.map((entry, index) => {
+        const position = page * pageSize + index + 1;
+        const medal = ['👑', '🥈', '🥉'][position - 1] || `\`${position}\``;
+        return { medal, icon: getTrainerIconEmoji(entry.user_id), user: `<@${entry.user_id}>` };
+      });
+      let players = playerLines.map(({ medal, icon, user }) => `${medal} ${icon} ${user}`.trim()).join('\n');
+      if (players.length > 1024) {
+        players = playerLines.map(({ medal, user }) => `${medal} ${user}`).join('\n');
+      }
+      embed.addFields(
+        { name: 'Player', value: players, inline: true },
+        { name: '👑 MVPs received', value: pageRows.map((entry) =>
+          `\`${entry.mvps.toLocaleString()} in ${entry.victories.toLocaleString()} victories\``).join('\n'), inline: true },
+        { name: '💥 Total DMG', value: pageRows.map((entry) =>
+          `\`${entry.damage.toLocaleString()} DMG\``).join('\n'), inline: true }
+      );
+    } else {
+      embed.addFields({ name: 'Player', value: 'No World Boss battles recorded yet.' });
+    }
+    return {
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('wbhs:prev').setLabel('Previous').setStyle(ButtonStyle.Secondary)
+          .setDisabled(page === 0),
+        new ButtonBuilder().setCustomId('wbhs:next').setLabel('Next').setStyle(ButtonStyle.Secondary)
+          .setDisabled(page >= pageCount - 1)
+      )],
+      allowedMentions: { parse: [] },
+    };
+  };
+  const sent = await message.reply(buildPayload());
+  const collector = sent.createMessageComponentCollector({
+    componentType: ComponentType.Button, time: WORLD_BOSS_HIGHSCORES_REFRESH_MS,
+  });
+  collector.on('collect', async (interaction) => {
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: 'Only the trainer who opened these highscores can change pages.', ephemeral: true });
+    }
+    if (interaction.customId === 'wbhs:prev') page--;
+    else if (interaction.customId === 'wbhs:next') page++;
+    else return interaction.reply({ content: 'Unknown highscore action.', ephemeral: true });
+    try {
+      await interaction.update(buildPayload());
+    } catch (error) {
+      console.error(`Failed to update World Boss highscores for user ${userId}:`, error);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: 'Could not update the highscores. Please run the command again.', ephemeral: true });
+      }
+    }
+  });
+  collector.on('end', () => {
+    sent.edit({ components: [] }).catch((error) => console.error('Failed to disable World Boss highscore buttons:', error));
+  });
 }
 
 function isBotAdmin(message) {
@@ -6840,7 +7125,15 @@ async function announceRareSpawn(guild, user, pokemon, source, { activity = 'fou
       ? `${getPokemonSpriteEmoji(pokemon)} ${EMOJIS.golden}`.trim()
       : getRarityEmojis(displayRarity, pokemon.name, Boolean(pokemon.isShiny));
     const shinyPrefix = isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
-    const action = activity === 'swap' ? 'swapped for a' : activity === 'explore' ? 'explored and found' : 'has found a';
+    const actions = {
+      egg: 'hatched',
+      explore: 'explored and found',
+      swap: 'swapped for a',
+      fishing: 'fished out',
+      pokemon: 'caught',
+      open: 'opened a box and found',
+    };
+    const action = actions[activity] || 'has found a';
     const count = db.prepare(`
       SELECT COUNT(*) AS count FROM (
         SELECT id FROM catches WHERE pokemon_id = ? AND is_shiny = ? AND is_golden = ?
@@ -6906,7 +7199,7 @@ async function announceBattleIconDrop(guild, user, iconIndex) {
         `🎉 ${getRareSpawnNameHidden(user.id) ? 'somebody' : user.username} has unlocked ` +
         `${emoji} ${trainerName}'s battle icon!`.replace('  ', ' ')
       )
-      .setDescription(`Trainer wins tracked since this update: **${wins.toLocaleString()}**`)
+      .setDescription(`Battles taken : **${wins.toLocaleString()}**`)
       .setFooter({ text: `Battle icon drop • Today at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}` })
       .setTimestamp();
     const iconUrl = getNpcIconUrl(iconIndex);
@@ -7779,7 +8072,6 @@ async function askForBall(
       )
       : [];
     if (target.isEventSpawn) recordEventSpawnCatch(userId, target.name);
-    else if (counterSource === 'pokemon') incrementEventSpawnCatchCounter(userId);
     const eggAbilityBoost = await hasEggBoostAbility(userId);
     advanceEggCatchProgress(userId, 1, message.channel, eggAbilityBoost);
     // The hatch bonus combined with an egg ability is capped at +4 progress per catch.
@@ -7889,7 +8181,7 @@ async function askForBall(
     }
     await announceRareSpawn(message.guild, catcher, target,
       target.isExplore ? `${PREFIX}explore` : isFishing ? `${PREFIX}f` : `${PREFIX}p`,
-      { activity: target.isExplore ? 'explore' : 'found' });
+      { activity: target.isExplore ? 'explore' : isFishing ? 'fishing' : 'pokemon' });
     if (target.rarity === 'Legendary') {
       incrementUser(userId, { legendaries_caught: 1 });
     }
@@ -7967,6 +8259,11 @@ async function askForBall(
     if (ballDexIcons) {
       if (experienceLines.length) experienceLines[0] += ` ${ballDexIcons}`;
       else experienceLines.push(ballDexIcons);
+    }
+    if (inline) {
+      experienceLines.push(
+        `${EMOJIS.pokecoin} You received **${coinsEarned.toLocaleString()} PokéCoins** for this catch.`
+      );
     }
     const experienceMessage = experienceLines.join('\n');
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
@@ -12131,7 +12428,7 @@ async function triggerAutoSpawn(channel, guildConfig, state, { messageThreshold 
       try {
         saveCatch(interaction.user.id, target, target.isShiny, true);
         trackClanActivity(interaction.user.id, 'catch');
-        announceRareSpawn(interaction.guild, interaction.user, target, 'Spawn catch button').catch(() => {});
+        announceRareSpawn(interaction.guild, interaction.user, target, 'Spawn catch button', { activity: 'pokemon' }).catch(() => {});
         const owned = db.prepare(
           'SELECT COUNT(*) AS count FROM catches WHERE user_id = ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = 0'
         ).get(interaction.user.id, target.id, target.isShiny ? 1 : 0).count;
@@ -13515,7 +13812,7 @@ client.on('messageCreate', async (message) => {
           );
         await message.reply({ embeds: [embed] });
         for (const pokemon of hatchedPokemon) {
-          await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}egg hatch-incubator`);
+          await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}egg hatch-incubator`, { activity: 'egg' });
         }
         return;
       }
@@ -13592,7 +13889,7 @@ client.on('messageCreate', async (message) => {
           ...hatch.pokemon,
           isShiny: result.isShiny,
           isGolden: result.isGolden,
-        }, `${PREFIX}egg hatch`);
+        }, `${PREFIX}egg hatch`, { activity: 'egg' });
         return;
       }
       if (subcommand || args.length) {
@@ -13809,7 +14106,7 @@ client.on('messageCreate', async (message) => {
             await interaction.update({ embeds: [buildEggEmbed()], components: [buildEggButtons()] });
             await interaction.followUp({ embeds: [resultEmbed] });
             for (const pokemon of hatchedPokemon) {
-              await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}egg menu hatch`);
+              await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}egg menu hatch`, { activity: 'egg' });
             }
           }
         } catch (error) {
@@ -15855,7 +16152,7 @@ client.on('messageCreate', async (message) => {
             `• Edit the files in \`pokemon-database/\` (names, rarity, numbers, sprites) and restart the bot to apply`
           ),
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Market & Misc').setDescription(
-            `• \`${PREFIX}admin auction start\` — Start up to 50 queued auctions; announcements show 20 Pokémon per embed\n` +
+            `• \`${PREFIX}admin auction start\` — Start up to 10 unique queued form/variant auctions\n` +
             `• \`${PREFIX}admin users\` — DM all registered users' names and Discord IDs\n` +
             `• \`${PREFIX}admin servers\` — DM the servers the bot is in\n` +
             `• \`${PREFIX}admin server info <server ID>\` — DM the server's member list\n` +
@@ -16207,7 +16504,11 @@ client.on('messageCreate', async (message) => {
           return message.reply(`Usage: \`${PREFIX}admin auction start\`.`);
         }
         const started = auctions.startQueued();
-        if (!started) return message.reply('There are no queued Pokémon auctions to start.');
+        if (!started) {
+          return message.reply(
+            'No queued Pokémon auctions could be started; the queue may be empty or all 10 active slots may be full.'
+          );
+        }
         const announced = await sendAuctionAnnouncements();
         if (!announced) {
           return message.reply(
@@ -17196,6 +17497,12 @@ client.on('messageCreate', async (message) => {
 
     if (command === 'worldboss' || command === 'wb') {
       const subCommand = args[0]?.toLowerCase();
+      if (subCommand === 'stats' || subCommand === 's') {
+        return handleWorldBossStats(message, userId);
+      }
+      if (subCommand === 'hs' || subCommand === 'highscore') {
+        return handleWorldBossHighscores(message, userId);
+      }
       if (subCommand === 'claim') {
         const claim = claimWorldBossReward(userId);
         if (!claim) return message.reply('❌ You have no World Boss rewards to claim.');
@@ -17386,6 +17693,7 @@ client.on('messageCreate', async (message) => {
           activeWorldBossTeamStates.get(boss.id)?.delete(userId);
         }
         await startWorldBossBattle(message, boss, userId, team);
+        recordWorldBossFight(userId, boss.id);
         if (revived) {
           return message.reply('✨ Your entire team had fainted. Rejoining the raid revived your team to full HP; choose a Pokémon from the new battle panel.');
         }
@@ -18853,7 +19161,7 @@ client.on('messageCreate', async (message) => {
       });
       const eventCatch = getEventSpawnCatch(userId);
       displayRows.push({
-        category: `${EMOJIS.eventticket} Event spawn`,
+        category: `${EMOJIS.eventticket} Event Pokémon caught`,
         counter: `${eventCatch.encounters_since.toLocaleString()} - ${eventCatch.last_pokemon || 'N/A'}`,
         reset: eventCatch.last_caught_at
           ? `<t:${Math.floor(eventCatch.last_caught_at / 1000)}:d>`
@@ -18866,12 +19174,12 @@ client.on('messageCreate', async (message) => {
           '<:caught:1560340176713031711> - Pokémon Counters\n' +
           '<:oldrod:1560319797265301534> - Fishing Counters\n' +
           '<:magnifyingglass:1569838771791466546> - Explore Counters\n' +
-          'Counts successful catches; older counts may include encounters.'
+          'Pokémon, Fishing, and Explore counters track only their own source; Event counts only Event Pokémon.'
         )
         .addFields(
           { name: 'Category', value: displayRows.map((row) => row.category).join('\n'), inline: true },
           { name: 'Counter — Pokémon/Thing', value: displayRows.map((row) => row.counter).join('\n'), inline: true },
-          { name: 'Last reset', value: displayRows.map((row) => row.reset).join('\n'), inline: true },
+          { name: 'Last caught / reset', value: displayRows.map((row) => row.reset).join('\n'), inline: true },
         );
       return message.reply({ embeds: [embed], allowedMentions: { parse: [] } });
     }
@@ -19644,7 +19952,7 @@ client.on('messageCreate', async (message) => {
           )
           .addFields(
             { name: 'Type', value: formatTypes(types), inline: true },
-            { name: 'Dex Number', value: `#${pokemon.species_id}`, inline: true },
+            { name: 'Dex Number', value: `#${dexNumber}`, inline: true },
             {
               name: 'Rarity',
               value: goldenEntry
@@ -19921,7 +20229,7 @@ client.on('messageCreate', async (message) => {
             await announceEventCatch(message.guild, message.author, pokemon, eventCatch);
           }
           for (const pokemon of legacyRewards) {
-            await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}cb claim`);
+            await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}cb claim`, { activity: 'pokemon' });
           }
           return;
         }
@@ -20011,7 +20319,7 @@ client.on('messageCreate', async (message) => {
             await announceEventCatch(message.guild, message.author, pokemon, eventCatch);
           }
           for (const pokemon of result.caughtPokemon) {
-            await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}cb claim`);
+            await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}cb claim`, { activity: 'pokemon' });
           }
         })().catch((error) => console.error('CatchBot claim announcements failed:', error));
         return;
@@ -22688,7 +22996,7 @@ client.on('messageCreate', async (message) => {
           .setDescription(
             `**NPC Name:** \`${challenge.name}\`\n` +
             `**NPC ID:** ${challenge.challengerId ?? getChamberNpcId(challenge) ?? index + 1}\n\n` +
-            `You fought **${personal.fights}** battle${personal.fights === 1 ? '' : 's'} against ${trainerLabel}\n` +
+            `**Battles taken :** ${personal.fights}\n` +
             `**Icon:** ${iconStatus}\n` +
             `**Last team used:** ${teamText}\n` +
             `**Last fought:** ${formatBattleStatsDate(personal.last_fought_at)}\n` +
@@ -26543,7 +26851,7 @@ client.on('messageCreate', async (message) => {
           const goldenBonus = isGolden ? 1.65 * 1.25 : 1;
           const swapBonus = isPlayerBonusActive('swap') ? 1.25 : 1;
           const shinyChance = Math.min(1, multiplier * shinyBonus * swapBonus / 4000);
-          const goldenChance = Math.min(1, multiplier * goldenBonus * swapBonus * (1 + swapPerks.goldenBoost) / 10000);
+          const goldenChance = Math.min(1, multiplier * goldenBonus * swapBonus * (1 + swapPerks.goldenBoost) / 2500);
           const exclusiveShinyHits = SWAP_EXCLUSIVE_SHINIES.filter((exclusive) =>
             (!exclusive.patreonOnly || user.has_patreon)
             && Math.random() < shinyChance
@@ -28363,7 +28671,7 @@ client.on('messageCreate', async (message) => {
         displayLines.push(`*...and ${lines.length - displayLines.length} more Pokémon.*`);
       }
       for (const pokemon of opened.results) {
-        await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}open`);
+        await announceRareSpawn(message.guild, message.author, pokemon, `${PREFIX}open`, { activity: 'open' });
       }
       return message.reply({
         embeds: [makeEmbed(

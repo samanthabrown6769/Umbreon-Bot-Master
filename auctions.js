@@ -88,6 +88,20 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
   function confiscate(userId, now = Date.now(), criteria = getEligibility(), options = {}) {
     const { names, legendaryForms } = criteria;
     const shouldConfiscate = (mon) => eligible(mon, names, legendaryForms);
+    const activeAuctions = db.prepare(`
+      SELECT pokemon_json FROM pokemon_auctions WHERE ended_at IS NULL AND is_started = 1
+    `).all();
+    const activeIdentities = new Set(activeAuctions.map(({ pokemon_json }) => getIdentity(JSON.parse(pokemon_json))));
+    let activeCount = activeAuctions.length;
+    const enqueueConfiscated = (mon) => {
+      const identity = getIdentity(mon);
+      const queued = Boolean(options.queued) || activeCount >= 10 || activeIdentities.has(identity);
+      if (!queued) {
+        activeCount++;
+        activeIdentities.add(identity);
+      }
+      enqueue(mon, userId, now, options.startingBid, queued);
+    };
     let count = 0;
     const catches = db.prepare('SELECT * FROM catches WHERE user_id = ?').all(userId);
     const selected = catches.filter(shouldConfiscate);
@@ -104,7 +118,7 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
     }
     const removed = new Set();
     for (const mon of selected) {
-      enqueue(mon, userId, now, options.startingBid, Boolean(options.queued));
+      enqueueConfiscated(mon);
       db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE id = ? AND buddy_catch_id = ?').run(userId, mon.id);
       db.prepare('DELETE FROM catches WHERE id = ? AND user_id = ?').run(mon.id, userId);
       removed.add(mon.id);
@@ -122,14 +136,14 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
     for (const listing of db.prepare('SELECT * FROM market WHERE seller_id = ?').all(userId)) {
       if (!shouldConfiscate(listing)) continue;
       for (let i = 0; i < listing.amount; i++) {
-        enqueue(listing, userId, now, options.startingBid, Boolean(options.queued));
+        enqueueConfiscated(listing);
         count++;
       }
       db.prepare('DELETE FROM market WHERE id = ?').run(listing.id);
     }
     for (const gift of db.prepare('SELECT * FROM pokemon_gifts WHERE recipient_id = ?').all(userId)) {
       if (!shouldConfiscate(gift)) continue;
-      enqueue(gift, userId, now, options.startingBid, Boolean(options.queued));
+      enqueueConfiscated(gift);
       db.prepare('DELETE FROM pokemon_gifts WHERE id = ?').run(gift.id);
       count++;
     }
@@ -147,15 +161,74 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
     }
   }
 
-  function startQueued(now = Date.now(), limit = 50) {
+  function getIdentity(mon) {
+    return JSON.stringify([
+      mon.pokemon_id ?? mon.id ?? normalize(mon.name),
+      Boolean(mon.is_shiny),
+      Boolean(mon.is_golden),
+    ]);
+  }
+
+  function removeDuplicateAuctions() {
+    return db.transaction(() => {
+      const active = db.prepare(`
+        SELECT id, pokemon_json, bidder_id, bid_amount
+        FROM pokemon_auctions
+        WHERE ended_at IS NULL AND is_started = 1
+        ORDER BY ends_at, id
+      `).all();
+      const seen = new Set();
+      const remove = db.prepare('DELETE FROM pokemon_auctions WHERE id = ?');
+      const removeBids = db.prepare('DELETE FROM pokemon_auction_bids WHERE auction_id = ?');
+      const removeNotifications = db.prepare('DELETE FROM pokemon_auction_notifications WHERE auction_id = ?');
+      let count = 0;
+      for (const auction of active) {
+        const identity = getIdentity(JSON.parse(auction.pokemon_json));
+        if (!seen.has(identity)) {
+          seen.add(identity);
+          continue;
+        }
+        if (auction.bidder_id) {
+          incrementUser(auction.bidder_id, { patreon_tokens: auction.bid_amount });
+        }
+        removeBids.run(auction.id);
+        removeNotifications.run(auction.id);
+        remove.run(auction.id);
+        count++;
+      }
+      return count;
+    }).immediate();
+  }
+
+  function startQueued(now = Date.now(), limit = 10) {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError('Invalid auction start limit.');
-    const startLimit = Math.min(limit, 50);
+    const startLimit = Math.min(limit, 10);
     removeIneligibleAuctions();
+    removeDuplicateAuctions();
     settle(now);
     return db.transaction(() => {
+      const activeIdentities = new Set(db.prepare(`
+        SELECT pokemon_json FROM pokemon_auctions
+        WHERE ended_at IS NULL AND is_started = 1
+      `).all().map(({ pokemon_json }) => getIdentity(JSON.parse(pokemon_json))));
+      const activeCount = db.prepare(`
+        SELECT COUNT(*) AS count FROM pokemon_auctions
+        WHERE ended_at IS NULL AND is_started = 1
+      `).get().count;
+      const availableSlots = Math.min(startLimit, Math.max(0, 10 - activeCount));
+      if (availableSlots === 0) return 0;
       const queued = db.prepare(`
-        SELECT id FROM pokemon_auctions WHERE ended_at IS NULL AND is_started = 0 ORDER BY id LIMIT ?
-      `).all(startLimit);
+        SELECT id, pokemon_json FROM pokemon_auctions
+        WHERE ended_at IS NULL AND is_started = 0 ORDER BY id
+      `).all();
+      const selected = [];
+      for (const auction of queued) {
+        const identity = getIdentity(JSON.parse(auction.pokemon_json));
+        if (activeIdentities.has(identity)) continue;
+        activeIdentities.add(identity);
+        selected.push(auction.id);
+        if (selected.length >= availableSlots) break;
+      }
       const start = db.prepare(`
         UPDATE pokemon_auctions SET starts_at = ?, ends_at = ?, is_started = 1
         WHERE id = ? AND ended_at IS NULL AND is_started = 0
@@ -164,9 +237,9 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
         "INSERT INTO pokemon_auction_notifications (auction_id, kind) VALUES (?, 'created')"
       );
       let count = 0;
-      for (const auction of queued) {
-        if (!start.run(now, now + AUCTION_DURATION_MS, auction.id).changes) continue;
-        notify.run(auction.id);
+      for (const id of selected) {
+        if (!start.run(now, now + AUCTION_DURATION_MS, id).changes) continue;
+        notify.run(id);
         count++;
       }
       return count;

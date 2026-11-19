@@ -1353,6 +1353,15 @@ db.exec(`
     last_hit INTEGER NOT NULL DEFAULT 0
   );
 
+  CREATE TABLE IF NOT EXISTS world_boss_contributions (
+    boss_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    boss_name TEXT NOT NULL,
+    damage INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (boss_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS world_boss_contributions_user_idx ON world_boss_contributions(user_id);
+
   CREATE TABLE IF NOT EXISTS world_boss_rewards (
     boss_id INTEGER NOT NULL,
     user_id TEXT NOT NULL,
@@ -1369,6 +1378,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS pokemon_forms_rarity_idx ON pokemon_forms(rarity);
   CREATE INDEX IF NOT EXISTS pokemon_forms_species_idx ON pokemon_forms(species_id);
   CREATE INDEX IF NOT EXISTS boss_damage_leaderboard_idx ON boss_damage(damage DESC);
+  CREATE INDEX IF NOT EXISTS world_boss_rewards_user_idx ON world_boss_rewards(user_id);
 `);
 
 db.transaction(() => {
@@ -1745,6 +1755,18 @@ if (!worldBossRewardColumns.has('items_json')) {
 if (!worldBossRewardColumns.has('pokemon_drop')) {
   db.exec('ALTER TABLE world_boss_rewards ADD COLUMN pokemon_drop INTEGER NOT NULL DEFAULT 0');
 }
+if (!worldBossRewardColumns.has('coins_awarded')) {
+  db.exec('ALTER TABLE world_boss_rewards ADD COLUMN coins_awarded INTEGER');
+}
+db.exec(`
+  INSERT OR IGNORE INTO world_boss_contributions (boss_id, user_id, boss_name, damage)
+  SELECT boss_id, user_id, boss_name, damage FROM world_boss_rewards;
+  INSERT OR IGNORE INTO world_boss_contributions (boss_id, user_id, boss_name, damage)
+  SELECT boss.id, damage.user_id, boss.name, damage.damage
+  FROM boss_damage AS damage
+  JOIN world_boss AS boss ON boss.id = (SELECT MAX(id) FROM world_boss)
+  WHERE damage.damage > 0;
+`);
 const worldBossPostPrimaryKey = db.prepare(
   'PRAGMA table_info(world_boss_announcement_posts)'
 ).all().filter((column) => column.pk > 0).sort((left, right) => left.pk - right.pk);
@@ -3132,6 +3154,44 @@ function getUserQuestRefreshWait(userId) {
   return Math.round(QUEST_REFRESH_WAIT_MS * getPatreonPerks(userId).questRefreshMultiplier);
 }
 
+function isBattleIconUnlockQuest(quest) {
+  return quest.quest_type === 'battle_category'
+    && String(quest.target_type).toLowerCase() === 'battle_icon';
+}
+
+function chooseQuestTemplateHasActiveIcon(userId, excludedQuestId) {
+  const query = excludedQuestId === null
+    ? `
+      SELECT 1 FROM active_quests
+      WHERE user_id = ? AND refresh_at = 0 AND quest_type = 'battle_category'
+        AND lower(target_type) = 'battle_icon'
+      LIMIT 1
+    `
+    : `
+      SELECT 1 FROM active_quests
+      WHERE user_id = ? AND id != ? AND refresh_at = 0 AND quest_type = 'battle_category'
+        AND lower(target_type) = 'battle_icon'
+      LIMIT 1
+    `;
+  return excludedQuestId === null
+    ? db.prepare(query).get(userId)
+    : db.prepare(query).get(userId, excludedQuestId);
+}
+
+function chooseQuestTemplate(userId, excludedQuestId, templates = QUEST_TEMPLATES) {
+  const activeIconQuest = chooseQuestTemplateHasActiveIcon(userId, excludedQuestId);
+  const candidates = activeIconQuest
+    ? templates.filter((template) => !isBattleIconUnlockQuest(template))
+    : templates;
+  const pool = candidates.length
+    ? candidates
+    : QUEST_TEMPLATES.filter((template) => !isBattleIconUnlockQuest(template));
+  if (!pool.length) {
+    throw new Error('No non-icon quest template is available while another battle icon quest is active.');
+  }
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // Only slots within the user's current tier allowance are returned, so a lapsed
 // Patreon keeps their extra quests stored but cannot see or progress them.
 function ensureUserQuests(userId) {
@@ -3144,13 +3204,20 @@ function ensureUserQuests(userId) {
   const now = Date.now();
   for (const quest of quests) {
     if (quest.refresh_at > 0 && quest.refresh_at <= now) {
-      const fresh = QUEST_TEMPLATES[Math.floor(Math.random() * QUEST_TEMPLATES.length)];
+      const fresh = chooseQuestTemplate(userId, quest.id);
+      writeQuestTemplate(quest.id, addRandomEvolutionReward(fresh));
+    } else if (quest.refresh_at === 0 && isBattleIconUnlockQuest(quest)
+        && chooseQuestTemplateHasActiveIcon(userId, quest.id)) {
+      const fresh = chooseQuestTemplate(userId, quest.id);
       writeQuestTemplate(quest.id, addRandomEvolutionReward(fresh));
     }
   }
   for (let slot = 1; slot <= allowedSlots; slot += 1) {
     if (existingSlots.has(slot)) continue;
-    const template = QUEST_TEMPLATES[(slot - 1) % QUEST_TEMPLATES.length];
+    let template = QUEST_TEMPLATES[(slot - 1) % QUEST_TEMPLATES.length];
+    if (isBattleIconUnlockQuest(template) && chooseQuestTemplateHasActiveIcon(userId, null)) {
+      template = chooseQuestTemplate(userId, null);
+    }
     const inserted = db.prepare(`
       INSERT INTO active_quests (
         user_id, slot, quest_type, target_type, progress, target,
@@ -3199,7 +3266,7 @@ function rerollUserQuest(userId, slot) {
         field !== 'reward_items' && template[field] !== quest[field])
     );
     const pool = alternatives.length > 0 ? alternatives : QUEST_TEMPLATES;
-    const fresh = pool[Math.floor(Math.random() * pool.length)];
+    const fresh = chooseQuestTemplate(userId, quest.id, pool);
     if (useScroll) incrementUser(userId, { quest_reset_scrolls: -1 });
     else incrementUser(userId, { coins: -QUEST_REROLL_COST });
     writeQuestTemplate(quest.id, addRandomEvolutionReward(fresh));
@@ -3611,13 +3678,12 @@ function rebaseTransferredPokemon(userId, catchId) {
   if (!pokemon) return false;
 
   const recipientPokemon = db.prepare(`
-    SELECT catches.level, catches.experience
+    SELECT level, experience
     FROM catches
-    JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
-    WHERE catches.user_id = ? AND catches.id != ? AND pokemon_forms.species_id = ?
-    ORDER BY catches.level DESC, catches.experience DESC, catches.id
+    WHERE user_id = ? AND id != ? AND pokemon_id = ? AND is_shiny = ? AND is_golden = ?
+    ORDER BY level DESC, experience DESC, id
     LIMIT 1
-  `).get(userId, catchId, pokemon.species_id);
+  `).get(userId, catchId, pokemon.pokemon_id, pokemon.is_shiny, pokemon.is_golden);
   const recipientCopy = db.prepare(`
     SELECT hp_iv, atk_iv, def_iv, spa_iv, spdef_iv, spd_iv, level, experience, friendship,
       ev_hp, ev_atk, ev_def, ev_spa, ev_spdef, ev_spe
@@ -7167,6 +7233,7 @@ for (const form of worldBossForms) {
   const shinyArtwork = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/shiny/${form.id}.png`;
   const base = {
     formId: form.id,
+    formSlug: form.slug,
     catchName: overrides.name || form.name,
     catchRarity: form.rarity,
     maxHp: form.id === 10190 || /eternatus-eternamax/i.test(form.slug)
@@ -7351,6 +7418,17 @@ function getBossLeaderboard(limit = 10) {
   ).all(limit);
 }
 
+function recordWorldBossFight(userId, bossId) {
+  assertUserId(userId);
+  if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
+  const boss = db.prepare('SELECT name FROM world_boss WHERE id = ?').get(bossId);
+  if (!boss) throw new Error(`World Boss ${bossId} does not exist.`);
+  db.prepare(`
+    INSERT OR IGNORE INTO world_boss_contributions (boss_id, user_id, boss_name, damage)
+    VALUES (?, ?, ?, 0)
+  `).run(bossId, userId, boss.name);
+}
+
 function applyWorldBossDamage(userId, bossId, damage, timestamp = Date.now()) {
   assertUserId(userId);
   if (!Number.isSafeInteger(bossId) || bossId <= 0) throw new TypeError('bossId must be positive.');
@@ -7375,6 +7453,11 @@ function applyWorldBossDamage(userId, bossId, damage, timestamp = Date.now()) {
         damage = boss_damage.damage + excluded.damage,
         last_hit = excluded.last_hit
     `).run(userId, appliedDamage, timestamp);
+    db.prepare(`
+      INSERT INTO world_boss_contributions (boss_id, user_id, boss_name, damage)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(boss_id, user_id) DO UPDATE SET damage = damage + excluded.damage
+    `).run(bossId, userId, boss.name, appliedDamage);
 
     return {
       boss: { ...boss, current_hp: currentHp, is_active: currentHp > 0 ? 1 : 0 },
@@ -7428,6 +7511,7 @@ function distributeWorldBossRewards(bossId) {
         index + 1, leaderboard.length, isMvp ? 30000 : 12000
       );
       const received = [];
+      let coinsAwarded;
       const factionPoints = addFactionPoints(entry.user_id, 5000 + Math.floor(Math.random() * 2501));
       if (factionPoints) received.push({ name: 'Faction Points', amount: factionPoints });
       if (isMvp) {
@@ -7436,11 +7520,11 @@ function distributeWorldBossRewards(bossId) {
           lootboxes: 3,
           world_boss_mvps: 1,
         });
-        awardCoinsWithBoost(entry.user_id, 30000);
+        coinsAwarded = awardCoinsWithBoost(entry.user_id, 30000).finalAmount;
         received.push({ name: 'Masterball', amount: 2 }, { name: 'Lootbox', amount: 3 });
       } else {
         incrementUser(entry.user_id, { ultraballs: 5, lootboxes: 1 });
-        awardCoinsWithBoost(entry.user_id, 12000);
+        coinsAwarded = awardCoinsWithBoost(entry.user_id, 12000).finalAmount;
         received.push({ name: 'Ultraball', amount: 5 }, { name: 'Lootbox', amount: 1 });
       }
       const isSpawner = boss.spawned_by === entry.user_id;
@@ -7472,7 +7556,7 @@ function distributeWorldBossRewards(bossId) {
       }
       if (isSpawnerBoosted) {
         incrementUser(entry.user_id, { ultraballs: 10, lootboxes: 2 });
-        awardCoinsWithBoost(entry.user_id, 18000);
+        coinsAwarded += awardCoinsWithBoost(entry.user_id, 18000).finalAmount;
         received.push({ name: 'Ultraball', amount: 10 }, { name: 'Lootbox', amount: 2 });
       }
       for (const extra of rollWorldBossExtraDrops(isMvp)) {
@@ -7483,8 +7567,10 @@ function distributeWorldBossRewards(bossId) {
         extraDrops.push({ userId: entry.user_id, ...extra });
         received.push(extra);
       }
-      db.prepare('UPDATE world_boss_rewards SET items_json = ?, pokemon_drop = ? WHERE boss_id = ? AND user_id = ?')
-        .run(JSON.stringify(received), gotPokemon ? 1 : 0, bossId, entry.user_id);
+      db.prepare(`
+        UPDATE world_boss_rewards SET items_json = ?, pokemon_drop = ?, coins_awarded = ?
+        WHERE boss_id = ? AND user_id = ?
+      `).run(JSON.stringify(received), gotPokemon ? 1 : 0, coinsAwarded, bossId, entry.user_id);
     }
     db.prepare('UPDATE world_boss SET rewards_claimed = 1 WHERE id = ?').run(bossId);
     return { boss, leaderboard, mvp, drops, boxDrops, extraDrops };
@@ -7498,6 +7584,43 @@ function getUnclaimedWorldBossReward(userId) {
     WHERE user_id = ? AND claimed = 0
     ORDER BY boss_id DESC LIMIT 1
   `).get(userId) || null;
+}
+
+function getWorldBossStats(userId) {
+  assertUserId(userId);
+  const contributions = db.prepare(`
+    SELECT boss_name, COUNT(*) AS fights, SUM(damage) AS damage
+    FROM world_boss_contributions WHERE user_id = ?
+    GROUP BY boss_name ORDER BY boss_name
+  `).all(userId);
+  const rewards = db.prepare(`
+    SELECT boss_name, rank, coins, coins_awarded, items_json, pokemon_drop
+    FROM world_boss_rewards WHERE user_id = ? ORDER BY boss_id
+  `).all(userId);
+  return { contributions, rewards };
+}
+
+function getWorldBossHighscores() {
+  return db.prepare(`
+    WITH damage_totals AS (
+      SELECT user_id, SUM(damage) AS damage
+      FROM world_boss_contributions GROUP BY user_id
+    ), reward_totals AS (
+      SELECT user_id, COUNT(*) AS victories, SUM(CASE WHEN rank = 1 THEN 1 ELSE 0 END) AS mvps
+      FROM world_boss_rewards GROUP BY user_id
+    ), players AS (
+      SELECT user_id FROM damage_totals
+      UNION
+      SELECT user_id FROM reward_totals
+    )
+    SELECT players.user_id, COALESCE(reward_totals.mvps, 0) AS mvps,
+      COALESCE(reward_totals.victories, 0) AS victories, COALESCE(damage_totals.damage, 0) AS damage
+    FROM players
+    LEFT JOIN damage_totals ON damage_totals.user_id = players.user_id
+    LEFT JOIN reward_totals ON reward_totals.user_id = players.user_id
+    ORDER BY mvps DESC, damage DESC, players.user_id ASC
+    LIMIT 100
+  `).all();
 }
 
 // XS, S and M only: L and XL are Patreon shop items. Smaller candies are more common.
@@ -8686,15 +8809,6 @@ function getHeldItemEncounterCounter(userId) {
   };
 }
 
-function incrementEventSpawnCatchCounter(userId) {
-  assertUserId(userId);
-  db.prepare(`
-    INSERT INTO user_event_spawn_counters (user_id, encounters_since)
-    VALUES (?, 1)
-    ON CONFLICT(user_id) DO UPDATE SET encounters_since = encounters_since + 1
-  `).run(userId);
-}
-
 function recordEventSpawnCatch(userId, pokemonName, timestamp = Date.now()) {
   assertUserId(userId);
   if (typeof pokemonName !== 'string' || !pokemonName.trim()) {
@@ -8702,9 +8816,9 @@ function recordEventSpawnCatch(userId, pokemonName, timestamp = Date.now()) {
   }
   db.prepare(`
     INSERT INTO user_event_spawn_counters (user_id, encounters_since, last_caught_at, last_pokemon)
-    VALUES (?, 0, ?, ?)
+    VALUES (?, 1, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
-      encounters_since = 0,
+      encounters_since = encounters_since + 1,
       last_caught_at = excluded.last_caught_at,
       last_pokemon = excluded.last_pokemon
   `).run(userId, timestamp, pokemonName.trim());
@@ -11148,6 +11262,9 @@ module.exports = {
   isWorldBossPlayerRegistered,
   getWorldBossRegistrationCount,
   getBossLeaderboard,
+  recordWorldBossFight,
+  getWorldBossStats,
+  getWorldBossHighscores,
   applyWorldBossDamage,
   distributeWorldBossRewards,
   getUnclaimedWorldBossReward,
@@ -11186,7 +11303,6 @@ module.exports = {
   recordHeldItemEncounterCounter,
   resetHeldItemEncounterCounter,
   getHeldItemEncounterCounter,
-  incrementEventSpawnCatchCounter,
   recordEventSpawnCatch,
   getEventSpawnCatch,
   resetChecklistIfNewDay,

@@ -65,7 +65,7 @@ test('confiscation selects only eligible box, market and incoming gift Pokémon 
   assert.equal(db.prepare('SELECT pokemon_ids FROM saved_teams').get().pokemon_ids, '[4]');
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM market').get().n, 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM pokemon_gifts').get().n, 0);
-  assert.equal(auctions.list('alice', 'golden').count, 2);
+  assert.equal(auctions.list('alice', 'golden').count, 1);
   db.close();
 });
 
@@ -135,7 +135,7 @@ test('ineligible auctions are removed, with bids refunded and event Super Rares 
   db.close();
 });
 
-test('one admin auction start activates at most 50 queued Pokémon', () => {
+test('auction starts are capped at 10 active Pokémon', () => {
   const { db, auctions } = setup();
   const insert = db.prepare(`
     INSERT INTO catches (id, user_id, pokemon_id, name, rarity)
@@ -147,10 +147,32 @@ test('one admin auction start activates at most 50 queued Pokémon', () => {
   assert.equal(db.transaction(() => auctions.confiscate('source', 1000, auctions.getEligibility(), {
     queued: true,
   }))(), 55);
-  assert.equal(auctions.startQueued(2000, 100), 50);
-  assert.equal(auctions.list('alice').count, 50);
-  assert.equal(auctions.startQueued(3000), 5);
-  assert.equal(auctions.list('alice').count, 55);
+  assert.equal(auctions.startQueued(2000, 100), 10);
+  assert.equal(auctions.list('alice').count, 10);
+  assert.equal(auctions.startQueued(3000), 0);
+  assert.equal(auctions.list('alice').count, 10);
+  assert.equal(auctions.settle(2000 + AUCTION_DURATION_MS), 10);
+  assert.equal(auctions.startQueued(2001 + AUCTION_DURATION_MS), 10);
+  assert.equal(auctions.list('alice').count, 10);
+  db.close();
+});
+
+test('active auctions contain only one copy of each form and variant', () => {
+  const { db, auctions } = setup();
+  db.exec(`
+    INSERT INTO pokemon_auctions (pokemon_json, source_user_id, starts_at, ends_at, is_started)
+    VALUES
+      ('{"pokemon_id":4931,"name":"Arceus Ghost","rarity":"Legendary","is_shiny":0,"is_golden":0}', 'source', 1, 100, 0),
+      ('{"pokemon_id":4931,"name":"Arceus Ghost","rarity":"Legendary","is_shiny":0,"is_golden":0}', 'source', 1, 100, 0),
+      ('{"pokemon_id":4931,"name":"Arceus Ghost","rarity":"Legendary","is_shiny":1,"is_golden":0}', 'source', 1, 100, 0),
+      ('{"pokemon_id":4931,"name":"Arceus Ghost","rarity":"Legendary","is_shiny":0,"is_golden":1}', 'source', 1, 100, 0);
+  `);
+
+  assert.equal(auctions.startQueued(10), 3);
+  assert.equal(auctions.list('alice').count, 3);
+  assert.equal(auctions.startQueued(11), 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM pokemon_auctions WHERE ended_at IS NULL AND is_started = 0')
+    .get().count, 1);
   db.close();
 });
 
@@ -338,7 +360,7 @@ test('eligible auctions start at 10 tokens and preserve the price when queued ag
   assert.deepEqual(auctions.bid('alice', 1, 9, 2000), { error: 'too_low', minimum: 10 });
   assert.equal(auctions.bid('alice', 1, 10, 2000).amount, 10);
   auctions.settle(1000 + AUCTION_DURATION_MS);
-  assert.equal(auctions.startQueued(2000 + AUCTION_DURATION_MS), 3);
+  assert.equal(auctions.startQueued(2000 + AUCTION_DURATION_MS), 2);
   assert.equal(auctions.list('alice').rows[0].minimum_bid, 10);
   db.close();
 });

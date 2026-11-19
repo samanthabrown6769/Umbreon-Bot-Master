@@ -238,14 +238,24 @@ test('rare spawn announcements forward caught Explore rarities and describe swap
   hidden = false;
   await ctx.announceRareSpawn(guild, user, { ...pokemon, isShiny: true }, '.p');
   assert.match(sent.at(-1).title, /Ash has found a/);
+  for (const [activity, phrase] of [
+    ['egg', 'Ash hatched'],
+    ['fishing', 'Ash fished out'],
+    ['pokemon', 'Ash caught'],
+    ['open', 'Ash opened a box and found'],
+  ]) {
+    await ctx.announceRareSpawn(guild, user, { ...pokemon, isShiny: true }, `.${activity}`, { activity });
+    assert.ok(sent.at(-1).title.includes(phrase), activity);
+  }
   await ctx.announceRareSpawn(guild, user, pokemon, '.explore', { activity: 'explore' });
-  assert.equal(sent.length, 5);
+  assert.equal(sent.length, 9);
   assert.equal(errors.length, 0);
 
   const catchFlow = extract('async function askForBall(', '\nconst TYPE_EFFECTIVENESS');
   assert.match(catchFlow, /target\.isExplore \? `\$\{PREFIX\}explore`/);
   assert.match(catchFlow, /isFishing \? `\$\{PREFIX\}f` : `\$\{PREFIX\}p`/);
-  assert.match(catchFlow, /activity: target\.isExplore \? 'explore' : 'found'/);
+  assert.match(catchFlow, /activity: target\.isExplore \? 'explore' : isFishing \? 'fishing' : 'pokemon'/);
+  assert.match(catchFlow, /You received \*\*\$\{coinsEarned\.toLocaleString\(\)\} PokéCoins\*\* for this catch/);
   assert.match(catchFlow, /if \(inline\?\.onSpawn\) inline\.onSpawn\(embed\)/);
   const swapFlow = extract("    if (command === 'swap'", "\n    if (command === 'collection'");
   assert.match(swapFlow, /activity: 'swap'/);
@@ -429,7 +439,7 @@ test('battle icon announcements use persisted trainer win counts', async () => {
   });
   vm.runInContext(extract('async function announceBattleIconDrop(', '\nasync function sendRareSpawnChannelEmbed('), ctx);
   await ctx.announceBattleIconDrop({ id: 'guild' }, { id: 'user', username: 'Ash' }, 3);
-  assert.match(payloads[0].embeds[0].toJSON().description, /tracked since this update: \*\*2\*\*/);
+  assert.match(payloads[0].embeds[0].toJSON().description, /Battles taken : \*\*2\*\*/);
   const chamber = extract('async function runMegaChamberGauntlet(', '\nasync function run');
   assert.match(chamber, /recordBattleIconTrainerWin\(userId, iconIndex\)/);
   const league = extract('async function runLeagueChallenge(', '\nasync function ');
@@ -481,6 +491,58 @@ test('provided Pokémon emojis map to the correct normal and Golden variants', (
   for (const [name, id] of Object.entries(normal)) assert.match(context.getPokemonSpriteEmoji({ name }), new RegExp(id));
   for (const [name, id] of Object.entries(golden)) assert.match(context.getPokemonSpriteEmoji({ name, isGolden: true }), new RegExp(id));
   assert.match(context.getPokemonSpriteEmoji({ name: 'Sprigatito', isShiny: true }), /1567588638194409512/);
+});
+
+test('Gigantamax sprite emojis resolve for each form and variant without affecting base forms', () => {
+  const context = vm.createContext({});
+  vm.runInContext(extract('const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), context);
+  const forms = [
+    ['charizard', '1573093971868254358', '1573093969338835035'],
+    ['cinderace', '1573093966478573680', '1573093963936833578'],
+    ['gengar', '1573093961604800632', '1573093958874304653'],
+    ['eevee', '1573093956365852772', '1573093954239463444'],
+    ['machamp', '1573093951978610728', '1573093949101572196'],
+    ['blastoise', '1573093946035273769', '1573093943560634369'],
+    ['venusaur', '1573093940557512784', '1573093938154438767'],
+    ['butterfree', '1573093935851507742', '1573093933624590406'],
+    ['pikachu', '1573093930818473984', '1573093928176062645'],
+    ['meowth', '1573093925701296278', '1573093923180777574'],
+    ['lapras', '1573093918277501008', '1573093915848998952'],
+    ['snorlax', '1573093911952621669', '1573093908668485642'],
+    ['kingler', '1573093905354858646', '1573093902951645264'],
+    ['corviknight', '1573093900707438592', '1573093898698494072'],
+    ['melmetal', '1573093896718651494', '1573093894353322004'],
+    ['garbodor', '1573093892121825311', '1573093890268078110'],
+    ['alcremie', '1573093888132907209', '1573093885624848394'],
+    ['toxtricity', '1573093882860802188', '1573093880545681448'],
+    ['toxtricity amped', '1573093882860802188', '1573093880545681448'],
+    ['toxtricity low key', '1573093882860802188', '1573093880545681448'],
+    ['coalossal', '1573093876778930188', '1573093874803417219'],
+    ['grimmsnarl', '1573093872182104154', '1573093869640220852'],
+    ['rillaboom', '1573093866976972800', '1573093864800260168'],
+    ['sandaconda', '1573093863063822547', '1573093860513423492'],
+    ['centiskorch', '1573093857502167081', '1573093854901440553'],
+    ['duraludon', '1573093852833779813', '1573093850195566702'],
+    ['inteleon', '1573093847620132904', '1573093845271580792'],
+    ['orbeetle', '1573093843224629461', '1573093841035333703'],
+    ['drednaw', '1573093838879199322', '1573093837084303481'],
+    ['copperajah', '1573093834898939984', '1573093832621301793'],
+    ['flapple', '1573093830683533477', '1573093828364341298'],
+    ['urshifu single strike', '1573093825923121342', '1573093823238897725'],
+    ['urshifu rapid strike', '1573093820772515920', '1573093818709053511'],
+    ['hatterene', '1573093816473485493', '1573093813914964109'],
+    ['appletun', '1573093810181771375', '1573093807686160394'],
+  ];
+  for (const [name, normal, shiny] of forms) {
+    for (const display of [`${name} gmax`, `gmax ${name}`]) {
+      assert.match(context.getPokemonSpriteEmoji({ name: display }), new RegExp(`:${normal}>$`));
+      assert.match(context.getPokemonSpriteEmoji({ name: display, is_shiny: 1 }), new RegExp(`:${shiny}>$`));
+      assert.equal(context.getPokemonSpriteEmoji({ name: display, isGolden: true }), '');
+    }
+    assert.match(context.getPokemonSpriteEmoji({ form_slug: `${name.replace(/ /g, '-')}-gmax` }), new RegExp(`:${normal}>$`));
+  }
+  assert.doesNotMatch(context.getPokemonSpriteEmoji({ name: 'Eevee' }), /1573093956365852772/);
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'shiny rillaboom gmax' }), '<:sgmaxrilaboom:1573093864800260168>');
 });
 
 test('Patreon tiers provide the requested Explore limits and Golden bonus', () => {
@@ -613,11 +675,16 @@ test('Golden Patreon applies a 25% relative bonus to fishing, swap and promo rat
     promo: ctx.getPromoChanceMultiplier('trainer', false),
   });
   const baseline = rates();
+  assert.equal(baseline.swap, 1 / 2500);
   goldenBoost = 0.25;
   const boosted = rates();
   for (const activity of ['fish', 'swap', 'promo']) {
     assert.ok(Math.abs(boosted[activity] - baseline[activity] * 1.25) < 1e-12, activity);
   }
+  const boostedSwap = vm.runInContext(`${swapExpression}\ngoldenChance`, vm.createContext({
+    Math, multiplier: 1.1, goldenBonus: 1, swapBonus: 1.25, swapPerks: { goldenBoost: 0.25 },
+  }));
+  assert.ok(Math.abs(boostedSwap - (1.1 * 1.25 * 1.25 / 2500)) < 1e-12);
 });
 
 test('Golden fishing does not consume an unseen wild or event pity encounter', () => {

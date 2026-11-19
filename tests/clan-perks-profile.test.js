@@ -135,18 +135,25 @@ test('Onyx and Golden Patreon perks provide six quest slots', () => {
       PATREON_TIER_PERKS: { golden: { questSlots: 5 } },
       NO_PATREON_PERKS: { questSlots: 3 },
       getClanPerkMultipliers: () => ({ questSlotBonus: 1 }),
-      QUEST_TEMPLATES: [{ quest_type: 'catch', target_type: 'pokemon', target: 1 }],
+      QUEST_TEMPLATES: [
+        { quest_type: 'battle_category', target_type: 'battle_icon', target: 1 },
+        { quest_type: 'catch', target_type: 'pokemon', target: 1 },
+      ],
       addRandomEvolutionReward: (template) => template,
       writeQuestTemplate: () => {},
     });
     const slots = extract(dbSource, 'const MAX_QUEST_SLOTS =', '\nfunction getUserQuestRefreshWait');
+    const helpers = extract(dbSource, 'function isBattleIconUnlockQuest(', '\n// Only slots within');
     const ensureQuests = extract(dbSource, 'function ensureUserQuests(', '\nfunction getUserQuests');
-    vm.runInContext(`${slots}\n${ensureQuests}`, ctx);
+    vm.runInContext(`${slots}\n${helpers}\n${ensureQuests}`, ctx);
 
     const quests = ctx.ensureUserQuests('trainer');
 
     assert.equal(quests.length, 6);
     assert.equal(quests.at(-1).slot, 6);
+    assert.equal(quests.filter((quest) =>
+      quest.quest_type === 'battle_category' && quest.target_type === 'battle_icon'
+    ).length, 1);
   } finally {
     db.close();
   }
