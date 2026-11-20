@@ -115,6 +115,9 @@ const DIRECT_SHOWDOWN_SLUGS = new Set([
 ]);
 
 const CUSTOM_SPRITES = {
+  'turquoise-rookidee': 'https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Rookidee_Animated.gif',
+  'turquoise-corvisquire': 'https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Corvisquire_Animated.gif',
+  'turquoise-corviknight': 'https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Corviknight_Animated.gif',
   inteleon: 'https://play.pokemonshowdown.com/sprites/ani/inteleon.gif',
   'corviknight-gmax': 'https://play.pokemonshowdown.com/sprites/ani/corviknight-gmax.gif',
   'mr-rime': 'https://res.cloudinary.com/apffqia5/image/upload/v1792006172/mrrime.gif',

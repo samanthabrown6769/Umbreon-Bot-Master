@@ -9950,5 +9950,23 @@
     "rarity": "Rare",
     "dex_number": 6331,
     "shiny_dex_number": 6332
+  },
+  {
+    "id": 20114,
+    "dex_number": 10821,
+    "name": "Turquoise Rookidee",
+    "rarity": "Gem"
+  },
+  {
+    "id": 20115,
+    "dex_number": 10822,
+    "name": "Turquoise Corvisquire",
+    "rarity": "Gem"
+  },
+  {
+    "id": 20116,
+    "dex_number": 10823,
+    "name": "Turquoise Corviknight",
+    "rarity": "Gem"
   }
 ]

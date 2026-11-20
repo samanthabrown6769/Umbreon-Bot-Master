@@ -590,6 +590,161 @@ test('collection commands resolve normal, shiny and Golden Dex numbers to the co
   db.close();
 });
 
+test('swap names and variant dex numbers select the same owned variant', () => {
+  const { getPokemonDexNumbers, getGoldenDexNumber, isGoldenDexNumber, isGoldenFormSupported } = require('../pokemon-dex-numbers');
+  const forms = require('../data/pokemon-catalog.json').filter((pokemon) => pokemon.slug === 'umbreon');
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE users (id TEXT PRIMARY KEY, buddy_catch_id INTEGER);
+      INSERT INTO users VALUES ('user', NULL);
+      CREATE TABLE pokemon_forms (id INTEGER, species_id INTEGER, species_name TEXT, name TEXT, slug TEXT, is_default INTEGER, rarity TEXT);
+      CREATE TABLE catches (id INTEGER, user_id TEXT, pokemon_id INTEGER, name TEXT, is_shiny INTEGER, is_golden INTEGER, in_team INTEGER);
+      INSERT INTO catches VALUES (1, 'user', 197, 'Umbreon', 0, 0, 0),
+        (2, 'user', 197, 'Umbreon', 1, 0, 0), (3, 'user', 197, 'Umbreon', 0, 1, 0);
+    `);
+    const form = forms[0];
+    db.prepare('INSERT INTO pokemon_forms VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(form.id, form.species_id, form.species_name, form.name, form.slug, form.is_default, form.rarity);
+    const ctx = vm.createContext({
+      db, assertUserId: () => {}, getGoldenDexNumber, isGoldenDexNumber, isGoldenFormSupported,
+      getPokemonDexNumbersForForms: () => getPokemonDexNumbers(forms),
+      sortedNameWords: (name) => name.toLowerCase().split(/\s+/).sort().join(' '),
+    });
+    vm.runInContext(extract(dbSource, 'function findOwnedPokemonRows(', '\nfunction findUserPokemonMatches('), ctx);
+    for (const [query, id] of [['umbreon', 1], ['197', 1], ['shiny umbreon', 2],
+      ['1197', 2], ['golden umbreon', 3], ['9197', 3]]) {
+      assert.equal(ctx.findOwnedPokemonRows('user', query)[0]?.id, id, query);
+    }
+    assert.equal(ctx.findOwnedPokemonRows('user', 'golden 197').length, 0);
+  } finally { db.close(); }
+});
+
+test('swap rejects a variant prefix with any numeric dex input', async () => {
+  const swapBranch = extract(indexSource, "    if (command === 'swap' || command === 'sw'", "\n    if (command === 'collection'");
+  const guard = extract(swapBranch, '        const pokemonName = args.join', '\n        if (!pokemonName');
+  const ctx = vm.createContext({ args: [], PREFIX: '.', message: { reply: async (text) => text } });
+  vm.runInContext(`async function checkSwapInput() { ${guard}\n return 'accepted'; }`, ctx);
+  for (const input of ['golden 197', 'golden 9197', 'shiny 1197']) {
+    ctx.args = input.split(' ');
+    assert.match(await ctx.checkSwapInput(), /variant Pokédex number/);
+  }
+  for (const input of ['golden umbreon', '9197', '197']) {
+    ctx.args = input.split(' ');
+    assert.equal(await ctx.checkSwapInput(), 'accepted');
+  }
+});
+
+test('released and swapped Pokémon credit each open chamber atomically', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE users (id TEXT PRIMARY KEY, buddy_catch_id INTEGER);
+      INSERT INTO users VALUES ('user', NULL);
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, species_id INTEGER);
+      INSERT INTO pokemon_forms VALUES (1, 150), (2, 42);
+      CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT,
+        rarity TEXT, is_shiny INTEGER, is_golden INTEGER, in_team INTEGER, is_locked INTEGER, is_fav INTEGER);
+      INSERT INTO catches VALUES (1, 'user', 1, 'Mewtwo', 'Common', 0, 0, 0, 0, 0),
+        (2, 'user', 1, 'Mewtwo', 'Common', 0, 0, 0, 0, 0),
+        (3, 'user', 1, 'Mewtwo', 'Common', 1, 0, 0, 0, 0),
+        (4, 'user', 1, 'Mewtwo', 'Common', 0, 1, 0, 0, 0),
+        (5, 'user', 1, 'Mewtwo', 'Common', 0, 0, 0, 1, 0),
+        (6, 'user', 2, 'Other', 'Common', 0, 0, 0, 0, 0);
+      CREATE TABLE mega_chambers (user_id TEXT, chamber_key TEXT, sacrifices INTEGER, clears INTEGER,
+        PRIMARY KEY (user_id, chamber_key));
+      INSERT INTO mega_chambers VALUES ('user', 'x', 7, 2);
+    `);
+    let paymentWorks = true;
+    const ctx = vm.createContext({
+      db, userId: 'user', now: 1,
+      CHAMBER_CONFIG: { x: { key: 'x', pokemonId: 150 }, y: { key: 'y', pokemonId: 150 }, closed: { key: 'closed', pokemonId: 150 } },
+      isChamberOpen: (chamber) => chamber.key !== 'closed',
+      getReleaseProtectionReason: (pokemon) => pokemon.is_golden ? 'protected' : null,
+      getDisplayRarity: () => 'Common', RELEASE_PAYOUTS: { common: 10 },
+      grantRotomItemDrops: () => [], awardCoinsWithBoost: (_id, value) => ({ finalAmount: value }),
+      findOwnedPokemonRows: (_userId, query) => db.prepare('SELECT * FROM catches WHERE id = ?').all(Number(query)),
+      getUser: () => ({ coins: 0, swaps_today: 0, last_swap_reset: 0 }),
+      getDailyResetDay: () => 0, getUserItems: () => [{ item_name: 'Swap Ticket', amount: 1 }],
+      getPatreonPerks: () => ({ swapDiscount: 0, goldenBoost: 0 }),
+      getSwapMultiplier: () => 1, isPlayerBonusActive: () => false,
+      SWAP_EXCLUSIVE_SHINIES: [], takeUserItem: () => paymentWorks,
+      incrementUser: () => {}, trackClanActivity: () => {}, rollSwapRarity: () => 'Common',
+      getSwapRewardExcludedSpecies: () => [], getRandomPokemon: () => ({ id: 2 }),
+      saveCatch: () => {}, recordPokemonSeen: () => {},
+      Math: Object.assign(Object.create(Math), { random: () => 0.9 }),
+    });
+    vm.runInContext(extract(indexSource, 'function releaseCatchIds(', '\nfunction createReleaseAnnouncement('), ctx);
+    const swapBranch = extract(indexSource, "    if (command === 'swap' || command === 'sw'", "\n    if (command === 'collection'");
+    vm.runInContext(`function swapForTest(pokemonName) {
+      ${extract(swapBranch, '        const result = db.transaction(() => {', '\n        if (result.error === \'pokemon_not_found\')')}
+      return result;
+    }`, ctx);
+    assert.equal(ctx.releaseCatchIds('user', [1, 2, 5, 6]).released.length, 3);
+    assert.deepEqual(db.prepare('SELECT chamber_key, sacrifices, clears FROM mega_chambers ORDER BY chamber_key').all(),
+      [{ chamber_key: 'x', sacrifices: 9, clears: 2 }, { chamber_key: 'y', sacrifices: 2, clears: 0 }]);
+    ctx.swapForTest('3');
+    assert.equal(db.prepare("SELECT sacrifices FROM mega_chambers WHERE chamber_key = 'x'").get().sacrifices, 10);
+    paymentWorks = false;
+    assert.throws(() => ctx.swapForTest('4'), /inventory changed/);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM catches WHERE id = 4').get().n, 1);
+    assert.equal(db.prepare("SELECT sacrifices FROM mega_chambers WHERE chamber_key = 'x'").get().sacrifices, 10);
+    paymentWorks = true;
+    ctx.swapForTest('4');
+    assert.equal(db.prepare("SELECT sacrifices FROM mega_chambers WHERE chamber_key = 'x'").get().sacrifices, 11);
+  } finally { db.close(); }
+});
+
+test('CatchBot claims award catches without advancing quests for legacy or current runs', async () => {
+  const cbBranch = extract(indexSource, "    if (command === 'cb' || command === 'catchbot') {",
+    "\n    if (command === '");
+  const claimBranch = extract(cbBranch, "      if (subcommand === 'claim') {",
+    "\n      if (subcommand && subcommand !== 'status')");
+  for (const legacy of [true, false]) {
+    let saved = 0;
+    let summary;
+    const user = { catchbot_end: legacy ? 1 : 0 };
+    const ctx = vm.createContext({
+      subcommand: 'claim', cb: { running_until: legacy ? 0 : 1, luck_lvl: 0 },
+      user, userId: 'user', now: 1000, message: { author: {}, reply: async () => {} }, PREFIX: '.',
+      db: { transaction: (fn) => ({ immediate: fn }) },
+      getUser: () => user, updateUser: (_id, fields) => Object.assign(user, fields),
+      getRoleEncounterBoost: async () => 0, CB_CONFIG: { luck: { getStat: () => 0 } },
+      rollCatchbotGoldenExclusive: () => null,
+      rollCatchbotSpawn: () => ({ id: 1, name: 'Test', rarity: 'Common', isShiny: false }),
+      saveCatch: () => { saved++; }, trackClanActivity: () => {}, incrementUser: () => {},
+      isEventOpen: () => false, halloweenEvent: {}, awardCoinsWithBoost: () => ({ finalAmount: 300 }),
+      claimCatchbotRun: () => ({ pokemonPerHour: 2, hours: 1, luckLevel: 0 }),
+      recordCatchbotResults: () => {},
+      sendCatchbotClaimPages: async (_message, _title, _pokemon, text) => { summary = text; },
+      announceRareSpawn: async () => {}, announceEventCatch: async () => {},
+      advanceQuestProgress: () => { throw new Error('CatchBot must not advance quests'); },
+      EMOJIS: { pokecoin: 'coin' }, console,
+    });
+    vm.runInContext(`async function claim() { ${claimBranch} }`, ctx);
+    await ctx.claim();
+    assert.equal(saved, legacy ? 4 : 2);
+    assert.match(summary, legacy ? /300 PokéCoins/ : /2 Pokémon/);
+  }
+});
+
+test('Bisharp evolves into Kingambit at level 50', () => {
+  const rules = require('../data/pokemon-evolution-rules.json').filter((rule) => rule.fromSpeciesId === 625);
+  const row = { form_species: 625, name: 'Bisharp', level: 49, is_shiny: 1 };
+  const ctx = vm.createContext({
+    db: { transaction: (fn) => ({ immediate: fn }) }, assertUserId: () => {},
+    findOwnedPokemonRows: () => [row], friendshipEvolutionRules: new Map(),
+    levelEvolutionRules: new Map([[625, rules]]), TIME_LEVEL_EVOLUTIONS: {},
+    resolveSpeciesEvolution: (_from, to) => to === 983 ? { name: 'Kingambit' } : null,
+    applyPokemonEvolution: (_userId, pokemon, target) => ({ to: target.name, isShiny: Boolean(pokemon.is_shiny) }),
+  });
+  vm.runInContext(extract(dbSource, 'function evolvePokemonByLevel(', '\nconst moveInfoData'), ctx);
+  assert.equal(ctx.evolvePokemonByLevel('user', 'bisharp').requiredLevel, 50);
+  row.level = 50;
+  assert.equal(ctx.evolvePokemonByLevel('user', 'bisharp').to, 'Kingambit');
+  assert.equal(ctx.evolvePokemonByLevel('user', 'bisharp').isShiny, true);
+});
+
 test('Pokédex card displays the selected variant Dex number', () => {
   const dexCard = extract(indexSource, 'const dexCard = (pokemon) => {', '\n      const formRows =');
   assert.match(dexCard, /const dexNumber = goldenEntry[\s\S]*?shinyEntry \? shinyDexNumber : regularDexNumber;/);
@@ -1063,7 +1218,7 @@ test('counters advance and reset only after a successful catch', async () => {
     recordHeldItemEncounterCounter: () => calls.push('item:advance'),
     resetHeldItemEncounterCounter: () => calls.push('item:reset'),
     resetEncounterCounters: (_id, source, categories) => { calls.push(`reset:${source}:${categories.join(',')}`); return []; },
-    recordEventSpawnCatch: () => calls.push('event:catch'),
+    recordEventSpawnCatch: (_id, _name, isEvent) => calls.push(`event:${isEvent}`),
   });
   vm.runInContext(`async function catchOutcome() {
     ${extract(indexSource, '    if (!isSuccess) {', '\n    const eggAbilityBoost =')}
@@ -1072,11 +1227,11 @@ test('counters advance and reset only after a successful catch', async () => {
   assert.deepEqual(calls, []);
   ctx.isSuccess = true;
   await ctx.catchOutcome();
-  assert.deepEqual(calls, ['catch:pokemon', 'item:advance', 'reset:pokemon:']);
+  assert.deepEqual(calls, ['catch:pokemon', 'item:advance', 'reset:pokemon:', 'event:false']);
   calls.length = 0;
   ctx.target.spawnPity = { source: 'pokemon', outcomes: [{ category: 'shiny', spawned: true }] };
   await ctx.catchOutcome();
-  assert.deepEqual(calls, ['catch:pokemon', 'item:advance', 'reset:pokemon:']);
+  assert.deepEqual(calls, ['catch:pokemon', 'item:advance', 'reset:pokemon:', 'event:false']);
   calls.length = 0;
   ctx.counterSource = 'explore';
   ctx.target = { id: 1, name: 'Test', rarity: 'Legendary', isShiny: true, isGolden: true };
@@ -1086,11 +1241,15 @@ test('counters advance and reset only after a successful catch', async () => {
   ctx.counterSource = 'fishing';
   ctx.target = { id: 1, name: 'Test', rarity: 'Common', heldItem: 'Item', isEventSpawn: true };
   await ctx.catchOutcome();
-  assert.deepEqual(calls, ['catch:fishing', 'item:advance', 'item:reset', 'event:catch']);
+  assert.deepEqual(calls, ['catch:fishing', 'item:advance', 'item:reset']);
   calls.length = 0;
   ctx.target = { id: 1, name: 'Event Legend', rarity: 'Legendary', isShiny: true, isEventSpawn: true };
   await ctx.catchOutcome();
-  assert.deepEqual(calls, ['catch:fishing', 'item:advance', 'event:catch']);
+  assert.deepEqual(calls, ['catch:fishing', 'item:advance']);
+  calls.length = 0;
+  ctx.counterSource = 'pokemon';
+  await ctx.catchOutcome();
+  assert.deepEqual(calls, ['catch:pokemon', 'item:advance', 'event:true']);
 });
 
 test('transferred form stats do not inherit another form of the same species', () => {
@@ -1690,26 +1849,35 @@ test('Explore, held-item and event catch counters advance and reset independentl
     ctx.testCounters.recordWildEncounterCounter('trainer', 'fishing');
     assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 552);
     const recordCatch = extract(indexSource,
-      '    if (target.isEventSpawn) recordEventSpawnCatch(userId, target.name);',
+      "    if (counterSource === 'pokemon') {\n      recordEventSpawnCatch",
       '\n    const eggAbilityBoost');
     ctx.userId = 'trainer';
+    ctx.isEventOpen = () => true;
+    ctx.halloweenEvent = {};
+    ctx.isEventChecklistSpawn = (pokemon) => pokemon.name === 'Checklist Pokémon';
     ctx.target = { name: 'Pikachu', isEventSpawn: false };
     ctx.counterSource = 'pokemon';
     vm.runInContext(recordCatch, ctx);
-    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 552);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 553);
     for (const source of ['fishing', 'explore', null]) {
       ctx.counterSource = source;
       vm.runInContext(recordCatch, ctx);
-      assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 552);
+      assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 553);
     }
     ctx.target = { name: 'Event Pokémon', isEventSpawn: true };
     ctx.counterSource = 'pokemon';
     vm.runInContext(recordCatch, ctx);
-    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 553);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 0);
     assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').last_pokemon, 'Event Pokémon');
     ctx.target = { name: 'Pikachu', isEventSpawn: false };
     vm.runInContext(recordCatch, ctx);
-    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 553);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 1);
+    ctx.target = { name: 'Checklist Pokémon', isEventSpawn: false };
+    vm.runInContext(recordCatch, ctx);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 0);
+    ctx.isEventOpen = () => false;
+    vm.runInContext(recordCatch, ctx);
+    assert.equal(ctx.testCounters.getEventSpawnCatch('trainer').encounters_since, 1);
   } finally {
     db.close();
   }
@@ -1749,7 +1917,7 @@ test('.co renders aligned Pokémon, Fishing, Explore, and held-item columns', as
   const embed = response.embeds[0].toJSON();
   assert.equal(embed.fields.length, 3);
   assert.match(embed.description, /<:magnifyingglass:1569838771791466546> - Explore Counters/);
-  assert.match(embed.description, /Event counts only Event Pokémon/);
+  assert.match(embed.description, /Event tracks Pokémon catches since the last event catch/);
   assert.match(embed.fields[0].value, /Item found/);
   assert.match(embed.fields[1].value, /8 - ⭐ Smeargle \(Nugget\)/);
   assert.match(embed.fields[0].value, /Golden spawn/);
@@ -2534,10 +2702,10 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Legendary');
   roll = 1 / 250;
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 500);
-  assert.equal(ctx.getEventSpawnChance(50), 1 / 333);
-  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 225);
-  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 150);
+  assert.equal(ctx.getEventSpawnChance(), 1 / 400);
+  assert.equal(ctx.getEventSpawnChance(50), 1 / 266);
+  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 180);
+  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 120);
   const shinyRate = 0.001 * 1.5 * (1 / (1 - 1 / 100));
   assert.equal(ctx.getChanceFromFlooredOdds(shinyRate), 1 / 660);
 });
@@ -2583,8 +2751,8 @@ test('full-odds shiny rolls use each trainer tier and charm without Patreon base
     ctx
   );
   for (const [user, chance] of [
-    ['standard', 1 / 1500], ['common', 1 / 1200], ['legendary', 1 / 1000],
-    ['shiny', 1 / 990], ['extra', 1.25 / (1500 * 0.97)], ['standard', 1 / 1500],
+    ['standard', 1 / 3000], ['common', 1 / 2400], ['legendary', 1 / 2000],
+    ['shiny', 1 / 1980], ['extra', 1.25 / (3000 * 0.97)], ['standard', 1 / 3000],
   ]) {
     rolls = [0.5, chance - 1e-12];
     assert.equal(ctx.rollSpawn('land', user).isShiny, true, user);
@@ -3215,7 +3383,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     rolls = [0, selectionRoll];
     return ctx.rollSpawn('water', 'user', rod, options);
   };
-  rolls = [1 / 500 - 1e-10, 0];
+  rolls = [1 / 400 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
   rolls = [ctx.getEventSpawnChance(5) - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 1);
@@ -3325,7 +3493,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   bonusActive = false;
 
   // A non-event encounter at the ordinary shiny threshold stays non-shiny.
-  rolls = [1 / 500, 0.5, 0.001];
+  rolls = [1 / 400, 0.5, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
   ticket = false;
   rolls = [0.5, 0.001];

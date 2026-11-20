@@ -143,6 +143,8 @@ async function main() {
     }
   };
   for (const chain of evolutionChainRecords) visitEvolutionChain(chain.chain);
+  // Kingambit's game-specific battle requirement is represented by a level requirement here.
+  evolutionRules.push({ fromSpeciesId: 625, toSpeciesId: 983, minLevel: 50 });
   const uniqueEvolutionRules = Array.from(
     new Map(evolutionRules.map((rule) => [
       `${rule.fromSpeciesId}:${rule.toSpeciesId}:${rule.minLevel}`,

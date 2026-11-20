@@ -1,6 +1,7 @@
 const EVENTS = [
   require('./halloween-2026'),
   require('./november-2026'),
+  require('./november-part-2-2026'),
 ].sort((left, right) => Date.parse(left.startsAt) - Date.parse(right.startsAt));
 
 // The open event, otherwise the next upcoming one, otherwise the most recent one.

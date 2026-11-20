@@ -14,9 +14,13 @@ const FORM_DEX_STARTS = {
   shinyFormes: 11000,
 };
 const GOLDEN_DEX_START = 9001;
-const NO_SHINY_SLUGS = new Set(['topaz-teddiursa', 'topaz-ursaring']);
-const ADDITIONAL_SEASONAL_FORMS = new Set([
+const NO_SHINY_SLUGS = new Set([
+  'topaz-teddiursa', 'topaz-ursaring',
+  'turquoise-rookidee', 'turquoise-corvisquire', 'turquoise-corviknight',
+]);
+const FIXED_FORM_DEX_SLUGS = new Set([
   'deerling-summer', 'sawsbuck-summer', 'deerling-winter', 'sawsbuck-winter',
+  'turquoise-rookidee', 'turquoise-corvisquire', 'turquoise-corviknight',
 ]);
 const SHINY_BASE_SPECIES_END = 999;
 const GOLDEN_SCREENSHOT_DEX_END = 9999;
@@ -261,6 +265,9 @@ const SHINY_DEX_NUMBER_OVERRIDES_BY_SLUG = new Map([
   ...LATE_SPECIES_DEX_NUMBERS.map(([slug, dexNumber]) => [slug, dexNumber + 1]),
 ]);
 const DEX_NUMBER_OVERRIDES_BY_SLUG = new Map([
+  ['turquoise-rookidee', 10821],
+  ['turquoise-corvisquire', 10822],
+  ['turquoise-corviknight', 10823],
   ['deerling-summer', 6321],
   ['sawsbuck-summer', 6323],
   ['deerling-autumn', 6325],
@@ -528,7 +535,7 @@ function getPokemonDexNumbers(pokemonForms) {
     let index = 0;
     forms.forEach((pokemon) => {
       const current = numbers.get(pokemon.id) || {};
-      if (ADDITIONAL_SEASONAL_FORMS.has(pokemon.slug)) {
+      if (FIXED_FORM_DEX_SLUGS.has(pokemon.slug)) {
         numbers.set(pokemon.id, current);
         return;
       }

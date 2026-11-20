@@ -904,6 +904,8 @@ test('wild Shiny and event rolls do not use old pity counters', () => {
     DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.1,
     EVENT_TICKET_SHINY_RATES: { standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02, nonEvent: 0.002 } },
     BASE_SHINY_RATE: 0.001, PATREON_SHINY_RATE: 0.002, CATCHBOT_SHINY_MULTIPLIER: 0.25, INCENSE_BOOST: 1.1,
+    CATCHBOT_RARITY_WEIGHTS: { Common: 55 }, CATCHBOT_SHINY_DENOMINATORS: [100000],
+    CATCHBOT_LEGENDARY_DENOMINATORS: [6666],
   });
   vm.runInContext(extract('function getChanceFromFlooredOdds(', '\nconst EVENT_SPAWN_ODDS') + '\n'
     + extract('function rollSpawn(', '\nconst EXPLORE_GOLDEN_CHANCE'), ctx);
@@ -913,6 +915,14 @@ test('wild Shiny and event rolls do not use old pity counters', () => {
   assert.equal(shinyCount, 998);
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true);
   assert.equal(shinyCount, 998);
+  for (const [id, eligible] of [[721, true], [722, false], [809, false], [810, false], [905, false], [906, false], [1025, false], [1026, true]]) {
+    speciesId = id;
+    assert.equal(ctx.rollSpawn('land', 'user').isShiny, eligible, `land ${id}`);
+    assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, eligible, `fishing ${id}`);
+  }
+  speciesId = 722;
+  assert.equal(ctx.rollSpawn('land', 'user', null, { catchbot: true }).isShiny, true);
+  speciesId = 2;
   random = 0.9;
   assert.equal(ctx.rollSpawn('land', 'user').isShiny, false);
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
@@ -927,7 +937,9 @@ test('wild Shiny and event rolls do not use old pity counters', () => {
   eventActive = true;
   eventCount = 298;
   random = 0;
+  ctx.eventSpawnEntries[0].ids = [722];
   assert.equal(ctx.rollSpawn('water', 'user', rod).isEventSpawn, true);
+  assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true);
   assert.equal(eventCount, 298);
   assert.equal(shinyCount, 10);
   shinyCount = 10;

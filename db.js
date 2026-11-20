@@ -4852,47 +4852,6 @@ function getMegaStones(userId) {
   ).all(userId);
 }
 
-function sacrificeForChamber(userId, chamberKey, amount) {
-  assertUserId(userId);
-  const config = CHAMBER_CONFIG[chamberKey];
-  if (!config) return { error: 'invalid_chamber' };
-  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 100) {
-    throw new TypeError('Sacrifice amount must be an integer between 1 and 100.');
-  }
-  return db.transaction(() => {
-    getUser(userId);
-    const available = db.prepare(`
-      SELECT catches.id
-      FROM catches
-      JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
-      JOIN users ON users.id = catches.user_id
-      WHERE catches.user_id = ?
-        AND pokemon_forms.species_id = ?
-        AND pokemon_forms.is_default = 1
-        AND catches.is_shiny = 0
-        AND catches.is_golden = 0
-        AND catches.in_team = 0
-        AND (users.buddy_catch_id IS NULL OR catches.id != users.buddy_catch_id)
-      ORDER BY catches.id
-      LIMIT ?
-    `).all(userId, config.pokemonId, amount);
-    if (available.length < amount) return { error: 'insufficient_pokemon', available: available.length };
-    const ids = available.map((pokemon) => pokemon.id);
-    db.prepare(`DELETE FROM catches WHERE user_id = ? AND id IN (${ids.map(() => '?').join(',')})`)
-      .run(userId, ...ids);
-    db.prepare(`
-      INSERT INTO mega_chambers (user_id, chamber_key, sacrifices, clears)
-      VALUES (?, ?, ?, 0)
-      ON CONFLICT(user_id, chamber_key) DO UPDATE SET
-        sacrifices = mega_chambers.sacrifices + excluded.sacrifices
-    `).run(userId, chamberKey, amount);
-    const progress = db.prepare(
-      'SELECT sacrifices, clears FROM mega_chambers WHERE user_id = ? AND chamber_key = ?'
-    ).get(userId, chamberKey);
-    return { sacrificed: amount, ...progress };
-  }).immediate();
-}
-
 // Legendary/mythical chambers need 5 sacrifices (4 Uncommon, 3 Super Rare/Legendary, 2 Shiny/Golden Patreon); everything else needs 10.
 function getChamberRequirement(config, userId = null) {
   const row = db.prepare(
@@ -5384,8 +5343,14 @@ function resolveSpeciesEvolution(fromSpeciesId, toSpeciesId, catchRow) {
   if (!fromSlug || !toSlug) return null;
   let targetSlug = toSlug;
   if (!catchRow.form_default) {
-    if (!catchRow.form_slug.startsWith(fromSlug)) return null;
-    targetSlug = toSlug + catchRow.form_slug.slice(fromSlug.length);
+    if (catchRow.form_slug === `turquoise-${fromSlug}`
+        && ((fromSpeciesId === 821 && toSpeciesId === 822)
+          || (fromSpeciesId === 822 && toSpeciesId === 823))) {
+      targetSlug = `turquoise-${toSlug}`;
+    } else {
+      if (!catchRow.form_slug.startsWith(fromSlug)) return null;
+      targetSlug = toSlug + catchRow.form_slug.slice(fromSlug.length);
+    }
   }
   return db.prepare('SELECT * FROM pokemon_forms WHERE slug = ?').get(targetSlug) || null;
 }
@@ -8842,19 +8807,21 @@ function getHeldItemEncounterCounter(userId) {
   };
 }
 
-function recordEventSpawnCatch(userId, pokemonName, timestamp = Date.now()) {
+function recordEventSpawnCatch(userId, pokemonName, isEvent, timestamp = Date.now()) {
   assertUserId(userId);
   if (typeof pokemonName !== 'string' || !pokemonName.trim()) {
     throw new TypeError('A Pokémon name is required to record an event spawn catch.');
   }
+  if (typeof isEvent !== 'boolean') throw new TypeError('isEvent must be a boolean.');
   db.prepare(`
     INSERT INTO user_event_spawn_counters (user_id, encounters_since, last_caught_at, last_pokemon)
-    VALUES (?, 1, ?, ?)
+    VALUES (?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
-      encounters_since = encounters_since + 1,
-      last_caught_at = excluded.last_caught_at,
-      last_pokemon = excluded.last_pokemon
-  `).run(userId, timestamp, pokemonName.trim());
+      encounters_since = CASE WHEN ? THEN 0 ELSE encounters_since + 1 END,
+      last_caught_at = CASE WHEN ? THEN excluded.last_caught_at ELSE last_caught_at END,
+      last_pokemon = CASE WHEN ? THEN excluded.last_pokemon ELSE last_pokemon END
+  `).run(userId, isEvent ? 0 : 1, isEvent ? timestamp : null, isEvent ? pokemonName.trim() : null,
+    isEvent ? 1 : 0, isEvent ? 1 : 0, isEvent ? 1 : 0);
 }
 
 function getEventSpawnCatch(userId) {
@@ -11245,7 +11212,6 @@ module.exports = {
   CHAMBER_CONFIG,
   getUserChambers,
   getMegaStones,
-  sacrificeForChamber,
   completeMegaChamber,
   getChamberRequirement,
   MEGA_STONE_NAMES,

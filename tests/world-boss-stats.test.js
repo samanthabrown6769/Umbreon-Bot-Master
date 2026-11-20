@@ -401,16 +401,6 @@ test('highscores rank independent MVP and damage totals and limit results to 100
   } finally { db.close(); }
 });
 
-test('highscore snapshots refresh at five minutes and after a backward clock change', () => {
-  let queries = 0;
-  const ctx = vm.createContext({ getWorldBossHighscores: () => [{ user_id: String(++queries) }] });
-  vm.runInContext(extract(indexSource, 'const WORLD_BOSS_HIGHSCORES_REFRESH_MS', '\nasync function handleWorldBossHighscores('), ctx);
-  assert.equal(ctx.getCachedWorldBossHighscores(1000)[0].user_id, '1');
-  assert.equal(ctx.getCachedWorldBossHighscores(300999)[0].user_id, '1');
-  assert.equal(ctx.getCachedWorldBossHighscores(301000)[0].user_id, '2');
-  assert.equal(ctx.getCachedWorldBossHighscores(500)[0].user_id, '3');
-});
-
 test('highscores show ranks and 15-player pages, protect controls, and handle empty results', async () => {
   const rows = Array.from({ length: 100 }, (_, i) => ({
     user_id: String(100000000000000000n + BigInt(i)), mvps: 100 - i, victories: 1000 - i, damage: 50000 - i,
@@ -423,7 +413,7 @@ test('highscores show ranks and 15-player pages, protect controls, and handle em
     getWorldBossHighscores: () => currentRows,
     getTrainerIconEmoji: () => '<:longtrainericonxxxxxxxxxxxxxxxxx:12345678901234567890>',
   });
-  vm.runInContext(extract(indexSource, 'const WORLD_BOSS_HIGHSCORES_REFRESH_MS', '\nfunction isBotAdmin('), ctx);
+  vm.runInContext(extract(indexSource, 'async function handleWorldBossHighscores(', '\nfunction isBotAdmin('), ctx);
   const message = {
     reply: async (payload) => {
       payloads.push(payload);
@@ -436,7 +426,7 @@ test('highscores show ranks and 15-player pages, protect controls, and handle em
   await ctx.handleWorldBossHighscores(message, rows[30].user_id);
   const first = payloads[0].embeds[0].toJSON();
   assert.match(first.description, /#31/);
-  assert.match(first.footer.text, /Page 1\/7.*5 minutes/);
+  assert.match(first.footer.text, /Page 1\/7/);
   assert.equal(first.fields[0].value.split('\n').length, 15);
   assert.ok(first.fields.every((field) => field.value.length <= 1024));
   assert.match(first.fields[1].value, /100 in 1,000 victories/);
@@ -455,7 +445,6 @@ test('highscores show ranks and 15-player pages, protect controls, and handle em
   assert.equal(payloads[0].allowedMentions.parse.length, 0);
 
   currentRows = [];
-  ctx.getCachedWorldBossHighscores(Date.now() + 300001);
   await ctx.handleWorldBossHighscores(message, 'unranked');
   const empty = payloads.at(-1).embeds[0].toJSON();
   assert.match(empty.description, /not ranked/);

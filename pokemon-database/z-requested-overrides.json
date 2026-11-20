@@ -1,5 +1,20 @@
 [
   {
+    "slug": "turquoise-rookidee",
+    "sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Rookidee_Animated.gif",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Rookidee_Animated.gif"
+  },
+  {
+    "slug": "turquoise-corvisquire",
+    "sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Corvisquire_Animated.gif",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Corvisquire_Animated.gif"
+  },
+  {
+    "slug": "turquoise-corviknight",
+    "sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Corviknight_Animated.gif",
+    "animated_sprite": "https://res.cloudinary.com/apffqia5/image/upload/v1795184766/Corviknight_Animated.gif"
+  },
+  {
     "slug": "deerling-summer",
     "animated_sprite": "https://play.pokemonshowdown.com/sprites/ani/deerling-summer.gif",
     "shiny_animated_sprite": "https://play.pokemonshowdown.com/sprites/ani-shiny/deerling-summer.gif"
