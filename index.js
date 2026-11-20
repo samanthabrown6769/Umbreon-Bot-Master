@@ -14414,7 +14414,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}bag\` / \`${PREFIX}inv\` / \`${PREFIX}inventory\` [page] — View your paginated bag (items, evolution items, boxes)\n` +
             `• \`${PREFIX}collection\` / \`${PREFIX}coll\` — Browse public Global Collections; use \`${PREFIX}coll help\` for options\n` +
             `• \`${PREFIX}use rarecandy <amount|all>\` (alias \`rc\`) — Level up your buddy with Rare Candy\n` +
-            `• \`${PREFIX}release <Pokémon name|Pokédex number>\` / \`${PREFIX}r\` — Release a Pokémon for PokéCoins; \`${PREFIX}release number <Pokédex number> [amount]\` releases multiples\n` +
+            `• \`${PREFIX}release <Pokémon name|Pokédex number> [amount]\` / \`${PREFIX}r\` — Release Pokémon for PokéCoins; \`${PREFIX}release number <Pokédex number> [amount]\` also releases multiples\n` +
             `  Use \`${PREFIX}release duplicates\` (\`${PREFIX}r d\`) or \`${PREFIX}release type <rarity>mons\` for bulk releases; use \`${PREFIX}release lock|unlock <species name|Pokédex number|mega-line|egg|rarity|event|starters>\`, \`${PREFIX}release view-locks\`, or \`${PREFIX}release clear-locks\`; see payouts with \`${PREFIX}release values\``
           )
           .setFooter({ text: 'Page 1/4 • Select a category below' }),
@@ -26569,7 +26569,7 @@ client.on('messageCreate', async (message) => {
             AND COALESCE(p.species_id, c.pokemon_id) = ?
             AND c.in_team = 0 AND c.is_locked = 0 AND c.is_golden = 0
           ORDER BY c.id
-        `).all(userId, normalizedDexNumber, amount);
+        `).all(userId, normalizedDexNumber);
         const releasable = matching
           .filter((pokemon) => !getReleaseProtectionReason(pokemon))
           .slice(0, amount);
@@ -26580,6 +26580,58 @@ client.on('messageCreate', async (message) => {
         if (!outcome.released.length) {
           return message.reply(
             'Those Pokémon are protected from release or have no configured payout. Locked, team, Legendary, Shiny, Golden, Mega, and Gmax Pokémon are kept.'
+          );
+        }
+        const rotomText = outcome.rotomDrops.length
+          ? `\n⚙️ Rotom items found: ${outcome.rotomDrops.join(', ')}.`
+          : '';
+        return message.reply(createReleaseAnnouncement(
+          userId,
+          message.author.username,
+          outcome,
+          rotomText
+        ));
+      }
+
+      const directAmountCandidate = args.length > 1
+        && /^\d+$/.test(args[args.length - 1])
+        ? Number(args[args.length - 1])
+        : null;
+      if (directAmountCandidate !== null) {
+        if (
+          args.length < 2
+          || !Number.isSafeInteger(directAmountCandidate)
+          || directAmountCandidate <= 0
+        ) {
+          return message.reply(
+            `Usage: \`${PREFIX}release <Pokémon name|Pokédex number> [amount]\`.`
+          );
+        }
+        const query = args.slice(0, -1).join(' ').trim();
+        if (!query) {
+          return message.reply(
+            `Usage: \`${PREFIX}release <Pokémon name|Pokédex number> [amount]\`.`
+          );
+        }
+        const matching = findUserPokemonMatches(userId, query);
+        const releasable = matching
+          .filter((pokemon) =>
+            !pokemon.is_locked
+            && !pokemon.in_team
+            && !getReleaseProtectionReason(pokemon, { manual: true })
+          )
+          .slice(0, directAmountCandidate);
+        if (!releasable.length) {
+          return message.reply(`No releasable Pokémon found for **${query}**.`);
+        }
+        const outcome = releaseCatchIds(
+          userId,
+          releasable.map((pokemon) => pokemon.id),
+          { allowManual: true }
+        );
+        if (!outcome.released.length) {
+          return message.reply(
+            'Those Pokémon are protected from release or have no configured payout. Locked, team, Golden, Mega, and Gmax Pokémon are kept.'
           );
         }
         const rotomText = outcome.rotomDrops.length
@@ -26607,6 +26659,7 @@ client.on('messageCreate', async (message) => {
             iconURL: message.author.displayAvatarURL(),
           })
           .setDescription(
+            `\`${PREFIX}release <species name|Dex #> [amount]\` — release up to that many matching Pokémon.\n` +
             `\`${PREFIX}release lock|unlock <species name>\` — lock/unlock all copies of a species using one lock slot.\n` +
             `\`${PREFIX}release lock|unlock <Dex #>\` — lock/unlock matching individual Pokémon.\n` +
             `\`${PREFIX}release lock|unlock <rarity>\` — lock/unlock a rarity category.\n` +
