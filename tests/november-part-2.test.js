@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const Database = require('better-sqlite3');
+const { EmbedBuilder } = require('discord.js');
 const catalog = require('../data/pokemon-catalog.json');
 const rarities = require('../data/pokemon-rarities.json');
 const referenceForms = require('../pokemon-database/formes.json');
@@ -112,10 +113,117 @@ test('all event checklist entries resolve to the requested spawn forms and regis
       assert.equal(ctx.recordEventCatch(event.id, 'user', form.name, shiny).added, false);
     }
     assert.equal(ctx.getUserEventProgress(event.id, 'user').size, 12);
-    assert.equal(ctx.EVENT_FISH_SPAWN_FORM_IDS.length, 0);
+    const wake = db.prepare("SELECT id FROM pokemon_forms WHERE slug = 'walking-wake'").get();
+    assert.deepEqual(Array.from(ctx.EVENT_FISH_SPAWN_FORM_IDS), [wake.id]);
+    assert.equal(ctx.eventSpawnEntries[5].patreonOnly, true);
+    assert.equal(ctx.eventSpawnEntries[7].fishOnly, true);
+    assert.equal(ctx.eventSpawnEntries[7].fish, true);
   } finally {
     db.close();
   }
+});
+
+test('only Patreon ticket holders spawn Shiny Oricorio and Walking Wake spawns only while fishing', () => {
+  const db = catalogDatabase();
+  try {
+    let ticket = true;
+    let patreon = false;
+    let preferredId = null;
+    let ordinaryId = 1;
+    let selectedPool = [];
+    const math = Object.create(Math);
+    math.random = () => 0;
+    const ctx = vm.createContext({
+      db, Math: math, halloweenEvent: event,
+      eventSpawnFormIds: [], eventSpawnEntries: [], EVENT_FISH_SPECIES: new Set(),
+      EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [],
+      getUser: () => ({ event_ticket: ticket, has_patreon: patreon }),
+      isEventOpen: () => true, consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
+      getClanPerkMultipliers: () => ({ erBonus: 0 }), getTotalEffectiveShinyBonus: () => 0,
+      consumeEncounterModifier: () => 'normal', getChamberSpawnSpecies: () => [],
+      getPatreonPerks: () => ({ eventShinyPct: 0, shinyRatePct: 0 }),
+      isPlayerBonusActive: () => false, getEventSpawnChance: () => 1,
+      getRaritySettings: () => [{ name: 'Common', spawn_weight: 1, pokemon_count: 1 }],
+      rollSpecialLegendarySpawn: () => null, getActiveHuntTarget: () => null,
+      chooseEncounterRarity: () => 'Common', getEncounterRarityRate: () => 1, formatPercent: () => '100%',
+      getChanceFromFlooredOdds: (chance) => chance,
+      pickWeighted: (pool) => {
+        selectedPool = Array.from(pool);
+        return selectedPool.find((entry) => entry.ids.includes(preferredId)) || selectedPool[0];
+      },
+      getRandomPokemon: (_rarity, _water, _gmax, _mega, _allowed, _excluded, ids) => {
+        const form = db.prepare('SELECT * FROM pokemon_forms WHERE id = ?').get(ids ? ids[0] : ordinaryId);
+        return { id: form.id, name: form.name, speciesId: form.species_id,
+          speciesName: form.species_name, rarity: form.rarity };
+      },
+      SPECIAL_SPAWN_RESERVED_SPECIES: [], EXPLORE_EXCLUSIVE_SHINY_IDS: new Set(),
+      EGG_ONLY_SHINY_SPECIES_KEYS: new Set(), FISH_ONLY_SHINY_KEYS: new Set(),
+      FISH_PATREON_ONLY_SHINY_KEYS: new Set(), HARD_RARITY_USER_IDS: new Set(),
+      HARD_RARITY_RATE_MULTIPLIER: 1, DAILY_HUNT_SPAWN_BOOST_CHANCE: 0.1,
+      EVENT_TICKET_SHINY_RATES: { standard: { event: 0.01, nonEvent: 0.001 }, patreon: { event: 0.02 } },
+      BASE_SHINY_RATE: 1 / 3000, INCENSE_BOOST: 1.1,
+      LEGENDARY_BASE_CHANCE: 1 / 333, LEGENDARY_GOLDEN_RAZZ_CHANCE: 1 / 250,
+    });
+    vm.runInContext(extract(dbSource, 'function findPokemonForms(', '\nconst SPECIAL_SPAWN_RESERVED_SPECIES'), ctx);
+    vm.runInContext(extract(indexSource, 'const eventSpeciesName =', '\ndb.exec(`CREATE TABLE IF NOT EXISTS active_event_state'), ctx);
+    vm.runInContext(extract(indexSource, 'function getEventPokemonKey(', '\nfunction getRarityInfo('), ctx);
+    vm.runInContext(extract(indexSource, 'function rollSpawn(', '\nconst exploreCatalogCache'), ctx);
+    ctx.buildEventSpawnData(event);
+    const oricorio = db.prepare("SELECT id FROM pokemon_forms WHERE slug = 'oricorio-baile'").get().id;
+    const wake = db.prepare("SELECT id FROM pokemon_forms WHERE slug = 'walking-wake'").get().id;
+    const rod = { enablesShiny: false, enablesLegendary: false, baseShinyRate: 0 };
+
+    preferredId = oricorio;
+    assert.notEqual(ctx.rollSpawn('land', 'user').id, oricorio);
+    assert.equal(selectedPool.some((entry) => entry.ids.includes(oricorio)), false);
+    assert.equal(selectedPool.some((entry) => entry.ids.includes(wake)), false);
+    patreon = true;
+    const shiny = ctx.rollSpawn('land', 'user');
+    assert.equal(shiny.id, oricorio);
+    assert.equal(shiny.isShiny, true);
+    assert.equal(selectedPool.some((entry) => entry.ids.includes(wake)), false);
+    preferredId = wake;
+    for (const membership of [false, true]) {
+      patreon = membership;
+      const fishing = ctx.rollSpawn('water', 'user', rod);
+      assert.equal(fishing.id, wake);
+      assert.equal(fishing.isShiny, false);
+      assert.deepEqual(selectedPool.map((entry) => entry.ids[0]), [wake]);
+    }
+    ticket = false;
+    patreon = true;
+    selectedPool = [];
+    assert.notEqual(ctx.rollSpawn('land', 'user').id, oricorio);
+    assert.notEqual(ctx.rollSpawn('water', 'user', rod).id, wake);
+    assert.equal(selectedPool.length, 0);
+    ordinaryId = oricorio;
+    for (const membership of [false, true]) {
+      patreon = membership;
+      assert.equal(ctx.rollSpawn('land', 'user').isShiny, false);
+      assert.equal(ctx.rollSpawn('water', 'user', { enablesShiny: true, enablesLegendary: true,
+        baseShinyRate: 1 / 625 }).isShiny, false);
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test('event checklist displays the requested Patreon and fishing labels with progress', async () => {
+  const ctx = vm.createContext({
+    halloweenEvent: event, EmbedBuilder, EVENT_EMBED_COLOR: 0x123456,
+    client: { user: { displayAvatarURL: () => 'https://example.com/avatar.png' } },
+    getUser: () => ({ event_ticket: 1, event_gold_claimed: 0 }),
+    getUserEventProgress: () => new Set(['s_oricorio']),
+    getUserEventCatchCounts: () => new Map([['s_oricorio', 2], ['walking_wake', 1]]),
+    isEventOpen: () => true, createEventLinkRow: () => null,
+  });
+  vm.runInContext(extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), ctx);
+  vm.runInContext(extract(indexSource, 'async function handleEventCommand(', '\nasync function getUsernameById('), ctx);
+  const payload = await ctx.handleEventCommand({ reply: (value) => value }, 'user', ['cl']);
+  const description = payload.embeds[0].toJSON().description;
+  assert.ok(description.includes('✅ <:shiny:1558841136905326784> <:soricorio:1573347784462172321> Oricorio <:patreonlogo:1573357109058470039> — **2** caught'));
+  assert.ok(description.includes('<:legendary:1558841138193113221><:WalkingWake:1568037632376569968>(`.fish`) — **1** caught'));
+  assert.ok(description.includes('<:sgastly:1573347794121523250> Shiny Gastly — **0** caught'));
 });
 
 test('the full checklist grants one Gem Turquoise Rookidee only after all 12 catches', async () => {

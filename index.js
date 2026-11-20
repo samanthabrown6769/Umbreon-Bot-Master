@@ -698,7 +698,13 @@ function buildEventSpawnData(event) {
         .filter((pokemon) => names.includes(pokemon.name.toLowerCase().replace(/[^a-z0-9]/g, '')))
         .map((pokemon) => pokemon.id)
     )));
-    return { ids, shiny: Boolean(eventPokemon.shiny), fish: Boolean(eventPokemon.fish) };
+    return {
+      ids,
+      shiny: Boolean(eventPokemon.shiny),
+      fish: Boolean(eventPokemon.fish || eventPokemon.fishOnly),
+      fishOnly: Boolean(eventPokemon.fishOnly),
+      patreonOnly: Boolean(eventPokemon.patreonOnly),
+    };
   }).filter((entry) => entry.ids.length);
 
   // Event Pokémon only appear while fishing when the event entry sets `fish: true`.
@@ -3793,17 +3799,18 @@ function rollSpawn(
   );
 
   let forcedEvent = null;
-  const forcedEventPool = poolName === 'water'
-    ? eventSpawnEntries.filter((entry) => entry.fish)
-    : eventSpawnEntries;
+  const eventPatreon = eventTicketActive && Boolean(getUser(userId).has_patreon);
+  const forcedEventPool = eventSpawnEntries.filter((entry) =>
+    (poolName === 'water' ? entry.fish : !entry.fishOnly)
+    && (!entry.patreonOnly || eventPatreon)
+  );
   const eventSpawnEligible = eventTicketActive && forcedEventPool.length > 0;
   const eventChance = eventSpawnEligible ? getEventSpawnChance(
     roleChanceBoost, getPatreonPerks(userId).eventShinyPct, isPlayerBonusActive('shiny')
   ) : 0;
   const eventSpawned = eventSpawnEligible && Math.random() < eventChance;
   if (eventSpawned) {
-    const isPatreonUser = Boolean(getUser(userId).has_patreon);
-    const eventShinyWeight = (isPatreonUser
+    const eventShinyWeight = (eventPatreon
       ? EVENT_TICKET_SHINY_RATES.patreon.event / EVENT_TICKET_SHINY_RATES.standard.event
       : 1)
       * (1 + getPatreonPerks(userId).eventShinyPct / 100)
@@ -11297,7 +11304,9 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
         : halloweenEvent.emojis.incomplete;
       const caught = eventCatchCounts.get(pokemon.key) || 0;
       const sprite = getPokemonSpriteEmoji({ name: pokemon.name, isShiny: Boolean(pokemon.shiny) });
-      return `${icon} ${sprite ? `${sprite} ` : ''}${pokemon.name}${pokemon.tag ? ` ${pokemon.tag}` : ''} — **${caught}** caught`;
+      const display = pokemon.checklistDisplay
+        || `${sprite ? `${sprite} ` : ''}${pokemon.name}${pokemon.tag ? ` ${pokemon.tag}` : ''}`;
+      return `${icon} ${display} — **${caught}** caught`;
     };
     const regularReward = halloweenEvent.rewards.regular;
     const description =

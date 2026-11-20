@@ -77,6 +77,8 @@ const event = {
   // - Optionally add `tag` to show a note after the name.
   // Only names matching a form in the Pokémon catalog can spawn.
   // - Set `fish: true` to let the entry spawn through `.fish`; otherwise it never spawns there.
+  // - Set `fishOnly: true` to allow `.fish` but not land spawns, or `patreonOnly: true` to require membership.
+  // - Optionally set `checklistDisplay` to override the entry's displayed checklist text.
   pokemon: [
     {
       key: 's_spinarak',
