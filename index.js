@@ -3322,13 +3322,13 @@ const ICONS = {
   box: '📦',
 };
 
-// Event tickets and fishing rods have separate boosted shiny rates.
+// Fishing rods have separate shiny rates.
 const BASE_SHINY_RATE = 1 / 3000;
 // Incense: +10% shiny encounter rate and +10% promo item drop rate while context charges last.
 const INCENSE_BOOST = 1.1;
 const EVENT_TICKET_SHINY_RATES = Object.freeze({
-  patreon: { event: 1 / 50, nonEvent: 1 / 250 },
-  standard: { event: 1 / 100, nonEvent: 1 / 500 },
+  patreon: { event: 1 / 50 },
+  standard: { event: 1 / 100 },
 });
 const CATCHBOT_GOLDEN_BASE_CHANCE = 1 / 250000;
 const CATCHBOT_LEGENDARY_DENOMINATORS = Object.freeze([
@@ -3977,11 +3977,9 @@ function rollSpawn(
         ? 1 / CATCHBOT_SHINY_DENOMINATORS[catchbotLuckLevel]
       : isEventShinyTargetActive
         ? ticketShinyRates.event
-        : eventTicketActive
-          ? EVENT_TICKET_SHINY_RATES.standard.nonEvent
-          : rod
-            ? rod.baseShinyRate
-            : BASE_SHINY_RATE;
+        : rod
+          ? rod.baseShinyRate
+          : BASE_SHINY_RATE;
     const patreonShinyMultiplier = userId === null
       ? 1
       : 1 + (isEventShinyTargetActive

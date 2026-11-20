@@ -2728,7 +2728,11 @@ test('full-odds shiny rolls use each trainer tier and charm without Patreon base
     Math: math, getUser: (id) => users[id], getPlayerClan: () => null,
     getClanPerkMultipliers: () => ({ srBonus: 0, erBonus: 0 }),
     consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
-    isEventOpen: () => false, halloweenEvent: {}, eventSpawnEntries: [],
+    isEventOpen: () => true, halloweenEvent: {},
+    eventSpawnEntries: [{ ids: [2], shiny: true, fish: false }],
+    getEventSpawnChance: () => 1 / 400, isPlayerBonusActive: () => false,
+    isEventChecklistSpawn: () => false, isEventShinyTarget: () => false,
+    getEventPokemonKey: () => null,
     consumeEncounterModifier: () => 'normal', getChamberSpawnSpecies: () => [],
     rollSpecialLegendarySpawn: () => null, getActiveHuntTarget: () => null,
     chooseEncounterRarity: () => 'Common', getEncounterRarityRate: () => 1,
@@ -2754,10 +2758,13 @@ test('full-odds shiny rolls use each trainer tier and charm without Patreon base
     ['standard', 1 / 3000], ['common', 1 / 2400], ['legendary', 1 / 2000],
     ['shiny', 1 / 1980], ['extra', 1.25 / (3000 * 0.97)], ['standard', 1 / 3000],
   ]) {
-    rolls = [0.5, chance - 1e-12];
-    assert.equal(ctx.rollSpawn('land', user).isShiny, true, user);
-    rolls = [0.5, chance + 1e-12];
-    assert.equal(ctx.rollSpawn('land', user).isShiny, false, user);
+    for (const ticket of [0, 1]) {
+      users[user].event_ticket = ticket;
+      rolls = ticket ? [0.5, 0.5, chance - 1e-12] : [0.5, chance - 1e-12];
+      assert.equal(ctx.rollSpawn('land', user).isShiny, true, `${user}, ticket ${ticket}`);
+      rolls = ticket ? [0.5, 0.5, chance + 1e-12] : [0.5, chance + 1e-12];
+      assert.equal(ctx.rollSpawn('land', user).isShiny, false, `${user}, ticket ${ticket}`);
+    }
   }
 });
 
@@ -3378,7 +3385,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
       + '\n' + extract(indexSource, 'function getEventPokemonKey(', '\nfunction getRarityInfo('),
     ctx
   );
-  const rod = { enablesLegendary: true, enablesShiny: true, baseShinyRate: 0.001 };
+  const rod = { enablesLegendary: true, enablesShiny: true, baseShinyRate: 1 / 1250 };
   const fishEvent = (selectionRoll, options = {}) => {
     rolls = [0, selectionRoll];
     return ctx.rollSpawn('water', 'user', rod, options);
@@ -3425,9 +3432,8 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     const weight = baseline * (tier ? 2 : 1) * (1 + eventPct / 100) / (1 - charm / 100);
     assert.ok(Math.abs(selectedWeights[0] - weight) < 1e-12, `${tier} event shiny weight`);
     assert.equal(selectedWeights[1], 1, `${tier} regular event weight`);
-    const ticketBaseRate = 0.001;
-    const ordinaryChance = 1 / Math.floor(
-      1 / (ticketBaseRate * (1 + ordinaryPct / 100) / (1 - charm / 100))
+    const ordinaryChance = ctx.getChanceFromFlooredOdds(
+      rod.baseShinyRate * (1 + ordinaryPct / 100) / (1 - charm / 100)
     );
     rolls = [eventChance, 0.5, ordinaryChance - 1e-10];
     assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, true, `${tier} ordinary shiny below threshold`);
