@@ -2522,7 +2522,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   litleo: { golden: '<:goldenlitleo:1562202542203740261>' },
   croagunk: { golden: '<:goldencroagunk:1562202540521558026>' },
   varoom: { golden: '<:goldenvaroom:1562203391835381840>', shiny: '<:SVaroom:1567588759824764968>' },
-  aron: { golden: '<:goldenaron:1562208128618209310>' },
+  aron: { golden: '<:goldenaron:1562208128618209310>', shiny: '<:saron:1573354898869981304>' },
   terapagos: { normal: '<:terapagos:1562208130325151744>' },
   mewtwo: {
     normal: '<:Mewtwo:1562183882885955674>',
@@ -2546,17 +2546,23 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   banette: { normal: '<:Banette:1562183890972708964>' },
   whimsicott: { normal: '<:Whimsicott:1562183892574670859>' },
   bulbasaur: { normal: '<:bulbasaur:1569731188774404146>', golden: '<:goldenbulbasaur:1562255800372699228>' },
-  charmander: { normal: '<:charmander:1569731185532215349>' },
+  charmander: { normal: '<:charmander:1569731185532215349>', shiny: '<:scharmander:1573352658972966923>' },
+  charmeleon: { shiny: '<:scharmeleon:1573352656779346010>' },
+  charizard: { shiny: '<:scharizard:1573352654250184814>' },
+  houndour: { normal: '<:houndour:1573352683509653626>', shiny: '<:shoundour:1573352676811477042>' },
+  houndoom: { normal: '<:houndoom:1573352681542656061>', shiny: '<:shoundoom:1573352674177458216>' },
+  snover: { normal: '<:snover:1573352698277924984>', shiny: '<:ssnover:1573352694549315684>' },
+  abomasnow: { normal: '<:abomasnow:1573352692015697930>', shiny: '<:sabomasnow:1573352689738453122>' },
   squirtle: { normal: '<:squirtle:1569731183041052754>' },
   chikorita: { normal: '<:chikorita:1569731181480513647>' },
   cyndaquil: { normal: '<:cyndaquil:1569731179911839846>' },
   totodile: { normal: '<:totodile:1569731177303113768>' },
   treecko: { normal: '<:treecko:1569731174816022688>', golden: '<:GTreecko:1569731127269392447>' },
   torchic: { normal: '<:torchic:1569731171347075092>' },
-  mudkip: { normal: '<:mudkip:1569731168088232066>' },
+  mudkip: { normal: '<:mudkip:1569731168088232066>', shiny: '<:smudkip:1573354896286163114>' },
   turtwig: { normal: '<:turtwig:1569731166573957222>' },
   chimchar: { normal: '<:chimchar:1569731164971995176>' },
-  piplup: { normal: '<:piplup:1569731162727776287>', golden: '<:GPiplup:1569731123251122196>' },
+  piplup: { normal: '<:piplup:1569731162727776287>', golden: '<:GPiplup:1569731123251122196>', shiny: '<:spiplup:1573354901101350912>' },
   snivy: { normal: '<:snivy:1569731160832082025>' },
   tepig: { normal: '<:tepig:1569731158680543344>' },
   oshawott: { normal: '<:oshawott:1569731157006753902>' },
@@ -2710,7 +2716,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   raikou: { normal: '<:Raikou:1567608122871259136>' },
   entei: { normal: '<:Entei:1567608119612416130>' },
   latias: { normal: '<:Latias:1567608116852559983>' },
-  latios: { normal: '<:Latios:1567608114994348102>' },
+  latios: { normal: '<:Latios:1567608114994348102>', shiny: '<:slatios:1573352705169035425>' },
   kyogre: { normal: '<:Kyogre:1567608112968630353>' },
   groudon: { normal: '<:Groudon:1567608110867288074>' },
   deoxys: { normal: '<:Deoxys:1567608109059547176>' },
@@ -2850,6 +2856,42 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'turquoise corviknight': { normal: '<:turquoisecorviknight:1573347761972060220>' },
   'topaz teddiursa': { normal: '<:topazteddiursa:1573347758558023860>' },
   'topaz ursaring': { normal: '<:topazursaring:1573347754678296596>' },
+  'mega latios': { normal: '<:megalatios:1573352703264956536>', shiny: '<:smegalatios:1573352701239107654>' },
+  'latios mega': { normal: '<:megalatios:1573352703264956536>', shiny: '<:smegalatios:1573352701239107654>' },
+  'mega abomasnow': { normal: '<:megaabomasnow:1573352687708405942>', shiny: '<:smegaabomasnow:1573352685300613131>' },
+  'abomasnow mega': { normal: '<:megaabomasnow:1573352687708405942>', shiny: '<:smegaabomasnow:1573352685300613131>' },
+  'mega houndoom': { normal: '<:megahoundoom:1573352679285981274>', shiny: '<:smegahoundoom:1573352661816840333>' },
+  'houndoom mega': { normal: '<:megahoundoom:1573352679285981274>', shiny: '<:smegahoundoom:1573352661816840333>' },
+  'mega charizard x': { normal: '<:charizardx:1573352645047885824>', shiny: '<:smegacharizardx:1573352651763097740>' },
+  'charizard mega x': { normal: '<:charizardx:1573352645047885824>', shiny: '<:smegacharizardx:1573352651763097740>' },
+  'charizard x mega': { normal: '<:charizardx:1573352645047885824>', shiny: '<:smegacharizardx:1573352651763097740>' },
+  'mega charizard y': { normal: '<:charizardy:1573352647149228163>', shiny: '<:smegacharizardy:1573352649477193900>' },
+  'charizard mega y': { normal: '<:charizardy:1573352647149228163>', shiny: '<:smegacharizardy:1573352649477193900>' },
+  'charizard y mega': { normal: '<:charizardy:1573352647149228163>', shiny: '<:smegacharizardy:1573352649477193900>' },
+  magby: { shiny: '<:smagby:1573354894289674260>' },
+  staraptor: { shiny: '<:sstaraptor:1573354902917222510>' },
+  bronzor: { shiny: '<:sbronzor:1573354905098256424>' },
+  sandile: { shiny: '<:ssandile:1573354907572895785>' },
+  ducklett: { shiny: '<:sducklett:1573354910433673459>' },
+  galvantula: { shiny: '<:sgalvantula:1573354913436799096>' },
+  joltik: { shiny: '<:sjoltik:1573354915529756833>' },
+  shelmet: { shiny: '<:sshelmet:1573354917760868473>' },
+  larvesta: { shiny: '<:slarvesta:1573354920055275601>' },
+  skitty: { shiny: '<:sskitty:1573354922215215246>' },
+  minun: { shiny: '<:sminun:1573354924526403737>' },
+  'mega metagross': { shiny: '<:smegametagross:1573354926606917753>' },
+  'metagross mega': { shiny: '<:smegametagross:1573354926606917753>' },
+  metagross: { shiny: '<:smetagross:1573354928511131749>' },
+  metang: { shiny: '<:smetang:1573354930540904589>' },
+  beldum: { shiny: '<:sbeldum:1573354932822741022>' },
+  pancham: { shiny: '<:spancham:1573354935033266236>' },
+  buizel: { shiny: '<:sbuizel:1573354937386012712>' },
+  swadloon: { shiny: '<:sswadloon:1573354939340689538>' },
+  bunnelby: { shiny: '<:sbunnelby:1573354941421191168>' },
+  swirlix: { shiny: '<:sswirlix:1573354943425945752>' },
+  'hakamo o': { shiny: '<:shakamoo:1573354945867026432>' },
+  wynaut: { golden: '<:gwynaut:1573354947771371601>' },
+  frogadier: { normal: '<:frogadier:1573354950073786438>' },
   'mega zygarde': { normal: '<:MegaZygarde:1567575569783193640>' },
   'zygarde mega': { normal: '<:MegaZygarde:1567575569783193640>' },
   ...Object.fromEntries([
@@ -22897,7 +22939,8 @@ client.on('messageCreate', async (message) => {
       const subcommand = args[0]?.toLowerCase();
       const chambers = getUserChambers(userId);
       const openChambers = Object.values(CHAMBER_CONFIG).filter((chamber) => isChamberOpen(chamber));
-      const chamberChoices = `1-${openChambers.length}|${openChambers.map((chamber) => chamber.key).join('|')}`;
+      const chamberChoices = [...openChambers.map((chamber) => String(chamber.id)),
+        ...openChambers.map((chamber) => chamber.key)].join('|');
       const resolveChamber = (query) => openChambers.find((chamber) =>
         String(chamber.id) === query
         || chamber.key === query?.toLowerCase()
@@ -22907,8 +22950,8 @@ client.on('messageCreate', async (message) => {
       );
 
       if (subcommand === 'battle' || subcommand === 'start' || subcommand === 'b') {
-        const config = resolveChamber(args[1]);
-        if (!config || args.length > 2) {
+        const config = resolveChamber(args.slice(1).join(' '));
+        if (!config) {
           return message.reply(`Usage: \`${PREFIX}mc battle <${chamberChoices}>\`.`);
         }
         const progress = chambers[config.key];

@@ -244,3 +244,127 @@ test('requested event, Turquoise and Topaz sprite emojis resolve', () => {
     assert.match(ctx.getPokemonSpriteEmoji({ name, isShiny }), new RegExp(`:${id}>$`), name);
   }
 });
+
+test('November Part 2 chambers open and close with the event and award the correct stones', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, species_id INTEGER, is_default INTEGER, is_legendary INTEGER);
+      INSERT INTO pokemon_forms VALUES (381, 381, 1, 1), (460, 460, 1, 0), (229, 229, 1, 0), (6, 6, 1, 0);
+      CREATE TABLE mega_chambers (user_id TEXT, chamber_key TEXT, sacrifices INTEGER, clears INTEGER,
+        PRIMARY KEY (user_id, chamber_key));
+      CREATE TABLE mega_stones (user_id TEXT, stone_name TEXT, amount INTEGER,
+        PRIMARY KEY (user_id, stone_name));
+    `);
+    let now = Date.parse(event.startsAt) - 1;
+    const ctx = vm.createContext({
+      db, ALL_EVENTS: [previousEvent, event],
+      Date: class extends Date { static now() { return now; } },
+      assertUserId: () => {}, getPatreonPerks: () => null,
+      awardCoinsWithBoost: (_id, amount) => ({ finalAmount: amount }), incrementUser: () => {},
+    });
+    vm.runInContext(`${extract(dbSource, 'const CHAMBER_CONFIG =', '\nfunction getUserChambers(')}
+      this.chambers = CHAMBER_CONFIG;`, ctx);
+    vm.runInContext(extract(indexSource, 'function isChamberOpen(', '\nconst { parseAmount }'), ctx);
+    vm.runInContext(extract(indexSource, 'function creditChamberSacrifice(', '\nfunction createReleaseAnnouncement('), ctx);
+    vm.runInContext(extract(dbSource, 'function getChamberRequirement(', '\nfunction megaEvolvePokemon('), ctx);
+    const expected = [
+      ['latios', 9, 381, 'latios-mega', 'Latiosite', 5],
+      ['abomasnow', 10, 460, 'abomasnow-mega', 'Abomasite', 10],
+      ['houndoom', 11, 229, 'houndoom-mega', 'Houndoominite', 10],
+      ['charizardx', 12, 6, 'charizard-mega-x', 'Charizardite X', 10],
+    ];
+    const forms = loadPokemonDatabase();
+    for (const [key, id, species, slug, stone] of expected) {
+      const chamber = ctx.chambers[key];
+      assert.equal(chamber.id, id);
+      assert.equal(chamber.pokemonId, species);
+      assert.equal(chamber.megaSlug, slug);
+      assert.equal(chamber.rewardStone, stone);
+      const form = catalog.find((entry) => entry.slug === slug);
+      assert.equal(form.species_id, species);
+      assert.equal(forms.get(slug).rarity, 'Mega');
+      assert.equal(ctx.getMegaStoneForForm(form), stone);
+      assert.equal(ctx.isChamberOpen(chamber, now), false);
+      ctx.creditChamberSacrifice('user', species);
+    }
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM mega_chambers').get().count, 0);
+    assert.equal(ctx.isChamberOpen(ctx.chambers.mewtwox, now), true);
+    now++;
+    assert.equal(ctx.isChamberOpen(ctx.chambers.mewtwox, now), false);
+    assert.deepEqual(Array.from(ctx.getChamberSpawnSpecies()), expected.map((entry) => entry[2]));
+    for (const [key, , species, , stone, required] of expected) {
+      const chamber = ctx.chambers[key];
+      assert.equal(ctx.isChamberOpen(chamber, now), true);
+      assert.equal(ctx.getChamberRequirement(chamber), required);
+      for (let i = 0; i < required; i++) ctx.creditChamberSacrifice('user', species);
+      const reward = ctx.completeMegaChamber('user', key);
+      assert.equal(reward.stone, stone);
+      assert.equal(reward.remainingSacrifices, 0);
+      assert.equal(db.prepare('SELECT amount FROM mega_stones WHERE user_id = ? AND stone_name = ?')
+        .get('user', stone).amount, 1);
+      assert.equal(ctx.completeMegaChamber('user', key).error, 'not_ready');
+      assert.equal(ctx.isChamberOpen(chamber, Date.parse(event.endsAt) - 1), true);
+      assert.equal(ctx.isChamberOpen(chamber, Date.parse(event.endsAt)), false);
+    }
+    now = Date.parse(event.endsAt);
+    ctx.creditChamberSacrifice('user', 381);
+    assert.equal(db.prepare("SELECT sacrifices FROM mega_chambers WHERE chamber_key = 'latios'").get().sacrifices, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('chamber battles accept their displayed numbers and full multiword names', async () => {
+  const ctx = vm.createContext({
+    command: 'mc', userId: 'user', PREFIX: '.',
+    message: { reply: (content) => content },
+    getUserChambers: () => Object.fromEntries(['latios', 'abomasnow', 'houndoom', 'charizardx']
+      .map((key) => [key, { sacrifices: 10, clears: 0 }])),
+    getChamberRequirement: () => 1,
+    isChamberOpen: (chamber) => chamber.eventId === event.id,
+    runMegaChamberGauntlet: (_message, _user, chamber) => chamber.key,
+  });
+  vm.runInContext(`${extract(dbSource, 'const CHAMBER_CONFIG =', '\n// Every Mega Stone')}
+    this.CHAMBER_CONFIG = CHAMBER_CONFIG;`, ctx);
+  const branch = extract(indexSource, "    if (command === 'mc' || command === 'megachamber') {",
+    "\n    if (command === 'mega') {");
+  vm.runInContext(`async function runChamber(args) { ${branch} }`, ctx);
+  for (const [query, expected] of [
+    ['9', 'latios'], ['10', 'abomasnow'], ['11', 'houndoom'], ['12', 'charizardx'],
+    ['mega latios', 'latios'], ['Mega Charizard X', 'charizardx'],
+    ['charizard x', 'charizardx'], ['charizardx', 'charizardx'], ['charizard', 'charizardx'],
+  ]) {
+    assert.equal(await ctx.runChamber(['battle', ...query.split(' ')]), expected);
+  }
+  assert.match(await ctx.runChamber(['battle', 'invalid']), /9\|10\|11\|12/);
+});
+
+test('requested chamber Pokémon emojis distinguish base, Mega, shiny and Gmax forms', () => {
+  const ctx = vm.createContext({});
+  vm.runInContext(extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), ctx);
+  const variants = [
+    ['Mega Charizard X', false, '1573352645047885824'], ['Mega Charizard Y', false, '1573352647149228163'],
+    ['Mega Charizard Y', true, '1573352649477193900'], ['Mega Charizard X', true, '1573352651763097740'],
+    ['Charizard', true, '1573352654250184814'], ['Charmeleon', true, '1573352656779346010'],
+    ['Charmander', true, '1573352658972966923'], ['Mega Houndoom', true, '1573352661816840333'],
+    ['Houndoom', true, '1573352674177458216'], ['Houndour', true, '1573352676811477042'],
+    ['Mega Houndoom', false, '1573352679285981274'], ['Houndoom', false, '1573352681542656061'],
+    ['Houndour', false, '1573352683509653626'], ['Mega Abomasnow', true, '1573352685300613131'],
+    ['Mega Abomasnow', false, '1573352687708405942'], ['Abomasnow', true, '1573352689738453122'],
+    ['Abomasnow', false, '1573352692015697930'], ['Snover', true, '1573352694549315684'],
+    ['Snover', false, '1573352698277924984'], ['Mega Latios', true, '1573352701239107654'],
+    ['Mega Latios', false, '1573352703264956536'], ['Latios', true, '1573352705169035425'],
+    ['Charmander', false, '1569731185532215349'], ['Latios', false, '1567608114994348102'],
+    ['Charizard Gmax', true, '1573093969338835035'],
+  ];
+  for (const [name, isShiny, id] of variants) {
+    assert.match(ctx.getPokemonSpriteEmoji({ name, isShiny }), new RegExp(`:${id}>$`), name);
+    if (name.startsWith('Mega ')) {
+      const suffix = name.slice(5);
+      const [species, variant] = suffix.split(' ');
+      const catalogName = `${species} Mega${variant ? ` ${variant}` : ''}`;
+      assert.match(ctx.getPokemonSpriteEmoji({ name: catalogName, isShiny }), new RegExp(`:${id}>$`), catalogName);
+    }
+  }
+});
