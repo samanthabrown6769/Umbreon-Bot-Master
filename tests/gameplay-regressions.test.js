@@ -2702,10 +2702,10 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Legendary');
   roll = 1 / 250;
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 400);
-  assert.equal(ctx.getEventSpawnChance(50), 1 / 266);
-  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 180);
-  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 120);
+  assert.equal(ctx.getEventSpawnChance(), 1 / 200);
+  assert.equal(ctx.getEventSpawnChance(50), 1 / 133);
+  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 90);
+  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 60);
   const shinyRate = 0.001 * 1.5 * (1 / (1 - 1 / 100));
   assert.equal(ctx.getChanceFromFlooredOdds(shinyRate), 1 / 660);
 });
@@ -3132,6 +3132,7 @@ test('wild and fishing rolls ignore saved pity guarantees', () => {
     getLegendaryEncounterRateText: () => '', getEncounterRarityRate: () => 1,
     formatPercent: () => '100%', getEventPokemonKey: () => null,
     isEventShinyTarget: () => false, isEventChecklistSpawn: () => false,
+    BASE_SHINY_RATE: 1 / 3000,
     getRandomPokemon: (rarity) => ({
       id: 2, speciesId: 2, speciesName: 'Test', name: 'Test', rarity: rarity || 'Common', types: [],
     }),
@@ -3499,7 +3500,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
   bonusActive = false;
 
   // A non-event encounter at the ordinary shiny threshold stays non-shiny.
-  rolls = [1 / 400, 0.5, 0.001];
+  rolls = [1 / 200 + 1e-10, 0.5, 0.001];
   assert.equal(ctx.rollSpawn('water', 'user', rod).isShiny, false);
   ticket = false;
   rolls = [0.5, 0.001];

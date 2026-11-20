@@ -658,7 +658,7 @@ function getChanceFromFlooredOdds(chance) {
 }
 
 const EVENT_SPAWN_ODDS = 1000;
-const EVENT_SPAWN_RATE_MULTIPLIER = 2.5;
+const EVENT_SPAWN_RATE_MULTIPLIER = 5;
 function getEventSpawnChance(roleChanceBoost = 0, eventShinyPct = 0, shinyBonusActive = false) {
   const tierMultiplier = 1 + (eventShinyPct / 100) * (70 / 27);
   const chance = EVENT_SPAWN_RATE_MULTIPLIER
