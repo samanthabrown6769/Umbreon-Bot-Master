@@ -119,6 +119,52 @@ test('reward stats store actual boosted coins including the spawner bonus exactl
   } finally { db.close(); }
 });
 
+test('specified users cannot receive either Eternamax boss drop but still receive other rewards', () => {
+  const excluded = [
+    '983343425225105408', '865912695621681152', '1382212053778960414', '130226338769403904',
+  ];
+  const players = [...excluded, '412568898177728512', 'eligible'];
+  for (const [bossName, isShiny, isEternamax] of [
+    ['Eternatus-Eternamax', false, true],
+    ['Shiny Eternatus-Eternamax', true, true],
+    ['Charizard Gmax', false, false],
+  ]) {
+    const db = setupDatabase();
+    try {
+      db.prepare('INSERT INTO world_boss VALUES (1, ?, 0, 100, 0, 0, ?)').run(bossName, players[0]);
+      const insertDamage = db.prepare('INSERT INTO boss_damage VALUES (?, ?, ?)');
+      players.forEach((id, index) => insertDamage.run(id, 100 - index, index));
+      let rolls = 0;
+      const math = Object.create(Math);
+      math.random = () => rolls++ % 14 === 1 ? 0 : 0.99;
+      const saved = [];
+      const seen = [];
+      const ctx = vm.createContext({
+        db, Math: math,
+        WORLD_BOSS_POOL: [{
+          name: bossName, catchName: isEternamax ? 'Eternatus-Eternamax' : 'Charizard Gmax',
+          formId: isEternamax ? 10190 : 1, rarity: 'Gmax', catchRarity: 'Gmax', isShiny,
+        }],
+        BOXES: {}, trackClanActivity: () => {}, recordPokemonSeen: (...args) => seen.push(args),
+        addFactionPoints: () => 0, incrementUser: () => {},
+        awardCoinsWithBoost: (_id, amount) => ({ finalAmount: amount }),
+        isPlayerBonusActive: () => false, rollWorldBossExtraDrops: () => [],
+        saveCatch: (id, pokemon, shiny) => saved.push({ id, formId: pokemon.id, shiny }),
+      });
+      vm.runInContext(extract(dbSource, 'function getBossLeaderboard(', '\nfunction getUnclaimedWorldBossReward('), ctx);
+      const result = ctx.distributeWorldBossRewards(1);
+      const expectedDrops = isEternamax ? ['eligible'] : players;
+      assert.deepEqual(Array.from(result.drops), expectedDrops);
+      assert.deepEqual(saved.map(({ id }) => id), expectedDrops);
+      assert.ok(saved.every((entry) => entry.shiny === isShiny));
+      assert.equal(seen.length, players.length);
+      const rewards = db.prepare('SELECT user_id, pokemon_drop, coins_awarded FROM world_boss_rewards ORDER BY rank').all();
+      assert.deepEqual(rewards.map((reward) => reward.pokemon_drop), players.map((id) => Number(expectedDrops.includes(id))));
+      assert.deepEqual(rewards.map((reward) => reward.coins_awarded), [30000, 12000, 12000, 12000, 12000, 12000]);
+    } finally { db.close(); }
+  }
+});
+
 test('bonus Pokémon roll independently with MVP and World Boss bonuses and persist for claims', () => {
   const db = setupDatabase();
   try {
