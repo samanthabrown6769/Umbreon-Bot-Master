@@ -38,8 +38,6 @@ ADMIN_IDS=your_discord_user_id
 
 `ADMIN_IDS` accepts one or more comma-separated Discord user IDs; `ADMIN_ID` is accepted as a legacy single-ID setting. The built-in bot-admin IDs also have access independently of these settings. Discord server administrator permissions alone do not grant bot-admin access.
 
-Bot admins can test faction-ball catches with `.admin auto catch start` and `.admin auto catch stop`. Start in the channel where you want your own `.pokemon` or `.p admin <Pokémon>` encounters caught automatically using your faction's current daily ball; stop reports the successful catches. The command requires membership in a faction and at least one of its daily balls.
-
 Bot admins can use `.admin server info <server ID>` to receive a paginated member list by DM. The bot needs access to the server and the privileged Server Members intent enabled in the Discord Developer Portal.
 
 `.admin server transcript <server ID> <start YYYY-MM-DD> [end YYYY-MM-DD]` sends available message history from accessible text channels, threads, and forum posts to the fixed recipient `1514082847609061541`. The end date defaults to the current UTC date. The bot needs View Channel and Read Message History permissions, and the privileged Message Content intent enabled in the Discord Developer Portal; channels or threads it cannot read are reported as skipped.

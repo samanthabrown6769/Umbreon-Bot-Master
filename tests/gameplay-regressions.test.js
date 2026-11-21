@@ -432,7 +432,6 @@ test('encounter lock releases on resolution or expiry, not when an empty ball is
   const ctx = vm.createContext({
     activeCatchEncounters: new Map(), spawnMessage: { id: 'spawn', edit: async () => {} },
     BALL_CONFIG: { dv: { fishingOnly: true } }, isFishing: true, allowAnyUserCatch: false, userId: 'player',
-    autoCatchSession: null,
     onHandler: null, target: { name: 'Test' }, console,
     buttonCollector: { on: (event, fn) => { handlers[`button-${event}`] = fn; }, stop: () => {} },
     textCollector: { on: (event, fn) => { handlers[`text-${event}`] = fn; }, stop: () => {} },
@@ -462,6 +461,38 @@ test('encounter lock releases on resolution or expiry, not when an empty ball is
   vm.runInContext('actionTaken = false; encounterClosed = false;', ctx);
   await handlers['button-end']([], 'time');
   assert.equal(releaseCount, 2);
+});
+
+test('button catches release the encounter lock after processing, but allow retrying empty balls', async () => {
+  const encounters = new Map();
+  let releaseCount = 0;
+  let finishCatch;
+  let hasBall = false;
+  const ctx = vm.createContext({
+    activeCatchEncounters: encounters,
+    spawnMessage: { id: 'spawn', edit: async () => {} },
+    BALL_CONFIG: { pb: {} }, isFishing: false, allowAnyUserCatch: false, userId: 'player',
+    onEnd: () => { releaseCount++; },
+    handleCatch: async () => {
+      if (!hasBall) {
+        vm.runInContext('actionTaken = false', ctx);
+        return;
+      }
+      await new Promise((resolve) => { finishCatch = resolve; });
+    },
+    console,
+  });
+  vm.runInContext('let actionTaken = false; let encounterClosed = false;', ctx);
+  vm.runInContext(extract(indexSource, '  activeCatchEncounters.set(spawnMessage.id,', '\n  if (onHandler)'), ctx);
+  const interaction = { customId: 'catch:pb', user: { id: 'player' }, deferred: true };
+  await encounters.get('spawn')(interaction);
+  assert.equal(releaseCount, 0);
+  hasBall = true;
+  const pending = encounters.get('spawn')(interaction);
+  assert.equal(releaseCount, 0);
+  finishCatch();
+  await pending;
+  assert.equal(releaseCount, 1);
 });
 
 test('clan leave requires confirmation and notifies its leader', async () => {
