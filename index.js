@@ -416,6 +416,8 @@ const {
   getFactionFavorites,
   FACTION_GOLDEN_POKEMON_COST,
   FACTION_CHANGE_COOLDOWN_MS,
+  COOLDOWN_EXEMPT_USER_IDS,
+  GUARANTEED_CATCH_RATE_USER_IDS,
   TEAM_MEDALLION_ITEM,
   getDailyBall,
   getUserFaction,
@@ -1034,6 +1036,9 @@ const HARD_RARITY_RATE_MULTIPLIER = 0.25;
 const POKEMON_COOLDOWN_MS = 8000;
 const FISHING_COOLDOWN_MS = 20000;
 const BATTLE_COOLDOWN_MS = 45000;
+function isCooldownExemptUser(userId) {
+  return COOLDOWN_EXEMPT_USER_IDS.has(String(userId));
+}
 const catchCooldowns = new Set();
 const fishCooldowns = new Set();
 const battleCooldowns = new Set();
@@ -1045,6 +1050,7 @@ const pokemonAbilityDetails = new Map();
 const pokemonItemDetails = new Map();
 const activeCatchEncounters = new Map();
 const activeRegularEncounters = new Set();
+const adminAutoCatchSessions = new Map();
 function reserveRegularEncounter(userId) {
   if (activeRegularEncounters.has(userId)) return null;
   activeRegularEncounters.add(userId);
@@ -1055,6 +1061,65 @@ function reserveRegularEncounter(userId) {
     activeRegularEncounters.delete(userId);
   };
 }
+
+function formatAdminAutoCatchReport(session) {
+  const header = `🛑 Auto catch stopped. Caught **${session.totalCaught} Pokémon**.`;
+  if (!session.caught.size) return [`${header}\nNothing was caught.`];
+
+  const messages = [];
+  let current = header;
+  for (const [pokemonName, count] of session.caught) {
+    const line = `\n• ${pokemonName}${count > 1 ? ` x${count}` : ''}`;
+    if (current.length + line.length > 1900) {
+      messages.push(current);
+      current = 'Caught Pokémon (continued):';
+    }
+    current += line;
+  }
+  messages.push(current);
+  return messages;
+}
+
+async function runAdminAutoCatch(session, userId, message, target, handleCatch) {
+  if (!session?.active || session.channelId !== message.channel.id) return;
+  const faction = getUserFaction(userId);
+  if (!faction || faction.faction_key !== session.factionKey) {
+    session.active = false;
+    await message.channel.send(
+      `🛑 Auto catch paused because you are no longer in **${session.factionName}**. ` +
+      `Use \`${PREFIX}admin auto catch stop\` to view your results.`
+    );
+    return;
+  }
+  const dailyBall = getDailyBall(faction.faction_key);
+  const ball = BALL_CONFIG[dailyBall.key];
+  if (!ball || ball.fishingOnly) {
+    throw new Error(`Unsupported faction daily ball "${dailyBall.key}" for auto catch.`);
+  }
+  if (getUser(userId)[ball.column] <= 0) {
+    session.active = false;
+    await message.channel.send(
+      `🛑 Auto catch paused because you have no ${ball.name}s left. ` +
+      `Use \`${PREFIX}admin auto catch stop\` to view your results.`
+    );
+    return;
+  }
+  const catchPromise = handleCatch(dailyBall.key, null, false, message.author).then((caught) => {
+    if (!caught) return;
+    const variantName = target.isGolden || target.is_golden
+      ? `Golden ${target.name}`
+      : target.isShiny ? `Shiny ${target.name}` : target.name;
+    session.caught.set(variantName, (session.caught.get(variantName) || 0) + 1);
+    session.totalCaught += 1;
+  });
+  session.pendingCatch = catchPromise;
+  try {
+    await catchPromise;
+  } finally {
+    if (session.pendingCatch === catchPromise) session.pendingCatch = null;
+  }
+}
+
 const activeLeagueBattles = new Map();
 const activeMegaChamberBattles = new Map();
 const activeSparBattles = new Map();
@@ -1749,6 +1814,7 @@ function consumeCooldownMachineForEarlyUse(userId, command, cooldowns) {
 }
 
 function startPokemonCooldown(message, userId) {
+  if (isCooldownExemptUser(userId)) return { exempt: true };
   if (catchCooldowns.has(userId) && !consumeCooldownMachineForEarlyUse(userId, 'p', catchCooldowns)) {
     return null;
   }
@@ -2024,7 +2090,8 @@ async function fetchPokemonItemDetails(itemQuery) {
 }
 
 function startLeagueChallengeWithCooldown(message, userId, challengeIndex, challenges) {
-  if (battleCooldowns.has(userId)) {
+  const cooldownExempt = isCooldownExemptUser(userId);
+  if (!cooldownExempt && battleCooldowns.has(userId)) {
     return message.reply(
       `⏳ You can battle again ${getCooldownReadyTimestamp('battle', userId, BATTLE_COOLDOWN_MS)}.`
     );
@@ -2039,16 +2106,18 @@ function startLeagueChallengeWithCooldown(message, userId, challengeIndex, chall
           });
       });
   }
-  battleCooldowns.add(userId);
-  scheduleCooldownNotification(
-    battleCooldowns,
-    userId,
-    message.author.username,
-    message.channel,
-    BATTLE_COOLDOWN_MS,
-    'battle',
-    message
-  );
+  if (!cooldownExempt) {
+    battleCooldowns.add(userId);
+    scheduleCooldownNotification(
+      battleCooldowns,
+      userId,
+      message.author.username,
+      message.channel,
+      BATTLE_COOLDOWN_MS,
+      'battle',
+      message
+    );
+  }
   return runLeagueChallenge(message, userId, challengeIndex, challenges)
     .catch((error) => {
       console.error(`Failed to start NPC battle for user ${userId}:`, error);
@@ -4238,7 +4307,8 @@ function getEncounterCatchBonus(clanBonus, patreonBonus) {
   return clanBonus + patreonBonus;
 }
 
-function getBallCatchRate(ballKey, ball, target, displayRarity, baseCatchChance, clanBonus, channelBoost) {
+function getBallCatchRate(ballKey, ball, target, displayRarity, baseCatchChance, clanBonus, channelBoost, userId = null) {
+  if (userId && GUARANTEED_CATCH_RATE_USER_IDS.has(String(userId))) return 100;
   if (ballKey === 'prb' && target.isShiny && target.isEventShiny) return 100;
   const catchRarity = target.isShiny
     ? target.isEventShiny ? 'Event Shiny' : 'Full Odds Shiny'
@@ -7771,7 +7841,7 @@ function buildRareEncounterAlert(target, options) {
   const { userId, isFishing, guaranteedCatch, catchDisplayRarity, rarityData, catchBonus, channelCatchRateBoost } = options;
   const recommendedBall = ['pb', 'gb', 'ub', 'prb', ...(isFishing ? ['dv'] : []), 'mb']
     .find((key) => guaranteedCatch || key === 'mb' || getBallCatchRate(
-      key, BALL_CONFIG[key], target, catchDisplayRarity, rarityData.catchChance, catchBonus, channelCatchRateBoost
+      key, BALL_CONFIG[key], target, catchDisplayRarity, rarityData.catchChance, catchBonus, channelCatchRateBoost, userId
     ) >= 100);
   const variant = target.isGolden || target.is_golden ? 'golden' : target.isShiny ? 'shiny' : 'normal';
   const lastSale = target.id ? getMarketSaleHistory(target.id, variant).recent[0] : null;
@@ -7820,6 +7890,7 @@ async function askForBall(
     inline = null,
     counterSource = null,
     allowAnyUserCatch = false,
+    adminAutoCatchEligible = false,
     cooldownState = null,
     onEnd = null,
   } = {}
@@ -7882,7 +7953,7 @@ async function askForBall(
       const ball = BALL_CONFIG[key];
       const chance = guaranteedCatch || key === 'mb'
         ? 100
-        : getBallCatchRate(key, ball, target, catchDisplayRarity, rarityData.catchChance, encounterCatchBonus, channelCatchRateBoost);
+        : getBallCatchRate(key, ball, target, catchDisplayRarity, rarityData.catchChance, encounterCatchBonus, channelCatchRateBoost, userId);
               return `${ball.emoji} ${Math.round(chance)}%`;
             }).join(' • ')}\n`;
   const tracksRarityStreak = !NON_STREAK_RARITIES.has(catchDisplayRarity.toLowerCase());
@@ -8056,6 +8127,14 @@ async function askForBall(
     }
   });
 
+  const candidateAutoCatchSession = mode === 'catch'
+    && (counterSource === 'pokemon' || adminAutoCatchEligible)
+    ? adminAutoCatchSessions.get(userId)
+    : null;
+  const autoCatchSession = candidateAutoCatchSession?.channelId === message.channel.id
+    ? candidateAutoCatchSession
+    : null;
+
   if (onHandler) onHandler(activeCatchEncounters.get(spawnMessage.id));
 
   async function handleCatch(selectedBall, interaction = null, reserved = false, catcher = message.author) {
@@ -8064,7 +8143,7 @@ async function askForBall(
       if (interaction) {
         await interaction.followUp({ content: 'This encounter has already ended.', ephemeral: true });
       }
-      return;
+      return false;
     }
     if (!reserved) actionTaken = true;
     // Editing through the deferred interaction keeps Discord from re-rendering the pre-catch message over our edit.
@@ -8094,7 +8173,7 @@ async function askForBall(
       } finally {
         actionTaken = false;
       }
-      return;
+      return false;
     }
 
     buttonCollector.stop('resolved');
@@ -8102,7 +8181,7 @@ async function askForBall(
     const playerRoll = Math.random() * 100;
     const targetRate = guaranteedCatch
       ? 100
-      : getBallCatchRate(selectedBall, ball, target, catchDisplayRarity, rarityData.catchChance, encounterCatchBonus, channelCatchRateBoost);
+      : getBallCatchRate(selectedBall, ball, target, catchDisplayRarity, rarityData.catchChance, encounterCatchBonus, channelCatchRateBoost, userId);
     const rollMatchesRate = targetRate > 0 && Math.round(playerRoll) <= Math.round(targetRate);
     const criticalCatch = !guaranteedCatch && selectedBall !== 'mb' && playerRoll >= targetRate && !rollMatchesRate
       && Math.random() < getCatchingCharmCritChance(userId);
@@ -8144,7 +8223,7 @@ async function askForBall(
       const fledImage = image;
       if (fledImage) fledEmbed.setImage(fledImage);
       await editEncounter({ content: '', embeds: [fledEmbed], components: [] });
-      return;
+      return false;
     }
 
     const { finalAmount: coinsEarned } = awardCoinsWithBoost(userId, baseCoinsEarned);
@@ -8408,6 +8487,7 @@ async function askForBall(
         newTotal
       );
     }
+    return true;
   }
 
   textCollector.on('collect', async (response) => {
@@ -8443,6 +8523,21 @@ async function askForBall(
       }
     }
   });
+
+  if (autoCatchSession) {
+    void runAdminAutoCatch(autoCatchSession, userId, message, target, handleCatch)
+      .catch(async (error) => {
+        autoCatchSession.active = false;
+        console.error(`Failed to process admin auto catch for user ${userId}:`, error);
+        try {
+          await message.channel.send(
+            `❌ Auto catch failed. Use \`${PREFIX}admin auto catch stop\` to view successful catches.`
+          );
+        } catch (sendError) {
+          console.error(`Failed to report admin auto-catch error for user ${userId}:`, sendError);
+        }
+      });
+  }
 }
 
 const TYPE_EFFECTIVENESS = {
@@ -15525,6 +15620,64 @@ client.on('messageCreate', async (message) => {
       const subtype = args[0]?.toLowerCase();
       const action = args[1]?.toLowerCase();
 
+      if (command === 'admin' && subtype === 'auto' && action === 'catch') {
+        const autoAction = args[2]?.toLowerCase();
+        if (args.length !== 3 || !['start', 'stop'].includes(autoAction)) {
+          return message.reply(
+            `Usage: \`${PREFIX}admin auto catch <start|stop>\`. ` +
+            'Start in the channel where you want your Pokémon encounters caught.'
+          );
+        }
+
+        if (autoAction === 'start') {
+          const existingSession = adminAutoCatchSessions.get(userId);
+          if (existingSession) {
+            return message.reply(
+              existingSession.active
+                ? `Auto catch is already active in <#${existingSession.channelId}>.`
+                : `A previous auto-catch report is waiting. Use \`${PREFIX}admin auto catch stop\` first.`
+            );
+          }
+          const faction = getUserFaction(userId);
+          if (!faction) {
+            return message.reply("Join a faction before starting auto catch; it uses your faction's daily ball.");
+          }
+          const dailyBall = getDailyBall(faction.faction_key);
+          const ball = BALL_CONFIG[dailyBall.key];
+          if (!ball || ball.fishingOnly) {
+            throw new Error(`Unsupported faction daily ball "${dailyBall.key}" for auto catch.`);
+          }
+          if (getUser(userId)[ball.column] <= 0) {
+            return message.reply(`You need at least one ${ball.name} to start auto catch.`);
+          }
+          adminAutoCatchSessions.set(userId, {
+            active: true,
+            channelId: message.channel.id,
+            factionKey: faction.faction_key,
+            factionName: faction.team.name,
+            caught: new Map(),
+            totalCaught: 0,
+            pendingCatch: null,
+          });
+          return message.reply(
+            `✅ Auto catch started in this channel using ${ball.emoji} **${ball.name}**. ` +
+            `Use \`${PREFIX}pokemon\` or \`${PREFIX}p admin <Pokémon>\` to spawn an encounter.`
+          );
+        }
+
+        const session = adminAutoCatchSessions.get(userId);
+        if (!session) return message.reply('Auto catch is not active and there is no pending report.');
+        session.active = false;
+        if (session.pendingCatch) await session.pendingCatch;
+        if (adminAutoCatchSessions.get(userId) === session) adminAutoCatchSessions.delete(userId);
+        const report = formatAdminAutoCatchReport(session);
+        await message.reply(report[0]);
+        for (const continuation of report.slice(1)) {
+          await message.channel.send(continuation);
+        }
+        return;
+      }
+
       if (command === 'admin' && ['bud', 'buddy'].includes(subtype)) {
         const targetMatch = args[2]?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
         const targetId = targetMatch?.[1] || targetMatch?.[2];
@@ -17976,7 +18129,12 @@ client.on('messageCreate', async (message) => {
             isShiny: false,
             heldItem: item.name,
             heldItemEmoji: item.emoji,
-          }, 'catch', { guaranteedCatch: true, allowAnyUserCatch: true, cooldownState });
+          }, 'catch', {
+            guaranteedCatch: true,
+            allowAnyUserCatch: true,
+            adminAutoCatchEligible: true,
+            cooldownState,
+          });
         }
         const shinySpawn = args[1]?.toLowerCase() === 'shiny';
         const requestedName = args.slice(shinySpawn ? 2 : 1).join(' ').trim();
@@ -18018,6 +18176,7 @@ client.on('messageCreate', async (message) => {
         return await askForBall(message, userId, target, 'catch', {
           guaranteedCatch: true,
           allowAnyUserCatch: true,
+          adminAutoCatchEligible: true,
           cooldownState,
         });
       }
@@ -18066,7 +18225,8 @@ client.on('messageCreate', async (message) => {
       }
       const rod = getFishingRod(user);
       const isAdmin = isConfiguredBotAdmin(message);
-      if (fishCooldowns.has(userId)) {
+      const cooldownExempt = isCooldownExemptUser(userId);
+      if (!cooldownExempt && fishCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'f', fishCooldowns)) {
           return message.reply(
             `⏳ You can fish again ${getCooldownReadyTimestamp('f', userId, rod.cooldownMs)} ` +
@@ -18074,16 +18234,18 @@ client.on('messageCreate', async (message) => {
           );
         }
       }
-      fishCooldowns.add(userId);
-      const cooldownState = scheduleCooldownNotification(
-        fishCooldowns,
-        userId,
-        message.author.username,
-        message.channel,
-        rod.cooldownMs,
-        'f',
-        message
-      );
+      const cooldownState = cooldownExempt ? null : (() => {
+        fishCooldowns.add(userId);
+        return scheduleCooldownNotification(
+          fishCooldowns,
+          userId,
+          message.author.username,
+          message.channel,
+          rod.cooldownMs,
+          'f',
+          message
+        );
+      })();
       const releaseEncounter = reserveRegularEncounter(userId);
       try {
         const fishingChance = rod.baseSpawnChance
@@ -26955,11 +27117,14 @@ client.on('messageCreate', async (message) => {
 
         const swapNow = Date.now();
         const swapReadyAt = swapCooldowns.get(userId) || 0;
-        if (swapReadyAt > swapNow) {
+        const cooldownExempt = isCooldownExemptUser(userId);
+        if (!cooldownExempt && swapReadyAt > swapNow) {
           return message.reply(`⏳ You can swap again <t:${Math.ceil(swapReadyAt / 1000)}:R>.`);
         }
-        swapCooldowns.set(userId, swapNow + SWAP_COOLDOWN_MS);
-        setTimeout(() => swapCooldowns.delete(userId), SWAP_COOLDOWN_MS).unref?.();
+        if (!cooldownExempt) {
+          swapCooldowns.set(userId, swapNow + SWAP_COOLDOWN_MS);
+          setTimeout(() => swapCooldowns.delete(userId), SWAP_COOLDOWN_MS).unref?.();
+        }
 
         const now = Date.now();
         const result = db.transaction(() => {

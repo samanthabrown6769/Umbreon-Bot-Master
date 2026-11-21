@@ -46,6 +46,21 @@ test('perfect IVs boost the calculated stat after variant bonuses', () => {
   }
 });
 
+test('gameplay override users have a displayed and applied 100% catch rate', () => {
+  const overrideIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
+  const ctx = vm.createContext({ GUARANTEED_CATCH_RATE_USER_IDS: overrideIds });
+  vm.runInContext(
+    extract(indexSource, 'function getBallCatchRate(', '\nfunction getCatchChance('),
+    ctx
+  );
+  const ball = { catchChance: 27 };
+  const target = { isShiny: false };
+  for (const id of overrideIds) {
+    assert.equal(ctx.getBallCatchRate('pb', ball, target, 'Common', 27, 0, 0, id), 100);
+  }
+  assert.equal(ctx.getBallCatchRate('pb', ball, target, 'Common', 27, 0, 0, 'ordinary'), 27);
+});
+
 test('perfect IV migration updates existing stats once and preserves fainted HP', () => {
   const db = new Database(':memory:');
   try {
@@ -264,11 +279,12 @@ test('admin buddy info dispatches to the requested user profile', async () => {
 test('ordinary admin catches use normal rates while shared admin spawns stay guaranteed', async () => {
   const spawnOptions = [];
   const ctx = vm.createContext({
-    command: 'p', args: [], userId: '1514082847609061541',
-    message: { author: { id: '1514082847609061541', username: 'Admin' }, guildId: 'guild', channelId: 'channel',
+    command: 'p', args: [], userId: 'regular-admin',
+    message: { author: { id: 'regular-admin', username: 'Admin' }, guildId: 'guild', channelId: 'channel',
       reply: async (text) => text },
     isBotAdmin: () => true, isConfiguredBotAdmin: () => true,
     catchCooldowns: new Set(), fishCooldowns: new Set(),
+    isCooldownExemptUser: () => false,
     consumeCooldownMachineForEarlyUse: () => false, getCooldownReadyTimestamp: () => 'later',
     scheduleCooldownNotification: () => ({}), POKEMON_COOLDOWN_MS: 8000, PREFIX: '.',
     getUser: () => ({ grazz_buff_encounters: 0 }), getRoleEncounterBoost: async () => 0,
@@ -319,11 +335,12 @@ test('regular encounters block both spawn commands until finished without bypass
   let endEncounter;
   let rollFails = false;
   const ctx = vm.createContext({
-    command: 'p', args: [], userId: '537500331953881088',
-    message: { author: { id: '537500331953881088', username: 'Player' }, guildId: 'guild', channelId: 'channel',
+    command: 'p', args: [], userId: 'player',
+    message: { author: { id: 'player', username: 'Player' }, guildId: 'guild', channelId: 'channel',
       reply: async (text) => { replies.push(text); return text; } },
     isConfiguredBotAdmin: () => false,
     catchCooldowns: new Set(), fishCooldowns: new Set(),
+    isCooldownExemptUser: () => false,
     consumeCooldownMachineForEarlyUse: () => false, getCooldownReadyTimestamp: () => 'later',
     scheduleCooldownNotification: () => ({}), POKEMON_COOLDOWN_MS: 8000, PREFIX: '.',
     getUser: () => ({ grazz_buff_encounters: 0 }), getRoleEncounterBoost: async () => {
@@ -363,6 +380,23 @@ test('regular encounters block both spawn commands until finished without bypass
   endEncounter();
   await ctx.run();
   assert.match(replies.at(-1), /fish again later/);
+  ctx.catchCooldowns.clear();
+  ctx.fishCooldowns.clear();
+  const exemptIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
+  ctx.isCooldownExemptUser = (id) => exemptIds.has(id);
+  for (const id of exemptIds) {
+    ctx.userId = id;
+    ctx.message.author.id = id;
+    await ctx.run();
+    assert.equal(ctx.catchCooldowns.has(id), false);
+    endEncounter();
+    ctx.command = 'fish';
+    await ctx.run();
+    assert.equal(ctx.fishCooldowns.has(id), false);
+    endEncounter();
+    ctx.command = 'p';
+  }
+  ctx.command = 'fish';
   ctx.fishCooldowns.clear();
   ctx.isConfiguredBotAdmin = () => false;
   ctx.getFishingRod = () => ({ name: 'Rod', cooldownMs: 20000, baseSpawnChance: 0, pullWaitMs: 20000 });
@@ -398,6 +432,7 @@ test('encounter lock releases on resolution or expiry, not when an empty ball is
   const ctx = vm.createContext({
     activeCatchEncounters: new Map(), spawnMessage: { id: 'spawn', edit: async () => {} },
     BALL_CONFIG: { dv: { fishingOnly: true } }, isFishing: true, allowAnyUserCatch: false, userId: 'player',
+    autoCatchSession: null,
     onHandler: null, target: { name: 'Test' }, console,
     buttonCollector: { on: (event, fn) => { handlers[`button-${event}`] = fn; }, stop: () => {} },
     textCollector: { on: (event, fn) => { handlers[`text-${event}`] = fn; }, stop: () => {} },
@@ -940,11 +975,13 @@ test('cooldown notification modes persist and react to the encounter instead of 
   db.close();
 });
 
-test('all users can still use Cooldown Machines after half the encounter cooldown', () => {
+test('cooldown exemptions skip encounter timers while other users can use Cooldown Machines', () => {
   let now = 10000;
   const user = { cooldown_machine_catch_charges: 1, cooldown_machine_fish_charges: 1 };
+  const exemptIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
   const ctx = vm.createContext({
     Date: class extends Date { static now() { return now; } },
+    COOLDOWN_EXEMPT_USER_IDS: exemptIds,
     catchCooldowns: new Set(), fishCooldowns: new Set(),
     cooldownEndsAt: { p: new Map(), f: new Map(), battle: new Map() },
     pokemonCooldownStates: { p: new Map(), f: new Map() },
@@ -955,9 +992,15 @@ test('all users can still use Cooldown Machines after half the encounter cooldow
     setTimeout: () => ({}), clearTimeout: () => {}, getCooldownNotificationMode: () => 'ping',
     console, PREFIX: '.', EMOJIS: { cooldownMachine: 'machine' },
   });
+  vm.runInContext(extract(indexSource, 'function isCooldownExemptUser(', '\nconst catchCooldowns'), ctx);
   vm.runInContext(extract(indexSource, 'function scheduleCooldownNotification(', '\nasync function fetchPokemonAbilities('), ctx);
   const message = { author: { username: 'Admin' }, channel: {} };
-  const id = '1514082847609061541';
+  for (const id of exemptIds) {
+    assert.equal(ctx.startPokemonCooldown(message, id).exempt, true);
+    assert.equal(ctx.catchCooldowns.has(id), false);
+  }
+
+  const id = 'ordinary';
   assert.ok(ctx.startPokemonCooldown(message, id));
   now += 3999;
   assert.equal(ctx.startPokemonCooldown(message, id), null);
@@ -3728,28 +3771,99 @@ test('NPC coin rewards are halved for first clears, rematches, challengers and V
   assert.match(indexSource, /Rematch won![\s\S]*?\$\{reward\.toLocaleString\(\)\}/);
 });
 
-test('battle cooldown applies equally to admins, former exempt users, and ordinary users', async () => {
+test('battle cooldown is bypassed only for configured users', async () => {
   const notifications = [];
   let teamReady = true;
+  const exemptIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
   const ctx = vm.createContext({
     battleCooldowns: new Set(), BATTLE_COOLDOWN_MS: 45000,
+    COOLDOWN_EXEMPT_USER_IDS: exemptIds,
     getCooldownReadyTimestamp: () => 'later',
     getUserTeam: () => teamReady ? [{}] : [],
     runLeagueChallenge: async () => 'started',
     scheduleCooldownNotification: (_cooldowns, id) => notifications.push(id),
     console,
   });
+  vm.runInContext(extract(indexSource, 'function isCooldownExemptUser(', '\nconst catchCooldowns'), ctx);
   vm.runInContext(extract(indexSource, 'function startLeagueChallengeWithCooldown(', '\nconst ROD_CONFIGS'), ctx);
   const message = { author: { username: 'Trainer' }, channel: {}, reply: (text) => text };
-  for (const id of ['1514082847609061541', '537500331953881088', 'ordinary']) {
+  for (const id of exemptIds) {
     assert.equal(await ctx.startLeagueChallengeWithCooldown(message, id, 0, []), 'started');
-    assert.match(await ctx.startLeagueChallengeWithCooldown(message, id, 0, []), /battle again later/);
+    assert.equal(await ctx.startLeagueChallengeWithCooldown(message, id, 0, []), 'started');
   }
-  assert.deepEqual(notifications, ['1514082847609061541', '537500331953881088', 'ordinary']);
+  assert.deepEqual(notifications, []);
+  assert.equal(await ctx.startLeagueChallengeWithCooldown(message, 'ordinary', 0, []), 'started');
+  assert.match(await ctx.startLeagueChallengeWithCooldown(message, 'ordinary', 0, []), /battle again later/);
+  assert.deepEqual(notifications, ['ordinary']);
   teamReady = false;
   assert.equal(await ctx.startLeagueChallengeWithCooldown(message, 'no-team', 0, []), 'started');
   assert.equal(ctx.battleCooldowns.has('no-team'), false);
-  assert.doesNotMatch(indexSource, /COOLDOWN_EXEMPT_USER_IDS|cooldown_exemption_disabled|admin toggle cooldown/);
+});
+
+test('configured users bypass faction-change cooldown but not other faction requirements', () => {
+  const exemptIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
+  const faction = { user_id: '537500331953881088', faction_key: 'rocket', last_changed_at: 1000 };
+  const updates = [];
+  const ctx = vm.createContext({
+    COOLDOWN_EXEMPT_USER_IDS: exemptIds,
+    FACTION_TEAMS: { rocket: {}, aqua: {} },
+    FACTION_CHANGE_COOLDOWN_MS: 30 * 24 * 60 * 60 * 1000,
+    TEAM_MEDALLION_ITEM: 'Team Medallion',
+    assertUserId: () => {},
+    takeUserItem: () => true,
+    db: {
+      transaction: (callback) => ({ immediate: callback }),
+      prepare: (sql) => sql.startsWith('SELECT')
+        ? { get: () => faction }
+        : { run: (...args) => updates.push(args) },
+    },
+  });
+  vm.runInContext(
+    extract(dbSource, 'function changeUserFaction(', '\nfunction getFactionGoldenPurchase('),
+    ctx
+  );
+
+  assert.equal(ctx.changeUserFaction('537500331953881088', 'aqua', 1001).faction, ctx.FACTION_TEAMS.aqua);
+  assert.equal(updates.length, 1);
+  faction.faction_key = 'rocket';
+  const cooldown = ctx.changeUserFaction('ordinary', 'aqua', 1001);
+  assert.equal(cooldown.error, 'cooldown');
+  assert.equal(cooldown.cooldownUntil, 30 * 24 * 60 * 60 * 1000 + 1000);
+  assert.equal(updates.length, 1);
+});
+
+test('configured users bypass the swap command cooldown without changing other users', () => {
+  let now = 5000;
+  const replies = [];
+  const timeouts = [];
+  const exemptIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
+  const ctx = vm.createContext({
+    Date: class extends Date { static now() { return now; } },
+    SWAP_COOLDOWN_MS: 3000,
+    swapCooldowns: new Map([...exemptIds].map((id) => [id, 10000])),
+    COOLDOWN_EXEMPT_USER_IDS: exemptIds,
+    message: { reply: (text) => { replies.push(text); return text; } },
+    setTimeout: (_callback, delay) => {
+      const timer = { delay, unref() {} };
+      timeouts.push(timer);
+      return timer;
+    },
+  });
+  vm.runInContext(extract(indexSource, 'function isCooldownExemptUser(', '\nconst catchCooldowns'), ctx);
+  const cooldownBlock = extract(
+    indexSource,
+    '        const swapNow = Date.now();',
+    '\n        const now = Date.now();'
+  );
+  vm.runInContext(`function runCooldown(userId) { ${cooldownBlock} return 'allowed'; }`, ctx);
+
+  for (const id of exemptIds) assert.equal(ctx.runCooldown(id), 'allowed');
+  assert.equal(ctx.swapCooldowns.size, exemptIds.size);
+  assert.deepEqual(replies, []);
+  assert.equal(timeouts.length, 0);
+  ctx.swapCooldowns.set('ordinary', 10000);
+  assert.match(ctx.runCooldown('ordinary'), /swap again/);
+  assert.deepEqual(replies, ['⏳ You can swap again <t:10:R>.']);
 });
 
 test('Patreon reward wait starts on activation, survives tier changes and restarts on reactivation', () => {

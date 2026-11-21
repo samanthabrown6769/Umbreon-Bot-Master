@@ -10858,6 +10858,15 @@ function joinFaction(userId, factionKey) {
 
 const FACTION_GOLDEN_POKEMON_COST = 1500000000;
 const FACTION_CHANGE_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+const GUARANTEED_CATCH_RATE_USER_IDS = new Set([
+  '1514082847609061541',
+  '537500331953881088',
+  '1573782664773767301',
+]);
+const COOLDOWN_EXEMPT_USER_IDS = new Set([
+  '1514082847609061541',
+  ...GUARANTEED_CATCH_RATE_USER_IDS,
+]);
 const TEAM_MEDALLION_ITEM = 'Team Medallion';
 
 function changeUserFaction(userId, factionKey, now = Date.now()) {
@@ -10869,7 +10878,8 @@ function changeUserFaction(userId, factionKey, now = Date.now()) {
     if (!faction || !FACTION_TEAMS[faction.faction_key]) return { error: 'not_in_faction' };
     if (faction.faction_key === factionKey) return { error: 'same_faction' };
     const cooldownUntil = faction.last_changed_at + FACTION_CHANGE_COOLDOWN_MS;
-    if (faction.last_changed_at && now < cooldownUntil) {
+    if (!COOLDOWN_EXEMPT_USER_IDS.has(String(userId))
+        && faction.last_changed_at && now < cooldownUntil) {
       return { error: 'cooldown', cooldownUntil };
     }
     if (!takeUserItem(userId, TEAM_MEDALLION_ITEM)) return { error: 'medallion_required' };
@@ -11157,6 +11167,8 @@ module.exports = {
   joinFaction,
   FACTION_GOLDEN_POKEMON_COST,
   FACTION_CHANGE_COOLDOWN_MS,
+  COOLDOWN_EXEMPT_USER_IDS,
+  GUARANTEED_CATCH_RATE_USER_IDS,
   TEAM_MEDALLION_ITEM,
   changeUserFaction,
   getFactionGoldenPurchase,
