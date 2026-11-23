@@ -55,7 +55,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS user_encounter_counters (
     user_id TEXT NOT NULL,
     source TEXT NOT NULL CHECK (source IN ('pokemon', 'fishing')),
-    category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny')),
+    category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny', 'golden')),
     encounters_since INTEGER NOT NULL DEFAULT 0,
     last_caught_at INTEGER,
     last_pokemon TEXT,
@@ -110,7 +110,37 @@ db.exec(`
     catches INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (reset_day, user_id)
   );
+  CREATE TABLE IF NOT EXISTS eternamax_daily_spawn_claims (
+    utc_day TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('boss_coin', 'automatic')),
+    PRIMARY KEY (utc_day, source)
+  );
 `);
+const encounterCounterSql = db.prepare(
+  "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_encounter_counters'"
+).get().sql;
+if (!encounterCounterSql.includes("'golden'")) {
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE user_encounter_counters RENAME TO user_encounter_counters_legacy;
+      CREATE TABLE user_encounter_counters (
+        user_id TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('pokemon', 'fishing')),
+        category TEXT NOT NULL CHECK (category IN ('legendary', 'shiny', 'golden')),
+        encounters_since INTEGER NOT NULL DEFAULT 0,
+        last_caught_at INTEGER,
+        last_pokemon TEXT,
+        last_catcher_id TEXT,
+        PRIMARY KEY (user_id, source, category)
+      );
+      INSERT INTO user_encounter_counters
+        (user_id, source, category, encounters_since, last_caught_at, last_pokemon, last_catcher_id)
+      SELECT user_id, source, category, encounters_since, last_caught_at, last_pokemon, last_catcher_id
+      FROM user_encounter_counters_legacy;
+      DROP TABLE user_encounter_counters_legacy;
+    `);
+  }).immediate();
+}
 db.exec('DROP TABLE IF EXISTS user_event_spawn_catches');
 const initializeEncounterCounter = db.prepare(`
   INSERT OR IGNORE INTO user_encounter_counters (user_id, source, category)
@@ -4253,6 +4283,11 @@ function sortedNameWords(value) {
   return `${value || ''}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).sort().join(' ');
 }
 
+const specialMoveLearners = Object.fromEntries(
+  Object.entries(JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'special-move-learners.json'), 'utf8')))
+    .map(([move, ids]) => [move, new Set(ids)])
+);
+
 // Moves a specific form can learn on top of its species learnset.
 const FORM_EXTRA_MOVES = Object.freeze({ 10078: ['fury-cutter'] });
 
@@ -4274,7 +4309,11 @@ function getSpeciesLearnset(speciesId, formId = null) {
   const extraMoves = FORM_EXTRA_MOVES[formId] || [];
   const base = getBaseSpeciesLearnset(speciesId, formId);
   const rolePlay = ROLE_PLAY_LEARNERS.has(speciesId) ? ['role-play'] : [];
-  return extraMoves.length || rolePlay.length ? [...new Set([...base, ...extraMoves, ...rolePlay])] : base;
+  const specialMoves = Object.entries(specialMoveLearners)
+    .filter(([, learners]) => learners.has(speciesId) || learners.has(formId))
+    .map(([move]) => move);
+  return extraMoves.length || rolePlay.length || specialMoves.length
+    ? [...new Set([...base, ...extraMoves, ...rolePlay, ...specialMoves])] : base;
 }
 
 function getBaseSpeciesLearnset(speciesId, formId = null) {
@@ -4916,13 +4955,22 @@ function completeMegaChamber(userId, chamberKey) {
   const config = CHAMBER_CONFIG[chamberKey];
   if (!config) return { error: 'invalid_chamber' };
   const required = getChamberRequirement(config, userId);
+  const sharedChamberKeys = Object.values(CHAMBER_CONFIG)
+    .filter((chamber) => chamber.pokemonId === config.pokemonId)
+    .map((chamber) => chamber.key);
   return db.transaction(() => {
-    const result = db.prepare(`
+    const progress = db.prepare(`
+      SELECT sacrifices FROM mega_chambers
+      WHERE user_id = ? AND chamber_key = ?
+    `).get(userId, chamberKey);
+    if (!progress || progress.sacrifices < required) return { error: 'not_ready' };
+    const placeholders = sharedChamberKeys.map(() => '?').join(', ');
+    db.prepare(`
       UPDATE mega_chambers
-      SET sacrifices = sacrifices - ?, clears = clears + 1
-      WHERE user_id = ? AND chamber_key = ? AND sacrifices >= ?
-    `).run(required, userId, chamberKey, required);
-    if (!result.changes) return { error: 'not_ready' };
+      SET sacrifices = MAX(0, sacrifices - ?),
+          clears = clears + CASE WHEN chamber_key = ? THEN 1 ELSE 0 END
+      WHERE user_id = ? AND chamber_key IN (${placeholders})
+    `).run(required, chamberKey, userId, ...sharedChamberKeys);
     db.prepare(`
       INSERT INTO mega_stones (user_id, stone_name, amount)
       VALUES (?, ?, 1)
@@ -5886,10 +5934,14 @@ function findMoveInfo(query) {
   const move = moveInfoData[key]
     || Object.entries(moveInfoData).find(([slug]) => slug.replace(/-/g, '') === compact)?.[1];
   if (!move) return null;
-  if (compact !== 'roleplay') return move;
+  const specialLearners = specialMoveLearners[key]
+    || Object.entries(specialMoveLearners).find(([slug]) => slug.replace(/-/g, '') === compact)?.[1];
+  if (compact !== 'roleplay' && !specialLearners) return move;
   const names = pokemonCatalog
-    .filter((pokemon) => pokemon.is_default && ROLE_PLAY_LEARNERS.has(pokemon.species_id))
-    .map((pokemon) => pokemon.species_name || pokemon.name);
+    .filter((pokemon) => compact === 'roleplay'
+      ? pokemon.is_default && ROLE_PLAY_LEARNERS.has(pokemon.species_id)
+      : specialLearners.has(pokemon.id))
+    .map((pokemon) => pokemon.is_default ? pokemon.species_name || pokemon.name : pokemon.name);
   return { ...move, learners: [...new Set([...move.learners, ...names])] };
 }
 
@@ -7286,6 +7338,32 @@ function getActiveWorldBoss() {
   return db.prepare('SELECT * FROM world_boss WHERE is_active = 1 ORDER BY id DESC LIMIT 1').get() || null;
 }
 
+function getEternamaxSpawnUtcDay(timestamp = Date.now()) {
+  if (!Number.isFinite(timestamp)) {
+    throw new TypeError('timestamp must be a finite number.');
+  }
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function isDailyEternamaxSpawnClaimed(source, timestamp = Date.now()) {
+  if (source !== 'boss_coin' && source !== 'automatic') {
+    throw new TypeError('source must be boss_coin or automatic.');
+  }
+  return !!db.prepare(`
+    SELECT 1 FROM eternamax_daily_spawn_claims WHERE utc_day = ? AND source = ?
+  `).get(getEternamaxSpawnUtcDay(timestamp), source);
+}
+
+function claimDailyEternamaxSpawn(source, timestamp = Date.now()) {
+  if (source !== 'boss_coin' && source !== 'automatic') {
+    throw new TypeError('source must be boss_coin or automatic.');
+  }
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO eternamax_daily_spawn_claims (utc_day, source) VALUES (?, ?)
+  `).run(getEternamaxSpawnUtcDay(timestamp), source);
+  return result.changes === 1;
+}
+
 const WORLD_BOSS_REGISTRATION_DURATION_MS = 2 * 60 * 1000;
 
 function spawnWorldBoss(template, spawnedBy = null, spawnedByName = null) {
@@ -7800,7 +7878,7 @@ function sendPokemonGift(senderId, recipientId, catchId) {
     if (!mon) return { error: 'not_found' };
     if (mon.in_team) return { error: 'in_team' };
     const savedTeams = db.prepare(
-      'SELECT pokemon_ids FROM saved_teams WHERE user_id = ?'
+      'SELECT pokemon_ids FROM saved_teams WHERE user_id = ? AND is_defending IN (0, 1)'
     ).all(senderId);
     if (savedTeams.some((team) => JSON.parse(team.pokemon_ids || '[]').includes(catchId))) {
       return { error: 'in_saved_team' };
@@ -7863,12 +7941,6 @@ function claimPokemonGifts(recipientId, senderId = null) {
         spdef_iv: gift.spdef_iv,
         spd_iv: gift.spd_iv,
       }, Boolean(gift.is_shiny), false, Boolean(gift.is_golden), gift.caught_ball, false, false);
-      recordPokemonSeen(
-        recipientId,
-        gift.pokemon_id,
-        Boolean(gift.is_shiny),
-        Boolean(gift.is_golden)
-      );
       rebaseTransferredPokemon(recipientId, newCatchId);
       syncNewCatchState(recipientId, newCatchId);
       db.prepare('DELETE FROM pokemon_gifts WHERE id = ?').run(gift.id);
@@ -8747,7 +8819,7 @@ function recordWildEncounterCounter(userId, source) {
     `).run(userId);
     return;
   }
-  for (const category of ['legendary', 'shiny']) {
+  for (const category of source === 'fishing' ? ['legendary', 'shiny', 'golden'] : ['legendary', 'shiny']) {
     initializeEncounterCounter.run(userId, source, category);
   }
   db.prepare(`
@@ -8762,7 +8834,7 @@ function resetEncounterCounters(userId, source, categories, pokemonName, timesta
   if (!['pokemon', 'fishing', 'explore'].includes(source)) {
     throw new TypeError('Encounter counter source must be pokemon, fishing, or explore.');
   }
-  const allowedCategories = source === 'explore'
+  const allowedCategories = source === 'explore' || source === 'fishing'
     ? ['legendary', 'shiny', 'golden']
     : ['legendary', 'shiny'];
   if (!Array.isArray(categories) || categories.some((category) => !allowedCategories.includes(category))) {
@@ -8886,7 +8958,7 @@ function getEventSpawnCatch(userId) {
 function getEncounterCounters(userId) {
   assertUserId(userId);
   for (const source of ['pokemon', 'fishing']) {
-    for (const category of ['legendary', 'shiny']) {
+    for (const category of source === 'fishing' ? ['legendary', 'shiny', 'golden'] : ['legendary', 'shiny']) {
       initializeEncounterCounter.run(userId, source, category);
     }
   }
@@ -11318,6 +11390,8 @@ module.exports = {
   recordRarityCatch,
   WORLD_BOSS_POOL,
   getActiveWorldBoss,
+  isDailyEternamaxSpawnClaimed,
+  claimDailyEternamaxSpawn,
   spawnWorldBoss,
   registerWorldBossPlayer,
   updateWorldBossPlayerTeam,

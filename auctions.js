@@ -1,4 +1,7 @@
 const AUCTION_DURATION_MS = 48 * 60 * 60 * 1000;
+const AUCTION_SNIPE_WINDOW_MS = 2 * 60 * 1000;
+const AUCTION_EXTENSION_MS = 2 * 60 * 1000;
+const AUCTION_MAX_EXTENSION_MS = 5 * 60 * 1000;
 const AUCTION_STARTING_BID_SQL = `COALESCE(a.starting_bid, CASE
   WHEN json_extract(a.pokemon_json, '$.pokemon_id') = 10190 THEN 1000
   WHEN lower(json_extract(a.pokemon_json, '$.rarity')) = 'gem' THEN 500
@@ -321,10 +324,15 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
       if (auction.bidder_id && auction.bidder_id !== userId) {
         incrementUser(auction.bidder_id, { patreon_tokens: auction.bid_amount });
       }
+      const maxEndsAt = auction.starts_at + AUCTION_DURATION_MS + AUCTION_MAX_EXTENSION_MS;
+      const endsAt = auction.ends_at - now <= AUCTION_SNIPE_WINDOW_MS
+        ? Math.min(auction.ends_at + AUCTION_EXTENSION_MS, Math.max(auction.ends_at, maxEndsAt))
+        : auction.ends_at;
       db.prepare(`
-        UPDATE pokemon_auctions SET bidder_id = ?, bid_amount = ?, bid_count = bid_count + 1, last_bid_at = ?
+        UPDATE pokemon_auctions
+        SET bidder_id = ?, bid_amount = ?, bid_count = bid_count + 1, last_bid_at = ?, ends_at = ?
         WHERE id = ?
-      `).run(userId, amount, now, id);
+      `).run(userId, amount, now, endsAt, id);
       db.prepare('INSERT INTO pokemon_auction_bids (auction_id, bidder_id, amount, bid_at) VALUES (?, ?, ?, ?)')
         .run(id, userId, amount, now);
       return {

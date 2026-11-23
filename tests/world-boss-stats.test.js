@@ -31,6 +31,32 @@ function setupDatabase() {
   return db;
 }
 
+test('Eternamax daily spawn claims allow one Boss Coin and one automatic spawn per UTC day', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE eternamax_daily_spawn_claims (
+        utc_day TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('boss_coin', 'automatic')),
+        PRIMARY KEY (utc_day, source)
+      );
+    `);
+    const ctx = vm.createContext({ db, Date, TypeError });
+    vm.runInContext(
+      extract(dbSource, 'function getEternamaxSpawnUtcDay(', '\nconst WORLD_BOSS_REGISTRATION_DURATION_MS'),
+      ctx
+    );
+    const beforeUtcMidnight = Date.UTC(2026, 10, 23, 23, 59);
+    const afterUtcMidnight = Date.UTC(2026, 10, 24, 0, 1);
+    assert.equal(ctx.claimDailyEternamaxSpawn('boss_coin', beforeUtcMidnight), true);
+    assert.equal(ctx.claimDailyEternamaxSpawn('boss_coin', beforeUtcMidnight), false);
+    assert.equal(ctx.claimDailyEternamaxSpawn('automatic', beforeUtcMidnight), true);
+    assert.equal(ctx.isDailyEternamaxSpawnClaimed('boss_coin', beforeUtcMidnight), true);
+    assert.equal(ctx.claimDailyEternamaxSpawn('boss_coin', afterUtcMidnight), true);
+    assert.throws(() => ctx.claimDailyEternamaxSpawn('admin', afterUtcMidnight), /source must be/);
+  } finally { db.close(); }
+});
+
 test('historical rewards and the latest raid backfill contributions without duplication', () => {
   const db = setupDatabase();
   try {

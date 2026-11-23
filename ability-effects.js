@@ -266,9 +266,12 @@ function adjustDefenderTypes(attacker, type, types) {
   return types;
 }
 
-function critChance(attacker, defender, base) {
+function critChance(attacker, defender, base, stage = 0) {
   if (!breaksAbility(attacker) && has(defender, 'battle-armor', 'shell-armor')) return 0;
-  return has(attacker, 'super-luck') ? Math.max(base, 0.125) : base;
+  const effectiveStage = stage + (has(attacker, 'super-luck') ? 1 : 0);
+  if (effectiveStage >= 3) return 1;
+  if (effectiveStage >= 2) return 0.5;
+  return effectiveStage === 1 ? Math.max(base, 0.125) : base;
 }
 
 function multiHitCount(mon, count) {

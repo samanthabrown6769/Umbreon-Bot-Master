@@ -423,6 +423,41 @@ test('November Part 2 chambers open and close with the event and award the corre
   }
 });
 
+test('clearing either Mewtwo chamber consumes the shared Mewtwo sacrifice run', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, species_id INTEGER, is_default INTEGER, is_legendary INTEGER);
+      INSERT INTO pokemon_forms VALUES (150, 150, 1, 1);
+      CREATE TABLE mega_chambers (user_id TEXT, chamber_key TEXT, sacrifices INTEGER, clears INTEGER,
+        PRIMARY KEY (user_id, chamber_key));
+      INSERT INTO mega_chambers VALUES ('user', 'mewtwox', 5, 0), ('user', 'mewtwoy', 5, 0);
+      CREATE TABLE mega_stones (user_id TEXT, stone_name TEXT, amount INTEGER,
+        PRIMARY KEY (user_id, stone_name));
+    `);
+    const ctx = vm.createContext({
+      db, assertUserId: () => {}, getPatreonPerks: () => null,
+      awardCoinsWithBoost: (_id, amount) => ({ finalAmount: amount }), incrementUser: () => {},
+    });
+    vm.runInContext(`${extract(dbSource, 'const CHAMBER_CONFIG =', '\nfunction getUserChambers(')}
+      this.chambers = CHAMBER_CONFIG;`, ctx);
+    vm.runInContext(extract(dbSource, 'function getChamberRequirement(', '\nfunction megaEvolvePokemon('), ctx);
+
+    const reward = ctx.completeMegaChamber('user', 'mewtwoy');
+    assert.equal(reward.stone, 'Mewtwonite Y');
+    assert.equal(reward.remainingSacrifices, 0);
+    assert.deepEqual(db.prepare(`
+      SELECT chamber_key, sacrifices, clears FROM mega_chambers ORDER BY chamber_key
+    `).all(), [
+      { chamber_key: 'mewtwox', sacrifices: 0, clears: 0 },
+      { chamber_key: 'mewtwoy', sacrifices: 0, clears: 1 },
+    ]);
+    assert.equal(ctx.completeMegaChamber('user', 'mewtwox').error, 'not_ready');
+  } finally {
+    db.close();
+  }
+});
+
 test('chamber battles accept their displayed numbers and full multiword names', async () => {
   const ctx = vm.createContext({
     command: 'mc', userId: 'user', PREFIX: '.',

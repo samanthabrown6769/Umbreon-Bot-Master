@@ -172,7 +172,7 @@ function createField() {
   const side = () => ({ reflect: 0, lightScreen: 0, veil: 0, safeguard: 0, mist: 0, tailwind: 0, luckyChant: 0, spikes: 0, tspikes: 0, rocks: 0, web: 0, wish: null, healingWish: false });
   return {
     weather: null, weatherTurns: 0, terrain: null, terrainTurns: 0, trickRoom: 0, gravity: 0, wonder: 0, magic: 0,
-    waterSport: 0, mudSport: 0, ionDeluge: false, sides: { player: side(), enemy: side() },
+    waterSport: 0, mudSport: 0, ionDeluge: false, scatteredCoins: 0, coinBonus: false, sides: { player: side(), enemy: side() },
   };
 }
 
@@ -316,7 +316,8 @@ function inflictStatus(ctx, mon, side, status, L, { quiet = false, sourceSide = 
   if (status === 'slp' && ctx.field.terrain === 'electric' && grounded) return fail(`${mon.name} is protected by the Electric Terrain!`);
   if (status === 'par' && mon.types.includes('electric')) return fail(`It doesn't affect ${mon.name}...`);
   if (status === 'brn' && mon.types.includes('fire')) return fail(`It doesn't affect ${mon.name}...`);
-  if ((status === 'psn' || status === 'tox') && (mon.types.includes('poison') || mon.types.includes('steel'))) return fail(`It doesn't affect ${mon.name}...`);
+  if ((status === 'psn' || status === 'tox') && (mon.types.includes('poison') || mon.types.includes('steel'))
+      && !AB.has(sourceMon, 'corrosion')) return fail(`It doesn't affect ${mon.name}...`);
   if (status === 'frz' && (mon.types.includes('ice') || ctx.field.weather === 'sun')) return fail(`It doesn't affect ${mon.name}...`);
   f.status = status;
   f.sleep = status === 'slp' ? 1 + Math.floor(Math.random() * 3) : 0;
@@ -376,6 +377,7 @@ function chooseEnemyMove(enemy, player, field) {
 }
 
 function onSwitchIn(ctx, mon, side, L) {
+  if (side === 'player' && mon.held_item === 'Luck Incense') ctx.field.coinBonus = true;
   fx(mon).choiceMove = null;
   fx(mon).choiceMoveSlug = null;
   fx(mon).miracleEye = false;
@@ -432,6 +434,7 @@ function onSwitchOut(ctx, mon, side) {
   f.chargingMove = null;
   f.octolock = null;
   f.miracleEye = false;
+  f.focus = 0;
   f.confuse = 0;
   for (const key of STAGE_KEYS) f.stages[key] = 0;
 }
@@ -571,7 +574,8 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
     if (f.charge && type === 'electric') mult *= 2;
     if (ctx.field.waterSport > 0 && type === 'fire') mult *= 0.33;
     if (ctx.field.mudSport > 0 && type === 'electric') mult *= 0.33;
-    crit = f.laser || Math.random() < AB.critChance(m, t, f.focus ? 0.5 : 0.0625);
+    const chance = AB.critChance(m, t, 0.0625, f.focus || 0);
+    crit = chance > 0 && (f.laser || Math.random() < chance);
     if (crit) {
       mult *= 1.5;
       // Each Aux Guard / Aux Powerguard stack cuts one critical hit's damage by 75%.
@@ -597,6 +601,10 @@ function applyDamageMove(ctx, A, B, move, L, depth = 0) {
       L(`${m.name} lost **${recoil}** HP to its Life Orb recoil.`);
     }
     return;
+  }
+  if (dmg > 0 && !ctx.worldBoss && ['pay-day', 'make-it-rain'].includes(slug(move.name))) {
+    ctx.field.scatteredCoins += 5 * m.level;
+    L('Coins were scattered everywhere!');
   }
   const targetHpBefore = t.hp;
   t.hp -= dmg;
@@ -889,6 +897,12 @@ function applyStatusMove(ctx, A, B, move, L, depth = 0) {
     const owner = eff.onFoe ? t : m;
     if (eff.flag === 'miracleEye' && target.miracleEye) { L('But it failed!'); return; }
     if (eff.flag === 'octolock' && target.octolock) { L('But it failed!'); return; }
+    if (eff.flag === 'focus') {
+      if ((target.focus || 0) >= 4) { L(`${owner.name}'s critical-hit stage can't go higher!`); return; }
+      target.focus = Math.min(4, (target.focus || 0) + 2);
+      L(`${owner.name}'s critical-hit stage rose to +${target.focus}!`);
+      return;
+    }
     target[eff.flag] = eff.flag === 'octolock' ? { source: m } : true;
     if (eff.flag === 'miracleEye') target.stages.eva = 0;
     L(`${owner.name} ${eff.text}`);
@@ -1390,6 +1404,7 @@ module.exports = {
     if (f.confuse > 0) parts.push('CNF');
     if (f.leech) parts.push('SEEDED');
     if (f.sub > 0) parts.push('SUB');
+    if (f.focus) parts.push(`CRIT +${f.focus}`);
     const stages = STAGE_KEYS.filter((k) => f.stages[k]).map((k) => `${STAGE_NAMES[k]} ${f.stages[k] > 0 ? '+' : ''}${f.stages[k]}`);
     return [...parts, ...stages].join(' · ');
   },

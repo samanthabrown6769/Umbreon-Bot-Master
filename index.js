@@ -245,6 +245,8 @@ const {
   removeOwnedPokemonCatch,
   swapTeamSlots,
   getActiveWorldBoss,
+  isDailyEternamaxSpawnClaimed,
+  claimDailyEternamaxSpawn,
   registerWorldBossPlayer,
   updateWorldBossPlayerTeam,
   getWorldBossPlayerTeam,
@@ -5112,7 +5114,7 @@ function rollBossCoinVariant(template) {
   return WORLD_BOSS_POOL.find((entry) => entry.isShiny && entry.name.replace(/^Shiny\s+/i, '') === template.name) || template;
 }
 
-const ETERNATUS_BOSS_COOLDOWN_HOURS = 2;
+const isEternamaxWorldBoss = (entry) => /eternamax|eternatus/i.test(entry.name);
 
 async function spawnWorldBossForUser(message, userId, requestedName = '') {
   if (!message.guild) return message.reply('Use this in a server.');
@@ -5133,28 +5135,38 @@ async function spawnWorldBossForUser(message, userId, requestedName = '') {
     template = spawnPool[Math.floor(Math.random() * spawnPool.length)];
   }
   template = rollBossCoinVariant(template);
-  if (/eternamax|eternatus/i.test(template.name)) {
-    const recent = db.prepare(`
-      SELECT spawned_at FROM world_boss
-      WHERE (name LIKE '%eternamax%' OR name LIKE '%eternatus%') AND spawned_at > datetime('now', ?)
-      ORDER BY id DESC LIMIT 1
-    `).get(`-${ETERNATUS_BOSS_COOLDOWN_HOURS} hours`);
-    if (recent) {
-      const readyAt = Math.floor((new Date(`${recent.spawned_at.replace(' ', 'T')}Z`).getTime() + ETERNATUS_BOSS_COOLDOWN_HOURS * 3600000) / 1000);
-      return message.reply(`❌ **${template.name}** was spawned recently and can't be spawned again until <t:${readyAt}:R>.`);
-    }
-  }
+  const isEternamax = isEternamaxWorldBoss(template);
+  const spawnTimestamp = Date.now();
   const hasWorldBossSpawnPrivilege = WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has(userId);
-  const spent = db.transaction(() => {
-    if (getActiveWorldBoss()) return null;
-    if (!hasWorldBossSpawnPrivilege && !takeUserItem(userId, 'Boss Coin', 1)) return null;
-    return spawnWorldBoss(template, userId, message.author.username);
+  const result = db.transaction(() => {
+    const activeBoss = getActiveWorldBoss();
+    if (activeBoss) return { status: 'active', boss: activeBoss };
+    if (isEternamax && isDailyEternamaxSpawnClaimed('boss_coin', spawnTimestamp)) {
+      return { status: 'daily_limit' };
+    }
+    if (!hasWorldBossSpawnPrivilege && !takeUserItem(userId, 'Boss Coin', 1)) {
+      return { status: 'missing_coin' };
+    }
+    if (isEternamax && !claimDailyEternamaxSpawn('boss_coin', spawnTimestamp)) {
+      throw new Error('Failed to claim the daily Eternamax Boss Coin spawn.');
+    }
+    return {
+      status: 'spawned',
+      boss: spawnWorldBoss(template, userId, message.author.username),
+    };
   }).immediate();
-  if (!spent) {
+  if (result.status === 'active') {
+    return message.reply(`❌ **${result.boss.name}** is already active. Wait until it's defeated or replaced before spawning another.`);
+  }
+  if (result.status === 'daily_limit') {
+    return message.reply('❌ Eternamax Eternatus can only be spawned once per UTC day with a Boss Coin.');
+  }
+  if (result.status === 'missing_coin') {
     return message.reply(
       `❌ You need a ${EMOJIS.bosscoin} **Boss Coin** to spawn a World Boss. Buy one with \`${PREFIX}shop buy 50\`.`
     );
   }
+  const spent = result.boss;
   scheduleWorldBossRegistrationClose(spent);
   await announceWorldBossEverywhere(spent, message);
   return message.reply(
@@ -5698,7 +5710,9 @@ function runWorldBossMove(userId, team, boss, teamIndex, moveIndex, damageMult =
     pokemon.held_item, moveType, effectiveness, move.category, true
   );
   const stages = battleMon ? battleFx.fx(battleMon).stages : null;
-  const isCritical = Math.random() < (battleMon && battleFx.fx(battleMon).focus ? 0.5 : 0.15);
+  const isCritical = Math.random() < battleFx.abilities.critChance(
+    battleMon, bossMon, 0.15, battleMon ? battleFx.fx(battleMon).focus || 0 : 0
+  );
   const attack = pokemon.atk + (move.category === 'special' ? battleFx.evBonus(pokemon, 'ev_spa') : 0);
   const baseDamage = Math.max(
     1,
@@ -5866,20 +5880,25 @@ function runWorldBossCounterattack(bs, playerState, currentBoss, attack, playerI
         const { atk: bossAtk, def: playerDef } = battleFx.damageStats(bs.boss, bs.mon, bossMove, bs.field);
         const playerSide = bs.field.sides.player;
         const screened = playerSide.veil > 0 || (bossMove.category === 'special' ? playerSide.lightScreen : playerSide.reflect) > 0;
+        const protectedByMove = bs.mon.fx?.protect;
+        const bossFocus = battleFx.fx(bs.boss).focus || 0;
+        const critical = bossFocus > 0 && (!protectedByMove || protectedByMove === 'endure' || protectedByMove === 'crafty')
+          && Math.random() < battleFx.abilities.critChance(bs.boss, bs.mon, 0, bossFocus);
         const abilityDefence = battleFx.abilities.damageMultiplier(
           bossCtx, bossActor, playerActor, bossMove,
           {
             type: bossMove.type, eff: bossEffectiveness,
-            physical: bossMove.category !== 'special', crit: false, typeBoost: 1,
+            physical: bossMove.category !== 'special', crit: critical, typeBoost: 1,
           }
         );
+        let criticalMultiplier = critical ? 1.5 : 1;
+        if (critical && playerFx.critGuard > 0) { playerFx.critGuard -= 1; criticalMultiplier *= 0.25; }
         const counterDamage = Math.max(1, Math.floor(calculateMoveDamage(
           bossMove,
           bossAtk,
           playerDef,
           playerTypes
-        ) * WORLD_BOSS_COUNTER_DAMAGE_MULTIPLIER * (screened ? 0.5 : 1) * abilityDefence));
-        const protectedByMove = bs.mon.fx?.protect;
+        ) * WORLD_BOSS_COUNTER_DAMAGE_MULTIPLIER * (screened && !critical ? 0.5 : 1) * criticalMultiplier * abilityDefence));
         if (protectedByMove && protectedByMove !== 'endure' && protectedByMove !== 'crafty') {
           attack.battleLog.push(`**${currentBoss.name}** used **${bossMove.name}**, but **${bs.mon.name}** protected itself!`);
         } else {
@@ -5904,7 +5923,8 @@ function runWorldBossCounterattack(bs, playerState, currentBoss, attack, playerI
           );
           bs.mon.hp = playerState.hp;
           attack.battleLog.push(
-            `**${currentBoss.name}** counterattacked with **${bossMove.name}** for **${counterDamage}** damage.`
+            `**${currentBoss.name}** counterattacked with **${bossMove.name}** for **${counterDamage}** damage.` +
+            `${critical ? ' A critical hit!' : ''}`
           );
           if (survivedWithOneHp) {
             attack.battleLog.push(
@@ -5913,7 +5933,7 @@ function runWorldBossCounterattack(bs, playerState, currentBoss, attack, playerI
           }
           battleFx.abilities.afterHit(
             bossCtx, bossActor, playerActor, bossMove, counterDamage,
-            { type: bossMove.type, crit: false }, bossSay
+            { type: bossMove.type, crit: critical }, bossSay
           );
           playerState.hp = bs.mon.hp;
           if (bs.mon.hp > 0 && bs.mon.held_item === 'Sitrus Berry'
@@ -8182,14 +8202,16 @@ async function askForBall(
       resetHeldItemEncounterCounter(userId, target.name, catchDisplayRarity, target.heldItem);
     }
     if (!guaranteedCatch || isConfiguredBotAdminId(userId)) recordDailyCatch(userId, catcher.username);
-    const resetCounterCategories = counterSource && !target.isEventSpawn
+    const resetCounterCategories = counterSource && (!target.isEventSpawn
+      || (counterSource === 'fishing' && (target.isGolden || target.is_golden)))
       ? resetEncounterCounters(
         userId,
         counterSource,
         [
-          ...(String(target.rarity).toLowerCase() === 'legendary' ? ['legendary'] : []),
-          ...(target.isShiny ? ['shiny'] : []),
-          ...(counterSource === 'explore' && (target.isGolden || target.is_golden) ? ['golden'] : []),
+          ...(!target.isEventSpawn && String(target.rarity).toLowerCase() === 'legendary' ? ['legendary'] : []),
+          ...(!target.isEventSpawn && target.isShiny ? ['shiny'] : []),
+          ...((counterSource === 'explore' || counterSource === 'fishing')
+            && (target.isGolden || target.is_golden) ? ['golden'] : []),
         ],
         target.name
       )
@@ -8998,6 +9020,15 @@ function buildSparParty(userId, defending = false) {
 }
 
 // Friendly spar: your team against another player's team, which is controlled by the AI. No rewards or records.
+function collectScatteredBattleCoins(userId, field, log) {
+  if (!field.scatteredCoins) return '';
+  const amount = awardCoinsWithBoost(userId, field.scatteredCoins * (field.coinBonus ? 2 : 1)).finalAmount;
+  field.scatteredCoins = 0;
+  const text = `${EMOJIS.pokecoin} Collected **${amount.toLocaleString()} PokéCoins** scattered during battle.`;
+  log.push(text);
+  return `\n${text}`;
+}
+
 async function runPlayerSpar(message, userId, opponentUser) {
   const party = buildSparParty(userId);
   if (!party.length) return message.reply('❌ Set up a team with at least one Pokémon that has battle moves first.');
@@ -9158,6 +9189,7 @@ async function runPlayerSpar(message, userId, opponentUser) {
         } else {
           resultSummary = '🎉 **Victory!**\nNo Buddy or eligible Exp. Share Pokémon could receive EXP.';
         }
+        resultSummary += collectScatteredBattleCoins(userId, field, log);
       }
       else if (lost) {
         log.push(`💀 **DEFEAT!** ${opponentUser.username}'s team was too strong.`);
@@ -9526,6 +9558,7 @@ async function runMegaChamberGauntlet(message, userId, config) {
             `🎉 **Victory!**\n` +
             `Earned **1x ${stoneLabel(reward.stone)}** and ${EMOJIS.pokecoin} **${reward.coins.toLocaleString()} PokéCoins**.\n` +
             `${formatMegaChamberSacrifices(reward.remainingSacrifices, getChamberRequirement(config, userId))} remain.`;
+          resultSummary += collectScatteredBattleCoins(userId, field, log);
         }
         if (reward.error) resultSummary = '❌ The chamber entry was no longer available; no reward was granted.';
         finished = true;
@@ -10066,6 +10099,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
             log.push(`✨ Your Buddy and Exp. Share team earned **${npcExperience.toLocaleString()} EXP**.`);
             resultSummary += `\n✨ Buddy and eligible Exp. Share Pokémon earned **${npcExperience.toLocaleString()} EXP**.`;
           }
+          resultSummary += collectScatteredBattleCoins(userId, field, log);
           const challengeIconIndex = challenge.special
             ? NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.indexOf(challenge)
             : challengeIndex;
@@ -10932,7 +10966,7 @@ async function handleGift(message, userId, args) {
   const usedIds = new Set();
   const seenSpecies = new Set();
   const savedTeamCatchIds = new Set(
-    db.prepare('SELECT pokemon_ids FROM saved_teams WHERE user_id = ?')
+    db.prepare('SELECT pokemon_ids FROM saved_teams WHERE user_id = ? AND is_defending IN (0, 1)')
       .all(userId)
       .flatMap((team) => JSON.parse(team.pokemon_ids || '[]'))
   );
@@ -10963,7 +10997,10 @@ async function handleGift(message, userId, args) {
     const wanted = entry.amount === 'all' ? available.length : entry.amount;
     if (!Number.isSafeInteger(wanted) || wanted <= 0) return message.reply('❌ Enter a valid amount.');
     if (wanted > available.length) {
-      return message.reply(`❌ You only have **${available.length}** giftable ${available[0].name}.`);
+      return message.reply(
+        `❌ You only have **${available.length}** giftable ${available[0].name}. ` +
+        'Pokémon in your active team or saved teams cannot be gifted.'
+      );
     }
     const chosen = available.slice(0, wanted);
     chosen.forEach((mon) => usedIds.add(mon.id));
@@ -10980,14 +11017,6 @@ async function handleGift(message, userId, args) {
       if (!result.error) {
         sent += 1;
         if (!firstSent) firstSent = mon;
-        notifyAdminIfRareGrant(
-          message.guild,
-          targetUser,
-          mon,
-          `.gift from ${message.author.username} (\`${userId}\`)`,
-          Boolean(mon.is_shiny),
-          Boolean(mon.is_golden)
-        ).catch(() => {});
       } else if (result.error === 'in_saved_team') {
         savedTeamBlockedNames.add(name);
       }
@@ -19272,6 +19301,7 @@ client.on('messageCreate', async (message) => {
         { source: 'pokemon', category: 'shiny', label: 'Shiny spawn', rarity: 'Shiny' },
         { source: 'fishing', category: 'legendary', label: 'Legendary spawn', rarity: 'Legendary' },
         { source: 'fishing', category: 'shiny', label: 'Shiny spawn', rarity: 'Shiny' },
+        { source: 'fishing', category: 'golden', label: 'Golden spawn', rarity: 'Golden' },
         { source: 'explore', category: 'golden', label: 'Golden spawn', rarity: 'Golden' },
         { source: 'explore', category: 'shiny', label: 'Shiny spawn', rarity: 'Shiny' },
         { source: 'explore', category: 'legendary', label: 'Legendary spawn', rarity: 'Legendary' },
@@ -19832,9 +19862,10 @@ client.on('messageCreate', async (message) => {
       const pageSize = 18;
       let visibleSpecies = species;
       if (query) {
-        visibleSpecies = /^\d+$/.test(query)
-          ? species.filter((entry) => entry.species_id === Number(query))
-          : species.filter((entry) => entry.name.toLowerCase() === query);
+        const form = resolvePokemonForm(query);
+        visibleSpecies = form
+          ? [{ species_id: form.species_id, name: form.name, dex_number: getPokemonFormDexNumber(form) }]
+          : [];
         if (!visibleSpecies.length) {
           return message.reply(`No Pokémon found for \`${query}\`.`);
         }
@@ -19851,7 +19882,7 @@ client.on('messageCreate', async (message) => {
         const embed = new EmbedBuilder()
           .setColor(0x0099ff)
           .setDescription(
-            `Displaying Pokémon #${entries[0].species_id} - ${entries[entries.length - 1].species_id}\n\n` +
+            `Displaying Pokémon #${entries[0].dex_number ?? entries[0].species_id} - #${entries[entries.length - 1].dex_number ?? entries[entries.length - 1].species_id}\n\n` +
             `🎊 Total BDs complete (all pages): ${totalComplete}\n` +
             `📋 **Count:** ${completedOnPage} out of ${entries.length} completed on this page`
           )
@@ -19859,13 +19890,13 @@ client.on('messageCreate', async (message) => {
             const { icons, count } = formatBallDexRow(caughtBySpecies.get(entry.species_id));
             const sprite = getPokemonSpriteEmoji({ name: entry.name });
             return {
-              name: `${sprite ? `${sprite} ` : ''}${entry.name} #${entry.species_id}`,
+              name: `${sprite ? `${sprite} ` : ''}${entry.name} #${entry.dex_number ?? entry.species_id}`,
               value: `${icons} \`[${count}/${BALLDEX_BALLS.length}]\``,
               inline: true,
             };
           }))
           .setFooter({
-            text: `Page ${currentPage}/${totalPages} • Shiny & regular Pokémon balldexes are merged\n` +
+            text: `Page ${currentPage}/${totalPages} • All forms and variants share species progress\n` +
               `Quick summary of completions: ${PREFIX}bd status\n` +
               `View a single Pokémon: ${PREFIX}bd {pokemon name/number}`,
           });
@@ -29280,6 +29311,9 @@ client.on('messageCreate', async (message) => {
       if (!Number.isSafeInteger(amount) || amount <= 0) {
         return message.reply(`❌ **Please specify a valid amount!**\n${usage}`);
       }
+      if (isCoinTransfer && amount > 50_000_000) {
+        return message.reply(`❌ You can give at most **50,000,000 PokéCoins** per \`${PREFIX}give\`. Use \`${PREFIX}trade\` for larger transfers.`);
+      }
 
       if (!isTokenTransfer && !isCoinTransfer) {
         const funItem = Object.keys(FUN_ITEM_EMOJIS).find((name) =>
@@ -29513,17 +29547,16 @@ client.once('clientReady', () => {
   const spawnAndScheduleNextHour = () => {
     setTimeout(async () => {
       try {
-        const isEternamax = (entry) => /eternamax|eternatus/i.test(entry.name);
-        const regularBosses = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny && !isEternamax(entry));
-        const shinyBosses = WORLD_BOSS_POOL.filter((entry) => entry.isShiny && !isEternamax(entry));
+        const regularBosses = WORLD_BOSS_POOL.filter((entry) => !entry.isShiny && !isEternamaxWorldBoss(entry));
+        const shinyBosses = WORLD_BOSS_POOL.filter((entry) => entry.isShiny && !isEternamaxWorldBoss(entry));
         // Eternamax spawns once per UTC day at an hour derived from the date, so it survives restarts.
         const nowDate = new Date();
         const dayNumber = Math.floor(nowDate.getTime() / 86400000);
         const eternamaxHour = Math.floor(
           (((Math.imul(dayNumber ^ 0x9e3779b9, 2654435761) >>> 0) ^ (dayNumber * 40503)) >>> 0) % 24
         );
-        const eternamaxTemplate = WORLD_BOSS_POOL.find((entry) => !entry.isShiny && isEternamax(entry));
-        const template = eternamaxTemplate && nowDate.getUTCHours() === eternamaxHour
+        const eternamaxTemplate = WORLD_BOSS_POOL.find((entry) => !entry.isShiny && isEternamaxWorldBoss(entry));
+        let template = eternamaxTemplate && nowDate.getUTCHours() === eternamaxHour
           ? eternamaxTemplate
           : Math.random() < 0.05
             ? shinyBosses[Math.floor(Math.random() * shinyBosses.length)]
@@ -29538,7 +29571,15 @@ client.once('clientReady', () => {
               .setDescription('The hourly raid has started. Use `.wb` to view the new World Boss.')
           );
         }
-        const boss = spawnWorldBoss(template);
+        const boss = db.transaction(() => {
+          if (isEternamaxWorldBoss(template)) {
+            if (isDailyEternamaxSpawnClaimed('automatic', nowDate.getTime())
+                || !claimDailyEternamaxSpawn('automatic', nowDate.getTime())) {
+              template = regularBosses[Math.floor(Math.random() * regularBosses.length)];
+            }
+          }
+          return spawnWorldBoss(template);
+        }).immediate();
         scheduleWorldBossRegistrationClose(boss);
         console.log(`Hourly World Boss spawned: ${boss.name}.`);
         await announceWorldBossEverywhere(boss);

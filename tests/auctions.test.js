@@ -254,6 +254,26 @@ test('bids reserve tokens, refund outbid users, and settle exactly once', () => 
   db.close();
 });
 
+test('late bids extend auctions by two minutes up to five minutes beyond the original end', () => {
+  const { db, auctions } = setup();
+  db.exec("INSERT INTO catches VALUES (1,'source',1,'Test','Legendary',0,0,NULL)");
+  db.transaction(() => auctions.confiscate('source', 1000))();
+  const originalEnd = 1000 + AUCTION_DURATION_MS;
+  const getEnd = () => db.prepare('SELECT ends_at FROM pokemon_auctions WHERE id = 1').get().ends_at;
+
+  assert.equal(auctions.bid('alice', 1, 50, originalEnd - 2 * 60 * 1000 - 1).amount, 50);
+  assert.equal(getEnd(), originalEnd);
+  assert.equal(auctions.bid('bob', 1, 51, originalEnd - 2000).amount, 51);
+  assert.equal(getEnd(), originalEnd + 2 * 60 * 1000);
+  assert.equal(auctions.bid('alice', 1, 52, originalEnd + 2 * 60 * 1000 - 2000).amount, 52);
+  assert.equal(getEnd(), originalEnd + 4 * 60 * 1000);
+  assert.equal(auctions.bid('bob', 1, 53, originalEnd + 4 * 60 * 1000 - 2000).amount, 53);
+  assert.equal(getEnd(), originalEnd + 5 * 60 * 1000);
+  assert.equal(auctions.bid('alice', 1, 54, originalEnd + 5 * 60 * 1000 - 2000).amount, 54);
+  assert.equal(getEnd(), originalEnd + 5 * 60 * 1000);
+  db.close();
+});
+
 test('auction command DMs the displaced bidder only after a successful outbid', async () => {
   const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
   const start = source.indexOf("      if (action === 'bid') {", source.indexOf("    if (command === 'auction'"));
