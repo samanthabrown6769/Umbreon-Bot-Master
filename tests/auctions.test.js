@@ -630,6 +630,66 @@ test('admin auction start activates queued auctions and announces them', async (
   assert.match(replies[0], /Started \*\*3\*\* queued Pokémon auctions/);
 });
 
+test('only the designated bot admin can use admin ban and wipe', async () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf("      if (command === 'admin' && ['ban', 'unban', 'wipe'].includes(subtype))");
+  const end = source.indexOf("\n      if (command === 'admin' && subtype === 'clan' && action === 'delete')", start);
+  assert.ok(start >= 0 && end > start);
+  const handler = source.slice(start, end);
+
+  for (const subtype of ['ban', 'wipe']) {
+    const calls = [];
+    const replies = [];
+    const context = vm.createContext({
+      BAN_WIPE_ADMIN_USER_ID: '1514082847609061541',
+      command: 'admin', subtype, PREFIX: '.', args: [subtype, '123456789012345', 'confirm'],
+      message: {
+        author: { id: '426946381098254336' },
+        mentions: { users: { first: () => null } },
+        reply: async (text) => replies.push(text),
+      },
+      isUserBanned: () => false,
+      banUser: (id) => calls.push(['ban', id]),
+      wipeUserData: (id) => { calls.push(['wipe', id]); return {}; },
+    });
+    vm.runInContext(`async function run() { ${handler} }`, context);
+    await context.run();
+    assert.deepEqual(calls, []);
+    assert.match(replies[0], /Only the designated bot admin/);
+  }
+
+  const calls = [];
+  const context = vm.createContext({
+    BAN_WIPE_ADMIN_USER_ID: '1514082847609061541',
+    command: 'admin', subtype: 'ban', PREFIX: '.', args: ['ban', '123456789012345'],
+    message: {
+      author: { id: '1514082847609061541' },
+      mentions: { users: { first: () => null } },
+      reply: async () => {},
+    },
+    isUserBanned: () => false,
+    banUser: (id) => { calls.push(id); return 0; },
+  });
+  vm.runInContext(`async function run() { ${handler} }`, context);
+  await context.run();
+  assert.deepEqual(calls, ['123456789012345']);
+
+  const wipeCalls = [];
+  const wipeContext = vm.createContext({
+    BAN_WIPE_ADMIN_USER_ID: '1514082847609061541',
+    command: 'admin', subtype: 'wipe', PREFIX: '.', args: ['wipe', '123456789012345', 'confirm'],
+    message: {
+      author: { id: '1514082847609061541' },
+      mentions: { users: { first: () => null } },
+      reply: async () => {},
+    },
+    wipeUserData: (id) => { wipeCalls.push(id); return {}; },
+  });
+  vm.runInContext(`async function run() { ${handler} }`, wipeContext);
+  await wipeContext.run();
+  assert.deepEqual(wipeCalls, ['123456789012345']);
+});
+
 test('commands targeting a banned user return their username, except admin unban', async () => {
   const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
   const start = source.indexOf('async function getBannedCommandTargetName(');

@@ -73,6 +73,67 @@ function makeContext() {
   return { context, user, items, incubators, replies, press };
 }
 
+test('Phione hatch chances require Manaphy ownership for regular and shiny Phione', () => {
+  let ownsManaphy = false;
+  const context = vm.createContext({
+    HARD_RARITY_USER_IDS: new Set(),
+    EGG_HATCH_POOLS: { early: [], late: ['Carbink', 'Mimikyu'] },
+    EGG_SHINY_DENOMINATOR_MULTIPLIER: 10,
+    EGG_GOLDEN_DENOMINATOR_MULTIPLIER: 10,
+    Math: { floor: Math.floor, random: () => 0.99 },
+    db: {
+      prepare: (query) => query.includes('FROM catches')
+        ? { get: (userId) => {
+          assert.match(query, /FROM catches/);
+          assert.equal(userId, 'trainer');
+          return ownsManaphy ? { 1: 1 } : undefined;
+        } }
+        : { get: (name) => ({ id: 1, species_id: 490, species_name: name }) },
+    },
+  });
+  vm.runInContext(extract(source, 'const EGG_RARE_HATCHES =', '\n\n// Regular egg rewards are reserved'), context);
+  vm.runInContext(extract(source, 'function rollEggHatch(', '\nconst RARITY_EMOJIS'), context);
+  const entries = vm.runInContext('EGG_RARE_HATCHES', context);
+  const eligibleEntries = entries.filter((entry) =>
+    (entry.minTarget === undefined || 100 >= entry.minTarget)
+    && (entry.maxTarget === undefined || 100 <= entry.maxTarget)
+    && !entry.patreonOnly
+  );
+
+  for (const isShiny of [false, true]) {
+    const phioneIndex = eligibleEntries.findIndex((entry) =>
+      entry.name === 'Phione' && Boolean(entry.isShiny) === isShiny
+    );
+    assert.notEqual(phioneIndex, -1);
+    let randomCall = 0;
+    context.Math.random = () => (randomCall++ === phioneIndex ? 0 : 0.99);
+    ownsManaphy = true;
+    const hatch = context.rollEggHatch(100, false, 'trainer');
+    assert.equal(hatch.pokemon.name, 'Phione');
+    assert.equal(hatch.isShiny, isShiny);
+  }
+
+  ownsManaphy = false;
+  context.Math.random = () => 0.99;
+  const hatch = context.rollEggHatch(100, false, 'trainer');
+  assert.notEqual(hatch.pokemon.name, 'Phione');
+
+  ownsManaphy = true;
+  const rollEntryAtOdds = (name, isShiny, oddsRoll) => {
+    const entryIndex = eligibleEntries.findIndex((entry) =>
+      entry.name === name && Boolean(entry.isShiny) === isShiny
+    );
+    assert.notEqual(entryIndex, -1);
+    let randomCall = 0;
+    context.Math.random = () => (randomCall++ === entryIndex ? oddsRoll : 0.99);
+    return context.rollEggHatch(100, false, 'trainer').pokemon.name;
+  };
+  assert.equal(rollEntryAtOdds('Chansey', true, 0.0005), 'Chansey');
+  assert.notEqual(rollEntryAtOdds('Chansey', true, 0.0015), 'Chansey');
+  assert.equal(rollEntryAtOdds('Wynaut', false, 0.0005), 'Wynaut');
+  assert.notEqual(rollEntryAtOdds('Wynaut', false, 0.0015), 'Wynaut');
+});
+
 test('existing and new accounts default to using incubators and setting persists', () => {
   const db = new Database(':memory:');
   try {

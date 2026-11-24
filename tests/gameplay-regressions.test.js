@@ -276,8 +276,38 @@ test('admin buddy info dispatches to the requested user profile', async () => {
   assert.equal(lookups.length, 2);
 });
 
+test('stats reports users without an existing profile without creating one', async () => {
+  const replies = [];
+  let summaryCalls = 0;
+  const targetId = '123456789012345';
+  const context = vm.createContext({
+    PREFIX: '.',
+    resolveCommandUser: async () => ({ user: { id: targetId } }),
+    db: {
+      prepare: (query) => {
+        assert.equal(query, 'SELECT 1 FROM users WHERE id = ?');
+        return { get: (id) => {
+          assert.equal(id, targetId);
+          return undefined;
+        } };
+      },
+    },
+    getUserStatsSummary: () => { summaryCalls++; },
+  });
+  const statsCommand = extract(indexSource, 'async function handleStatsCommand(', '\nclient.on(\'interactionCreate\'');
+  vm.runInContext(statsCommand, context);
+  const result = await context.handleStatsCommand(
+    { reply: async (text) => { replies.push(text); return text; } },
+    [`<@${targetId}>`]
+  );
+  assert.equal(result, `<@${targetId}> does not have a profile.`);
+  assert.deepEqual(replies, [`<@${targetId}> does not have a profile.`]);
+  assert.equal(summaryCalls, 0);
+});
+
 test('ordinary admin catches use normal rates while shared admin spawns stay guaranteed', async () => {
   const spawnOptions = [];
+  const encounterOptions = [];
   const ctx = vm.createContext({
     command: 'p', args: [], userId: 'regular-admin',
     message: { author: { id: 'regular-admin', username: 'Admin' }, guildId: 'guild', channelId: 'channel',
@@ -302,14 +332,19 @@ test('ordinary admin catches use normal rates while shared admin spawns stay gua
     RESEARCH_HOLDABLE_ITEM_NAMES: [], RESEARCH_ITEM_EMOJIS: {}, RESEARCH_VALUABLES: [], RESEARCH_RELICS: [],
     activeRegularEncounters: new Set(),
     reserveRegularEncounter: () => () => {},
-    askForBall: async (_message, _userId, _target, _mode, options) => options,
+    askForBall: async (_message, _userId, _target, _mode, options) => {
+      encounterOptions.push(options);
+      return options;
+    },
   });
   vm.runInContext(extract(indexSource, 'function startPokemonCooldown(', '\nasync function fetchPokemonAbilities('), ctx);
   vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'pokemon' || command === 'p') {", "\n    if (command === 'clan') {")} }`, ctx);
   assert.notEqual((await ctx.run()).guaranteedCatch, true);
+  assert.equal(encounterOptions.at(-1).timeoutMs, 7000);
   assert.equal('useSpawnPity' in spawnOptions.at(-1), false);
   ctx.command = 'fish';
   assert.notEqual((await ctx.run()).guaranteedCatch, true);
+  assert.equal(encounterOptions.at(-1).timeoutMs, 10000);
   assert.equal('useSpawnPity' in spawnOptions.at(-1), false);
   assert.match(await ctx.run(), /fish again later/);
   ctx.command = 'p';
@@ -319,10 +354,12 @@ test('ordinary admin catches use normal rates while shared admin spawns stay gua
   const shared = await ctx.run();
   assert.equal(shared.guaranteedCatch, true);
   assert.equal(shared.allowAnyUserCatch, true);
+  assert.equal(encounterOptions.at(-1).timeoutMs, 7000);
   ctx.args = ['admin', 'helditem', 'Test'];
   assert.match(await ctx.run(), /catch again later/);
   ctx.catchCooldowns.clear();
   assert.equal((await ctx.run()).guaranteedCatch, true);
+  assert.equal(encounterOptions.at(-1).timeoutMs, 7000);
 
   const prefix = extract(indexSource, 'async function askForBall(', '\n  const overworldAbility =');
   vm.runInContext(`${prefix}\n  return guaranteedCatch;\n}`, ctx);

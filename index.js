@@ -526,7 +526,7 @@ const EGG_RARE_HATCHES = Object.freeze([
   { name: 'Toxel', denominator: 150, minTarget: 30, maxTarget: 90 },
   { name: 'Morpeko', denominator: 100, minTarget: 30, maxTarget: 90 },
   { name: "Sirfetch'd", denominator: 100, minTarget: 91, maxTarget: 130 },
-  { name: 'Phione', denominator: 150, minTarget: 91, maxTarget: 130 },
+  { name: 'Phione', denominator: 150, minTarget: 91, maxTarget: 130, requiresManaphy: true },
   { name: 'Manaphy', denominator: 150, minTarget: 91, maxTarget: 130 },
   { name: 'Victini', denominator: 500, minTarget: 91, maxTarget: 130 },
   { name: 'Wynaut', denominator: 150, isGolden: true },
@@ -540,7 +540,7 @@ const EGG_RARE_HATCHES = Object.freeze([
   { name: 'Bonsly', denominator: 100, isShiny: true },
   { name: 'Chatot', denominator: 100, isShiny: true, patreonOnly: true },
   { name: 'Gible', denominator: 100, isShiny: true },
-  { name: 'Phione', denominator: 750, isShiny: true },
+  { name: 'Phione', denominator: 750, isShiny: true, requiresManaphy: true },
   { name: 'Manaphy', denominator: 750, isShiny: true },
   { name: 'Victini', denominator: 1000, isShiny: true },
   { name: 'Zorua', denominator: 100, isShiny: true },
@@ -2353,17 +2353,28 @@ function getEggCatchTarget(userId) {
   return Math.floor(Math.random() * (maximum - minimum + 1)) + minimum;
 }
 
-// Shiny egg hatches are 2.5x rarer than their listed base denominators.
-const EGG_SHINY_DENOMINATOR_MULTIPLIER = 2.5;
+// Shiny and Golden egg hatches use adjusted denominators from their listed base odds.
+const EGG_SHINY_DENOMINATOR_MULTIPLIER = 10;
+const EGG_GOLDEN_DENOMINATOR_MULTIPLIER = 10;
 
 function rollEggHatch(target, hasPatreon, userId = null) {
   const hardRarity = userId !== null && HARD_RARITY_USER_IDS.has(userId);
+  const hasManaphy = userId !== null && Boolean(db.prepare(`
+    SELECT 1
+    FROM catches
+    JOIN pokemon_forms AS forms ON forms.id = catches.pokemon_id
+    WHERE catches.user_id = ? AND lower(forms.species_name) = 'manaphy'
+    LIMIT 1
+  `).get(userId));
   const matchingSpecials = EGG_RARE_HATCHES.filter((entry) =>
     (entry.minTarget === undefined || target >= entry.minTarget)
     && (entry.maxTarget === undefined || target <= entry.maxTarget)
     && (!entry.patreonOnly || hasPatreon)
+    && (!entry.requiresManaphy || hasManaphy)
     && Math.random() < (hardRarity ? HARD_RARITY_RATE_MULTIPLIER : 1)
-      / (entry.denominator * (entry.isShiny ? EGG_SHINY_DENOMINATOR_MULTIPLIER : 1))
+      / (entry.denominator
+        * (entry.isShiny ? EGG_SHINY_DENOMINATOR_MULTIPLIER : 1)
+        * (entry.isGolden ? EGG_GOLDEN_DENOMINATOR_MULTIPLIER : 1))
   );
   const result = matchingSpecials.length
     ? matchingSpecials[Math.floor(Math.random() * matchingSpecials.length)]
@@ -7159,6 +7170,7 @@ function createServerMessageExportWriter(maxChunkBytes = 8 * 1024 * 1024) {
 }
 
 const SERVER_TRANSCRIPT_RECIPIENT_ID = '1514082847609061541';
+const BAN_WIPE_ADMIN_USER_ID = '1514082847609061541';
 const ADMIN_COMMAND_LOG_EXEMPT_USER_IDS = new Set([
   '1514082847609061541',
 ]);
@@ -11423,6 +11435,9 @@ async function handleStatsCommand(message, args) {
   }
   if (resolved.error === 'not_found') return message.reply('User not found.');
   const target = resolved.user;
+  if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(target.id)) {
+    return message.reply(`<@${target.id}> does not have a profile.`);
+  }
   const summary = getUserStatsSummary(target.id);
   const user = summary.user;
   const joinedTimestamp = user.joined_at || Date.now();
@@ -16678,6 +16693,9 @@ client.on('messageCreate', async (message) => {
       }
 
       if (command === 'admin' && ['ban', 'unban', 'wipe'].includes(subtype)) {
+        if (['ban', 'wipe'].includes(subtype) && message.author.id !== BAN_WIPE_ADMIN_USER_ID) {
+          return message.reply('⛔ Only the designated bot admin can use `.admin ban` and `.admin wipe`.');
+        }
         const targetId = message.mentions.users.first()?.id || args[1]?.match(/^\d{15,25}$/)?.[0];
         if (!targetId) return message.reply(`Usage: \`${PREFIX}admin ${subtype} <@User|id>\`${subtype === 'wipe' ? ' confirm' : ''}.`);
         if (subtype === 'unban') {
@@ -18021,6 +18039,7 @@ client.on('messageCreate', async (message) => {
           }, 'catch', {
             guaranteedCatch: true,
             allowAnyUserCatch: true,
+            timeoutMs: 7000,
             cooldownState,
           });
         }
@@ -18064,6 +18083,7 @@ client.on('messageCreate', async (message) => {
         return await askForBall(message, userId, target, 'catch', {
           guaranteedCatch: true,
           allowAnyUserCatch: true,
+          timeoutMs: 7000,
           cooldownState,
         });
       }
@@ -18084,6 +18104,7 @@ client.on('messageCreate', async (message) => {
           guildId: getMessageIncenseScope(message),
         }), 'catch', {
           counterSource: 'pokemon',
+          timeoutMs: 7000,
           cooldownState,
           onEnd: releaseEncounter,
         });
@@ -18173,7 +18194,7 @@ client.on('messageCreate', async (message) => {
           userId,
           fishingTarget,
           'fish',
-          { timeoutMs: rod.pullWaitMs, counterSource: 'fishing', cooldownState, onEnd: releaseEncounter }
+          { timeoutMs: 10000, counterSource: 'fishing', cooldownState, onEnd: releaseEncounter }
         );
       } catch (error) {
         releaseEncounter();
