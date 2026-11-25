@@ -8047,6 +8047,12 @@ async function askForBall(
       console.error('Failed to build spawn Balldex icons:', error);
     }
   }
+  const trainerIcon = getTrainerIconEmoji(userId);
+  const pokemonSprite = getPokemonSpriteEmoji(target);
+  const spawnAnnouncement =
+    `${trainerIcon ? `${trainerIcon} ` : ''}**${message.author.username}** found a wild ` +
+    `${pokemonSprite ? `${pokemonSprite} ` : ''}**${target.name}**!`;
+  const spawnMessageContent = [spawnAnnouncement, spawnBallDexIcons].filter(Boolean).join('\n');
   const embed = new EmbedBuilder()
     .setColor(isEventOpen(halloweenEvent) && isEventChecklistSpawn(target)
       ? EVENT_EMBED_COLOR
@@ -8109,7 +8115,7 @@ async function askForBall(
   const spawnMessage = inline
     ? makeInlineEncounterHost(inline.onEdit)
     : await message.channel.send({
-      content: spawnBallDexIcons,
+      content: spawnMessageContent,
       embeds: [embed],
       components: ballRows,
     });
@@ -8293,7 +8299,7 @@ async function askForBall(
         );
       const fledImage = image;
       if (fledImage) fledEmbed.setImage(fledImage);
-      await editEncounter({ content: spawnBallDexIcons, embeds: [fledEmbed], components: [] });
+      await editEncounter({ content: spawnMessageContent, embeds: [fledEmbed], components: [] });
       return false;
     }
 

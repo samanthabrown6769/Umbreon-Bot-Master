@@ -725,7 +725,8 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     allowAnyUserCatch: false,
     HELD_ITEM_EMOJI: '🧰',
     factionLogoPrefix: () => '',
-    getPokemonSpriteEmoji: () => '',
+    getPokemonSpriteEmoji: () => '<:Combee:123>',
+    getTrainerIconEmoji: () => 'trainer-icon',
     getBallDexProgressDisplay: () => 'Ball Dex display',
     isEventOpen: () => false,
     halloweenEvent: {},
@@ -756,11 +757,16 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     '\n  const ballOrder = getBallButtonOrder(userId);'
   );
   const encounterCode = extract(indexSource, 'async function askForBall(', '\nasync function ');
-  vm.runInContext(`function buildSpawnEmbed() { ${spawnEmbedCode} globalThis.spawnBallDexDisplay = spawnBallDexIcons; return embed.toJSON(); }`, spawnContext);
+  vm.runInContext(`function buildSpawnEmbed() { ${spawnEmbedCode} globalThis.spawnBallDexDisplay = spawnBallDexIcons; globalThis.spawnMessageContent = spawnMessageContent; return embed.toJSON(); }`, spawnContext);
   const spawnEmbed = spawnContext.buildSpawnEmbed();
   assert.equal(spawnEmbed.author.name, '🌿 Trainer found a wild Pokémon!');
-  assert.match(spawnEmbed.description, /Combee\*\* appeared!/);
+  assert.match(spawnEmbed.description, /<:Combee:123> \*\*Combee\*\* appeared!/);
   assert.equal(spawnContext.spawnBallDexDisplay, 'Ball Dex display');
+  assert.equal(
+    spawnContext.spawnMessageContent,
+    'trainer-icon **Trainer** found a wild <:Combee:123> **Combee**!\nBall Dex display'
+  );
+  assert.doesNotMatch(spawnContext.spawnMessageContent, /vote/i);
   assert.doesNotMatch(spawnEmbed.description, /🎟️/);
   assert.equal(spawnEmbed.image.url, 'https://example.test/combee.png');
   assert.equal(spawnEmbed.thumbnail, undefined);
@@ -776,10 +782,10 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
   assert.equal(spawnContext.buildSpawnEmbed().image.url, 'https://example.test/golden-combee.png');
 
   const spawnSend = extract(indexSource, 'const spawnMessage = inline', '\n  if (cooldownState');
-  assert.match(spawnSend, /content: spawnBallDexIcons/);
+  assert.match(spawnSend, /content: spawnMessageContent/);
   assert.match(spawnSend, /embeds: \[embed\]/);
   assert.match(encounterCode, /spawnBallDexIcons = getBallDexProgressDisplay\(userId, target\)/);
-  assert.match(encounterCode, /content: spawnBallDexIcons, embeds: \[fledEmbed\]/);
+  assert.match(encounterCode, /content: spawnMessageContent, embeds: \[fledEmbed\]/);
   const catchEdit = extract(indexSource, 'await editEncounter({\n      content: [ballDexIcons', '\n    });');
   assert.match(encounterCode, /const ballDexIcons = inline \? '' : getBallDexProgressDisplay/);
   assert.match(catchEdit, /content: \[ballDexIcons, experienceMessage, levelUpMessage\]/);
