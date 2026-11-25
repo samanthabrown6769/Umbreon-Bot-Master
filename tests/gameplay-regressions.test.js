@@ -918,21 +918,21 @@ test('Balldex resolves form names and regular, shiny and Golden Dex numbers to s
   vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'balldex' ||", "\n    if (command === '")} }`, ctx);
   const run = async (...args) => { ctx.args = args; await ctx.run(); return replies.at(-1); };
   for (const query of [['7540'], ['7541'], ['Greninja', 'Ash']]) {
-    const embed = (await run(...query)).embeds[0].toJSON();
-    assert.equal(embed.fields[0].name, 'Greninja Ash #7540');
-    assert.match(embed.fields[0].value, /unlockedlocked.*1\/2/);
-    assert.match(embed.footer.text, /All forms and variants share species progress/);
+    const response = await run(...query);
+    assert.equal(response.embeds, undefined);
+    assert.match(response.content, /\*\*Greninja Ash #7540\*\* unlockedlocked `\[1\/2\]`/);
+    assert.match(response.content, /All forms and variants share species progress/);
   }
-  const base = (await run('658')).embeds[0].toJSON();
-  assert.equal(base.fields[0].name, 'Greninja #658');
-  assert.match(base.fields[0].value, /unlockedlocked.*1\/2/);
-  const regional = (await run('7719')).embeds[0].toJSON();
-  assert.match(regional.fields[0].name, /^Alolan Vulpix #/);
-  assert.match(regional.fields[0].value, /lockedunlocked.*1\/2/);
+  const base = await run('658');
+  assert.match(base.content, /\*\*Greninja #658\*\* unlockedlocked `\[1\/2\]`/);
+  const regional = await run('7719');
+  assert.match(regional.content, /\*\*Alolan Vulpix #/);
+  assert.match(regional.content, /lockedunlocked `\[1\/2\]`/);
   assert.match(await run('999999999'), /No Pokémon found/);
-  const status = (await run('status')).embeds[0].toJSON();
-  assert.match(status.description, /Completed balldexes/);
-  assert.equal((await run()).embeds[0].toJSON().fields.length, 18);
+  assert.match(await run('status'), /Completed balldexes/);
+  const allPokemon = await run();
+  assert.equal(allPokemon.embeds, undefined);
+  assert.equal((allPokemon.content.match(/\*\*[^*]+ #\d+\*\*/g) || []).length, 6);
 });
 
 test('collection commands resolve normal, shiny and Golden Dex numbers to the correct variants', async () => {
@@ -3729,7 +3729,7 @@ test('repels increase Rare and Super Rare odds while preserving total encounter 
   assert.equal(ctx.getEncounterRarityRate('honey', 'Rare'), 8 / 99);
 });
 
-test('Grimer and Muk use their supplied shiny sprite emojis', () => {
+test('Grimer, Muk, and Walking Wake use their supplied sprite emojis', () => {
   const spriteMap = extract(indexSource, 'const POKEMON_SPRITE_EMOJIS = Object.freeze(', '\nconst EXACT_ONLY_SPRITE_KEYS');
   const exactOnly = extract(indexSource, 'const EXACT_ONLY_SPRITE_KEYS =', '\nfunction getPokemonSpriteEmoji(');
   const ctx = vm.createContext({});
@@ -3739,6 +3739,8 @@ test('Grimer and Muk use their supplied shiny sprite emojis', () => {
   );
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Grimer', isShiny: true }), '<:SGrimer:1569451545236611152>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Muk', isShiny: true }), '<:SMuk:1569451543160430724>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Walking Wake' }), '<:WalkingWake:1568037632376569968>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Walking Wake', isShiny: true }), '<:SWalkingWake:1568037630292140142>');
 });
 
 test('repel all resolves to every owned Repel and is not accepted for other modifiers', () => {

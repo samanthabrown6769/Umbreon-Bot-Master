@@ -2834,7 +2834,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'arceus rock': { normal: '<:ArceusRock:1568037588755812452>' },
   'arceus ground': { normal: '<:ArceusGround:1568037587283738664>' },
   okidogi: { normal: '<:Okidogi:1568037634528383006>' },
-  'walking wake': { normal: '<:walkingwake:1573347779110244433>', shiny: '<:SWalkingWake:1568037630292140142>' },
+  'walking wake': { normal: '<:WalkingWake:1568037632376569968>', shiny: '<:SWalkingWake:1568037630292140142>' },
   swalot: { shiny: '<:SSwalot:1568037640970702879>' },
   'raging bolt': { normal: '<:RagingBolt:1568037638592663633>', shiny: '<:SRagingBolt:1568037636113965236>' },
   spheal: { shiny: '<:SSpheal:1568037642665459904>' },
@@ -19988,16 +19988,14 @@ client.on('messageCreate', async (message) => {
           const count = species.filter((entry) => caughtBySpecies.get(entry.species_id)?.has(ball.key)).length;
           return `${ball.unlocked} ${count}/${species.length}`;
         });
-        return message.reply({
-          embeds: [new EmbedBuilder()
-            .setColor(0x0099ff)
-            .setAuthor({ name: `${targetUser.username}'s Balldex`, iconURL: targetUser.displayAvatarURL() })
-            .setDescription(`Completed balldexes: **${totalComplete}/${species.length}**\n\n${ballTotals.join('\n')}`)],
-        });
+        return message.reply(
+          `**${targetUser.username}'s Balldex**\n` +
+          `Completed balldexes: **${totalComplete}/${species.length}**\n\n${ballTotals.join('\n')}`
+        );
       }
 
       const query = textArgs.join(' ').trim().toLowerCase();
-      const pageSize = 18;
+      const pageSize = 6;
       let visibleSpecies = species;
       if (query) {
         const form = resolvePokemonForm(query);
@@ -20014,31 +20012,25 @@ client.on('messageCreate', async (message) => {
         ? Math.min(requestedPage, totalPages)
         : 1;
 
-      const pageEmbed = () => {
+      const pageContent = () => {
         const entries = visibleSpecies.slice((currentPage - 1) * pageSize, currentPage * pageSize);
         const completedOnPage = entries.filter((entry) => isComplete(entry.species_id)).length;
-        const embed = new EmbedBuilder()
-          .setColor(0x0099ff)
-          .setDescription(
-            `Displaying Pokémon #${entries[0].dex_number ?? entries[0].species_id} - #${entries[entries.length - 1].dex_number ?? entries[entries.length - 1].species_id}\n\n` +
-            `🎊 Total BDs complete (all pages): ${totalComplete}\n` +
-            `📋 **Count:** ${completedOnPage} out of ${entries.length} completed on this page`
-          )
-          .addFields(entries.map((entry) => {
-            const { icons, count } = formatBallDexRow(caughtBySpecies.get(entry.species_id));
-            const sprite = getPokemonSpriteEmoji({ name: entry.name });
-            return {
-              name: `${sprite ? `${sprite} ` : ''}${entry.name} #${entry.dex_number ?? entry.species_id}`,
-              value: `${icons} \`[${count}/${BALLDEX_BALLS.length}]\``,
-              inline: true,
-            };
-          }))
-          .setFooter({
-            text: `Page ${currentPage}/${totalPages} • All forms and variants share species progress\n` +
-              `Quick summary of completions: ${PREFIX}bd status\n` +
-              `View a single Pokémon: ${PREFIX}bd {pokemon name/number}`,
-          });
-        return embed;
+        const rows = entries.map((entry) => {
+          const { icons, count } = formatBallDexRow(caughtBySpecies.get(entry.species_id));
+          const sprite = getPokemonSpriteEmoji({ name: entry.name });
+          return `${sprite ? `${sprite} ` : ''}**${entry.name} #${entry.dex_number ?? entry.species_id}** ${icons} \`[${count}/${BALLDEX_BALLS.length}]\``;
+        });
+        return [
+          `Displaying Pokémon #${entries[0].dex_number ?? entries[0].species_id} - #${entries[entries.length - 1].dex_number ?? entries[entries.length - 1].species_id}`,
+          `🎊 Total BDs complete (all pages): ${totalComplete}`,
+          `📋 **Count:** ${completedOnPage} out of ${entries.length} completed on this page`,
+          '',
+          ...rows,
+          '',
+          `Page ${currentPage}/${totalPages} • All forms and variants share species progress`,
+          `Quick summary of completions: ${PREFIX}bd status`,
+          `View a single Pokémon: ${PREFIX}bd {pokemon name/number}`,
+        ].join('\n');
       };
       const pageButtons = () => totalPages > 1
         ? [new ActionRowBuilder().addComponents(
@@ -20049,7 +20041,7 @@ client.on('messageCreate', async (message) => {
         )]
         : [];
 
-      const balldexMessage = await message.reply({ embeds: [pageEmbed()], components: pageButtons() });
+      const balldexMessage = await message.reply({ content: pageContent(), components: pageButtons() });
       if (totalPages === 1) return;
       const collector = balldexMessage.createMessageComponentCollector({
         componentType: ComponentType.Button,
@@ -20065,7 +20057,7 @@ client.on('messageCreate', async (message) => {
           else if (interaction.customId === 'balldex:prev') currentPage = Math.max(1, currentPage - 1);
           else if (interaction.customId === 'balldex:next') currentPage = Math.min(totalPages, currentPage + 1);
           else if (interaction.customId === 'balldex:last') currentPage = totalPages;
-          await interaction.update({ embeds: [pageEmbed()], components: pageButtons() });
+          await interaction.update({ content: pageContent(), embeds: [], components: pageButtons() });
         } catch (error) {
           console.error('Failed to update Balldex page:', error);
         }

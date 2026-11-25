@@ -418,7 +418,7 @@ test('requested event, Turquoise and Topaz sprite emojis resolve', () => {
     ['Gastly', true, '1573347794121523250'], ['Weedle', true, '1573347791672184894'],
     ['Swinub', true, '1573347789478297681'], ['Delibird', true, '1573347786781364234'],
     ['Oricorio Baile', true, '1573347784462172321'], ['Hisuian Growlithe', false, '1573347781656182955'],
-    ['Walking Wake', false, '1573347779110244433'], ['Castform Snowy', false, '1573347776979402882'],
+    ['Walking Wake', false, '1568037632376569968'], ['Castform Snowy', false, '1573347776979402882'],
     ['Galarian Zigzagoon', false, '1573347774651703541'], ['Necrozma Duskmane', false, '1573347772327927828'],
     ['Necrozma Dawnwings', false, '1573347770167861318'],
     ['Deerling Winter', false, '1575024179567140874'], ['Deerling Winter', true, '1575024177323319353'],
