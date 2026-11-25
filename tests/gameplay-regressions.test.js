@@ -556,7 +556,7 @@ test('button catches release the encounter lock after processing, but allow retr
   assert.equal(releaseCount, 1);
 });
 
-test('failed catches show the requested result in one compact encounter embed', async () => {
+test('failed catches show the Pokémon image at the bottom of one encounter embed', async () => {
   const edits = [];
   const ctx = vm.createContext({
     isSuccess: false,
@@ -596,10 +596,11 @@ test('failed catches show the requested result in one compact encounter embed', 
   const embed = edits[0].embeds[0].toJSON();
   assert.equal(embed.author.name, '❌ Trainer used a Pokeball!');
   assert.match(embed.description, /Your Uncommon streak of 9 has been reset!/);
-  assert.equal(embed.thumbnail.url, 'https://example.test/combee.png');
+  assert.equal(embed.image.url, 'https://example.test/combee.png');
+  assert.equal(embed.thumbnail, undefined);
 });
 
-test('successful catches and spawn encounters use the compact single-message layout', () => {
+test('successful catches and spawn encounters show the Pokémon image in one embed', () => {
   const successContext = vm.createContext({
     EmbedBuilder,
     isEventOpen: () => false,
@@ -639,8 +640,12 @@ test('successful catches and spawn encounters use the compact single-message lay
   const successEmbed = successContext.buildSuccessEmbed();
   assert.equal(successEmbed.author.name, '✅ Trainer used a Pokeball!');
   assert.match(successEmbed.description, /You caught a \*\*Combee\*\*/);
-  assert.equal(successEmbed.thumbnail.url, 'https://example.test/combee.png');
-  assert.equal(successEmbed.image, undefined);
+  assert.equal(successEmbed.image.url, 'https://example.test/combee.png');
+  assert.equal(successEmbed.thumbnail, undefined);
+  successContext.isFishing = true;
+  successContext.EMOJIS.fishingtoken = '🎣';
+  successContext.fishingTokensEarned = 1;
+  assert.equal(successContext.buildSuccessEmbed().image.url, 'https://example.test/combee.png');
 
   const spawnContext = vm.createContext({
     EmbedBuilder,
@@ -688,13 +693,16 @@ test('successful catches and spawn encounters use the compact single-message lay
   const spawnEmbed = spawnContext.buildSpawnEmbed();
   assert.equal(spawnEmbed.author.name, '🌿 Trainer found a wild Pokémon!');
   assert.match(spawnEmbed.description, /Combee\*\* appeared!/);
-  assert.equal(spawnEmbed.thumbnail.url, 'https://example.test/combee.png');
-  assert.equal(spawnEmbed.image, undefined);
+  assert.equal(spawnEmbed.image.url, 'https://example.test/combee.png');
+  assert.equal(spawnEmbed.thumbnail, undefined);
   spawnContext.isFishing = true;
   spawnContext.user.fish_rods = 'Good Rod';
   const fishingSpawnEmbed = spawnContext.buildSpawnEmbed();
   assert.equal(fishingSpawnEmbed.author.name, '🎣 Trainer found a wild Pokémon!');
   assert.match(fishingSpawnEmbed.description, /Rod used: \*\*Good Rod\*\*/);
+  assert.equal(fishingSpawnEmbed.image.url, 'https://example.test/combee.png');
+  spawnContext.target.isGolden = true;
+  assert.equal(spawnContext.buildSpawnEmbed().image.url, 'https://example.test/golden-combee.png');
 
   const spawnSend = extract(indexSource, 'const spawnMessage = inline', '\n  if (cooldownState');
   assert.match(spawnSend, /content: ''/);
@@ -1751,7 +1759,10 @@ test('Role Play is available to Bulbapedia level, egg and tutor learners, includ
   const moveInfoData = require('../data/move-info.json');
   const specialMoveLearners = Object.fromEntries(Object.entries(require('../data/special-move-learners.json'))
     .map(([move, ids]) => [move, new Set(ids)]));
-  const ctx = vm.createContext({ pokemonMovesData, pokemonCatalog, moveInfoData, specialMoveLearners });
+  const ctx = vm.createContext({
+    pokemonMovesData, pokemonCatalog, moveInfoData, specialMoveLearners,
+    expandedPokemonMoves: require('../data/expanded-pokemon-moves.json'),
+  });
   vm.runInContext(extract(dbSource, 'const FORM_EXTRA_MOVES =', '\nfunction setBuddyMoves('), ctx);
   vm.runInContext(extract(dbSource, 'function findMoveInfo(', '\n// Admin tool:'), ctx);
   for (const [species, form] of [[64, 64], [96, 96], [35, 35], [37, 10103], [386, 10001], [899, 899]]) {
@@ -1773,6 +1784,7 @@ test('Vaporeon can learn supported TM, HM, tutor and inherited moves from past g
     pokemonMovesData: require('../data/pokemon-moves.json'),
     pokemonCatalog: require('../data/pokemon-catalog.json'),
     moveInfoData: require('../data/move-info.json'),
+    expandedPokemonMoves: require('../data/expanded-pokemon-moves.json'),
     specialMoveLearners: Object.fromEntries(
       Object.entries(require('../data/special-move-learners.json'))
         .map(([move, ids]) => [move, new Set(ids)])
@@ -1791,6 +1803,72 @@ test('Vaporeon can learn supported TM, HM, tutor and inherited moves from past g
     assert.ok(ctx.findMoveInfo(move).learners.includes('Vaporeon'), `${move} learner list`);
   }
   assert.ok(!ctx.getSpeciesLearnset(1, 1).includes('signal-beam'));
+});
+
+test('expanded move learnsets support player battles, pre-evolutions and regional forms', () => {
+  const pokemonMovesData = require('../data/pokemon-moves.json');
+  const expandedPokemonMoves = require('../data/expanded-pokemon-moves.json');
+  const specialMoveLearners = Object.fromEntries(
+    Object.entries(require('../data/special-move-learners.json'))
+      .map(([move, ids]) => [move, new Set(ids)])
+  );
+  let pokemon = { pokemon_id: 1, species_id: 1, moves: '["cut","tackle"]', sketched_moves: '[]' };
+  const evolutionWrites = [];
+  const moveWrites = [];
+  const ctx = vm.createContext({
+    pokemonMovesData, expandedPokemonMoves, specialMoveLearners,
+    pokemonCatalog: require('../data/pokemon-catalog.json'),
+    moveInfoData: require('../data/move-info.json'),
+    assertUserId: () => {},
+    db: {
+      prepare: (sql) => ({
+        get: () => pokemon,
+        run: (...args) => (sql.includes('sketched_moves') ? evolutionWrites : moveWrites).push(args),
+      }),
+      transaction: (fn) => ({ immediate: fn }),
+    },
+    getUser: () => ({ buddy_catch_id: 1, coins: 100000 }),
+    getBuddyMoveChangeCost: () => 50000,
+    incrementUser: () => {},
+    syncDuplicateCatchState: () => {},
+    getGigantamaxMoves: () => [],
+    restrictStyleExclusiveMoves: (moves) => moves,
+    getPokemonMove: (name) => pokemonMovesData.moves[name],
+    console,
+  });
+  vm.runInContext(extract(dbSource, 'const FORM_EXTRA_MOVES =', '\nfunction setBuddyMoves('), ctx);
+  vm.runInContext(extract(dbSource, 'function parseSketchedMoves(', '\n// Smeargle'), ctx);
+  vm.runInContext(extract(indexSource, 'function getEquippedBattleMovesBase(', '\nconst GAUNTLET_POKEMON_IDS'), ctx);
+  vm.runInContext(extract(dbSource, 'function carryOverEvolutionMoves(', '\nfunction prepareEvolutionHeldItems('), ctx);
+  vm.runInContext(extract(dbSource, 'function findMoveInfo(', '\n// Admin tool:'), ctx);
+  vm.runInContext(extract(dbSource, 'function setBuddyMoveSlot(', '\nfunction deleteBuddyMoveSlot('), ctx);
+
+  const bulbasaur = ctx.getPokemonLearnset(1, 'user').moves;
+  assert.ok(bulbasaur.includes('cut'));
+  assert.ok(bulbasaur.includes('toxic'));
+  assert.ok(!bulbasaur.includes('flamethrower'));
+  assert.ok(!bulbasaur.includes('bide'));
+  assert.deepEqual(Array.from(ctx.getEquippedBattleMovesBase(pokemon, 1, 1), (move) => move.name),
+    ['Cut', 'Tackle', 'Double-Edge', 'Power Whip']);
+  const result = ctx.setBuddyMoveSlot('user', 1, 'toxic');
+  assert.equal(result.moves[0], 'toxic');
+  assert.equal(JSON.parse(moveWrites[0][0])[0], 'toxic');
+  assert.ok(ctx.findMoveInfo('cut').learners.includes('Bulbasaur'));
+  ctx.carryOverEvolutionMoves('user', { id: 1 }, { id: 2, species_id: 2 });
+  assert.equal(evolutionWrites.length, 0);
+  pokemon.moves = '["psychic-terrain"]';
+  ctx.carryOverEvolutionMoves('user', { id: 1 }, { id: 2, species_id: 2 });
+  assert.deepEqual(JSON.parse(evolutionWrites[0][0]), ['psychic-terrain']);
+  pokemon = { pokemon_id: 134, species_id: 134, moves: '[]', sketched_moves: '[]' };
+  assert.ok(ctx.getPokemonLearnset(1, 'user').moves.includes('refresh'));
+  pokemon = { pokemon_id: 10100, species_id: 26, moves: '[]', sketched_moves: '[]' };
+  assert.ok(ctx.getPokemonLearnset(1, 'user').moves.includes('psychic-terrain'));
+  assert.ok(!ctx.getPokemonLearnset(1, 'user').moves.some((move) => move.startsWith('g-max-')));
+  pokemon = { pokemon_id: 10104, species_id: 38, moves: '[]', sketched_moves: '[]' };
+  assert.ok(ctx.getPokemonLearnset(1, 'user').moves.includes('freeze-dry'));
+  assert.ok(!ctx.getPokemonLearnset(1, 'user').moves.includes('psychic-terrain'));
+  pokemon = { pokemon_id: 38, species_id: 38, moves: '[]', sketched_moves: '[]' };
+  assert.ok(!ctx.getPokemonLearnset(1, 'user').moves.includes('freeze-dry'));
 });
 
 test('Eevee evolves with every specified stone from inventory or while held', async () => {
@@ -4661,6 +4739,7 @@ test('event rollover retains configured announcement channels and does not undo 
     CREATE TABLE users (event_ticket INTEGER, event_reg_claimed INTEGER, event_gold_claimed INTEGER);
     CREATE TABLE active_event_state (id INTEGER PRIMARY KEY, event_id TEXT);
     CREATE TABLE event_announcement_channels (event_id TEXT, guild_id TEXT, channel_id TEXT, PRIMARY KEY(event_id, guild_id));
+    CREATE TABLE event_checklist_announcement_events (event_id TEXT PRIMARY KEY, targets_prepared INTEGER NOT NULL DEFAULT 0);
     INSERT INTO users VALUES (1, 1, 1);
     INSERT INTO active_event_state VALUES (1, 'old');
     INSERT INTO event_announcement_channels VALUES ('old', 'guild', 'eventspawns');
@@ -4673,10 +4752,70 @@ test('event rollover retains configured announcement channels and does not undo 
   const source = extract(indexSource, 'function refreshCurrentEvent()', '\nrefreshCurrentEvent();');
   vm.runInContext(`${source}\nrefreshCurrentEvent();`, context);
   assert.equal(db.prepare("SELECT channel_id FROM event_announcement_channels WHERE event_id='new'").get().channel_id, 'eventspawns');
+  assert.equal(db.prepare("SELECT targets_prepared FROM event_checklist_announcement_events WHERE event_id='new'").get().targets_prepared, 0);
   assert.equal(db.prepare('SELECT event_ticket FROM users').get().event_ticket, 0);
   db.prepare("DELETE FROM event_announcement_channels WHERE event_id='new'").run();
   vm.runInContext('refreshCurrentEvent();', context);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_announcement_channels WHERE event_id='new'").get().n, 0);
+  db.close();
+});
+
+test('new event checklists post once per configured channel and retry failures', async () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE event_announcement_channels (event_id TEXT, guild_id TEXT, channel_id TEXT, PRIMARY KEY(event_id, guild_id));
+    CREATE TABLE event_checklist_announcement_events (event_id TEXT PRIMARY KEY, targets_prepared INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE event_checklist_announcement_targets (event_id TEXT, guild_id TEXT, sent INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(event_id, guild_id));
+    INSERT INTO event_checklist_announcement_events VALUES ('november-part-2-2026', 0);
+    INSERT INTO event_announcement_channels VALUES
+      ('november-part-2-2026', 'one', 'channel-one'),
+      ('november-part-2-2026', 'two', 'channel-two');
+  `);
+  const sent = [];
+  let eventOpen = false;
+  let failSecond = true;
+  const ctx = vm.createContext({
+    db, EmbedBuilder, EVENT_EMBED_COLOR: 0xabcdef,
+    halloweenEvent: require('../events/november-part-2-2026'),
+    isEventOpen: () => eventOpen,
+    getPokemonSpriteEmoji: () => '',
+    resolveAnnouncementChannels: async (rows) => rows,
+    sendToChannels: async ([channel], payload) => {
+      sent.push({ channel: channel.channel_id, embed: payload.embeds[0].toJSON() });
+      if (channel.guild_id === 'two' && failSecond) return false;
+      return true;
+    },
+  });
+  vm.runInContext(
+    extract(indexSource, 'let eventChecklistAnnouncementInProgress =', '\nasync function announceEventCatch('),
+    ctx
+  );
+  db.prepare('DELETE FROM event_checklist_announcement_events').run();
+  eventOpen = true;
+  await ctx.sendEventChecklistAnnouncements();
+  assert.equal(sent.length, 0);
+  db.prepare("INSERT INTO event_checklist_announcement_events VALUES ('november-part-2-2026', 0)").run();
+  eventOpen = false;
+  await ctx.sendEventChecklistAnnouncements();
+  assert.equal(sent.length, 0);
+  assert.equal(db.prepare('SELECT targets_prepared FROM event_checklist_announcement_events').get().targets_prepared, 0);
+
+  eventOpen = true;
+  await ctx.sendEventChecklistAnnouncements();
+  assert.deepEqual(sent.map((entry) => entry.channel), ['channel-one', 'channel-two']);
+  assert.equal(sent[0].embed.title, 'November Part 2 Event Checklist');
+  assert.match(sent[0].embed.description, /Shiny Gastly/);
+  assert.match(sent[0].embed.description, /WalkingWake/);
+  assert.match(sent[0].embed.description, /Turquoise Rookidee/);
+  assert.match(sent[0].embed.description, /`\.e cl`/);
+
+  db.prepare("INSERT INTO event_announcement_channels VALUES ('november-part-2-2026', 'three', 'channel-three')").run();
+  db.prepare("UPDATE event_announcement_channels SET channel_id = 'channel-updated' WHERE guild_id = 'two'").run();
+  failSecond = false;
+  await ctx.sendEventChecklistAnnouncements();
+  await ctx.sendEventChecklistAnnouncements();
+  assert.deepEqual(sent.map((entry) => entry.channel), ['channel-one', 'channel-two', 'channel-updated']);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM event_checklist_announcement_targets WHERE sent = 1').get().count, 2);
   db.close();
 });
 

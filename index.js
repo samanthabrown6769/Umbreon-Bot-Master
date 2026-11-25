@@ -175,6 +175,7 @@ const {
   getPokemonFormBySlug,
   getPokemonLearnset,
   getSpeciesLearnset,
+  getAdditionalPokemonMoves,
   getGigantamaxMoves,
   getGigantamaxMoveLearners,
   restrictStyleExclusiveMoves,
@@ -732,6 +733,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS active_event_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   event_id TEXT NOT NULL
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS event_checklist_announcement_events (
+  event_id TEXT PRIMARY KEY,
+  targets_prepared INTEGER NOT NULL DEFAULT 0
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS event_checklist_announcement_targets (
+  event_id TEXT NOT NULL,
+  guild_id TEXT NOT NULL,
+  sent INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (event_id, guild_id)
+)`);
 
 // Switches to the event that should currently be running. Tickets and claims are per event,
 // so they are cleared the first time a different event becomes current.
@@ -746,6 +757,7 @@ function refreshCurrentEvent() {
         INSERT OR IGNORE INTO event_announcement_channels (event_id, guild_id, channel_id)
         SELECT ?, guild_id, channel_id FROM event_announcement_channels WHERE event_id = ?
       `).run(next.id, stored);
+      db.prepare('INSERT OR IGNORE INTO event_checklist_announcement_events (event_id) VALUES (?)').run(next.id);
       db.prepare(
         'INSERT INTO active_event_state (id, event_id) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET event_id = excluded.event_id'
       ).run(next.id);
@@ -6899,6 +6911,73 @@ async function sendToChannels(channels, payload) {
   return results.some((result) => result.status === 'fulfilled');
 }
 
+let eventChecklistAnnouncementInProgress = false;
+async function sendEventChecklistAnnouncements() {
+  const event = halloweenEvent;
+  if (eventChecklistAnnouncementInProgress || !isEventOpen(event)) return;
+  eventChecklistAnnouncementInProgress = true;
+  try {
+    const queued = db.transaction(() => {
+      const state = db.prepare(
+        'SELECT targets_prepared FROM event_checklist_announcement_events WHERE event_id = ?'
+      ).get(event.id);
+      if (!state) return false;
+      if (!state.targets_prepared) {
+        db.prepare(`
+          INSERT OR IGNORE INTO event_checklist_announcement_targets (event_id, guild_id)
+          SELECT event_id, guild_id FROM event_announcement_channels WHERE event_id = ?
+        `).run(event.id);
+        db.prepare(
+          'UPDATE event_checklist_announcement_events SET targets_prepared = 1 WHERE event_id = ?'
+        ).run(event.id);
+      }
+      return true;
+    })();
+    if (!queued) return;
+    const targets = db.prepare(`
+      SELECT channels.guild_id, channels.channel_id
+      FROM event_checklist_announcement_targets AS targets
+      JOIN event_announcement_channels AS channels
+        ON channels.event_id = targets.event_id AND channels.guild_id = targets.guild_id
+      WHERE targets.event_id = ? AND targets.sent = 0
+    `).all(event.id);
+    if (!targets.length) return;
+
+    const shinyKeys = new Set(event.shinyChecklistKeys);
+    const formatEntry = (pokemon) => {
+      const sprite = getPokemonSpriteEmoji({ name: pokemon.name, isShiny: Boolean(pokemon.shiny) });
+      return pokemon.checklistDisplay
+        || `${sprite ? `${sprite} ` : ''}${pokemon.name}${pokemon.tag ? ` ${pokemon.tag}` : ''}`;
+    };
+    const shinies = event.pokemon.filter((pokemon) => shinyKeys.has(pokemon.key));
+    const exclusives = event.pokemon.filter((pokemon) => !shinyKeys.has(pokemon.key));
+    const regularReward = event.rewards.regular;
+    const embed = new EmbedBuilder()
+      .setColor(EVENT_EMBED_COLOR)
+      .setTitle(`${event.name} Event Checklist`)
+      .setDescription(
+        `${event.emojis.shinyCategory} **Shinies**\n${shinies.map(formatEntry).join('\n')}\n\n` +
+        `${event.emojis.exclusiveCategory} **Event exclusives**\n${exclusives.map(formatEntry).join('\n')}\n\n` +
+        (regularReward && event.checklistTargets.regular
+          ? `${event.emojis.regularReward} Catch ${event.checklistTargets.regular} for **${regularReward.announcementName}**.\n`
+          : '') +
+        `${event.emojis.fullReward} Complete all ${event.pokemon.length} for **${event.rewards.full.announcementName}**.\n` +
+        `${event.emojis.endDate} Ends <t:${Math.floor(Date.parse(event.endsAt) / 1000)}:F> (${event.timezoneLabel})\n\n` +
+        'Get an Event Ticket with `.events buy ticket` and view your progress with `.e cl`.'
+      );
+    for (const target of targets) {
+      const channels = await resolveAnnouncementChannels([target]);
+      if (channels.length && await sendToChannels(channels, { embeds: [embed] })) {
+        db.prepare(
+          'UPDATE event_checklist_announcement_targets SET sent = 1 WHERE event_id = ? AND guild_id = ?'
+        ).run(event.id, target.guild_id);
+      }
+    }
+  } finally {
+    eventChecklistAnnouncementInProgress = false;
+  }
+}
+
 async function announceEventCatch(guild, user, pokemon, eventCatch) {
   if (!guild || !eventCatch?.added) return;
   const channels = await resolveAnnouncementChannels(getAllEventAnnouncementChannels(halloweenEvent.id));
@@ -8001,7 +8080,7 @@ async function askForBall(
       target.isShiny,
       target.isShiny ? (target.shinyImg || target.img) : target.img
     );
-  if (image) embed.setThumbnail(image);
+  if (image) embed.setImage(image);
   if (inline?.onSpawn) inline.onSpawn(embed);
   const ballOrder = getBallButtonOrder(userId);
   let ballEntries = Object.entries(BALL_CONFIG)
@@ -8202,7 +8281,7 @@ async function askForBall(
           `${getRemainingBalls()}`
         );
       const fledImage = image;
-      if (fledImage) fledEmbed.setThumbnail(fledImage);
+      if (fledImage) fledEmbed.setImage(fledImage);
       await editEncounter({ content: '', embeds: [fledEmbed], components: [] });
       return false;
     }
@@ -8411,7 +8490,7 @@ async function askForBall(
         `You earned ${coinsEarned} ${EMOJIS.pokecoin} PokéCoins!`
       );
     const successImage = image;
-    if (successImage) successEmbed.setThumbnail(successImage);
+    if (successImage) successEmbed.setImage(successImage);
     const experienceLines = [];
     if (experienceResult?.awarded) {
       const buddyGain = experienceResult.pokemon.find((pokemon) => pokemon.is_buddy);
@@ -8628,6 +8707,7 @@ function getEquippedBattleMovesBase(pokemon, speciesId, formId = null) {
   const learnset = restrictStyleExclusiveMoves([...new Set([
     ...getSpeciesLearnset(speciesId),
     ...getSpeciesLearnset(speciesId, formId),
+    ...getAdditionalPokemonMoves(speciesId, formId),
     ...getGigantamaxMoves(speciesId, formId),
     ...sketched,
   ])], formId);
@@ -29594,7 +29674,12 @@ client.once('clientReady', () => {
   setInterval(expireTokenOrders, 60 * 1000);
   safely('patreon-payout', runPatreonMonthlyPayout)();
   setInterval(safely('patreon-payout', runPatreonMonthlyPayout), 5 * 60 * 1000);
-  setInterval(safely('event-rollover', refreshCurrentEvent), 60 * 1000);
+  const processEventRollover = safely('event-rollover', async () => {
+    refreshCurrentEvent();
+    await sendEventChecklistAnnouncements();
+  });
+  processEventRollover();
+  setInterval(processEventRollover, 60 * 1000);
   startAutospawnScheduler();
   startLotteryScheduler();
   const activeBoss = getActiveWorldBoss();

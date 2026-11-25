@@ -657,6 +657,12 @@ const pokemonMovesData = JSON.parse(fs.readFileSync(pokemonMovesPath, 'utf8'));
 if (!pokemonMovesData.moves || !pokemonMovesData.learnsets) {
   throw new Error(`Move database at ${pokemonMovesPath} must include moves and learnsets.`);
 }
+const expandedPokemonMoves = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'data', 'expanded-pokemon-moves.json'), 'utf8')
+);
+if (!expandedPokemonMoves.species || !expandedPokemonMoves.forms) {
+  throw new Error('Expanded Pokémon move database must include species and forms.');
+}
 const pokemonEvolutionRulesPath = path.join(__dirname, 'data', 'pokemon-evolution-rules.json');
 const pokemonEvolutionRules = JSON.parse(fs.readFileSync(pokemonEvolutionRulesPath, 'utf8'));
 if (!Array.isArray(pokemonEvolutionRules)
@@ -4234,6 +4240,7 @@ function getPokemonLearnset(catchId, userId) {
   const base = restrictStyleExclusiveMoves([
     ...getSpeciesLearnset(pokemon.species_id),
     ...getSpeciesLearnset(pokemon.species_id, pokemon.pokemon_id),
+    ...getAdditionalPokemonMoves(pokemon.species_id, pokemon.pokemon_id),
     ...gmaxMoves,
   ], pokemon.pokemon_id);
   return {
@@ -4314,6 +4321,13 @@ function getSpeciesLearnset(speciesId, formId = null) {
     .map(([move]) => move);
   return extraMoves.length || rolePlay.length || specialMoves.length
     ? [...new Set([...base, ...extraMoves, ...rolePlay, ...specialMoves])] : base;
+}
+
+function getAdditionalPokemonMoves(speciesId, formId = null) {
+  return [
+    ...(expandedPokemonMoves.species[speciesId] || []),
+    ...(expandedPokemonMoves.forms[formId] || []),
+  ];
 }
 
 function getBaseSpeciesLearnset(speciesId, formId = null) {
@@ -5469,6 +5483,7 @@ function carryOverEvolutionMoves(userId, row, target) {
   const targetLearnset = new Set(restrictStyleExclusiveMoves([
     ...getSpeciesLearnset(target.species_id),
     ...getSpeciesLearnset(target.species_id, target.id),
+    ...getAdditionalPokemonMoves(target.species_id, target.id),
     ...getGigantamaxMoves(target.species_id, target.id),
   ], target.id));
   const sketched = parseSketchedMoves(current.sketched_moves);
@@ -5936,11 +5951,17 @@ function findMoveInfo(query) {
   if (!move) return null;
   const specialLearners = specialMoveLearners[key]
     || Object.entries(specialMoveLearners).find(([slug]) => slug.replace(/-/g, '') === compact)?.[1];
-  if (compact !== 'roleplay' && !specialLearners) return move;
+  const expandedKey = pokemonMovesData.moves[key]
+    ? key
+    : Object.keys(pokemonMovesData.moves).find((slug) => slug.replace(/-/g, '') === compact);
   const names = pokemonCatalog
-    .filter((pokemon) => compact === 'roleplay'
-      ? pokemon.is_default && ROLE_PLAY_LEARNERS.has(pokemon.species_id)
-      : specialLearners.has(pokemon.id))
+    .filter((pokemon) =>
+      (compact === 'roleplay' && pokemon.is_default && ROLE_PLAY_LEARNERS.has(pokemon.species_id))
+      || specialLearners?.has(pokemon.id)
+      || (expandedKey && (
+        (pokemon.is_default && expandedPokemonMoves.species[pokemon.species_id]?.includes(expandedKey))
+        || expandedPokemonMoves.forms[pokemon.id]?.includes(expandedKey)
+      )))
     .map((pokemon) => pokemon.is_default ? pokemon.species_name || pokemon.name : pokemon.name);
   return { ...move, learners: [...new Set([...move.learners, ...names])] };
 }
@@ -11322,6 +11343,7 @@ module.exports = {
   setUserBuddyByQuery,
   getPokemonLearnset,
   getSpeciesLearnset,
+  getAdditionalPokemonMoves,
   getGigantamaxMoves,
   getGigantamaxMoveLearners,
   restrictStyleExclusiveMoves,
