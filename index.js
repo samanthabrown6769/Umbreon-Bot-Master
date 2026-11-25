@@ -27105,7 +27105,7 @@ client.on('messageCreate', async (message) => {
       if (!legacySwap) {
         const dailyTickets = claimDailySwapTickets(userId);
         const dailyTicketNotice = dailyTickets > 0
-          ? `You received your daily [🎟️](https://discord.com/assets/dde8a9804160342c.svg) **${dailyTickets}x** swap tokens!`
+          ? `You received your daily 🎟️ **${dailyTickets}x** swap tokens!`
           : '';
         const replySwap = (payload) => {
           if (!dailyTicketNotice) return message.reply(payload);

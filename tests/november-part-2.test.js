@@ -17,6 +17,17 @@ const { appendCustomPokemonForms } = require('../scripts/pokemon-custom-forms');
 
 const dbSource = fs.readFileSync(require.resolve('../db.js'), 'utf8');
 const indexSource = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+test('Enamorus Incarnate uses its normal and shiny Showdown sprites', () => {
+  assert.equal(
+    getPokemonShowdownSprite('enamorus-incarnate'),
+    'https://play.pokemonshowdown.com/sprites/ani/enamorus.gif'
+  );
+  assert.equal(
+    getPokemonShowdownSprite('enamorus-incarnate', true),
+    'https://play.pokemonshowdown.com/sprites/ani-shiny/enamorus.gif'
+  );
+});
+
 const checklistSlugs = [
   'gastly', 'weedle', 'swinub', 'deerling-winter', 'delibird', 'oricorio-baile',
   'growlithe-hisui', 'walking-wake', 'castform-snowy', 'zigzagoon-galar',
