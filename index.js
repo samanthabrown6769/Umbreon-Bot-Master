@@ -3174,6 +3174,15 @@ function getBallDexIconsForCatch(userId, pokemonFormId) {
   return formatBallDexRow(getBallDexCaughtMap(userId).get(speciesId)).icons;
 }
 
+function getBallDexProgressDisplay(userId, pokemon) {
+  const speciesId = pokemon?.speciesId ?? pokemon?.species_id
+    ?? (pokemon?.id ? db.prepare('SELECT species_id FROM pokemon_forms WHERE id = ?').get(pokemon.id)?.species_id : null);
+  if (!speciesId) return '';
+  const { icons, count } = formatBallDexRow(getBallDexCaughtMap(userId).get(speciesId));
+  const sprite = getPokemonSpriteEmoji(pokemon);
+  return `**Ball Dex:** ${sprite ? `${sprite} ` : ''}${icons} \`[${count}/${BALLDEX_BALLS.length}]\``;
+}
+
 const HELD_ITEM_EMOJI = '<:helditem:1561412843272937472>';
 function factionLogoPrefix(pokemon) {
   if (pokemon?.isExplore) return '';
@@ -8033,9 +8042,7 @@ async function askForBall(
   let spawnBallDexIcons = '';
   if (!inline) {
     try {
-      spawnBallDexIcons = target.id
-        ? getBallDexIconsForCatch(userId, target.id)
-        : formatBallDexRow(getBallDexCaughtMap(userId).get(target.speciesId)).icons;
+      spawnBallDexIcons = getBallDexProgressDisplay(userId, target);
     } catch (error) {
       console.error('Failed to build spawn Balldex icons:', error);
     }
@@ -8286,7 +8293,7 @@ async function askForBall(
         );
       const fledImage = image;
       if (fledImage) fledEmbed.setImage(fledImage);
-      await editEncounter({ content: '', embeds: [fledEmbed], components: [] });
+      await editEncounter({ content: spawnBallDexIcons, embeds: [fledEmbed], components: [] });
       return false;
     }
 
@@ -8520,7 +8527,7 @@ async function askForBall(
       );
     }
     const experienceMessage = experienceLines.join('\n');
-    const ballDexIcons = inline ? '' : getBallDexIconsForCatch(userId, target.id);
+    const ballDexIcons = inline ? '' : getBallDexProgressDisplay(userId, target);
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
       `<:lvlup:1561369467467071679> • Congratulations, **${catcher.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
     ).join('\n') || '';

@@ -726,6 +726,7 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     HELD_ITEM_EMOJI: '🧰',
     factionLogoPrefix: () => '',
     getPokemonSpriteEmoji: () => '',
+    getBallDexProgressDisplay: () => 'Ball Dex display',
     isEventOpen: () => false,
     halloweenEvent: {},
     isEventChecklistSpawn: () => false,
@@ -755,10 +756,11 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     '\n  const ballOrder = getBallButtonOrder(userId);'
   );
   const encounterCode = extract(indexSource, 'async function askForBall(', '\nasync function ');
-  vm.runInContext(`function buildSpawnEmbed() { ${spawnEmbedCode} return embed.toJSON(); }`, spawnContext);
+  vm.runInContext(`function buildSpawnEmbed() { ${spawnEmbedCode} globalThis.spawnBallDexDisplay = spawnBallDexIcons; return embed.toJSON(); }`, spawnContext);
   const spawnEmbed = spawnContext.buildSpawnEmbed();
   assert.equal(spawnEmbed.author.name, '🌿 Trainer found a wild Pokémon!');
   assert.match(spawnEmbed.description, /Combee\*\* appeared!/);
+  assert.equal(spawnContext.spawnBallDexDisplay, 'Ball Dex display');
   assert.doesNotMatch(spawnEmbed.description, /🎟️/);
   assert.equal(spawnEmbed.image.url, 'https://example.test/combee.png');
   assert.equal(spawnEmbed.thumbnail, undefined);
@@ -776,8 +778,10 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
   const spawnSend = extract(indexSource, 'const spawnMessage = inline', '\n  if (cooldownState');
   assert.match(spawnSend, /content: spawnBallDexIcons/);
   assert.match(spawnSend, /embeds: \[embed\]/);
+  assert.match(encounterCode, /spawnBallDexIcons = getBallDexProgressDisplay\(userId, target\)/);
+  assert.match(encounterCode, /content: spawnBallDexIcons, embeds: \[fledEmbed\]/);
   const catchEdit = extract(indexSource, 'await editEncounter({\n      content: [ballDexIcons', '\n    });');
-  assert.match(encounterCode, /const ballDexIcons = inline \? '' : getBallDexIconsForCatch/);
+  assert.match(encounterCode, /const ballDexIcons = inline \? '' : getBallDexProgressDisplay/);
   assert.match(catchEdit, /content: \[ballDexIcons, experienceMessage, levelUpMessage\]/);
   assert.match(catchEdit, /embeds: \[successEmbed\]/);
 });
@@ -933,6 +937,26 @@ test('Balldex resolves form names and regular, shiny and Golden Dex numbers to s
   const allPokemon = await run();
   assert.equal(allPokemon.embeds, undefined);
   assert.equal((allPokemon.content.match(/\*\*[^*]+ #\d+\*\*/g) || []).length, 6);
+});
+
+test('spawn Balldex progress includes the Pokémon sprite and caught ball count', () => {
+  const ctx = vm.createContext({
+    BALLDEX_BALLS: [
+      { key: 'pb', locked: 'pb-locked', unlocked: 'pb-unlocked' },
+      { key: 'gb', locked: 'gb-locked', unlocked: 'gb-unlocked' },
+    ],
+    db: { prepare: () => ({ all: () => [{ species_id: 12, caught_ball: 'pb' }] }) },
+    getPokemonSpriteEmoji: () => '<:WalkingWake:1568037632376569968>',
+  });
+  vm.runInContext(
+    extract(indexSource, 'function getBallDexCaughtMap(', '\nfunction getBallDexIconsForCatch(')
+      + '\n' + extract(indexSource, 'function getBallDexProgressDisplay(', '\nconst HELD_ITEM_EMOJI'),
+    ctx
+  );
+  assert.equal(
+    ctx.getBallDexProgressDisplay('trainer', { speciesId: 12, name: 'Walking Wake' }),
+    '**Ball Dex:** <:WalkingWake:1568037632376569968> pb-unlockedgb-locked `[1/2]`'
+  );
 });
 
 test('collection commands resolve normal, shiny and Golden Dex numbers to the correct variants', async () => {
