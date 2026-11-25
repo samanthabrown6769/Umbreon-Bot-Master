@@ -3,7 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 async function main() {
-  const learners = {};
+  const learnersPath = path.join(__dirname, '..', 'data', 'special-move-learners.json');
+  const learners = JSON.parse(fs.readFileSync(learnersPath, 'utf8'));
   for (const move of ['pay-day', 'power-up-punch']) {
     const response = await fetch(`https://pokeapi.co/api/v2/move/${move}`);
     if (!response.ok) throw new Error(`PokéAPI ${move} request failed: ${response.status}`);
@@ -15,7 +16,7 @@ async function main() {
     }).sort((a, b) => a - b);
   }
   fs.writeFileSync(
-    path.join(__dirname, '..', 'data', 'special-move-learners.json'),
+    learnersPath,
     `${JSON.stringify(learners, null, 2)}\n`
   );
 }

@@ -47,7 +47,7 @@ test('perfect IVs boost the calculated stat after variant bonuses', () => {
 });
 
 test('gameplay override users have a displayed and applied 100% catch rate', () => {
-  const overrideIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
+  const overrideIds = new Set(['537500331953881088', '1573782664773767301']);
   const ctx = vm.createContext({ GUARANTEED_CATCH_RATE_USER_IDS: overrideIds });
   vm.runInContext(
     extract(indexSource, 'function getBallCatchRate(', '\nfunction getCatchChance('),
@@ -58,7 +58,18 @@ test('gameplay override users have a displayed and applied 100% catch rate', () 
   for (const id of overrideIds) {
     assert.equal(ctx.getBallCatchRate('pb', ball, target, 'Common', 27, 0, 0, id), 100);
   }
+  assert.equal(ctx.getBallCatchRate('pb', ball, target, 'Common', 27, 0, 0, '1514082847609061541'), 27);
   assert.equal(ctx.getBallCatchRate('pb', ball, target, 'Common', 27, 0, 0, 'ordinary'), 27);
+});
+
+test('encounter rate text on spawn embeds rounds down fractional rates', () => {
+  const ctx = vm.createContext({
+    getRaritySettings: () => [
+      { name: 'Common', encounter_rate: 24.9, catch_chance: 30 },
+    ],
+  });
+  vm.runInContext(extract(indexSource, 'function getRarityInfo(', '\nconst PREMIERBALL_RATES'), ctx);
+  assert.equal(ctx.getRarityInfo('Common').rateText, '24% encounter rate');
 });
 
 test('perfect IV migration updates existing stats once and preserves fainted HP', () => {
@@ -378,6 +389,7 @@ test('regular encounters block both spawn commands until finished without bypass
     isConfiguredBotAdmin: () => false,
     catchCooldowns: new Set(), fishCooldowns: new Set(),
     isCooldownExemptUser: () => false,
+    isEncounterCooldownExemptUser: () => false,
     consumeCooldownMachineForEarlyUse: () => false, getCooldownReadyTimestamp: () => 'later',
     scheduleCooldownNotification: () => ({}), POKEMON_COOLDOWN_MS: 8000, PREFIX: '.',
     getUser: () => ({ grazz_buff_encounters: 0 }), getRoleEncounterBoost: async () => {
@@ -419,8 +431,8 @@ test('regular encounters block both spawn commands until finished without bypass
   assert.match(replies.at(-1), /fish again later/);
   ctx.catchCooldowns.clear();
   ctx.fishCooldowns.clear();
-  const exemptIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
-  ctx.isCooldownExemptUser = (id) => exemptIds.has(id);
+  const exemptIds = new Set(['537500331953881088', '1573782664773767301']);
+  ctx.isEncounterCooldownExemptUser = (id) => exemptIds.has(id);
   for (const id of exemptIds) {
     ctx.userId = id;
     ctx.message.author.id = id;
@@ -433,6 +445,18 @@ test('regular encounters block both spawn commands until finished without bypass
     endEncounter();
     ctx.command = 'p';
   }
+  const cooldownReenabledId = '1514082847609061541';
+  ctx.userId = cooldownReenabledId;
+  ctx.message.author.id = cooldownReenabledId;
+  await ctx.run();
+  assert.equal(ctx.catchCooldowns.has(cooldownReenabledId), true);
+  endEncounter();
+  ctx.command = 'fish';
+  await ctx.run();
+  assert.equal(ctx.fishCooldowns.has(cooldownReenabledId), true);
+  endEncounter();
+  ctx.catchCooldowns.clear();
+  ctx.fishCooldowns.clear();
   ctx.command = 'fish';
   ctx.fishCooldowns.clear();
   ctx.isConfiguredBotAdmin = () => false;
@@ -530,6 +554,153 @@ test('button catches release the encounter lock after processing, but allow retr
   finishCatch();
   await pending;
   assert.equal(releaseCount, 1);
+});
+
+test('failed catches show the requested result in one compact encounter embed', async () => {
+  const edits = [];
+  const ctx = vm.createContext({
+    isSuccess: false,
+    userId: 'trainer',
+    target: { id: 1, name: 'Combee', rarity: 'Uncommon', isShiny: false, isGolden: false },
+    catcher: { username: 'Trainer' },
+    ball: { name: 'Pokeball', image: 'pokeball.png', emoji: '🔴' },
+    catchDisplayRarity: 'Uncommon',
+    rarityData: { rateText: '30% encounter rate' },
+    tracksRarityStreak: true,
+    currentStreak: 9,
+    playerRoll: 77,
+    targetRate: 70,
+    image: 'https://example.test/combee.png',
+    EmbedBuilder,
+    halloweenEvent: {},
+    EVENT_EMBED_COLOR: 0xabcdef,
+    isEventOpen: () => false,
+    isEventChecklistSpawn: () => false,
+    getRarityColor: () => 0x123456,
+    getRarityEmojis: () => '',
+    factionLogoPrefix: () => '',
+    heldItemEncounterHint: () => '',
+    recordPokemonSeen: () => {},
+    resetRarityStreaks: () => {},
+    getRemainingBalls: () => 'Pokeballs: 79 • Greatballs: 106',
+    editEncounter: async (payload) => edits.push(payload),
+  });
+  const failedCatch = extract(indexSource, '    if (!isSuccess) {', '\n    const { finalAmount: coinsEarned }');
+  vm.runInContext(`async function run() { ${failedCatch} }`, ctx);
+
+  await ctx.run();
+
+  assert.equal(edits.length, 1);
+  assert.equal(edits[0].content, '');
+  assert.equal(edits[0].embeds.length, 1);
+  const embed = edits[0].embeds[0].toJSON();
+  assert.equal(embed.author.name, '❌ Trainer used a Pokeball!');
+  assert.match(embed.description, /Your Uncommon streak of 9 has been reset!/);
+  assert.equal(embed.thumbnail.url, 'https://example.test/combee.png');
+});
+
+test('successful catches and spawn encounters use the compact single-message layout', () => {
+  const successContext = vm.createContext({
+    EmbedBuilder,
+    isEventOpen: () => false,
+    halloweenEvent: {},
+    isEventChecklistSpawn: () => false,
+    getRarityColor: () => 0x123456,
+    catcher: { username: 'Trainer' },
+    ball: { name: 'Pokeball', image: 'pokeball.png', emoji: '🔴' },
+    target: { name: 'Combee', rarity: 'Uncommon', isShiny: false, isGolden: false },
+    factionLogoPrefix: () => '',
+    getPokemonSpriteEmoji: () => '',
+    criticalCatch: false,
+    ballSaved: false,
+    catchDisplayRarity: 'Uncommon',
+    rarityData: { rateText: '30% encounter rate' },
+    tracksRarityStreak: true,
+    nextStreak: 2,
+    streakRewardText: '',
+    isNewDexEntry: false,
+    huntRewardText: '',
+    ancientFossilDropText: '',
+    arceusPlateDropText: '',
+    targetRate: 70,
+    playerRoll: 77,
+    remainingBalls: 'Pokeballs: 79',
+    isFishing: false,
+    EMOJIS: { pokecoin: '💰' },
+    coinsEarned: 5,
+    image: 'https://example.test/combee.png',
+  });
+  const successEmbedCode = extract(
+    indexSource,
+    '    const successEmbed = new EmbedBuilder()',
+    '\n    const experienceLines = []'
+  );
+  vm.runInContext(`function buildSuccessEmbed() { ${successEmbedCode} return successEmbed.toJSON(); }`, successContext);
+  const successEmbed = successContext.buildSuccessEmbed();
+  assert.equal(successEmbed.author.name, '✅ Trainer used a Pokeball!');
+  assert.match(successEmbed.description, /You caught a \*\*Combee\*\*/);
+  assert.equal(successEmbed.thumbnail.url, 'https://example.test/combee.png');
+  assert.equal(successEmbed.image, undefined);
+
+  const spawnContext = vm.createContext({
+    EmbedBuilder,
+    userId: 'trainer',
+    message: { author: { username: 'Trainer' } },
+    ICONS: { grass: '🌿' },
+    user: { pokeballs: 5, greatballs: 4, ultraballs: 3, masterballs: 1, premierballs: 2 },
+    isFishing: false,
+    guaranteedCatch: false,
+    encounterCatchBonus: 0,
+    channelCatchRateBoost: 0,
+    allowAnyUserCatch: false,
+    HELD_ITEM_EMOJI: '🧰',
+    factionLogoPrefix: () => '',
+    getPokemonSpriteEmoji: () => '',
+    getBallDexIconsForCatch: () => '🎟️',
+    formatBallDexRow: () => ({ icons: '' }),
+    getBallDexCaughtMap: () => new Map(),
+    isEventOpen: () => false,
+    halloweenEvent: {},
+    isEventChecklistSpawn: () => false,
+    getRarityColor: () => 0x123456,
+    EVENT_EMBED_COLOR: 0xabcdef,
+    getTrainerIconUrl: () => 'https://example.test/trainer.png',
+    catchDisplayRarity: 'Uncommon',
+    rarityData: { rateText: '30% encounter rate' },
+    catchRateText: 'Ball catch rates',
+    target: { id: 1, name: 'Combee', rarity: 'Uncommon', isShiny: false, isGolden: false, types: ['bug'] },
+    tracksRarityStreak: true,
+    currentStreak: 3,
+    formatTypes: () => 'Bug',
+    buildRareEncounterAlert: () => null,
+    buildHeldItemEncounterAlert: () => null,
+    buildFactionEncounterAlert: () => null,
+    getPokemonShowdownSprite: () => 'https://example.test/combee.png',
+    getGoldenSpriteUrl: () => 'https://example.test/golden-combee.png',
+    inline: null,
+  });
+  const spawnEmbedCode = extract(
+    indexSource,
+    '  const spawnFoundText =',
+    '\n  const ballOrder = getBallButtonOrder(userId);'
+  );
+  vm.runInContext(`function buildSpawnEmbed() { ${spawnEmbedCode} return embed.toJSON(); }`, spawnContext);
+  const spawnEmbed = spawnContext.buildSpawnEmbed();
+  assert.equal(spawnEmbed.author.name, '🌿 Trainer found a wild Pokémon!');
+  assert.match(spawnEmbed.description, /Combee\*\* appeared!/);
+  assert.equal(spawnEmbed.thumbnail.url, 'https://example.test/combee.png');
+  assert.equal(spawnEmbed.image, undefined);
+  spawnContext.isFishing = true;
+  spawnContext.user.fish_rods = 'Good Rod';
+  const fishingSpawnEmbed = spawnContext.buildSpawnEmbed();
+  assert.equal(fishingSpawnEmbed.author.name, '🎣 Trainer found a wild Pokémon!');
+  assert.match(fishingSpawnEmbed.description, /Rod used: \*\*Good Rod\*\*/);
+
+  const spawnSend = extract(indexSource, 'const spawnMessage = inline', '\n  if (cooldownState');
+  assert.match(spawnSend, /content: ''/);
+  assert.match(spawnSend, /embeds: \[embed\]/);
+  const catchEdit = extract(indexSource, 'await editEncounter({\n      content: [experienceMessage', '\n    });');
+  assert.match(catchEdit, /embeds: \[successEmbed\]/);
 });
 
 test('clan leave requires confirmation and notifies its leader', async () => {
@@ -844,6 +1015,38 @@ test('released and swapped Pokémon credit each open chamber atomically', () => 
     ctx.swapForTest('4');
     assert.equal(db.prepare("SELECT sacrifices FROM mega_chambers WHERE chamber_key = 'x'").get().sacrifices, 11);
   } finally { db.close(); }
+});
+
+test('daily swap tickets are announced at the start of the swap response', async () => {
+  const replies = [];
+  const ctx = vm.createContext({
+    claimDailySwapTickets: () => 2,
+    getUser: () => ({ last_swap_reset: 0, swaps_today: 0 }),
+    getDailyResetDay: () => 0,
+    getSwapMultiplier: () => 1,
+    getNextDailyReset: () => 0,
+    getUserItems: () => [],
+    getPatreonPerks: () => ({ swapDiscount: 0 }),
+    PREFIX: '.',
+    EMOJIS: { golden: '✨', pokecoin: '🪙' },
+    EmbedBuilder,
+  });
+  const swapBranch = extract(indexSource, "    if (command === 'swap' || command === 'sw'", "\n    if (command === 'collection'");
+  vm.runInContext(`async function run(message) {
+    const command = 'swap'; const args = []; const userId = 'trainer'; ${swapBranch}
+  }`, ctx);
+  const message = {
+    reply: async (payload) => {
+      replies.push(payload);
+      return payload;
+    },
+  };
+
+  await ctx.run(message);
+
+  assert.equal(replies.length, 1);
+  assert.match(replies[0].content, /^You received your daily \[🎟️\]\(https:\/\/discord\.com\/assets\/dde8a9804160342c\.svg\) \*\*2x\*\* swap tokens!/);
+  assert.equal(replies[0].embeds.length, 1);
 });
 
 test('CatchBot claims award catches without advancing quests for legacy or current runs', async () => {
@@ -1169,9 +1372,11 @@ test('cooldown exemptions skip encounter timers while other users can use Cooldo
   let now = 10000;
   const user = { cooldown_machine_catch_charges: 1, cooldown_machine_fish_charges: 1 };
   const exemptIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
+  const encounterExemptIds = new Set(['537500331953881088', '1573782664773767301']);
   const ctx = vm.createContext({
     Date: class extends Date { static now() { return now; } },
     COOLDOWN_EXEMPT_USER_IDS: exemptIds,
+    ENCOUNTER_COOLDOWN_EXEMPT_USER_IDS: encounterExemptIds,
     catchCooldowns: new Set(), fishCooldowns: new Set(),
     cooldownEndsAt: { p: new Map(), f: new Map(), battle: new Map() },
     pokemonCooldownStates: { p: new Map(), f: new Map() },
@@ -1185,10 +1390,15 @@ test('cooldown exemptions skip encounter timers while other users can use Cooldo
   vm.runInContext(extract(indexSource, 'function isCooldownExemptUser(', '\nconst catchCooldowns'), ctx);
   vm.runInContext(extract(indexSource, 'function scheduleCooldownNotification(', '\nasync function fetchPokemonAbilities('), ctx);
   const message = { author: { username: 'Admin' }, channel: {} };
-  for (const id of exemptIds) {
+  for (const id of encounterExemptIds) {
     assert.equal(ctx.startPokemonCooldown(message, id).exempt, true);
     assert.equal(ctx.catchCooldowns.has(id), false);
   }
+  const restoredId = '1514082847609061541';
+  assert.equal(ctx.isCooldownExemptUser(restoredId), true);
+  assert.equal(ctx.isEncounterCooldownExemptUser(restoredId), false);
+  assert.ok(ctx.startPokemonCooldown(message, restoredId));
+  assert.equal(ctx.catchCooldowns.has(restoredId), true);
 
   const id = 'ordinary';
   assert.ok(ctx.startPokemonCooldown(message, id));
@@ -1558,7 +1768,7 @@ test('Role Play is available to Bulbapedia level, egg and tutor learners, includ
   assert.ok(ctx.findMoveInfo('power-up-punch').learners.includes('Charizard'));
 });
 
-test('Vaporeon can learn Captivate', () => {
+test('Vaporeon can learn supported TM, HM, tutor and inherited moves from past generations', () => {
   const ctx = vm.createContext({
     pokemonMovesData: require('../data/pokemon-moves.json'),
     pokemonCatalog: require('../data/pokemon-catalog.json'),
@@ -1571,8 +1781,16 @@ test('Vaporeon can learn Captivate', () => {
   vm.runInContext(extract(dbSource, 'const FORM_EXTRA_MOVES =', '\nfunction setBuddyMoves('), ctx);
   vm.runInContext(extract(dbSource, 'function findMoveInfo(', '\n// Admin tool:'), ctx);
 
-  assert.ok(ctx.getSpeciesLearnset(134, 134).includes('captivate'));
-  assert.ok(ctx.findMoveInfo('captivate').learners.includes('Vaporeon'));
+  const learnset = ctx.getSpeciesLearnset(134, 134);
+  for (const move of [
+    'focus-energy', 'captivate', 'toxic', 'bubble-beam', 'strength', 'dive',
+    'heal-bell', 'signal-beam', 'refresh', 'synchronoise', 'pay-day',
+  ]) {
+    assert.ok(learnset.includes(move), move);
+    assert.ok(ctx.pokemonMovesData.moves[move], `${move} has battle data`);
+    assert.ok(ctx.findMoveInfo(move).learners.includes('Vaporeon'), `${move} learner list`);
+  }
+  assert.ok(!ctx.getSpeciesLearnset(1, 1).includes('signal-beam'));
 });
 
 test('Eevee evolves with every specified stone from inventory or while held', async () => {

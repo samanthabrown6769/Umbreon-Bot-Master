@@ -208,6 +208,72 @@ test('only Patreon ticket holders spawn Shiny Oricorio and Walking Wake spawns o
   }
 });
 
+test('the designated user cannot spawn the final missing event checklist Pokémon', () => {
+  const blockedUserId = '130226338769403904';
+  const event = {
+    id: 'test-event',
+    pokemon: [
+      { key: 'caught', matchNames: ['Caught Mon'], shiny: false },
+      { key: 'last', matchNames: ['Last Mon'], shiny: false },
+    ],
+  };
+  const eventSpawnEntries = event.pokemon.map((pokemon, index) => ({
+    key: pokemon.key,
+    ids: [index + 1],
+    matchNames: pokemon.matchNames,
+    shiny: false,
+    fish: false,
+    fishOnly: false,
+    patreonOnly: false,
+  }));
+  const selectedPools = [];
+  let progress = new Set(['caught']);
+  const math = Object.create(Math);
+  math.random = () => 0;
+  const ctx = vm.createContext({
+    Math: math,
+    halloweenEvent: event,
+    eventSpawnEntries,
+    getUser: () => ({ event_ticket: 1, has_patreon: 0 }),
+    getUserEventProgress: (_eventId, userId) => userId === blockedUserId ? progress : new Set(),
+    isEventOpen: () => true,
+    consumeIncenseCharge: () => false,
+    consumePokeradarCharge: () => false,
+    getClanPerkMultipliers: () => ({ erBonus: 0 }),
+    getTotalEffectiveShinyBonus: () => 0,
+    consumeEncounterModifier: () => 'normal',
+    getChamberSpawnSpecies: () => [],
+    getPatreonPerks: () => ({ eventShinyPct: 0, shinyRatePct: 0 }),
+    isPlayerBonusActive: () => false,
+    getEventSpawnChance: () => 1,
+    pickWeighted: (entries) => {
+      selectedPools.push(Array.from(entries, (entry) => entry.key));
+      return entries.find((entry) => entry.key === 'last') || entries[0];
+    },
+    getRandomPokemon: (_rarity, _water, _gmax, _mega, _allowed, _excluded, ids) => {
+      const entry = eventSpawnEntries.find((candidate) => candidate.ids[0] === ids[0]);
+      return { id: ids[0], speciesId: ids[0], name: entry.matchNames[0], speciesName: entry.matchNames[0], rarity: 'Common' };
+    },
+    isEventChecklistSpawn: () => true,
+    EVENT_TICKET_SHINY_RATES: { standard: { event: 0.01 }, patreon: { event: 0.02 } },
+    HARD_RARITY_USER_IDS: new Set(),
+    HARD_RARITY_RATE_MULTIPLIER: 1,
+    BASE_SHINY_RATE: 1 / 3000,
+    getChanceFromFlooredOdds: (chance) => chance,
+  });
+  vm.runInContext(
+    extract(indexSource, 'function getEventPokemonKey(', '\nfunction getRarityInfo(') +
+      '\n' + extract(indexSource, 'function rollSpawn(', '\nfunction isEventChecklistSpawn('),
+    ctx
+  );
+
+  assert.equal(ctx.rollSpawn('land', blockedUserId).id, 1);
+  assert.deepEqual(selectedPools[0], ['caught']);
+  progress = new Set();
+  assert.equal(ctx.rollSpawn('land', blockedUserId).id, 2);
+  assert.deepEqual(selectedPools[1], ['caught', 'last']);
+});
+
 test('event checklist displays the requested Patreon and fishing labels with progress', async () => {
   const ctx = vm.createContext({
     halloweenEvent: event, EmbedBuilder, EVENT_EMBED_COLOR: 0x123456,

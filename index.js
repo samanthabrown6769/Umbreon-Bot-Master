@@ -420,6 +420,7 @@ const {
   FACTION_CHANGE_COOLDOWN_MS,
   COOLDOWN_EXEMPT_USER_IDS,
   GUARANTEED_CATCH_RATE_USER_IDS,
+  ENCOUNTER_COOLDOWN_EXEMPT_USER_IDS,
   TEAM_MEDALLION_ITEM,
   getDailyBall,
   getUserFaction,
@@ -479,6 +480,7 @@ const {
   isGoldenFormSupported,
   isGoldenDexNumber,
 } = require('./pokemon-dex-numbers');
+const { getPokedexRegion, isPokemonInPokedexRegion } = require('./pokemon-regions');
 const { getPokemonShowdownSprite } = require('./pokemon-sprites');
 const battleFx = require('./battle-effects');
 const { runTurn, runSwitchTurn, onSwitchIn, chooseEnemyMove, buildEnemyMoves } = battleFx;
@@ -703,6 +705,7 @@ function buildEventSpawnData(event) {
         .map((pokemon) => pokemon.id)
     )));
     return {
+      key: eventPokemon.key,
       ids,
       shiny: Boolean(eventPokemon.shiny),
       fish: Boolean(eventPokemon.fish || eventPokemon.fishOnly),
@@ -1040,6 +1043,9 @@ const FISHING_COOLDOWN_MS = 20000;
 const BATTLE_COOLDOWN_MS = 45000;
 function isCooldownExemptUser(userId) {
   return COOLDOWN_EXEMPT_USER_IDS.has(String(userId));
+}
+function isEncounterCooldownExemptUser(userId) {
+  return ENCOUNTER_COOLDOWN_EXEMPT_USER_IDS.has(String(userId));
 }
 const catchCooldowns = new Set();
 const fishCooldowns = new Set();
@@ -1757,7 +1763,7 @@ function consumeCooldownMachineForEarlyUse(userId, command, cooldowns) {
 }
 
 function startPokemonCooldown(message, userId) {
-  if (isCooldownExemptUser(userId)) return { exempt: true };
+  if (isEncounterCooldownExemptUser(userId)) return { exempt: true };
   if (catchCooldowns.has(userId) && !consumeCooldownMachineForEarlyUse(userId, 'p', catchCooldowns)) {
     return null;
   }
@@ -3804,6 +3810,16 @@ function rollSpawn(
     && userId !== null
     && isEventOpen(halloweenEvent)
     && Boolean(getUser(userId).event_ticket);
+  const eventChecklistProgress = eventTicketActive
+    && userId === '130226338769403904'
+    ? getUserEventProgress(halloweenEvent.id, userId)
+    : null;
+  const missingChecklistPokemon = eventChecklistProgress
+    ? halloweenEvent.pokemon.filter((pokemon) => !eventChecklistProgress.has(pokemon.key))
+    : [];
+  const blockedFinalChecklistKey = missingChecklistPokemon.length === 1
+    ? missingChecklistPokemon[0].key
+    : null;
   const clanPerks = userId === null
     ? getClanPerkMultipliers(null)
     : getClanPerkMultipliers(getUser(userId));
@@ -3826,6 +3842,7 @@ function rollSpawn(
   const forcedEventPool = eventSpawnEntries.filter((entry) =>
     (poolName === 'water' ? entry.fish : !entry.fishOnly)
     && (!entry.patreonOnly || eventPatreon)
+    && entry.key !== blockedFinalChecklistKey
   );
   const eventSpawnEligible = eventTicketActive && forcedEventPool.length > 0;
   const eventChance = eventSpawnEligible ? getEventSpawnChance(
@@ -4240,7 +4257,7 @@ function getRarityInfo(
   if (!displayRaritySetting) {
     throw new Error(`No configuration exists for Pokémon catch rarity "${catchRarity}".`);
   }
-  const encounterRate = Math.round(rarity.encounter_rate);
+  const encounterRate = Math.floor(rarity.encounter_rate);
   return {
     catchChance: displayRaritySetting.catch_chance,
     rateText: isShiny
@@ -7932,9 +7949,8 @@ async function askForBall(
   const currentStreak = tracksRarityStreak
     ? getUserRarityStreak(userId, catchDisplayRarity)
     : null;
-  const trainerLabel = `${getTrainerIconEmoji(userId)} **${message.author.username}**`;
   const spawnFoundText =
-    `${trainerLabel} found a wild ${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${factionLogoPrefix(target)}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}**!`;
+    `${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${factionLogoPrefix(target)}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}** appeared!`;
   let spawnBallDexIcons = '';
   try {
     spawnBallDexIcons = target.id
@@ -7947,13 +7963,13 @@ async function askForBall(
     .setColor(isEventOpen(halloweenEvent) && isEventChecklistSpawn(target)
       ? EVENT_EMBED_COLOR
       : getRarityColor(target.rarity, target.name, target.isShiny))
-    .setTitle(
-      isFishing
-        ? `🎣 A wild Pokémon appeared!`
-        : `${ICONS.grass} A wild Pokémon appeared!`
-    )
+    .setAuthor({
+      name: `${isFishing ? '🎣' : ICONS.grass} ${message.author.username} found a wild Pokémon!`,
+      iconURL: getTrainerIconUrl(userId) || undefined,
+    })
     .setDescription(
       `${spawnFoundText}\n` +
+      `${spawnBallDexIcons ? `${spawnBallDexIcons}\n` : ''}` +
       (allowAnyUserCatch ? 'Anyone can catch it with the buttons or by typing a ball name.\n' : '') +
       (target.researchToolsConsumed?.length
         ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
@@ -7985,7 +8001,7 @@ async function askForBall(
       target.isShiny,
       target.isShiny ? (target.shinyImg || target.img) : target.img
     );
-  if (image) embed.setImage(image);
+  if (image) embed.setThumbnail(image);
   if (inline?.onSpawn) inline.onSpawn(embed);
   const ballOrder = getBallButtonOrder(userId);
   let ballEntries = Object.entries(BALL_CONFIG)
@@ -8006,7 +8022,7 @@ async function askForBall(
   const spawnMessage = inline
     ? makeInlineEncounterHost(inline.onEdit)
     : await message.channel.send({
-      content: [spawnFoundText, spawnBallDexIcons].filter(Boolean).join(' '),
+      content: '',
       embeds: [embed],
       components: ballRows,
     });
@@ -8171,7 +8187,7 @@ async function askForBall(
           ? EVENT_EMBED_COLOR
           : getRarityColor(target.rarity, target.name, target.isShiny))
         .setAuthor({
-          name: `${catcher.username} used a ${ball.name}!`,
+          name: `❌ ${catcher.username} used a ${ball.name}!`,
           iconURL: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${ball.image}`,
         })
         .setDescription(
@@ -8179,13 +8195,14 @@ async function askForBall(
           `${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${factionLogoPrefix(target)}**${target.name}** broke out of the ${ball.emoji} **${ball.name}**!\n\n` +
           heldItemEncounterHint(target) +
           `**Rarity:** ${catchDisplayRarity} (${rarityData.rateText})\n\n` +
+          `${tracksRarityStreak ? `Your ${catchDisplayRarity} streak of ${currentStreak} has been reset!\n\n` : ''}` +
           `Pokémon roll: **${Math.round(playerRoll)}**\n` +
           `Your catch rate: **${Math.round(targetRate)}%**\n\n` +
           '═══════ Balls left ═══════\n' +
           `${getRemainingBalls()}`
         );
       const fledImage = image;
-      if (fledImage) fledEmbed.setImage(fledImage);
+      if (fledImage) fledEmbed.setThumbnail(fledImage);
       await editEncounter({ content: '', embeds: [fledEmbed], components: [] });
       return false;
     }
@@ -8365,11 +8382,11 @@ async function askForBall(
         ? EVENT_EMBED_COLOR
         : getRarityColor(target.rarity, target.name, target.isShiny))
       .setAuthor({
-        name: `Congratulations, ${catcher.username}!`,
+        name: `✅ ${catcher.username} used a ${ball.name}!`,
         iconURL: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${ball.image}`,
       })
       .setDescription(
-        `✅ ${getTrainerIconEmoji(userId)} You caught ` +
+        `You caught ` +
         `${/^[aeiou]/i.test(target.name) ? 'an' : 'a'} ` +
         `${factionLogoPrefix(target)}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}** with a ` +
         `${ball.emoji} **${ball.name}**!` +
@@ -8394,7 +8411,7 @@ async function askForBall(
         `You earned ${coinsEarned} ${EMOJIS.pokecoin} PokéCoins!`
       );
     const successImage = image;
-    if (successImage) successEmbed.setImage(successImage);
+    if (successImage) successEmbed.setThumbnail(successImage);
     const experienceLines = [];
     if (experienceResult?.awarded) {
       const buddyGain = experienceResult.pokemon.find((pokemon) => pokemon.is_buddy);
@@ -18134,7 +18151,7 @@ client.on('messageCreate', async (message) => {
       }
       const rod = getFishingRod(user);
       const isAdmin = isConfiguredBotAdmin(message);
-      const cooldownExempt = isCooldownExemptUser(userId);
+      const cooldownExempt = isEncounterCooldownExemptUser(userId);
       if (!cooldownExempt && fishCooldowns.has(userId)) {
         if (!consumeCooldownMachineForEarlyUse(userId, 'f', fishCooldowns)) {
           return message.reply(
@@ -19667,11 +19684,15 @@ client.on('messageCreate', async (message) => {
       });
     }
 
+    const requestedDexRegion = command === 'dex' || command === 'd'
+      ? getPokedexRegion(args[0])
+      : null;
     if (
       command === 'pokedex'
       || command === 'pdex'
-      || ((command === 'dex' || command === 'd') && args.length === 0)
+      || ((command === 'dex' || command === 'd') && (args.length === 0 || requestedDexRegion))
     ) {
+      const dexRegion = requestedDexRegion;
       const targetUser = message.mentions.users.first() || message.author;
       const totalSpecies = db.prepare(
         'SELECT COUNT(DISTINCT species_id) AS count FROM pokemon_forms WHERE is_default = 1'
@@ -19722,7 +19743,10 @@ client.on('messageCreate', async (message) => {
           ? displayed.includes(dexRarity)
           : displayed === dexRarity;
       };
-      const visibleDexEntries = () => dexEntries.filter(dexMatchesRarity);
+      const visibleDexEntries = () => dexEntries.filter((pokemon) =>
+        (!dexRegion || isPokemonInPokedexRegion(pokemon.species_id, dexRegion))
+        && dexMatchesRarity(pokemon)
+      );
       const getDexTotalPages = () => Math.max(1, Math.ceil(visibleDexEntries().length / pageSize));
       let totalPages = getDexTotalPages();
       const requestedPage = Number(args.find((argument) => /^\d+$/.test(argument)));
@@ -19776,13 +19800,26 @@ client.on('messageCreate', async (message) => {
           const displayName = pokemon.is_golden ? `Golden ${pokemon.name}` : pokemon.is_shiny ? `Shiny ${pokemon.name}` : pokemon.name;
           return `\`${String(pokemon.dex_number).padStart(4, '0')}\` ${marker} ${rarityEmoji} ${getPokemonSpriteEmoji(pokemon)} **${displayName}**`;
         }).join('\n') || 'No entries.';
+        const uniqueCount = dexRegion
+          ? [...caughtByEntry.keys()].filter((key) =>
+            isPokemonInPokedexRegion(Number(key.split(':', 1)[0]), dexRegion)
+          ).length
+          : caughtByEntry.size;
+        const regionTotal = dexRegion
+          ? dexEntries.filter((pokemon) =>
+            !pokemon.is_form && isPokemonInPokedexRegion(pokemon.species_id, dexRegion)
+          ).length
+          : total;
         return new EmbedBuilder()
           .setColor(0x0099ff)
-          .setAuthor({ name: `${targetUser.username}'s Pokédex`, iconURL: targetUser.displayAvatarURL() })
-          .setTitle('Complete your Pokédex!')
+          .setAuthor({
+            name: `${targetUser.username}'s ${dexRegion ? `${dexRegion.name} ` : ''}Pokédex`,
+            iconURL: targetUser.displayAvatarURL(),
+          })
+          .setTitle(dexRegion ? `Complete your ${dexRegion.name} Pokédex!` : 'Complete your Pokédex!')
           .setDescription(description)
           .setFooter({
-            text: `Total: ${total} • Unique: ${caughtByEntry.size}/${total} • Shiny entries have their own numbers • Page: ${currentPage}/${totalPages}` +
+            text: `${dexRegion ? `Region: ${dexRegion.name} • ` : ''}Total: ${regionTotal} • Unique: ${uniqueCount}/${regionTotal} • Shiny entries have their own numbers • Page: ${currentPage}/${totalPages}` +
               (dexRarity === 'all' ? '' : ` • Showing: ${dexRarityOptions.find(([key]) => key === dexRarity)[1]}`),
           });
       };
@@ -19974,7 +20011,7 @@ client.on('messageCreate', async (message) => {
       const query = (previewShiny || previewGolden ? args.slice(1) : args).join(' ').trim();
       if (!query) {
         return message.reply(
-          `Search for a Pokémon, form, or Pokédex number: \`${PREFIX}dex [shiny|golden] <name|number>\`.`
+          `Search for a Pokémon, form, or Pokédex number with \`${PREFIX}dex [shiny|golden] <name|number>\`, or view a regional Pokédex with \`${PREFIX}d <kanto|johto|hoenn|sinnoh|unova|kalos|alola|galar|hisui|paldea>\`.`
         );
       }
 
@@ -26985,12 +27022,20 @@ client.on('messageCreate', async (message) => {
       }
       if (!legacySwap) {
         const dailyTickets = claimDailySwapTickets(userId);
-        if (dailyTickets > 0) {
-          await message.reply(`🎟️ You received **${dailyTickets} daily Swap Tickets**!`);
-        }
+        const dailyTicketNotice = dailyTickets > 0
+          ? `You received your daily [🎟️](https://discord.com/assets/dde8a9804160342c.svg) **${dailyTickets}x** swap tokens!`
+          : '';
+        const replySwap = (payload) => {
+          if (!dailyTicketNotice) return message.reply(payload);
+          if (typeof payload === 'string') return message.reply(`${dailyTicketNotice}\n\n${payload}`);
+          return message.reply({
+            ...payload,
+            content: [dailyTicketNotice, payload.content].filter(Boolean).join('\n\n'),
+          });
+        };
         const pokemonName = args.join(' ').trim();
         if (/^(?:shiny|golden)\s+\d+$/i.test(pokemonName)) {
-          return message.reply(`Use \`${PREFIX}swap shiny|golden <Pokémon name>\` or \`${PREFIX}swap <variant Pokédex number>\`.`);
+          return replySwap(`Use \`${PREFIX}swap shiny|golden <Pokémon name>\` or \`${PREFIX}swap <variant Pokédex number>\`.`);
         }
         if (!pokemonName || ['help', 'info', 'shiny', 'golden'].includes(pokemonName.toLowerCase())) {
           const swapUser = getUser(userId);
@@ -27002,7 +27047,7 @@ client.on('messageCreate', async (message) => {
           const nextReset = Math.floor(getNextDailyReset(Date.now()) / 1000);
           const swapTickets = getUserItems(userId)
             .find((item) => item.item_name === 'Swap Ticket')?.amount || 0;
-          return message.reply({
+          return replySwap({
             embeds: [new EmbedBuilder()
               .setColor(0x5865f2)
               .setTitle('🔄 PokeSwap — Swap your Pokémon!')
@@ -27030,7 +27075,7 @@ client.on('messageCreate', async (message) => {
         const swapReadyAt = swapCooldowns.get(userId) || 0;
         const cooldownExempt = isCooldownExemptUser(userId);
         if (!cooldownExempt && swapReadyAt > swapNow) {
-          return message.reply(`⏳ You can swap again <t:${Math.ceil(swapReadyAt / 1000)}:R>.`);
+          return replySwap(`⏳ You can swap again <t:${Math.ceil(swapReadyAt / 1000)}:R>.`);
         }
         if (!cooldownExempt) {
           swapCooldowns.set(userId, swapNow + SWAP_COOLDOWN_MS);
@@ -27138,18 +27183,18 @@ client.on('messageCreate', async (message) => {
         if (result.error === 'pokemon_not_found') {
           const ownedVariant = findOwnedPokemonRows(userId, pokemonName);
           if (ownedVariant.length) {
-            return message.reply(
+            return replySwap(
               `❌ You own **${ownedVariant.length}** **${pokemonName}**, ` +
               'but all of them are on your team. Remove one from your team first.'
             );
           }
-          return message.reply(
+          return replySwap(
             `❌ Could not find a non-team **${pokemonName}** in your box. ` +
             'Specify its Pokémon name or variant Pokédex number.'
           );
         }
         if (result.error === 'insufficient_coins') {
-          return message.reply(
+          return replySwap(
             `❌ You need ${EMOJIS.pokecoin} **${Math.round(5000 * (1 - getPatreonPerks(userId).swapDiscount)).toLocaleString()} PokéCoins** for a swap without a Swap Ticket. ` +
             `You have **${result.coins.toLocaleString()}**.`
           );
@@ -27192,7 +27237,7 @@ client.on('messageCreate', async (message) => {
         const dropsText = result.rotomDrops.length
           ? `\n⚙️ **Rotom Appliances Found:** ${result.rotomDrops.join(', ')}!`
           : '';
-        await message.reply({
+        await replySwap({
           content:
             `${paymentText}\n` +
             `${getTrainerIconEmoji(userId)} **${message.author.username}** swapped: ${offeredDisplay} ` +
