@@ -14949,6 +14949,7 @@ client.on('messageCreate', async (message) => {
             baseDef: form.base_def,
             baseSpd: form.base_spd,
           });
+          recordPokemonSeen(userId, form.id, false, true);
         }).immediate();
         return { form };
       };

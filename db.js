@@ -10453,19 +10453,26 @@ const GUILD_CHANNEL_CATCH_RATE_BOOSTS = new Map([
   ['1565161395496943709', 5],
 ]);
 
+db.prepare(`
+  DELETE FROM channel_catch_rate_boosts
+  WHERE guild_id = '1560102297198006274'
+`).run();
+
 function getChannelCatchRateBoost(userId, guildId, channelId) {
   if (typeof userId !== 'string' || !userId
       || typeof guildId !== 'string' || !guildId
       || typeof channelId !== 'string' || !channelId) {
     return 0;
   }
+  const guildBoost = GUILD_CHANNEL_CATCH_RATE_BOOSTS.get(guildId) || 0;
+  if (guildId === '1560102297198006274') return guildBoost;
   const personalBoost = db.prepare(`
     SELECT 5 AS boost
     FROM channel_catch_rate_boosts
     WHERE guild_id = ? AND channel_id = ?
     LIMIT 1
   `).get(guildId, channelId)?.boost || 0;
-  return personalBoost + (GUILD_CHANNEL_CATCH_RATE_BOOSTS.get(guildId) || 0);
+  return personalBoost + guildBoost;
 }
 
 function getBoostedChannels(userId) {
@@ -10493,6 +10500,7 @@ function addChannelCatchRateBoost(userId, guildId, channelId, limit = 10) {
       || (limit !== null && (!Number.isSafeInteger(limit) || limit < 1))) {
     throw new TypeError('Valid user/guild/channel IDs and a positive or unlimited channel limit are required.');
   }
+  if (guildId === '1560102297198006274') return 'already';
   return db.transaction(() => {
     const exists = db.prepare(`
       SELECT 1 FROM channel_catch_rate_boosts

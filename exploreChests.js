@@ -1,7 +1,7 @@
 const CHEST_EMOJI = '<:treasurebox:1569732869364912259>';
 const CHEST_IMAGE_URL = 'https://cdn.discordapp.com/emojis/1569732869364912259.png';
 const CHEST_SPAWN_CHANCE = 0.1;
-const CHEST_SPECIAL_CHANCE = 0.01;
+const CHEST_SPECIAL_CHANCE = 1 / 3000;
 const EXPLORE_ITEMS = {
   scanner: {
     name: 'Scanner', field: 'explore_scanner', emoji: '<:scanner:1570537683824943184>',
@@ -79,4 +79,12 @@ function chooseExploreChestReward(user, basicRewards, random = Math.random) {
   return { ...reward, quantity: reward.min + Math.floor(random() * (reward.max - reward.min + 1)) };
 }
 
-module.exports = { CHEST_EMOJI, CHEST_IMAGE_URL, CHEST_SPAWN_CHANCE, EXPLORE_ITEMS, spawnExploreChest, chooseExploreChestReward };
+module.exports = {
+  CHEST_EMOJI,
+  CHEST_IMAGE_URL,
+  CHEST_SPAWN_CHANCE,
+  CHEST_SPECIAL_CHANCE,
+  EXPLORE_ITEMS,
+  spawnExploreChest,
+  chooseExploreChestReward,
+};

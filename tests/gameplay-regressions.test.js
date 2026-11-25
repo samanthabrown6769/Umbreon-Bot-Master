@@ -1558,6 +1558,23 @@ test('Role Play is available to Bulbapedia level, egg and tutor learners, includ
   assert.ok(ctx.findMoveInfo('power-up-punch').learners.includes('Charizard'));
 });
 
+test('Vaporeon can learn Captivate', () => {
+  const ctx = vm.createContext({
+    pokemonMovesData: require('../data/pokemon-moves.json'),
+    pokemonCatalog: require('../data/pokemon-catalog.json'),
+    moveInfoData: require('../data/move-info.json'),
+    specialMoveLearners: Object.fromEntries(
+      Object.entries(require('../data/special-move-learners.json'))
+        .map(([move, ids]) => [move, new Set(ids)])
+    ),
+  });
+  vm.runInContext(extract(dbSource, 'const FORM_EXTRA_MOVES =', '\nfunction setBuddyMoves('), ctx);
+  vm.runInContext(extract(dbSource, 'function findMoveInfo(', '\n// Admin tool:'), ctx);
+
+  assert.ok(ctx.getSpeciesLearnset(134, 134).includes('captivate'));
+  assert.ok(ctx.findMoveInfo('captivate').learners.includes('Vaporeon'));
+});
+
 test('Eevee evolves with every specified stone from inventory or while held', async () => {
   const { EVOLUTION_ITEMS, findEvolutionItem } = require('../evolution-items');
   const db = new Database(':memory:');
@@ -2349,28 +2366,32 @@ test('CatchBot reset clears only CatchBot fields for an existing user', () => {
   }
 });
 
-test('server-wide channel boosts apply automatically and stack with manual boosts', () => {
+test('server-wide channel boosts stay capped in the designated server and stack elsewhere', () => {
   const db = new Database(':memory:');
   try {
     db.exec(`CREATE TABLE channel_catch_rate_boosts (
       user_id TEXT NOT NULL, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL,
       PRIMARY KEY (user_id, guild_id, channel_id)
     )`);
-    const ctx = vm.createContext({ db, assertUserId: (id) => assert.ok(id) });
-    vm.runInContext(extract(dbSource, 'const GUILD_CHANNEL_CATCH_RATE_BOOSTS =', '\nfunction getPokemonFormBySlug('), ctx);
     const server = '1560102297198006274';
     const otherBoostedServer = '1565161395496943709';
+    db.prepare('INSERT INTO channel_catch_rate_boosts (user_id, guild_id, channel_id) VALUES (?, ?, ?)')
+      .run('owner', server, 'existing-channel');
+    const ctx = vm.createContext({ db, assertUserId: (id) => assert.ok(id) });
+    vm.runInContext(extract(dbSource, 'const GUILD_CHANNEL_CATCH_RATE_BOOSTS =', '\nfunction getPokemonFormBySlug('), ctx);
     for (const channel of ['existing-channel', 'new-channel']) {
       assert.equal(ctx.getChannelCatchRateBoost('user', server, channel), 5);
       assert.equal(ctx.getChannelCatchRateBoost('another-user', server, channel), 5);
     }
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM channel_catch_rate_boosts WHERE guild_id = ?').get(server).count, 0);
+    assert.equal(ctx.addChannelCatchRateBoost('owner', server, 'new-channel'), 'already');
+    assert.equal(ctx.getChannelCatchRateBoost('another-user', server, 'new-channel'), 5);
     assert.equal(ctx.getChannelCatchRateBoost('user', otherBoostedServer, 'channel'), 5);
     assert.equal(ctx.getChannelCatchRateBoost('user', 'other-server', 'channel'), 0);
-    assert.equal(ctx.addChannelCatchRateBoost('owner', server, 'existing-channel'), 'added');
-    assert.equal(ctx.getChannelCatchRateBoost('another-user', server, 'existing-channel'), 10);
-    assert.equal(ctx.getChannelCatchRateBoost('another-user', server, 'new-channel'), 5);
-    assert.equal(ctx.setChannelCatchRateBoost('owner', server, 'existing-channel', false), true);
-    assert.equal(ctx.getChannelCatchRateBoost('user', server, 'existing-channel'), 5);
+    assert.equal(ctx.addChannelCatchRateBoost('owner', otherBoostedServer, 'channel'), 'added');
+    assert.equal(ctx.getChannelCatchRateBoost('another-user', otherBoostedServer, 'channel'), 10);
+    assert.equal(ctx.setChannelCatchRateBoost('owner', otherBoostedServer, 'channel', false), true);
+    assert.equal(ctx.getChannelCatchRateBoost('user', otherBoostedServer, 'channel'), 5);
 
     const rateCtx = vm.createContext({
       Math: Object.assign(Object.create(Math), { random: () => 1.02 / 167 }),
@@ -2499,6 +2520,38 @@ test('DM battles and Egg hatches consume incense from the private DM scope', asy
   vm.runInContext(`${scopeHelpers}\n${promoDrops}`, context);
   await context.rollActivityPromoDrops({ id: 'alice' }, null, {}, 'egg');
   assert.deepEqual(consumeScopes, ['dm:alice']);
+});
+
+test('claiming a promo Golden Pokémon records it as seen', () => {
+  const seen = [];
+  const form = {
+    id: 123, name: 'Promo Pokémon', species_name: 'Promo Pokémon', base_hp: 50,
+    base_atk: 50, base_def: 50, base_spd: 50,
+  };
+  const ctx = vm.createContext({
+    userId: 'trainer',
+    promo: { costCoins: 500, costItems: 2, itemName: 'Promo Token', speciesId: 123 },
+    getUser: () => ({ coins: 1000 }),
+    db: {
+      prepare: (sql) => ({
+        get: () => sql.includes('user_items') ? { amount: 2 } : form,
+      }),
+      transaction: (callback) => ({ immediate: callback }),
+    },
+    incrementUser: () => {},
+    takeUserItem: () => true,
+    saveGoldenCatch: () => {},
+    recordPokemonSeen: (...args) => seen.push(args),
+  });
+  const claimHelper = extract(
+    indexSource,
+    '      const promoItemCount =',
+    '\n      const buildClaimEmbed ='
+  );
+  const result = vm.runInContext(`${claimHelper}\nclaimPromo(promo)`, ctx);
+
+  assert.equal(result.form, form);
+  assert.deepEqual(seen, [['trainer', 123, false, true]]);
 });
 
 test('promo scheduling respects its start and end timestamps', () => {

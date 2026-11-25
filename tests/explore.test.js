@@ -35,21 +35,23 @@ test('Explore chests spawn within reach, last 5–15 movements, and have one-tim
   }
   const basic = [{ field: 'repels', min: 1, max: 1 }];
   const select = (user, ...rolls) => chests.chooseExploreChestReward(user, basic, () => rolls.shift());
+  const specialChance = chests.CHEST_SPECIAL_CHANCE;
+  assert.equal(specialChance, 1 / 3000);
   assert.equal(select({}, 0).special, 'shiny');
-  assert.equal(select({}, 0.009999).special, 'shiny');
-  assert.equal(select({}, 0.01).special, 'amulet');
-  assert.equal(select({}, 0.019999).special, 'amulet');
+  assert.equal(select({}, specialChance - Number.EPSILON).special, 'shiny');
+  assert.equal(select({}, specialChance).special, 'amulet');
+  assert.equal(select({}, 2 * specialChance - Number.EPSILON).special, 'amulet');
   for (const [roll, key, field] of [
-    [0.02, 'scanner', 'explore_scanner'],
-    [0.03, 'ring', 'explore_item_ring'],
-    [0.04, 'dowsing', 'explore_dowsing_machine'],
-    [0.05, 'pack', 'explore_large_pack'],
+    [2 * specialChance, 'scanner', 'explore_scanner'],
+    [3 * specialChance, 'ring', 'explore_item_ring'],
+    [4 * specialChance, 'dowsing', 'explore_dowsing_machine'],
+    [5 * specialChance, 'pack', 'explore_large_pack'],
   ]) {
     assert.equal(select({}, roll).special, key);
-    assert.equal(select({}, roll + 0.009999).special, key);
+    assert.equal(select({}, roll + specialChance - Number.EPSILON).special, key);
     assert.equal(select({ [field]: 1 }, roll, 0, 0).field, 'repels');
   }
-  assert.equal(select({}, 0.06, 0, 0).field, 'repels');
+  assert.equal(select({}, 6 * specialChance, 0, 0).field, 'repels');
   assert.equal(select({ explore_shiny_charm: 1 }, 0, 0, 0).field, 'repels');
   assert.equal(select({ explore_amulet_coin: 1 }, 0.01, 0, 0).field, 'repels');
 });
