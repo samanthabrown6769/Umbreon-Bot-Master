@@ -605,6 +605,62 @@ test('failed catches show the Pokémon image at the bottom of one encounter embe
   assert.match(edits[1].embeds[0].toJSON().description, /Your catch rate: \*\*70%\*\* \(\+5% Patreon catch rate\)/);
 });
 
+test('failed catch processing reuses the encounter rarity-streak state', async () => {
+  const edits = [];
+  const context = vm.createContext({
+    activeCatchEncounters: new Map(),
+    actionTaken: false,
+    allowAnyUserCatch: false,
+    buttonCollector: { stop: () => {} },
+    textCollector: { stop: () => {} },
+    BALL_CONFIG: { pb: { column: 'pokeballs', name: 'Pokéball', image: 'pokeball.png', emoji: '🔴' } },
+    db: { transaction: (callback) => ({ immediate: callback }) },
+    getUser: () => ({ pokeballs: 5, greatballs: 0, ultraballs: 0, masterballs: 0, premierballs: 0 }),
+    incrementUser: () => {},
+    getPatreonPerks: () => ({ catchBoost: 0 }),
+    getBallCatchRate: () => 0,
+    getCatchingCharmCritChance: () => 0,
+    getCatchCoinReward: () => 1,
+    recordPokemonSeen: () => {},
+    resetRarityStreaks: () => {},
+    EmbedBuilder,
+    isEventOpen: () => false,
+    halloweenEvent: {},
+    isEventChecklistSpawn: () => false,
+    getRarityColor: () => 0x123456,
+    getRarityEmojis: () => '',
+    factionLogoPrefix: () => '',
+    heldItemEncounterHint: () => '',
+    spawnMessage: { id: 'spawn', edit: async (payload) => edits.push(payload) },
+    inline: null,
+    interaction: null,
+    message: { author: { username: 'Trainer' } },
+    target: { id: 1, name: 'Combee', rarity: 'Uncommon', isShiny: false, isGolden: false },
+    catchDisplayRarity: 'Uncommon',
+    rarityData: { rateText: '30% encounter rate' },
+    ninjaBoostText: '',
+    guaranteedCatch: false,
+    encounterCatchBonus: 0,
+    channelCatchRateBoost: 0,
+    isFishing: false,
+    image: null,
+    NON_STREAK_RARITIES: new Set(),
+    Math: Object.assign(Object.create(Math), { random: () => 0.5 }),
+    getRemainingBalls: () => 'Pokéballs: 5',
+    userId: 'trainer',
+  });
+  vm.runInContext(
+    'const tracksRarityStreak = true; const currentStreak = 9;',
+    context
+  );
+  vm.runInContext(extract(indexSource, '  async function handleCatch(', '\n  textCollector.on('), context);
+
+  const result = await context.handleCatch('pb', null, true, { id: 'trainer', username: 'Trainer' });
+
+  assert.equal(result, false);
+  assert.match(edits[0].embeds[0].toJSON().description, /Your Uncommon streak of 9 has been reset!/);
+});
+
 test('successful catches and spawn encounters show the Pokémon image in one embed', () => {
   const successContext = vm.createContext({
     EmbedBuilder,
@@ -2181,22 +2237,28 @@ test('vitamin use accepts multiword names and all, and the token market displays
   assert.match(embed.fields.at(-1).value, /<:patreontoken:1560376902374522980>/);
 });
 
-test('revoked admin loses built-in access while other configured admins retain it', () => {
-  const context = vm.createContext({ process: { env: { ADMIN_IDS: 'extra-admin' } } });
+test('revoked admins lose built-in and environment-configured access', () => {
+  const context = vm.createContext({
+    process: { env: { ADMIN_IDS: '183625933041827840,1352997432929288194,extra-admin' } },
+  });
   vm.runInContext(extract(indexSource, 'function isConfiguredBotAdminId(', '\nasync function sendPagedEmbeds('), context);
-  for (const id of ['183625933041827840', '1352997432929288194', '378623134816927745', 'extra-admin']) {
+  for (const id of ['183625933041827840', '1352997432929288194']) {
+    assert.equal(context.isConfiguredBotAdmin({ author: { id } }), false);
+    assert.equal(vm.runInContext(`WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has('${id}')`, context), false);
+  }
+  for (const id of ['378623134816927745', 'extra-admin']) {
     assert.equal(context.isConfiguredBotAdmin({ author: { id } }), true);
   }
   assert.equal(context.isConfiguredBotAdmin({ author: { id: '426946381098254336' } }), false);
   assert.equal(vm.runInContext("WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has('426946381098254336')", context), false);
-  assert.equal(vm.runInContext("WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has('1352997432929288194')", context), true);
   assert.equal(context.isConfiguredBotAdmin({ author: { id: 'other' } }), false);
 });
 
-test('revoked admin is denied admin, admin spawn, and admin boss commands', async () => {
+test('revoked admins are denied admin, admin spawn, and admin boss commands', async () => {
   const context = vm.createContext({
-    process: { env: {} }, userId: '426946381098254336',
-    message: { author: { id: '426946381098254336' }, reply: async (text) => text },
+    process: { env: { ADMIN_IDS: '183625933041827840,1352997432929288194' } },
+    userId: '183625933041827840',
+    message: { author: { id: '183625933041827840' }, reply: async (text) => text },
   });
   vm.runInContext(
     extract(indexSource, 'function isConfiguredBotAdminId(', '\nasync function sendPagedEmbeds(') +
@@ -2214,8 +2276,12 @@ test('revoked admin is denied admin, admin spawn, and admin boss commands', asyn
     async function adminSpawn() { const command = 'p'; const args = ['admin']; ${spawn} } } }
     async function adminBoss() { const command = 'adminboss'; const args = []; ${boss} } }
   `, context);
-  for (const command of ['adminCommand', 'adminSpawn', 'adminBoss']) {
-    assert.match(await context[command](), /Only a configured bot admin|do not have permission/);
+  for (const id of ['183625933041827840', '1352997432929288194']) {
+    context.userId = id;
+    context.message.author.id = id;
+    for (const command of ['adminCommand', 'adminSpawn', 'adminBoss']) {
+      assert.match(await context[command](), /Only a configured bot admin|do not have permission/);
+    }
   }
 });
 
@@ -3505,10 +3571,10 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Legendary');
   roll = 1 / 250;
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 200);
-  assert.equal(ctx.getEventSpawnChance(50), 1 / 133);
-  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 90);
-  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 60);
+  assert.equal(ctx.getEventSpawnChance(), 1 / 222);
+  assert.equal(ctx.getEventSpawnChance(50), 1 / 148);
+  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 100);
+  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 66);
   const shinyRate = 0.001 * 1.5 * (1 / (1 - 1 / 100));
   assert.equal(ctx.getChanceFromFlooredOdds(shinyRate), 1 / 660);
 });

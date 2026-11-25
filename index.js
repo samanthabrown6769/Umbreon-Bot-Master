@@ -665,7 +665,7 @@ function getChanceFromFlooredOdds(chance) {
 }
 
 const EVENT_SPAWN_ODDS = 1000;
-const EVENT_SPAWN_RATE_MULTIPLIER = 5;
+const EVENT_SPAWN_RATE_MULTIPLIER = 4.5;
 function getEventSpawnChance(roleChanceBoost = 0, eventShinyPct = 0, shinyBonusActive = false) {
   const tierMultiplier = 1 + (eventShinyPct / 100) * (70 / 27);
   const chance = EVENT_SPAWN_RATE_MULTIPLIER
@@ -2888,8 +2888,8 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   delibird: { shiny: '<:sdelibird:1573347786781364234>' },
   oricorio: { shiny: '<:soricorio:1573347784462172321>' },
   'oricorio baile': { shiny: '<:soricorio:1573347784462172321>' },
-  'winter deerling': { shiny: '<:swinterdeerling:1573347767974367323>' },
-  'deerling winter': { shiny: '<:swinterdeerling:1573347767974367323>' },
+  'winter deerling': { normal: '<:winterdeerling:1575024179567140874>', shiny: '<:swinterdeerling:1575024177323319353>' },
+  'deerling winter': { normal: '<:winterdeerling:1575024179567140874>', shiny: '<:swinterdeerling:1575024177323319353>' },
   'hisuian growlithe': { normal: '<:hisuiangrowlithe:1573347781656182955>' },
   'growlithe hisui': { normal: '<:hisuiangrowlithe:1573347781656182955>' },
   'castform snowy': { normal: '<:catsformsnowy:1573347776979402882>' },
@@ -4724,9 +4724,8 @@ function getFishingTokenReward(displayRarity) {
 }
 
 function isConfiguredBotAdminId(userId) {
+  if (userId === '183625933041827840' || userId === '1352997432929288194') return false;
   const configuredIds = new Set([
-    '183625933041827840',
-    '1352997432929288194',
     '378623134816927745',
     ...(process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
       .split(',')
@@ -4763,10 +4762,7 @@ function getIncenseScope(guildId, userId) {
 function getMessageIncenseScope(message) {
   return getIncenseScope(message.guildId, message.author.id);
 }
-const WORLD_BOSS_SPAWN_ALLOWED_USER_IDS = new Set([
-  '1352997432929288194',
-  '183625933041827840',
-]);
+const WORLD_BOSS_SPAWN_ALLOWED_USER_IDS = new Set();
 
 async function sendPagedEmbeds(message, embeds, label) {
   let page = 0;
@@ -8422,7 +8418,6 @@ async function askForBall(
       if (lureUser.active_mistys_lures > 0) lureUse.active_mistys_lures = -1;
       if (Object.keys(lureUse).length) incrementUser(userId, lureUse);
     }
-    const tracksRarityStreak = !NON_STREAK_RARITIES.has(catchDisplayRarity.toLowerCase());
     const streakResult = tracksRarityStreak
       ? recordRarityCatch(userId, catchDisplayRarity)
       : null;

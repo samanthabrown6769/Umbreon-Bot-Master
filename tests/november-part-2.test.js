@@ -287,8 +287,8 @@ test('event checklist displays the requested Patreon and fishing labels with pro
   vm.runInContext(extract(indexSource, 'async function handleEventCommand(', '\nasync function getUsernameById('), ctx);
   const payload = await ctx.handleEventCommand({ reply: (value) => value }, 'user', ['cl']);
   const description = payload.embeds[0].toJSON().description;
-  assert.ok(description.includes('✅ <:shiny:1558841136905326784> <:soricorio:1573347784462172321> Oricorio <:patreonlogo:1573357109058470039> — **2** caught'));
-  assert.ok(description.includes('<:legendary:1558841138193113221><:WalkingWake:1568037632376569968>(`.fish`) — **1** caught'));
+  assert.ok(description.includes('✅ <:soricorio:1573347784462172321> Oricorio <:patreonlogo:1573357109058470039> — **2** caught'));
+  assert.ok(description.includes('<:WalkingWake:1568037632376569968>(`.fish`) — **1** caught'));
   assert.ok(description.includes('<:sgastly:1573347794121523250> Shiny Gastly — **0** caught'));
 });
 
@@ -409,7 +409,8 @@ test('requested event, Turquoise and Topaz sprite emojis resolve', () => {
     ['Oricorio Baile', true, '1573347784462172321'], ['Hisuian Growlithe', false, '1573347781656182955'],
     ['Walking Wake', false, '1573347779110244433'], ['Castform Snowy', false, '1573347776979402882'],
     ['Galarian Zigzagoon', false, '1573347774651703541'], ['Necrozma Duskmane', false, '1573347772327927828'],
-    ['Necrozma Dawnwings', false, '1573347770167861318'], ['Deerling Winter', true, '1573347767974367323'],
+    ['Necrozma Dawnwings', false, '1573347770167861318'],
+    ['Deerling Winter', false, '1575024179567140874'], ['Deerling Winter', true, '1575024177323319353'],
     ['Turquoise Rookidee', false, '1573347766271352903'], ['Turquoise Corvisquire', false, '1573347764157415474'],
     ['Turquoise Corviknight', false, '1573347761972060220'], ['Topaz Teddiursa', false, '1573347758558023860'],
     ['Topaz Ursaring', false, '1573347754678296596'],
