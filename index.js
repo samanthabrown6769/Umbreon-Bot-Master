@@ -8031,12 +8031,14 @@ async function askForBall(
   const spawnFoundText =
     `${target.heldItem ? `${HELD_ITEM_EMOJI} ` : ''}${factionLogoPrefix(target)}${getPokemonSpriteEmoji(target) ? `${getPokemonSpriteEmoji(target)} ` : ''}**${target.name}** appeared!`;
   let spawnBallDexIcons = '';
-  try {
-    spawnBallDexIcons = target.id
-      ? getBallDexIconsForCatch(userId, target.id)
-      : formatBallDexRow(getBallDexCaughtMap(userId).get(target.speciesId)).icons;
-  } catch (error) {
-    console.error('Failed to build spawn Balldex icons:', error);
+  if (!inline) {
+    try {
+      spawnBallDexIcons = target.id
+        ? getBallDexIconsForCatch(userId, target.id)
+        : formatBallDexRow(getBallDexCaughtMap(userId).get(target.speciesId)).icons;
+    } catch (error) {
+      console.error('Failed to build spawn Balldex icons:', error);
+    }
   }
   const embed = new EmbedBuilder()
     .setColor(isEventOpen(halloweenEvent) && isEventChecklistSpawn(target)
@@ -8048,7 +8050,6 @@ async function askForBall(
     })
     .setDescription(
       `${spawnFoundText}\n` +
-      `${spawnBallDexIcons ? `${spawnBallDexIcons}\n` : ''}` +
       (allowAnyUserCatch ? 'Anyone can catch it with the buttons or by typing a ball name.\n' : '') +
       (target.researchToolsConsumed?.length
         ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
@@ -8101,7 +8102,7 @@ async function askForBall(
   const spawnMessage = inline
     ? makeInlineEncounterHost(inline.onEdit)
     : await message.channel.send({
-      content: '',
+      content: spawnBallDexIcons,
       embeds: [embed],
       components: ballRows,
     });
@@ -8513,23 +8514,19 @@ async function askForBall(
         );
       }
     }
-    const ballDexIcons = getBallDexIconsForCatch(userId, target.id);
-    if (ballDexIcons) {
-      if (experienceLines.length) experienceLines[0] += ` ${ballDexIcons}`;
-      else experienceLines.push(ballDexIcons);
-    }
     if (inline) {
       experienceLines.push(
         `${EMOJIS.pokecoin} You received **${coinsEarned.toLocaleString()} PokéCoins** for this catch.`
       );
     }
     const experienceMessage = experienceLines.join('\n');
+    const ballDexIcons = inline ? '' : getBallDexIconsForCatch(userId, target.id);
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
       `<:lvlup:1561369467467071679> • Congratulations, **${catcher.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
     ).join('\n') || '';
     if (inline?.onCatch) inline.onCatch(target, coinsEarned);
     await editEncounter({
-      content: [experienceMessage, levelUpMessage].filter(Boolean).join('\n'),
+      content: [ballDexIcons, experienceMessage, levelUpMessage].filter(Boolean).join('\n'),
       embeds: [successEmbed],
       components: [],
     });

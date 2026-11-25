@@ -726,9 +726,6 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     HELD_ITEM_EMOJI: '🧰',
     factionLogoPrefix: () => '',
     getPokemonSpriteEmoji: () => '',
-    getBallDexIconsForCatch: () => '🎟️',
-    formatBallDexRow: () => ({ icons: '' }),
-    getBallDexCaughtMap: () => new Map(),
     isEventOpen: () => false,
     halloweenEvent: {},
     isEventChecklistSpawn: () => false,
@@ -757,10 +754,12 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     '  const spawnFoundText =',
     '\n  const ballOrder = getBallButtonOrder(userId);'
   );
+  const encounterCode = extract(indexSource, 'async function askForBall(', '\nasync function ');
   vm.runInContext(`function buildSpawnEmbed() { ${spawnEmbedCode} return embed.toJSON(); }`, spawnContext);
   const spawnEmbed = spawnContext.buildSpawnEmbed();
   assert.equal(spawnEmbed.author.name, '🌿 Trainer found a wild Pokémon!');
   assert.match(spawnEmbed.description, /Combee\*\* appeared!/);
+  assert.doesNotMatch(spawnEmbed.description, /🎟️/);
   assert.equal(spawnEmbed.image.url, 'https://example.test/combee.png');
   assert.equal(spawnEmbed.thumbnail, undefined);
   spawnContext.isFishing = true;
@@ -775,9 +774,11 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
   assert.equal(spawnContext.buildSpawnEmbed().image.url, 'https://example.test/golden-combee.png');
 
   const spawnSend = extract(indexSource, 'const spawnMessage = inline', '\n  if (cooldownState');
-  assert.match(spawnSend, /content: ''/);
+  assert.match(spawnSend, /content: spawnBallDexIcons/);
   assert.match(spawnSend, /embeds: \[embed\]/);
-  const catchEdit = extract(indexSource, 'await editEncounter({\n      content: [experienceMessage', '\n    });');
+  const catchEdit = extract(indexSource, 'await editEncounter({\n      content: [ballDexIcons', '\n    });');
+  assert.match(encounterCode, /const ballDexIcons = inline \? '' : getBallDexIconsForCatch/);
+  assert.match(catchEdit, /content: \[ballDexIcons, experienceMessage, levelUpMessage\]/);
   assert.match(catchEdit, /embeds: \[successEmbed\]/);
 });
 
