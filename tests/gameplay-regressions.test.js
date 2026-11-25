@@ -570,6 +570,7 @@ test('failed catches show the Pokémon image at the bottom of one encounter embe
     currentStreak: 9,
     playerRoll: 77,
     targetRate: 70,
+    resultNinjaBoostText: '',
     image: 'https://example.test/combee.png',
     EmbedBuilder,
     halloweenEvent: {},
@@ -598,6 +599,10 @@ test('failed catches show the Pokémon image at the bottom of one encounter embe
   assert.match(embed.description, /Your Uncommon streak of 9 has been reset!/);
   assert.equal(embed.image.url, 'https://example.test/combee.png');
   assert.equal(embed.thumbnail, undefined);
+  assert.doesNotMatch(embed.description, /Patreon catch rate/);
+  ctx.resultNinjaBoostText = ' (+5% Patreon catch rate)';
+  await ctx.run();
+  assert.match(edits[1].embeds[0].toJSON().description, /Your catch rate: \*\*70%\*\* \(\+5% Patreon catch rate\)/);
 });
 
 test('successful catches and spawn encounters show the Pokémon image in one embed', () => {
@@ -624,6 +629,7 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     ancientFossilDropText: '',
     arceusPlateDropText: '',
     targetRate: 70,
+    resultNinjaBoostText: '',
     playerRoll: 77,
     remainingBalls: 'Pokeballs: 79',
     isFishing: false,
@@ -642,6 +648,9 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
   assert.match(successEmbed.description, /You caught a \*\*Combee\*\*/);
   assert.equal(successEmbed.image.url, 'https://example.test/combee.png');
   assert.equal(successEmbed.thumbnail, undefined);
+  assert.doesNotMatch(successEmbed.description, /Patreon catch rate/);
+  successContext.resultNinjaBoostText = ' (+5% Patreon catch rate)';
+  assert.match(successContext.buildSuccessEmbed().description, /Your catch rate: 70% \(\+5% Patreon catch rate\)/);
   successContext.isFishing = true;
   successContext.EMOJIS.fishingtoken = '🎣';
   successContext.fishingTokensEarned = 1;
@@ -682,8 +691,11 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     buildFactionEncounterAlert: () => null,
     getPokemonShowdownSprite: () => 'https://example.test/combee.png',
     getGoldenSpriteUrl: () => 'https://example.test/golden-combee.png',
+    FISHING_COOLDOWN_MS: 1,
+    EMOJIS: { oldrod: 'old', goodRod: 'good', superRod: 'super', goldenRod: 'golden' },
     inline: null,
   });
+  vm.runInContext(extract(indexSource, 'const ROD_CONFIGS =', '\nconst EMOJIS ='), spawnContext);
   const spawnEmbedCode = extract(
     indexSource,
     '  const spawnFoundText =',
@@ -696,11 +708,13 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
   assert.equal(spawnEmbed.image.url, 'https://example.test/combee.png');
   assert.equal(spawnEmbed.thumbnail, undefined);
   spawnContext.isFishing = true;
-  spawnContext.user.fish_rods = 'Good Rod';
-  const fishingSpawnEmbed = spawnContext.buildSpawnEmbed();
-  assert.equal(fishingSpawnEmbed.author.name, '🎣 Trainer found a wild Pokémon!');
-  assert.match(fishingSpawnEmbed.description, /Rod used: \*\*Good Rod\*\*/);
-  assert.equal(fishingSpawnEmbed.image.url, 'https://example.test/combee.png');
+  for (const [rod, emoji] of [['Old Rod', 'old'], ['Good Rod', 'good'], ['Super Rod', 'super'], ['Golden Rod', 'golden']]) {
+    spawnContext.user.fish_rods = rod;
+    const fishingSpawnEmbed = spawnContext.buildSpawnEmbed();
+    assert.equal(fishingSpawnEmbed.author.name, '🎣 Trainer found a wild Pokémon!');
+    assert.ok(fishingSpawnEmbed.description.includes(`${emoji} Rod used: **${rod}**`));
+    assert.equal(fishingSpawnEmbed.image.url, 'https://example.test/combee.png');
+  }
   spawnContext.target.isGolden = true;
   assert.equal(spawnContext.buildSpawnEmbed().image.url, 'https://example.test/golden-combee.png');
 
@@ -709,6 +723,21 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
   assert.match(spawnSend, /embeds: \[embed\]/);
   const catchEdit = extract(indexSource, 'await editEncounter({\n      content: [experienceMessage', '\n    });');
   assert.match(catchEdit, /embeds: \[successEmbed\]/);
+});
+
+test('catch result displays the applicable Patreon boost, including for shared catches', () => {
+  const ctx = vm.createContext({
+    allowAnyUserCatch: false, ninjaBoostText: ' (+5% Patreon catch rate)',
+    userId: 'catcher', getPatreonPerks: () => ({ catchBoost: 0 }),
+  });
+  vm.runInContext(extract(indexSource, 'function formatPatreonCatchBoost(', '\nfunction getBallCatchRate('), ctx);
+  const resultBoost = extract(indexSource, '    const resultNinjaBoostText =', '\n    const used =');
+  vm.runInContext(`function getResultBoost() { ${resultBoost} return resultNinjaBoostText; }`, ctx);
+  assert.equal(ctx.getResultBoost(), ' (+5% Patreon catch rate)');
+  ctx.allowAnyUserCatch = true;
+  assert.equal(ctx.getResultBoost(), '');
+  ctx.getPatreonPerks = () => ({ catchBoost: 5 });
+  assert.equal(ctx.getResultBoost(), ' (+5% Patreon catch rate)');
 });
 
 test('clan leave requires confirmation and notifies its leader', async () => {

@@ -4290,6 +4290,10 @@ function getEncounterCatchBonus(clanBonus, patreonBonus) {
   return clanBonus + patreonBonus;
 }
 
+function formatPatreonCatchBoost(bonus) {
+  return bonus > 0 ? ` (+${bonus}% Patreon catch rate)` : '';
+}
+
 function getBallCatchRate(ballKey, ball, target, displayRarity, baseCatchChance, clanBonus, channelBoost, userId = null) {
   if (userId && GUARANTEED_CATCH_RATE_USER_IDS.has(String(userId))) return 100;
   if (ballKey === 'prb' && target.isShiny && target.isEventShiny) return 100;
@@ -8014,7 +8018,7 @@ async function askForBall(
   const ninjaBonus = getPatreonPerks(userId).catchBoost;
   const encounterCatchBonus = getEncounterCatchBonus(clanPerks.crBonus, ninjaBonus);
   const channelCatchRateBoost = getMessageChannelCatchRateBoost(userId, message);
-  const ninjaBoostText = ninjaBonus > 0 ? ` (+${ninjaBonus}% catch rate)` : '';
+  const ninjaBoostText = formatPatreonCatchBoost(ninjaBonus);
   const catchRateText = mode === 'catch' || isFishing
     ? (ninjaBoostText ? `**Catch rate boost:**${ninjaBoostText}\n` : '')
     : `**Catch chance${ninjaBoostText}:** ${['pb', 'gb', 'ub', 'prb', 'mb', ...(isFishing ? ['dv'] : [])].map((key) => {
@@ -8053,7 +8057,7 @@ async function askForBall(
       (target.researchToolsConsumed?.length
         ? `🔬 Research tool consumed: ${target.researchToolsConsumed.join(', ')}\n`
         : '') +
-      `${isFishing ? `🎣 Rod used: **${user.fish_rods}**\n` : ''}` +
+      `${isFishing ? `${getFishingRodEmoji(user)} Rod used: **${user.fish_rods}**\n` : ''}` +
       `\n**${target.isShiny && !target.isEventShiny && (!target.shinyMode || target.shinyMode === 'full-odds') ? 'Full Odds Shiny' : catchDisplayRarity} ` +
       `(${rarityData.rateText})**\n` +
       catchRateText +
@@ -8215,6 +8219,9 @@ async function askForBall(
       }
     };
     const ball = BALL_CONFIG[selectedBall];
+    const resultNinjaBoostText = allowAnyUserCatch
+      ? formatPatreonCatchBoost(getPatreonPerks(userId).catchBoost)
+      : ninjaBoostText;
     const used = db.transaction(() => {
       const liveUser = getUser(userId);
       if (liveUser[ball.column] <= 0) return false;
@@ -8276,7 +8283,7 @@ async function askForBall(
           `**Rarity:** ${catchDisplayRarity} (${rarityData.rateText})\n\n` +
           `${tracksRarityStreak ? `Your ${catchDisplayRarity} streak of ${currentStreak} has been reset!\n\n` : ''}` +
           `Pokémon roll: **${Math.round(playerRoll)}**\n` +
-          `Your catch rate: **${Math.round(targetRate)}%**\n\n` +
+          `Your catch rate: **${Math.round(targetRate)}%**${resultNinjaBoostText}\n\n` +
           '═══════ Balls left ═══════\n' +
           `${getRemainingBalls()}`
         );
@@ -8482,7 +8489,7 @@ async function askForBall(
         `${huntRewardText}` +
         `${ancientFossilDropText}${arceusPlateDropText}` +
         `Pokémon roll: ${Math.round(playerRoll)}\n` +
-        `Your catch rate: ${Math.round(targetRate)}%\n\n` +
+        `Your catch rate: ${Math.round(targetRate)}%${resultNinjaBoostText}\n\n` +
         `═══════ Balls left ═══════\n` +
         `${remainingBalls}\n\n` +
         `${isFishing
