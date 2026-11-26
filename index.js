@@ -13960,8 +13960,8 @@ client.on('messageCreate', async (message) => {
           `To open ${BOXES['Rare Box'].emoji} ${BOXES['Super Rare Box'].emoji} ${BOXES['Legendary Box'].emoji} ${BOXES['Shiny Box'].emoji} boxes, type \`${PREFIX}open {rb/srb/lb/sb} {amount or all}\`\n\n` +
           `🏆 **Total times voted**: ${voter.votes_claimed.toLocaleString()}\n` +
           `⏰ **You last voted**: ${lastVoted}\n` +
-          `**At a 10 streak**: 2x ${EMOJIS.rarecandy}, 2x ${EMOJIS.pokeEgg}, & 1x ${BOXES['Legendary Box'].emoji}\n` +
-          `**At a 25 streak**: 1x ${EMOJIS.masterball}, 2x ${EMOJIS.votecoin}, & 1x ${BOXES['Shiny Box'].emoji}\n\n` +
+          `**Every 10-vote streak**: 2x ${EMOJIS.rarecandy}, 2x ${EMOJIS.pokeEgg}, & 1x ${BOXES['Legendary Box'].emoji}\n` +
+          `**Every 25-vote streak**: 1x ${EMOJIS.masterball}, 2x ${EMOJIS.votecoin}, & 1x ${BOXES['Shiny Box'].emoji}\n\n` +
           `🆕 **New Vote Streak Bonuses** 🆕\n` +
           `🔥 **Your Vote streak**: ${streak}\n` +
           `• **10+ Vote Streak:** You permanently receive +1 ${EMOJIS.votecoin} per vote ${streak >= 10 ? '✅' : '❌'}\n` +

@@ -2741,6 +2741,24 @@ function takeDueVoteReminders(now = Date.now()) {
   }).immediate();
 }
 
+function getVoteStreakRewards(streak) {
+  let milestoneCoinBonus = 0;
+  const streakRewards = { rare_candies: 0, vote_eggs: 0, masterballs: 0, boxes: [] };
+
+  if (streak > 0 && streak % 10 === 0) {
+    streakRewards.rare_candies += 2;
+    streakRewards.vote_eggs += 2;
+    streakRewards.boxes.push('Legendary Box');
+  }
+  if (streak > 0 && streak % 25 === 0) {
+    milestoneCoinBonus = 2;
+    streakRewards.masterballs += 1;
+    streakRewards.boxes.push('Shiny Box');
+  }
+
+  return { milestoneCoinBonus, streakRewards };
+}
+
 function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}) {
   assertUserId(userId);
   if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
@@ -2761,24 +2779,7 @@ function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}
     // The vote streak counts every vote and never resets.
     const streak = user.vote_streak + 1;
     const streakCoinBonus = streak >= 50 ? 2 : streak >= 10 ? 1 : 0;
-    let milestoneCoinBonus = 0;
-    const streakRewards = { rare_candies: 0, vote_eggs: 0, masterballs: 0, boxes: [] };
-
-    if (streak === 10) {
-      streakRewards.rare_candies += 2;
-      streakRewards.vote_eggs += 2;
-      streakRewards.boxes.push('Legendary Box');
-    } else if (streak === 25) {
-      milestoneCoinBonus = 2;
-      streakRewards.masterballs += 1;
-      streakRewards.boxes.push('Shiny Box');
-    } else if (streak === 50) {
-      milestoneCoinBonus = 2;
-      streakRewards.rare_candies += 2;
-      streakRewards.vote_eggs += 2;
-      streakRewards.masterballs += 1;
-      streakRewards.boxes.push('Shiny Box', 'Legendary Box');
-    }
+    const { milestoneCoinBonus, streakRewards } = getVoteStreakRewards(streak);
 
     const isGlobalBonusDay = Number(voteDay.slice(-2)) <= 5;
     const baseVoteCoins = 1 + streakCoinBonus + milestoneCoinBonus;

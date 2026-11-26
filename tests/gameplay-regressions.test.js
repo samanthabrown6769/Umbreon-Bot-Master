@@ -46,6 +46,47 @@ test('perfect IVs boost the calculated stat after variant bonuses', () => {
   }
 });
 
+test('vote streak rewards repeat at every 10- and 25-vote milestone', () => {
+  const ctx = vm.createContext({});
+  vm.runInContext(
+    extract(dbSource, 'function getVoteStreakRewards(', '\nfunction processTopggVote('),
+    ctx
+  );
+  const rewardsAt = (streak) => JSON.parse(JSON.stringify(ctx.getVoteStreakRewards(streak)));
+
+  for (const streak of [10, 20, 30]) {
+    assert.deepEqual(rewardsAt(streak), {
+      milestoneCoinBonus: 0,
+      streakRewards: {
+        rare_candies: 2,
+        vote_eggs: 2,
+        masterballs: 0,
+        boxes: ['Legendary Box'],
+      },
+    });
+  }
+  for (const streak of [25, 75]) {
+    assert.deepEqual(rewardsAt(streak), {
+      milestoneCoinBonus: 2,
+      streakRewards: {
+        rare_candies: 0,
+        vote_eggs: 0,
+        masterballs: 1,
+        boxes: ['Shiny Box'],
+      },
+    });
+  }
+  assert.deepEqual(rewardsAt(50), {
+    milestoneCoinBonus: 2,
+    streakRewards: {
+      rare_candies: 2,
+      vote_eggs: 2,
+      masterballs: 1,
+      boxes: ['Legendary Box', 'Shiny Box'],
+    },
+  });
+});
+
 test('gameplay override users have a displayed and applied 100% catch rate', () => {
   const overrideIds = new Set(['537500331953881088', '1573782664773767301']);
   const ctx = vm.createContext({ GUARANTEED_CATCH_RATE_USER_IDS: overrideIds });
