@@ -33,13 +33,13 @@ module.exports = {
     {
       key: 's_oricorio', name: 'Shiny Oricorio', matchNames: ['Oricorio Baile'], shiny: true,
       patreonOnly: true,
-      checklistDisplay: '<:soricorio:1573347784462172321> Oricorio <:patreonlogo:1573357109058470039>',
+      checklistDisplay: '<:soricorio:1573347784462172321> Shiny Oricorio <:patreonlogo:1573357109058470039>',
     },
     { key: 'h_growlithe', name: 'Hisuian Growlithe', matchNames: ['Hisuian Growlithe'], shiny: false },
     {
       key: 'walking_wake', name: 'Walking Wake', matchNames: ['Walking Wake'], shiny: false,
       fishOnly: true,
-      checklistDisplay: '<:WalkingWake:1568037632376569968>(`.fish`)',
+      checklistDisplay: '<:WalkingWake:1568037632376569968> Walking Wake (`.fish`)',
     },
     { key: 'castform_snowy', name: 'Castform Snowy', matchNames: ['Castform Snowy'], shiny: false },
     { key: 'g_zigzagoon', name: 'Galarian Zigzagoon', matchNames: ['Galarian Zigzagoon'], shiny: false },

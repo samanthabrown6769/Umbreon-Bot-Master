@@ -685,6 +685,48 @@ test('failed catch processing reuses the encounter rarity-streak state', async (
   assert.match(edits[0].embeds[0].toJSON().description, /Your Uncommon streak of 9 has been reset!/);
 });
 
+test('catch EXP messages display golden buddy and team sprites', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER);
+    CREATE TABLE catches (
+      id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, rarity TEXT,
+      is_shiny INTEGER, is_golden INTEGER, held_item TEXT, experience INTEGER, level INTEGER,
+      hp_iv INTEGER, atk_iv INTEGER, def_iv INTEGER, spd_iv INTEGER,
+      ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER, ev_spe INTEGER,
+      hp INTEGER, max_hp INTEGER, atk INTEGER, def INTEGER, spd INTEGER
+    );
+    INSERT INTO pokemon_forms VALUES (1, 50, 50, 50, 50), (2, 50, 50, 50, 50);
+    INSERT INTO catches VALUES
+      (1, 'trainer', 1, 'Espeon', 'Golden', 0, 1, NULL, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10),
+      (2, 'trainer', 2, 'Treecko', 'Golden', 0, 1, NULL, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10);
+  `);
+  const ctx = vm.createContext({
+    db,
+    assertUserId: () => {},
+    getUser: () => ({ buddy_catch_id: 1, team_exp_share: 1, double_xp_charges: 0 }),
+    getUserTeam: () => [{ id: 2, pokemon_id: 2, is_shiny: 0, is_golden: 1 }],
+    isPlayerBonusActive: () => false,
+    calculateStat: () => 10,
+    incrementUser: () => {},
+    syncDuplicateCatchState: () => {},
+    getTrainerIconEmoji: () => 'trainer-icon',
+    userId: 'trainer',
+    EMOJIS: { expshare: 'exp-share' },
+    inline: null,
+    coinsEarned: 0,
+  });
+  vm.runInContext(extract(dbSource, 'function experienceForNextLevel(', '\n// Rare Candies'), ctx);
+  vm.runInContext(extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), ctx);
+  ctx.experienceResult = ctx.awardCatchExperience('trainer', 300);
+  const experienceCode = extract(indexSource, '    const experienceLines = [];', '\n    const ballDexIcons =');
+  vm.runInContext(`function buildExperienceMessage() { ${experienceCode} return experienceMessage; }`, ctx);
+  const message = ctx.buildExperienceMessage();
+  assert.match(message, /trainer-icon <:GEspeon:1562183880696529027> \*\*Espeon\*\* gained \*\*300 EXP!\*\*/);
+  assert.match(message, /exp-share • Your <:.*:1569731127269392447> gained \*\*100\*\* EXP!/);
+  db.close();
+});
+
 test('successful catches and spawn encounters show the Pokémon image in one embed', () => {
   const successContext = vm.createContext({
     EmbedBuilder,

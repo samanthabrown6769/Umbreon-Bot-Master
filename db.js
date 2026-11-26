@@ -6439,6 +6439,7 @@ function awardCatchExperience(userId, amount = 200) {
       awardedPokemon.push({
         name: pokemon.name,
         is_shiny: Boolean(pokemon.is_shiny),
+        is_golden: Boolean(pokemon.is_golden),
         is_buddy: catchId === user.buddy_catch_id,
         on_team: team.some((member) => member.id === catchId),
         experience: awardedExperience,

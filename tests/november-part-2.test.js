@@ -290,16 +290,16 @@ test('event checklist displays the requested Patreon and fishing labels with pro
     halloweenEvent: event, EmbedBuilder, EVENT_EMBED_COLOR: 0x123456,
     client: { user: { displayAvatarURL: () => 'https://example.com/avatar.png' } },
     getUser: () => ({ event_ticket: 1, event_gold_claimed: 0 }),
-    getUserEventProgress: () => new Set(['s_oricorio']),
-    getUserEventCatchCounts: () => new Map([['s_oricorio', 2], ['walking_wake', 1]]),
+    getUserEventProgress: () => new Set(['s_oricorio', 'walking_wake']),
+    getUserEventCatchCounts: () => new Map([['s_oricorio', 1], ['walking_wake', 2]]),
     isEventOpen: () => true, createEventLinkRow: () => null,
   });
   vm.runInContext(extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), ctx);
   vm.runInContext(extract(indexSource, 'async function handleEventCommand(', '\nasync function getUsernameById('), ctx);
   const payload = await ctx.handleEventCommand({ reply: (value) => value }, 'user', ['cl']);
   const description = payload.embeds[0].toJSON().description;
-  assert.ok(description.includes('✅ <:soricorio:1573347784462172321> Oricorio <:patreonlogo:1573357109058470039> — **2** caught'));
-  assert.ok(description.includes('<:WalkingWake:1568037632376569968>(`.fish`) — **1** caught'));
+  assert.ok(description.includes('✅ <:soricorio:1573347784462172321> Shiny Oricorio <:patreonlogo:1573357109058470039> — **1** caught'));
+  assert.ok(description.includes('✅ <:WalkingWake:1568037632376569968> Walking Wake (`.fish`) — **2** caught'));
   assert.ok(description.includes('<:sgastly:1573347794121523250> Shiny Gastly — **0** caught'));
 });
 
