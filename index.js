@@ -673,7 +673,7 @@ function getEventSpawnChance(roleChanceBoost = 0, eventShinyPct = 0, shinyBonusA
     * tierMultiplier
     * (shinyBonusActive ? 1.25 : 1)
     / EVENT_SPAWN_ODDS;
-  return getChanceFromFlooredOdds(chance);
+  return getChanceFromFlooredOdds(chance) / 2;
 }
 let eventSpawnFormIds = [];
 let eventSpawnEntries = [];
@@ -3952,7 +3952,7 @@ function rollSpawn(
           null,
           chamberSpecies
         );
-        pokemon.encounterRateText = `${formatPercent(getEncounterRarityRate(encounterModifier, rarity))} encounter rate`;
+        pokemon.encounterRateText = `${Math.floor(getEncounterRarityRate(encounterModifier, rarity) * 100)}% encounter rate`;
       }
       pokemon.encounterModifier = encounterModifier;
     } else {
@@ -17089,7 +17089,7 @@ client.on('messageCreate', async (message) => {
           const settings = getRaritySettings();
           const lines = settings.map((rarity) =>
             `• **${rarity.name}** — ${rarity.spawn_weight} weight, ` +
-            `${rarity.catch_chance}% catch chance, ${Math.round(rarity.encounter_rate)}% encounter rate ` +
+            `${rarity.catch_chance}% catch chance, ${Math.floor(rarity.encounter_rate)}% encounter rate ` +
             `(${rarity.pokemon_count} Pokémon)`
           );
           return message.reply(`**Rarity settings**\n${lines.join('\n')}`);

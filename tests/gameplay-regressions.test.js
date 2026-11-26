@@ -72,6 +72,30 @@ test('encounter rate text on spawn embeds rounds down fractional rates', () => {
   assert.equal(ctx.getRarityInfo('Common').rateText, '24% encounter rate');
 });
 
+test('land encounters and admin rarity lists round encounter percentages down', async () => {
+  const encounterLine = extract(indexSource, '        pokemon.encounterRateText = `${', '\n      }\n      pokemon.encounterModifier');
+  const encounterContext = vm.createContext({
+    pokemon: {}, getEncounterRarityRate: () => 0.2999, encounterModifier: 'normal', rarity: 'Rare',
+  });
+  vm.runInContext(encounterLine, encounterContext);
+  assert.equal(encounterContext.pokemon.encounterRateText, '29% encounter rate');
+  encounterContext.getEncounterRarityRate = () => 0.001;
+  vm.runInContext(encounterLine, encounterContext);
+  assert.equal(encounterContext.pokemon.encounterRateText, '0% encounter rate');
+
+  const adminHandler = extract(indexSource, "      if (command === 'admin' && subtype === 'rarity') {",
+    "\n      if (command === 'admin' && subtype === 'pokemon'");
+  const replies = [];
+  const adminContext = vm.createContext({
+    command: 'admin', subtype: 'rarity', action: 'list',
+    getRaritySettings: () => [{ name: 'Rare', spawn_weight: 1, catch_chance: 20, encounter_rate: 29.99, pokemon_count: 1 }],
+    message: { reply: async (text) => replies.push(text) },
+  });
+  vm.runInContext(`async function run() { ${adminHandler} }`, adminContext);
+  await adminContext.run();
+  assert.match(replies[0], /29% encounter rate/);
+});
+
 test('perfect IV migration updates existing stats once and preserves fainted HP', () => {
   const db = new Database(':memory:');
   try {
@@ -3592,10 +3616,10 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Legendary');
   roll = 1 / 250;
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 222);
-  assert.equal(ctx.getEventSpawnChance(50), 1 / 148);
-  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 100);
-  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 66);
+  assert.equal(ctx.getEventSpawnChance(), 1 / 444);
+  assert.equal(ctx.getEventSpawnChance(50), 1 / 296);
+  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 200);
+  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 132);
   const shinyRate = 0.001 * 1.5 * (1 / (1 - 1 / 100));
   assert.equal(ctx.getChanceFromFlooredOdds(shinyRate), 1 / 660);
 });
@@ -4353,8 +4377,10 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     rolls = [0, selectionRoll];
     return ctx.rollSpawn('water', 'user', rod, options);
   };
-  rolls = [1 / 400 - 1e-10, 0];
+  rolls = [1 / 444 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
+  rolls = [1 / 444 - 1e-10, 0];
+  assert.equal(ctx.rollSpawn('land', 'user').isEventSpawn, true);
   rolls = [ctx.getEventSpawnChance(5) - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 1);
   rolls = [ctx.getEventSpawnChance(5), 0.5, 0.1, 0.001];
