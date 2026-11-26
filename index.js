@@ -2486,8 +2486,6 @@ function getEggHatchRarityEmoji(pokemon, result) {
 const MEGA_SPECIES_EMOJIS = {};
 
 const POKEMON_SPRITE_EMOJIS = Object.freeze({
-  'primal groudon': { shiny: '<:SPrimalGroudon:1562183791110393917>' },
-  'groudon primal': { shiny: '<:SPrimalGroudon:1562183791110393917>' },
   'hisuian typhlosion': {
     normal: '<:HisuianTyphlosion:1562183795011096647>',
     shiny: '<:SHisuianTyphlosion:1562183793190637708>',
@@ -2594,7 +2592,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   },
   banette: { normal: '<:Banette:1562183890972708964>' },
   whimsicott: { normal: '<:Whimsicott:1562183892574670859>' },
-  bulbasaur: { normal: '<:bulbasaur:1569731188774404146>', golden: '<:goldenbulbasaur:1562255800372699228>' },
+  bulbasaur: { normal: '<:01:1562183894181089400>', golden: '<:goldenbulbasaur:1562255800372699228>' },
   charmander: { normal: '<:charmander:1569731185532215349>', shiny: '<:scharmander:1573352658972966923>' },
   charmeleon: { shiny: '<:scharmeleon:1573352656779346010>' },
   charizard: { shiny: '<:scharizard:1573352654250184814>' },
@@ -2659,14 +2657,18 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
     shiny: '<:Sjirachi:1562188369969291295>',
   },
   keldeo: {
-    normal: '<:Keldeo:1567608072250069032>',
+    normal: '<:647:1562188368207421610>',
+    shiny: '<:Skeldeo:1562188366391541903>',
+  },
+  'keldeo ordinary': {
+    normal: '<:647:1562188368207421610>',
     shiny: '<:Skeldeo:1562188366391541903>',
   },
   cobalion: { normal: '<:cobalion:1562193601767936111>' },
   terrakion: { normal: '<:terrakion:1562193599142305903>' },
   virizion: { normal: '<:virizion:1562193596583510097>' },
   genesect: {
-    normal: '<:Genesect:1567608068659740702>',
+    normal: '<:649:1562188364688396308>',
     shiny: '<:Sgenesect:1562188362717200465>',
   },
   phione: {
@@ -2863,8 +2865,8 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'keldeo resolute': { normal: '<:KeldeoResolute:1568037585685577728>' },
   'shaymin sky': { normal: '<:ShayminSky:1568037619764432996>' },
   'genesect shock': { normal: '<:GenesectShock:1568037612474859641>' },
-  'primal groudon': { normal: '<:PrimalGroudon:1568037603389739098>' },
-  'groudon primal': { normal: '<:PrimalGroudon:1568037603389739098>' },
+  'primal groudon': { normal: '<:PrimalGroudon:1568037603389739098>', shiny: '<:SPrimalGroudon:1562183791110393917>' },
+  'groudon primal': { normal: '<:PrimalGroudon:1568037603389739098>', shiny: '<:SPrimalGroudon:1562183791110393917>' },
   'primal kyogre': { normal: '<:PrimalKyogre:1568037595496317050>' },
   'kyogre primal': { normal: '<:PrimalKyogre:1568037595496317050>' },
   'zygarde complete': { normal: '<:ZygardeComplete:1568037608972361818>' },
@@ -18093,10 +18095,22 @@ client.on('messageCreate', async (message) => {
         );
       }
 
-      const pokemonList = ability.pokemon.slice(0, 20).map((entry) =>
-        `• ${entry.name.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}` +
-        `${entry.hidden ? ' (Hidden Ability)' : ''}`
-      );
+      const pokemonEntries = ability.pokemon.slice(0, 20).map((entry) => {
+        const name = entry.name.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+        const sprite = getPokemonSpriteEmoji({ name: entry.name });
+        return `${sprite ? `${sprite} ` : ''}**${name}**${entry.hidden ? ' (Hidden Ability)' : ''}`;
+      });
+      while (pokemonEntries.length) {
+        const remaining = ability.pokemon.length - pokemonEntries.length;
+        const suffix = remaining > 0 ? ` …and ${remaining} more.` : '';
+        if (`${pokemonEntries.join(' · ')}${suffix}`.length <= 1024) break;
+        pokemonEntries.pop();
+      }
+      const pokemonList = pokemonEntries.length
+        ? `${pokemonEntries.join(' · ')}${ability.pokemon.length > pokemonEntries.length
+          ? ` …and ${ability.pokemon.length - pokemonEntries.length} more.`
+          : ''}`
+        : 'No Pokémon are currently listed with this ability.';
       const effect = ability.effect || ability.shortEffect || 'No English effect description is available.';
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
@@ -18104,11 +18118,7 @@ client.on('messageCreate', async (message) => {
         .setDescription(effect.length > 4000 ? `${effect.slice(0, 3997)}...` : effect)
         .addFields({
           name: `Pokémon with this ability (${ability.pokemon.length})`,
-          value: pokemonList.length
-            ? `${pokemonList.join('\n')}${ability.pokemon.length > pokemonList.length
-              ? `\n…and ${ability.pokemon.length - pokemonList.length} more.`
-              : ''}`
-            : 'No Pokémon are currently listed with this ability.',
+          value: pokemonList,
         })
         .setFooter({ text: `Ability #${ability.id} • Data from PokéAPI` });
       if (ability.shortEffect && ability.shortEffect !== ability.effect) {

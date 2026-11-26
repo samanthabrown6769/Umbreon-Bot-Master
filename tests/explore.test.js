@@ -475,7 +475,7 @@ test('provided Pokémon emojis map to the correct normal and Golden variants', (
   const context = vm.createContext({});
   vm.runInContext(extract('const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), context);
   const normal = {
-    bulbasaur: '1569731188774404146', charmander: '1569731185532215349', squirtle: '1569731183041052754',
+    bulbasaur: '1562183894181089400', charmander: '1569731185532215349', squirtle: '1569731183041052754',
     chikorita: '1569731181480513647', cyndaquil: '1569731179911839846', totodile: '1569731177303113768',
     treecko: '1569731174816022688', torchic: '1569731171347075092', mudkip: '1569731168088232066',
     turtwig: '1569731166573957222', chimchar: '1569731164971995176', piplup: '1569731162727776287',
@@ -495,6 +495,22 @@ test('provided Pokémon emojis map to the correct normal and Golden variants', (
   assert.match(context.getPokemonSpriteEmoji({ name: 'Sprigatito', isShiny: true }), /1567588638194409512/);
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle' }), '<:smeargle:1573101965418958899>');
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle', isShiny: true }), '');
+});
+
+test('supplied Dex sprites resolve for default and primal forms without mixing variants', () => {
+  const context = vm.createContext({});
+  vm.runInContext(extract('const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), context);
+  for (const name of ['Keldeo', 'Keldeo Ordinary', 'keldeo-ordinary']) {
+    assert.equal(context.getPokemonSpriteEmoji({ name }), '<:647:1562188368207421610>');
+    assert.match(context.getPokemonSpriteEmoji({ name, isShiny: true }), /:1562188366391541903>$/);
+  }
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'Genesect' }), '<:649:1562188364688396308>');
+  assert.match(context.getPokemonSpriteEmoji({ name: 'Genesect', isShiny: true }), /:1562188362717200465>$/);
+  for (const name of ['Primal Groudon', 'Groudon Primal', 'groudon-primal']) {
+    assert.match(context.getPokemonSpriteEmoji({ name }), /:1568037603389739098>$/);
+    assert.match(context.getPokemonSpriteEmoji({ name, isShiny: true }), /:1562183791110393917>$/);
+  }
+  assert.notEqual(context.getPokemonSpriteEmoji({ name: 'Keldeo Resolute' }), '<:647:1562188368207421610>');
 });
 
 test('Gigantamax sprite emojis resolve for each form and variant without affecting base forms', () => {
@@ -1557,7 +1573,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   await click('exp_ball:pb');
   await click('exp_run');
   await endPromise;
-  assert.ok(payloads.at(-1).content.includes('Pokémon caught (3): <:bulbasaur:1569731188774404146>² Unknown Pokémon¹'));
+  assert.ok(payloads.at(-1).content.includes('Pokémon caught (3): <:01:1562183894181089400>² Unknown Pokémon¹'));
   ctx.getPokemonSpriteEmoji = mockedSprite;
   encounterVariant = {};
 
