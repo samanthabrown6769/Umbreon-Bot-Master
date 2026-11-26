@@ -8523,7 +8523,7 @@ async function askForBall(
         : [];
       if (buddyGain) {
         experienceLines.push(
-          `${getTrainerIconEmoji(userId)} ${getPokemonSpriteEmoji(buddyGain)} **${buddyGain.name}** gained **${buddyGain.experience.toLocaleString()} EXP!**`
+          `${getTrainerIconEmoji(userId)} ${getPokemonSpriteEmoji(buddyGain)} **${buddyGain.nickname || buddyGain.name}** gained **${buddyGain.experience.toLocaleString()} EXP!**`
         );
       }
       if (teamGains.length) {
@@ -8542,7 +8542,7 @@ async function askForBall(
     const experienceMessage = experienceLines.join('\n');
     const ballDexIcons = inline ? '' : getBallDexProgressDisplay(userId, target);
     const levelUpMessage = experienceResult?.levelUps.map((levelUp) =>
-      `<:lvlup:1561369467467071679> • Congratulations, **${catcher.username}**! Your **${levelUp.name}** is now level **${levelUp.to}**.`
+      `<:lvlup:1561369467467071679> • Congratulations, **${catcher.username}**! Your **${levelUp.nickname || levelUp.name}** is now level **${levelUp.to}**.`
     ).join('\n') || '';
     if (inline?.onCatch) inline.onCatch(target, coinsEarned);
     await editEncounter({

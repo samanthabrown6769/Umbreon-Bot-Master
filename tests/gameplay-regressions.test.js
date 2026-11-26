@@ -685,10 +685,11 @@ test('failed catch processing reuses the encounter rarity-streak state', async (
   assert.match(edits[0].embeds[0].toJSON().description, /Your Uncommon streak of 9 has been reset!/);
 });
 
-test('catch EXP messages display golden buddy and team sprites', () => {
+test('catch EXP and level-up messages use nicknames without affecting sprite lookup', () => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE pokemon_forms (id INTEGER PRIMARY KEY, base_hp INTEGER, base_atk INTEGER, base_def INTEGER, base_spd INTEGER);
+    CREATE TABLE bot_settings (key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE catches (
       id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT, rarity TEXT,
       is_shiny INTEGER, is_golden INTEGER, held_item TEXT, experience INTEGER, level INTEGER,
@@ -699,7 +700,8 @@ test('catch EXP messages display golden buddy and team sprites', () => {
     INSERT INTO pokemon_forms VALUES (1, 50, 50, 50, 50), (2, 50, 50, 50, 50);
     INSERT INTO catches VALUES
       (1, 'trainer', 1, 'Espeon', 'Golden', 0, 1, NULL, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10),
-      (2, 'trainer', 2, 'Treecko', 'Golden', 0, 1, NULL, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10);
+      (2, 'trainer', 2, 'Treecko', 'Golden', 0, 1, NULL, 250, 1, 0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10);
+    INSERT INTO bot_settings VALUES ('buddy_nickname:trainer:1', 'Sunshine');
   `);
   const ctx = vm.createContext({
     db,
@@ -711,7 +713,10 @@ test('catch EXP messages display golden buddy and team sprites', () => {
     incrementUser: () => {},
     syncDuplicateCatchState: () => {},
     getTrainerIconEmoji: () => 'trainer-icon',
+    getBallDexProgressDisplay: () => '',
     userId: 'trainer',
+    catcher: { username: 'Trainer' },
+    target: {},
     EMOJIS: { expshare: 'exp-share' },
     inline: null,
     coinsEarned: 0,
@@ -719,11 +724,20 @@ test('catch EXP messages display golden buddy and team sprites', () => {
   vm.runInContext(extract(dbSource, 'function experienceForNextLevel(', '\n// Rare Candies'), ctx);
   vm.runInContext(extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), ctx);
   ctx.experienceResult = ctx.awardCatchExperience('trainer', 300);
-  const experienceCode = extract(indexSource, '    const experienceLines = [];', '\n    const ballDexIcons =');
-  vm.runInContext(`function buildExperienceMessage() { ${experienceCode} return experienceMessage; }`, ctx);
-  const message = ctx.buildExperienceMessage();
-  assert.match(message, /trainer-icon <:GEspeon:1562183880696529027> \*\*Espeon\*\* gained \*\*300 EXP!\*\*/);
+  const experienceCode = extract(indexSource, '    const experienceLines = [];', '\n    if (inline?.onCatch)');
+  vm.runInContext(`function buildExperienceMessage() { ${experienceCode} return [experienceMessage, levelUpMessage]; }`, ctx);
+  const [message, levelUps] = ctx.buildExperienceMessage();
+  assert.match(message, /trainer-icon <:GEspeon:1562183880696529027> \*\*Sunshine\*\* gained \*\*300 EXP!\*\*/);
   assert.match(message, /exp-share • Your <:.*:1569731127269392447> gained \*\*100\*\* EXP!/);
+  assert.match(levelUps, /Your \*\*Sunshine\*\* is now level \*\*2\*\*/);
+  assert.match(levelUps, /Your \*\*Treecko\*\* is now level \*\*2\*\*/);
+  db.prepare('DELETE FROM bot_settings WHERE key = ?').run('buddy_nickname:trainer:1');
+  db.prepare('INSERT INTO bot_settings VALUES (?, ?)').run('buddy_nickname:trainer:2', 'Leaf');
+  db.prepare('UPDATE catches SET experience = 650 WHERE id = 2').run();
+  ctx.experienceResult = ctx.awardCatchExperience('trainer', 300);
+  const [resetMessage, teamLevelUps] = ctx.buildExperienceMessage();
+  assert.match(resetMessage, /<:GEspeon:1562183880696529027> \*\*Espeon\*\* gained/);
+  assert.match(teamLevelUps, /Your \*\*Leaf\*\* is now level \*\*3\*\*/);
   db.close();
 });
 

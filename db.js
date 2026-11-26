@@ -6401,7 +6401,10 @@ function awardCatchExperience(userId, amount = 200) {
     const awardedCatchIds = new Set();
     for (const [catchId, experienceAmount] of recipientExperience) {
       const pokemon = db.prepare(`
-        SELECT catches.*, pokemon_forms.base_hp, pokemon_forms.base_atk,
+        SELECT catches.*,
+          (SELECT value FROM bot_settings
+            WHERE key = 'buddy_nickname:' || catches.user_id || ':' || catches.id) AS nickname,
+          pokemon_forms.base_hp, pokemon_forms.base_atk,
           pokemon_forms.base_def, pokemon_forms.base_spd
         FROM catches
         LEFT JOIN pokemon_forms ON pokemon_forms.id = catches.pokemon_id
@@ -6438,6 +6441,7 @@ function awardCatchExperience(userId, amount = 200) {
       awardedCatchIds.add(catchId);
       awardedPokemon.push({
         name: pokemon.name,
+        nickname: pokemon.nickname,
         is_shiny: Boolean(pokemon.is_shiny),
         is_golden: Boolean(pokemon.is_golden),
         is_buddy: catchId === user.buddy_catch_id,
@@ -6445,7 +6449,7 @@ function awardCatchExperience(userId, amount = 200) {
         experience: awardedExperience,
       });
       if (level > pokemon.level) {
-        levelUps.push({ name: pokemon.name, from: pokemon.level, to: level });
+        levelUps.push({ name: pokemon.name, nickname: pokemon.nickname, from: pokemon.level, to: level });
       }
     }
 
