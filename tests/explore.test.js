@@ -263,7 +263,7 @@ test('rare spawn announcements forward caught Explore rarities and describe swap
   assert.match(swapFlow, /activity: 'swap'/);
 });
 
-test('rare Pokémon receipt logs include the recipient, Pokémon, method, and configured channel', async () => {
+test('rare Pokémon receipt logging does not send messages to a Discord channel', async () => {
   const channelIds = [];
   const messages = [];
   const ctx = vm.createContext({
@@ -291,9 +291,8 @@ test('rare Pokémon receipt logs include the recipient, Pokémon, method, and co
     '.p',
     false
   );
-  assert.deepEqual(channelIds, ['1572366596524081192']);
-  assert.match(messages[0].content, /Ash.*Pikachu/);
-  assert.match(messages[0].content, /Method: `\.p`/);
+  assert.deepEqual(channelIds, []);
+  assert.deepEqual(messages, []);
 });
 
 test('Explore map selectors choose the exact map and reject invalid choices', () => {
@@ -492,6 +491,7 @@ test('provided Pokémon emojis map to the correct normal and Golden variants', (
   };
   for (const [name, id] of Object.entries(normal)) assert.match(context.getPokemonSpriteEmoji({ name }), new RegExp(id));
   for (const [name, id] of Object.entries(golden)) assert.match(context.getPokemonSpriteEmoji({ name, isGolden: true }), new RegExp(id));
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'Espeon', isGolden: true }), '<:GEspeon:1562183880696529027>');
   assert.match(context.getPokemonSpriteEmoji({ name: 'Sprigatito', isShiny: true }), /1567588638194409512/);
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle' }), '<:smeargle:1573101965418958899>');
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle', isShiny: true }), '');

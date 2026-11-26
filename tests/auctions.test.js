@@ -104,6 +104,26 @@ test('ban auction queues exclude non-qualifying rarity and start only on admin a
   db.close();
 });
 
+test('auction queue lists pending auctions in FIFO order without active auctions', () => {
+  const { db, auctions } = setup();
+  db.exec(`
+    INSERT INTO pokemon_auctions
+      (pokemon_json, source_user_id, starts_at, ends_at, is_started)
+    VALUES
+      ('{"pokemon_id":1,"name":"First","rarity":"Legendary","is_shiny":0,"is_golden":0}', 'source', 1, 1, 0),
+      ('{"pokemon_id":2,"name":"Active","rarity":"Legendary","is_shiny":0,"is_golden":0}', 'source', 1, 100, 1),
+      ('{"pokemon_id":3,"name":"Second","rarity":"Legendary","is_shiny":0,"is_golden":0}', 'source', 1, 1, 0),
+      ('{"pokemon_id":4,"name":"Third","rarity":"Legendary","is_shiny":0,"is_golden":0}', 'source', 1, 1, 0);
+  `);
+
+  const { rows, count } = auctions.queued(2);
+  assert.equal(count, 3);
+  assert.deepEqual(rows.map(({ pokemon }) => pokemon.name), ['First', 'Second']);
+  assert.deepEqual(rows.map(({ minimum_bid }) => minimum_bid), [50, 50]);
+  assert.throws(() => auctions.queued(0), /Invalid auction queue limit/);
+  db.close();
+});
+
 test('ineligible auctions are removed, with bids refunded and event Super Rares kept', () => {
   const { db, auctions } = setup();
   db.exec(`
@@ -628,6 +648,35 @@ test('admin auction start activates queued auctions and announces them', async (
   await context.run();
   assert.deepEqual(calls, ['announce']);
   assert.match(replies[0], /Started \*\*3\*\* queued Pokémon auctions/);
+});
+
+test('admin auction queue reports the next queued Pokémon in FIFO order', async () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf("      if (command === 'admin' && subtype === 'auction')");
+  const end = source.indexOf("\n      if (command === 'admin' && ['ban'", start);
+  assert.ok(start >= 0 && end > start);
+  const replies = [];
+  const context = vm.createContext({
+    command: 'admin', subtype: 'auction', action: 'queue', args: ['auction', 'queue'], PREFIX: '.',
+    auctions: {
+      queued: (limit) => {
+        assert.equal(limit, 10);
+        return {
+          count: 2,
+          rows: [
+            { id: 4, minimum_bid: 50, pokemon: { name: 'First', rarity: 'Legendary' } },
+            { id: 7, minimum_bid: 100, pokemon: { name: 'Second', rarity: 'Common', is_shiny: 1 } },
+          ],
+        };
+      },
+    },
+    message: { reply: async (text) => replies.push(text) },
+  });
+  vm.runInContext(`async function run() { ${source.slice(start, end)} }`, context);
+  await context.run();
+  assert.match(replies[0], /2 Pokémon waiting/);
+  assert.match(replies[0], /#4\*\* — First \(Legendary\)/);
+  assert.match(replies[0], /#7\*\* — Shiny Second \(Common\)/);
 });
 
 test('only the designated bot admin can use admin ban and wipe', async () => {

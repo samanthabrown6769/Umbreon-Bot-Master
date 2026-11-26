@@ -396,6 +396,22 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
     `).all(limit).map((row) => ({ ...row, pokemon: JSON.parse(row.pokemon_json) }));
   }
 
+  function queued(limit = 10) {
+    if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError('Invalid auction queue limit.');
+    const count = db.prepare(`
+      SELECT COUNT(*) AS count FROM pokemon_auctions
+      WHERE ended_at IS NULL AND is_started = 0
+    `).get().count;
+    const rows = db.prepare(`
+      SELECT a.*, ${AUCTION_STARTING_BID_SQL} AS minimum_bid
+      FROM pokemon_auctions a
+      WHERE a.ended_at IS NULL AND a.is_started = 0
+      ORDER BY a.id
+      LIMIT ?
+    `).all(limit).map((row) => ({ ...row, pokemon: JSON.parse(row.pokemon_json) }));
+    return { rows, count };
+  }
+
   function markNotificationsDelivered(ids) {
     const mark = db.prepare('UPDATE pokemon_auction_notifications SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL');
     db.transaction(() => {
@@ -406,7 +422,7 @@ function createAuctions({ db, getUser, incrementUser, addUserItem, saveCatch, re
 
   return {
     getEligibility, confiscate, cancelLeadingBids, startQueued, removeIneligibleAuctions, settle, bid, list,
-    pendingNotifications, markNotificationsDelivered,
+    pendingNotifications, queued, markNotificationsDelivered,
   };
 }
 

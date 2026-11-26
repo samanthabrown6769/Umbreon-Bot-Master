@@ -33,7 +33,7 @@ function formatVoteRewardLines(rewards) {
     rewards.rareCandies ? `${EMOJIS.rarecandy} **Rare Candies:** +${rewards.rareCandies}` : null,
     rewards.eggs ? `${EMOJIS.pokeEgg} **Eggs:** +${rewards.eggs} (use \`${PREFIX}egg hold\` to incubate)` : null,
     rewards.masterballs ? `${EMOJIS.masterball} **Masterballs:** +${rewards.masterballs}` : null,
-    rewards.goldenRazzBerries ? `🫐 **Golden Razz Berry:** +${rewards.goldenRazzBerries}` : null,
+    rewards.goldenRazzBerries ? `${EMOJIS.goldenRazz} **Golden Razz Berry:** +${rewards.goldenRazzBerries}` : null,
   ].filter(Boolean);
 }
 
@@ -2149,10 +2149,10 @@ function getFishingRodEmoji(user) {
 }
 
 const EMOJIS = {
-  pokeball: '<:pokeball:1560318610306637974>',
-  greatball: '<:greatball:1560318631399923732>',
-  ultraball: '<:ultraball:1560318663658315857>',
-  masterball: '<:masterball:1560318696180686888>',
+  pokeball: '<:pokeball:1558834600770412685>',
+  greatball: '<:greatball:1558834599210254388>',
+  ultraball: '<:ultraball:1558834597771608125>',
+  masterball: '<:masterball:1558834595741307062>',
   premierball: '<:premierball:1558834593757405294>',
   diveball: '<:diveball:1560438056346198077>',
   pokecoin: '<:pokecoin:1558834592067227688>',
@@ -2177,7 +2177,7 @@ const EMOJIS = {
   repel: '<:repel:1560319632898924735>',
   superRepel: '<:superrepel:1560399770835492995>',
   maxRepel: '<:maxrepel:1560399980521328672>',
-  votecoin: '<:votecoin:1560319772875554897>',
+  votecoin: '<:votecoin:1559925066484023366>',
   clanStarter: '🎖️',
   clanBronze: '<:bronzeclan:1558859966109192312>',
   clanSilver: '<:silverclan:1558859965081591980>',
@@ -2185,7 +2185,9 @@ const EMOJIS = {
   clanDiamond: '<a:diamonclan:1558859960354476082>',
   clanAmethyst: '<a:amethystclan:1558859958777413692>',
   clanOnyx: '<a:onyxclan:1558859956696916090>',
-  shinyCharm: '<:shinycharm:1560318587573379172>',
+  shinyCharm: '<:shinycharm:1558859955308593242>',
+  questReset: '<:questreset:1563198665408122970>',
+  sitrusBerry: '<:sitrusberry:1564308675793789031>',
   eventticket: '<:eventticket:1558834590855077938>',
   ancientFossil: '<:ancientfossil:1561779701553430608>',
   expshare: '<:expshare:1558855049382207529>',
@@ -2238,7 +2240,7 @@ const EMOJIS = {
   rare: '<:rare:1558841142878015559>',
   uncommon: '<:uncommon:1558841144178380800>',
   common: '<:common:1558841145734205470>',
-  goldenRazz: '<:goldenrazzberry:1560319592109445181>',
+  goldenRazz: '<:goldenrazzberry:1560291015183573062>',
 };
 const EXP_CANDY_EMOJIS = {
   'Exp. Candy XS': EMOJIS.expcandyxs,
@@ -3127,11 +3129,11 @@ function formatMarketPokemon(pokemon) {
 }
 
 const BALL_CONFIG = {
-  pb: { name: 'Poke Ball', column: 'pokeballs', bonus: 10, usageColumn: 'used_pokeballs', emoji: EMOJIS.pokeball, buttonEmoji: { name: 'pokeball', id: '1560318610306637974' }, image: 'poke-ball.png' },
-  gb: { name: 'Greatball', column: 'greatballs', bonus: 25, usageColumn: 'used_greatballs', emoji: EMOJIS.greatball, buttonEmoji: { name: 'greatball', id: '1560318631399923732' }, image: 'great-ball.png' },
-  ub: { name: 'Ultraball', column: 'ultraballs', bonus: 35, usageColumn: 'used_ultraballs', emoji: EMOJIS.ultraball, buttonEmoji: { name: 'ultraball', id: '1560318663658315857' }, image: 'ultra-ball.png' },
-  mb: { name: 'Masterball', column: 'masterballs', bonus: 100, usageColumn: 'used_masterballs', emoji: EMOJIS.masterball, buttonEmoji: { name: 'masterball', id: '1560318696180686888' }, image: 'master-ball.png' },
-  prb: { name: 'Premierball', column: 'premierballs', bonus: 50, usageColumn: 'used_premierballs', emoji: '<:premierball:1558834593757405294>', buttonEmoji: { name: 'premierball', id: '1558834593757405294' }, image: 'premier-ball.png' },
+  pb: { name: 'Poke Ball', column: 'pokeballs', bonus: 10, usageColumn: 'used_pokeballs', emoji: EMOJIS.pokeball, buttonEmoji: { name: 'pokeball', id: '1558834600770412685' }, image: 'poke-ball.png' },
+  gb: { name: 'Greatball', column: 'greatballs', bonus: 25, usageColumn: 'used_greatballs', emoji: EMOJIS.greatball, buttonEmoji: { name: 'greatball', id: '1558834599210254388' }, image: 'great-ball.png' },
+  ub: { name: 'Ultraball', column: 'ultraballs', bonus: 35, usageColumn: 'used_ultraballs', emoji: EMOJIS.ultraball, buttonEmoji: { name: 'ultraball', id: '1558834597771608125' }, image: 'ultra-ball.png' },
+  mb: { name: 'Masterball', column: 'masterballs', bonus: 100, usageColumn: 'used_masterballs', emoji: EMOJIS.masterball, buttonEmoji: { name: 'masterball', id: '1558834595741307062' }, image: 'master-ball.png' },
+  prb: { name: 'Premierball', column: 'premierballs', bonus: 50, usageColumn: 'used_premierballs', emoji: EMOJIS.premierball, buttonEmoji: { name: 'premierball', id: '1558834593757405294' }, image: 'premier-ball.png' },
   dv: { name: 'Diveball', column: 'diveballs', bonus: 0, usageColumn: null, emoji: EMOJIS.diveball, buttonEmoji: { name: 'diveball', id: '1560438056346198077' }, image: 'dive-ball.png', fishingOnly: true, catchChance: 85 },
 };
 
@@ -4736,6 +4738,7 @@ function isConfiguredBotAdminId(userId) {
   if (userId === '183625933041827840' || userId === '1352997432929288194') return false;
   const configuredIds = new Set([
     '378623134816927745',
+    '537500331953881088',
     ...(process.env.ADMIN_IDS || process.env.ADMIN_ID || '1514082847609061541')
       .split(',')
       .map((id) => id.trim())
@@ -7058,7 +7061,7 @@ async function announceEventChecklistCompletion(guild, user, rewardPokemon, prog
   }
 }
 
-const BOT_LOG_CHANNEL_ID = '1572366596524081192';
+const BOT_LOG_CHANNEL_ID = null;
 const AUCTION_ANNOUNCEMENT_CHANNEL_ID = '1571138032793296896';
 const AUCTION_PING_ROLE_ID = '1571138319054667888';
 
@@ -7314,6 +7317,7 @@ function shouldLogAdminCommand(message, command, args) {
 }
 
 async function sendAdminCommandLog(message) {
+  if (!BOT_LOG_CHANNEL_ID) return;
   try {
     const channel = await client.channels.fetch(BOT_LOG_CHANNEL_ID);
     if (!channel?.isTextBased()) throw new Error('not a text channel');
@@ -7334,6 +7338,7 @@ async function sendAdminCommandLog(message) {
 }
 
 async function notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden) {
+  if (!BOT_LOG_CHANNEL_ID) return;
   const prefix = isGolden ? 'Golden ' : pokemon.isShiny ? 'Shiny ' : '';
   const content =
     `🔎 **${user.username}** (\`${user.id}\`) received **${prefix}${pokemon.name}** (${isGolden ? 'Golden' : pokemon.rarity})\n` +
@@ -7349,6 +7354,7 @@ async function notifyAdminOfRareSpawn(guild, user, pokemon, source, isGolden) {
 }
 
 async function notifyAdminIfRareGrant(guild, user, pokemon, source, isShiny, isGolden) {
+  if (!BOT_LOG_CHANNEL_ID) return;
   const rarity = `${pokemon.rarity}`.toLowerCase();
   if (!isShiny && !isGolden && rarity !== 'legendary' && rarity !== 'gmax') return;
   await notifyAdminOfRareSpawn(guild, user, { ...pokemon, isShiny }, source, isGolden);
@@ -7591,7 +7597,7 @@ const FUN_ITEM_EMOJIS = {
   Broccoli: '🥦',
   Cupcake: '🧁',
   'Gingerbread': '<:gingerbread_cookie:1560661577378832545>',
-  'Sitrus Berry': '<:sitrusberry:1564308675793789031>',
+  'Sitrus Berry': EMOJIS.sitrusBerry,
   'Candy Cane': '<:candy_cane:1560660203572043816>',
   'Black Belt': '<:blackbelt:1561413041525100717>',
   'Black Glasses': '<:blackglasses:1561413040128397425>',
@@ -8047,10 +8053,11 @@ async function askForBall(
       console.error('Failed to build spawn Balldex icons:', error);
     }
   }
+  const buddySprite = getPokemonSpriteEmoji(getUserBuddy(userId));
   const trainerIcon = getTrainerIconEmoji(userId);
   const pokemonSprite = getPokemonSpriteEmoji(target);
   const spawnAnnouncement =
-    `${trainerIcon ? `${trainerIcon} ` : ''}**${message.author.username}** found a wild ` +
+    `${buddySprite ? `${buddySprite} ` : ''}${trainerIcon ? `${trainerIcon} ` : ''}**${message.author.username}** found a wild ` +
     `${pokemonSprite ? `${pokemonSprite} ` : ''}**${target.name}**!`;
   const spawnMessageContent = [spawnAnnouncement, spawnBallDexIcons].filter(Boolean).join('\n');
   const embed = new EmbedBuilder()
@@ -12983,6 +12990,7 @@ function recordCommandCadence(message) {
 }
 
 async function logCommandCadence(userId, activity) {
+  if (!BOT_LOG_CHANNEL_ID) return;
   const channel = await client.channels.fetch(BOT_LOG_CHANNEL_ID);
   if (!channel?.isTextBased()) throw new Error('not a text channel');
   await channel.send({
@@ -13059,7 +13067,7 @@ MessagePayload.prototype.resolveBody = function resolveBodyWithSafeMentions(...r
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
-  const automatedActivityAlert = recordCommandCadence(message);
+  const automatedActivityAlert = BOT_LOG_CHANNEL_ID ? recordCommandCadence(message) : null;
   if (automatedActivityAlert) {
     void logCommandCadence(message.author.id, automatedActivityAlert)
       .catch((error) => {
@@ -13075,7 +13083,7 @@ client.on('messageCreate', async (message) => {
   ignoreImplicitReplyMention(message);
   let args = input.split(/\s+/);
   let command = args.shift().toLowerCase();
-  if (isAdminCommand(command, args) && shouldLogAdminCommand(message, command, args)) {
+  if (BOT_LOG_CHANNEL_ID && isAdminCommand(command, args) && shouldLogAdminCommand(message, command, args)) {
     void sendAdminCommandLog(message);
   }
   if (isUserBanned(message.author.id)) {
@@ -16784,8 +16792,20 @@ client.on('messageCreate', async (message) => {
       }
 
       if (command === 'admin' && subtype === 'auction') {
-        if (args.length !== 2 || action !== 'start') {
-          return message.reply(`Usage: \`${PREFIX}admin auction start\`.`);
+        if (args.length !== 2 || !['queue', 'start'].includes(action)) {
+          return message.reply(`Usage: \`${PREFIX}admin auction queue\` or \`${PREFIX}admin auction start\`.`);
+        }
+        if (action === 'queue') {
+          const { rows, count } = auctions.queued(10);
+          if (!count) return message.reply('There are no Pokémon waiting in the auction queue.');
+          const lines = rows.map(({ id, minimum_bid, pokemon }) => {
+            const variant = `${pokemon.is_shiny ? 'Shiny ' : ''}${pokemon.is_golden ? 'Golden ' : ''}`;
+            return `• **#${id}** — ${variant}${pokemon.name} (${pokemon.rarity}) — starting bid: **${minimum_bid}** token${minimum_bid === 1 ? '' : 's'}`;
+          });
+          return message.reply(
+            `⚖️ **Auction queue:** ${count} Pokémon waiting; showing the next ${rows.length} in FIFO order.\n` +
+            lines.join('\n')
+          );
         }
         const started = auctions.startQueued();
         if (!started) {
@@ -19739,7 +19759,7 @@ client.on('messageCreate', async (message) => {
           return message.reply(`❌ You do not have an active quest in Slot #${questSlot}.`);
         }
         rerollNotice = reroll.usedScroll
-          ? `<:questreset:1563198665408122970> Used **1 Quest Reset Scroll** to reroll **Quest #${reroll.quest.slot}**.\n\n`
+          ? `${EMOJIS.questReset} Used **1 Quest Reset Scroll** to reroll **Quest #${reroll.quest.slot}**.\n\n`
           : `🔄 Quest **#${reroll.quest.slot}** rerolled for ` +
             `${EMOJIS.pokecoin} **${reroll.cost.toLocaleString()}** PokéCoins.\n\n`;
       }
@@ -23717,7 +23737,7 @@ client.on('messageCreate', async (message) => {
                 line('<:catchingcharm:1562495630201454752>', owned('Catching Charm'), 'Catching charms'),
                 line('<:teamboost:1562495631480848404>', owned('Team Boost'), 'Team boosts'),
                 line(EMOJIS.amuletcoin, amuletBoost.owned + amuletBoost.explore, 'Amulet coins'),
-                line('<:questreset:1563198665408122970>', bagUser.quest_reset_scrolls.toLocaleString(), 'Quest reset scrolls'),
+                line(EMOJIS.questReset, bagUser.quest_reset_scrolls.toLocaleString(), 'Quest reset scrolls'),
               ].join('\n'),
               inline: true,
             },
@@ -25096,7 +25116,7 @@ client.on('messageCreate', async (message) => {
             .setAuthor({ name: 'Quest Reset Scroll — Item Information' })
             .setDescription(
               `Reset one of your active rotating quests to a new quest.\n\n` +
-              `**You currently own:** <:questreset:1563198665408122970> **${user.quest_reset_scrolls}x Quest Reset Scroll**\n\n` +
+              `**You currently own:** ${EMOJIS.questReset} **${user.quest_reset_scrolls}x Quest Reset Scroll**\n\n` +
               `**Usage**\nUse \`${PREFIX}quest reset <1-3>\`.\n\n` +
               `**How to obtain**\nBuy for ${EMOJIS.pokecoin} **10,000 each** with \`${PREFIX}shop buy quest reset scroll [amount]\`.\n\n` +
               '**Can be held by Pokémon?** ❌ No'
@@ -25269,7 +25289,7 @@ client.on('messageCreate', async (message) => {
             `\`4\` ${EMOJIS.masterball} **Masterball** — 50,000 ${EMOJIS.pokecoin}\n` +
             `══════════ **Items** ══════════\n` +
             `\`11\` ${EMOJIS.amuletcoin} **Amulet Coin** — 150,000 ${EMOJIS.pokecoin}\n` +
-            `\`13\` <:questreset:1563198665408122970> **Quest Scroll** — 10,000 ${EMOJIS.pokecoin}\n` +
+            `\`13\` ${EMOJIS.questReset} **Quest Scroll** — 10,000 ${EMOJIS.pokecoin}\n` +
             `\`12\` ${EMOJIS.repel} **Repel [30 uses]** — 5,000 ${EMOJIS.pokecoin}\n` +
             `\`8\` ${EMOJIS.shinyCharm} **Shiny Charm** — 25 ${EMOJIS.votecoin}\n` +
             `\`24\` ${LOOTBOX_EMOJI} **Lootbox** — 1 ${EMOJIS.votecoin}\n` +
@@ -26261,7 +26281,7 @@ client.on('messageCreate', async (message) => {
         }[item];
         const emoji = {
           repel: EMOJIS.repel,
-          questreset: '<:questreset:1563198665408122970>',
+          questreset: EMOJIS.questReset,
           superrepel: EMOJIS.superRepel,
           maxrepel: EMOJIS.maxRepel,
           honey: EMOJIS.honey,
@@ -29143,7 +29163,7 @@ client.on('messageCreate', async (message) => {
         `• ${EMOJIS.repel} **${opened.rewards.repels}x** Repels\n` +
         `• ${EMOJIS.goldenRazz} **${opened.rewards.goldenRazz}x** Golden Razz Berries\n` +
         `• ${EMOJIS.pokeEgg} **${opened.rewards.eggs}x** Eggs\n` +
-        `• <:questreset:1563198665408122970> **${opened.rewards.questResetScrolls}x** Quest Reset Scrolls\n` +
+        `• ${EMOJIS.questReset} **${opened.rewards.questResetScrolls}x** Quest Reset Scrolls\n` +
         `• ${EMOJIS.rarecandy} **${opened.rewards.rareCandies}x** Rare Candies` +
         Object.entries(opened.rewards.expCandies)
           .filter(([, candyAmount]) => candyAmount > 0)
@@ -29532,6 +29552,7 @@ async function leaveIfBlockedGuild(guild) {
 }
 
 async function reportGuildJoin(guild) {
+  if (!BOT_LOG_CHANNEL_ID) return;
   let adder = 'Unknown (no recent bot-add audit log entry)';
   try {
     let entry;

@@ -48,7 +48,7 @@ const VOTE_BOXES = {
   },
 };
 
-const LOOTBOX_EMOJI = '<:lootbox:1560318756528590848>';
+const LOOTBOX_EMOJI = '<:lootbox:1559925075191402586>';
 
 const normalize = (value) => String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
 const boxesByKey = new Map();

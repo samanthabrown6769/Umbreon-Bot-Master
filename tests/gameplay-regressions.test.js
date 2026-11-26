@@ -7,7 +7,7 @@ const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, Collection, ComponentType, EmbedBuilder, MessageMentions, PermissionsBitField,
 } = require('discord.js');
 const battle = require('../battle-effects');
-const { BOXES } = require('../boxes');
+const { BOXES, LOOTBOX_EMOJI } = require('../boxes');
 const { pickWeighted } = require('../spawn-weights');
 
 const indexSource = fs.readFileSync(require.resolve('../index.js'), 'utf8');
@@ -725,7 +725,12 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     allowAnyUserCatch: false,
     HELD_ITEM_EMOJI: '🧰',
     factionLogoPrefix: () => '',
-    getPokemonSpriteEmoji: () => '<:Combee:123>',
+    getPokemonSpriteEmoji: (pokemon) => !pokemon
+      ? ''
+      : pokemon.name === 'Espeon'
+        ? '<:GEspeon:1562183880696529027>'
+        : '<:Combee:123>',
+    getUserBuddy: () => null,
     getTrainerIconEmoji: () => 'trainer-icon',
     getBallDexProgressDisplay: () => 'Ball Dex display',
     isEventOpen: () => false,
@@ -766,6 +771,9 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     spawnContext.spawnMessageContent,
     'trainer-icon **Trainer** found a wild <:Combee:123> **Combee**!\nBall Dex display'
   );
+  spawnContext.getUserBuddy = () => ({ name: 'Espeon', is_golden: 1 });
+  spawnContext.buildSpawnEmbed();
+  assert.match(spawnContext.spawnMessageContent, /<:GEspeon:1562183880696529027> trainer-icon \*\*Trainer\*\*/);
   assert.doesNotMatch(spawnContext.spawnMessageContent, /vote/i);
   assert.doesNotMatch(spawnEmbed.description, /🎟️/);
   assert.equal(spawnEmbed.image.url, 'https://example.test/combee.png');
@@ -777,6 +785,7 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     assert.equal(fishingSpawnEmbed.author.name, '🎣 Trainer found a wild Pokémon!');
     assert.ok(fishingSpawnEmbed.description.includes(`${emoji} Rod used: **${rod}**`));
     assert.equal(fishingSpawnEmbed.image.url, 'https://example.test/combee.png');
+    assert.match(spawnContext.spawnMessageContent, /<:GEspeon:1562183880696529027> trainer-icon \*\*Trainer\*\*/);
   }
   spawnContext.target.isGolden = true;
   assert.equal(spawnContext.buildSpawnEmbed().image.url, 'https://example.test/golden-combee.png');
@@ -2280,9 +2289,29 @@ test('revoked admins lose built-in and environment-configured access', () => {
   for (const id of ['378623134816927745', 'extra-admin']) {
     assert.equal(context.isConfiguredBotAdmin({ author: { id } }), true);
   }
+  assert.equal(context.isConfiguredBotAdmin({ author: { id: '537500331953881088' } }), true);
   assert.equal(context.isConfiguredBotAdmin({ author: { id: '426946381098254336' } }), false);
   assert.equal(vm.runInContext("WORLD_BOSS_SPAWN_ALLOWED_USER_IDS.has('426946381098254336')", context), false);
   assert.equal(context.isConfiguredBotAdmin({ author: { id: 'other' } }), false);
+});
+
+test('requested user cooldown exemption does not grant guaranteed catch rates', () => {
+  const dbSource = fs.readFileSync(require.resolve('../db.js'), 'utf8');
+  const start = dbSource.indexOf('const GUARANTEED_CATCH_RATE_USER_IDS = new Set(');
+  const end = dbSource.indexOf('\nconst TEAM_MEDALLION_ITEM', start);
+  assert.ok(start >= 0 && end > start);
+  const context = vm.createContext({});
+  vm.runInContext(
+    `${dbSource.slice(start, end)}\nglobalThis.cooldownExemptions = {
+      cooldown: COOLDOWN_EXEMPT_USER_IDS,
+      encounter: ENCOUNTER_COOLDOWN_EXEMPT_USER_IDS,
+      catchRate: GUARANTEED_CATCH_RATE_USER_IDS,
+    };`,
+    context
+  );
+  assert.equal(context.cooldownExemptions.cooldown.has('378623134816927745'), true);
+  assert.equal(context.cooldownExemptions.encounter.has('378623134816927745'), true);
+  assert.equal(context.cooldownExemptions.catchRate.has('378623134816927745'), false);
 });
 
 test('revoked admins are denied admin, admin spawn, and admin boss commands', async () => {
@@ -2316,7 +2345,7 @@ test('revoked admins are denied admin, admin spawn, and admin boss commands', as
   }
 });
 
-test('admin command attempts are classified and logged with their original text', async () => {
+test('admin command classification remains available while channel logging is disabled', async () => {
   const sent = [];
   const context = vm.createContext({
     client: { channels: { fetch: async (id) => ({
@@ -2344,32 +2373,10 @@ test('admin command attempts are classified and logged with their original text'
     author: { id: '123', username: 'Trainer' },
     guild: { id: '456', name: 'Server' },
   });
-  assert.equal(sent[0].id, '1572366596524081192');
-  assert.equal(sent[0].payload.embeds[0].description, '.admin pokemon <@123> shiny Mew');
-  assert.match(sent[0].payload.embeds[0].fields[0].value, /Trainer \(123\)/);
-  assert.equal(sent[0].payload.allowedMentions.parse.length, 0);
+  assert.deepEqual(sent, []);
 });
 
-test('selected users only log admin ban and wipe commands', () => {
-  const context = vm.createContext({});
-  vm.runInContext(
-    extract(indexSource, 'const ADMIN_COMMAND_LOG_EXEMPT_USER_IDS', '\nasync function sendAdminCommandLog('),
-    context
-  );
-  const message = (id) => ({ author: { id } });
-
-  for (const id of ['1514082847609061541']) {
-    assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['coins']), false);
-    assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['unban']), false);
-    assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['BAN']), true);
-    assert.equal(context.shouldLogAdminCommand(message(id), 'admin', ['wipe']), true);
-    assert.equal(context.shouldLogAdminCommand(message(id), 'adminboss', []), false);
-  }
-  assert.equal(context.shouldLogAdminCommand(message('426946381098254336'), 'admin', ['coins']), true);
-  assert.equal(context.shouldLogAdminCommand(message('other'), 'admin', ['coins']), true);
-});
-
-test('automated command patterns are logged to the configured channel rather than sent by DM', async () => {
+test('automated command pattern logging does not send messages to a Discord channel', async () => {
   const sent = [];
   const context = vm.createContext({
     process: { env: {} }, PREFIX: '.',
@@ -2391,18 +2398,16 @@ test('automated command patterns are logged to the configured channel rather tha
     });
   }
   await context.logCommandCadence('123', activity);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].id, '1572366596524081192');
-  assert.match(sent[0].payload.content, /Username: Trainer\nUser ID: 123\nServer: Server \(456\)/);
-  assert.match(sent[0].payload.content, /Pattern: \.catch repeated 6 times/);
-  assert.equal(sent[0].payload.allowedMentions.parse.length, 0);
+  assert.deepEqual(sent, []);
   context.client.channels.fetch = async () => null;
-  await assert.rejects(context.logCommandCadence('123', activity), /not a text channel/);
+  await context.logCommandCadence('123', activity);
+  assert.deepEqual(sent, []);
 });
 
-test('guild join logs identify recent bot inviters and report unavailable audit logs', async () => {
+test('guild join logging does not fetch audit data or send messages to a Discord channel', async () => {
   const messages = [];
-  const warnings = [];
+  let auditFetches = 0;
+  let ownerFetches = 0;
   const context = vm.createContext({
     client: {
       user: { id: 'bot' },
@@ -2413,7 +2418,7 @@ test('guild join logs identify recent bot inviters and report unavailable audit 
     },
     AuditLogEvent: { BotAdd: 'bot-add' },
     BLOCKED_GUILD_IDS: new Set(),
-    console: { warn: (...args) => warnings.push(args), error: (...args) => { throw new Error(args.join(' ')); } },
+    console: { warn: () => {}, error: (...args) => { throw new Error(args.join(' ')); } },
     Date,
     setTimeout: (callback) => callback(),
   });
@@ -2424,28 +2429,13 @@ test('guild join logs identify recent bot inviters and report unavailable audit 
   );
   const guild = {
     id: '456', name: 'Server', memberCount: 42,
-    fetchOwner: async () => ({ id: 'owner', user: { username: 'Owner' } }),
-    fetchAuditLogs: async () => ({
-      entries: [
-        { target: { id: 'other' }, createdTimestamp: Date.now(), executor: { id: 'wrong', username: 'Wrong' } },
-        { target: { id: 'bot' }, createdTimestamp: Date.now(), executor: { id: '123', username: 'Inviter' } },
-      ],
-    }),
+    fetchOwner: async () => { ownerFetches++; return { id: 'owner', user: { username: 'Owner' } }; },
+    fetchAuditLogs: async () => { auditFetches++; return { entries: [] }; },
   };
   await context.reportGuildJoin(guild);
-  assert.equal(messages[0].id, '1572366596524081192');
-  assert.match(messages[0].payload.content, /Server.*456/);
-  assert.match(messages[0].payload.content, /Added by: Inviter \(`123`\)/);
-  assert.match(messages[0].payload.content, /Owner: Owner \(`owner`\)/);
-  guild.fetchAuditLogs = async () => ({
-    entries: [{ target: { id: 'bot' }, createdTimestamp: Date.now() - 600000, executor: { id: 'old', username: 'Old' } }],
-  });
-  await context.reportGuildJoin(guild);
-  assert.match(messages[1].payload.content, /Added by: Unknown \(no recent bot-add audit log entry\)/);
-  guild.fetchAuditLogs = async () => { throw new Error('Missing Access'); };
-  await context.reportGuildJoin(guild);
-  assert.match(messages[2].payload.content, /Added by: Unknown \(audit log unavailable\)/);
-  assert.equal(warnings.length, 1);
+  assert.deepEqual(messages, []);
+  assert.equal(auditFetches, 0);
+  assert.equal(ownerFetches, 0);
 });
 
 test('CatchBot Pokémon, cost, and duration upgrade prices double at every level', () => {
@@ -3771,6 +3761,76 @@ test('Grimer, Muk, and Walking Wake use their supplied sprite emojis', () => {
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Muk', isShiny: true }), '<:SMuk:1569451543160430724>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Walking Wake' }), '<:WalkingWake:1568037632376569968>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Walking Wake', isShiny: true }), '<:SWalkingWake:1568037630292140142>');
+});
+
+test('requested item, currency, ball, rarity and mega stone emojis are used', () => {
+  const emojiContext = vm.createContext({});
+  vm.runInContext(
+    `${extract(indexSource, 'const EMOJIS = {', '\n};\nconst EXP_CANDY_EMOJIS')}\n};\nglobalThis.botEmojis = EMOJIS;`,
+    emojiContext
+  );
+  const expected = {
+    pokeball: '<:pokeball:1558834600770412685>',
+    greatball: '<:greatball:1558834599210254388>',
+    ultraball: '<:ultraball:1558834597771608125>',
+    masterball: '<:masterball:1558834595741307062>',
+    premierball: '<:premierball:1558834593757405294>',
+    votecoin: '<:votecoin:1559925066484023366>',
+    shinyCharm: '<:shinycharm:1558859955308593242>',
+    questReset: '<:questreset:1563198665408122970>',
+    sitrusBerry: '<:sitrusberry:1564308675793789031>',
+    shiny: '<:shiny:1558841136905326784>',
+    golden: '<:golden:1559951535062909128>',
+    eventvoucher: '<:eventvoucher:1565709116670746754>',
+    goldenRazz: '<:goldenrazzberry:1560291015183573062>',
+    gem: '<:GemRarity:1564704119359541408>',
+    expcandyxs: '<:expcandyxs:1564316648163385465>',
+    expcandys: '<:expcandys:1564316646791843870>',
+    expcandym: '<:expcandym:1564316645323841546>',
+    expcandyl: '<:expcandyl:1564316643885326397>',
+    expcandyxl: '<:expcandyxl:1564316641427193947>',
+  };
+  for (const [name, emoji] of Object.entries(expected)) {
+    assert.equal(emojiContext.botEmojis[name], emoji, name);
+  }
+  assert.equal(LOOTBOX_EMOJI, '<:lootbox:1559925075191402586>');
+
+  const ballContext = vm.createContext({ EMOJIS: emojiContext.botEmojis });
+  vm.runInContext(
+    `${extract(indexSource, 'const BALL_CONFIG = {', '\n};\n\nfunction getTextBallKey')}\n};\nglobalThis.ballConfig = BALL_CONFIG;`,
+    ballContext
+  );
+  for (const [key, id] of [
+    ['pb', '1558834600770412685'], ['gb', '1558834599210254388'],
+    ['ub', '1558834597771608125'], ['mb', '1558834595741307062'],
+    ['prb', '1558834593757405294'],
+  ]) {
+    assert.equal(ballContext.ballConfig[key].buttonEmoji.id, id, key);
+  }
+
+  const spriteContext = vm.createContext({});
+  vm.runInContext(
+    extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('),
+    spriteContext
+  );
+  assert.equal(
+    spriteContext.getPokemonSpriteEmoji({ name: 'Eternatus Eternamax' }),
+    '<:EternatusEternamax:1562183889303240814>'
+  );
+
+  const stoneContext = vm.createContext({});
+  vm.runInContext(
+    `${extract(indexSource, 'const MEGA_STONE_EMOJIS = {', '\n};\nconst stoneLabel')}\n};\nglobalThis.megaStoneEmojis = MEGA_STONE_EMOJIS;`,
+    stoneContext
+  );
+  for (const [name, emoji] of [
+    ['Sablenite', '<:sablenite:1561781020464906441>'],
+    ['Banettite', '<:banettite:1561781109027639316>'],
+    ['Gengarite', '<:gengarite:1561781061174698004>'],
+    ['Mawilite', '<:mawilite:1561781038634631179>'],
+  ]) {
+    assert.equal(stoneContext.megaStoneEmojis[name], emoji, name);
+  }
 });
 
 test('repel all resolves to every owned Repel and is not accepted for other modifiers', () => {
