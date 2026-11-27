@@ -11,6 +11,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilde
 function setup(filename = ':memory:') {
   const db = new Database(filename);
   db.exec(`
+    CREATE TABLE temporary_banned_users (user_id TEXT PRIMARY KEY, banned_at INTEGER NOT NULL);
     CREATE TABLE users (id TEXT PRIMARY KEY, patreon_tokens INTEGER DEFAULT 0, buddy_catch_id INTEGER);
     CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT,
       rarity TEXT, is_shiny INTEGER DEFAULT 0, is_golden INTEGER DEFAULT 0, caught_ball TEXT);
@@ -748,6 +749,7 @@ test('commands targeting a banned user return their username, except admin unban
   const fetchCalls = [];
   const context = vm.createContext({
     isUserBanned: (id) => bannedIds.has(id),
+    isUserTemporarilyBanned: () => false,
     client: {
       users: {
         cache: new Map(),
@@ -762,19 +764,93 @@ test('commands targeting a banned user return their username, except admin unban
   vm.runInContext(source.slice(start, end), context);
   const mentions = new Map([['12345678901234567', { username: 'MentionedTrainer' }]]);
   const message = { mentions: { users: mentions } };
-  assert.equal(
-    await context.getBannedCommandTargetName(message, '.profile <@12345678901234567>', 'profile', ['<@12345678901234567>']),
-    'MentionedTrainer'
+  const mentionedTarget = await context.getBannedCommandTargetName(
+    message, '.profile <@12345678901234567>', 'profile', ['<@12345678901234567>']
   );
-  assert.equal(
-    await context.getBannedCommandTargetName({ mentions: { users: new Map() } }, '.profile 12345678901234567', 'profile', ['12345678901234567']),
-    'BannedTrainer'
+  assert.equal(mentionedTarget.name, 'MentionedTrainer');
+  assert.equal(mentionedTarget.temporary, false);
+  const fetchedTarget = await context.getBannedCommandTargetName(
+    { mentions: { users: new Map() } }, '.profile 12345678901234567', 'profile', ['12345678901234567']
   );
+  assert.equal(fetchedTarget.name, 'BannedTrainer');
+  assert.equal(fetchedTarget.temporary, false);
   assert.equal(
     await context.getBannedCommandTargetName({ mentions: { users: new Map() } }, '.admin unban 12345678901234567', 'admin', ['unban', '12345678901234567']),
     null
   );
   assert.deepEqual(fetchCalls, ['12345678901234567']);
+});
+
+test('temporary bans block access without removing Pokémon or player data and unban restores access', () => {
+  const { db, auctions } = setup();
+  db.exec('CREATE TABLE banned_users (user_id TEXT PRIMARY KEY, banned_at INTEGER NOT NULL)');
+  db.exec("INSERT INTO catches VALUES (1,'alice',1,'Pikachu','Common',0,0,NULL)");
+  const source = fs.readFileSync(require.resolve('../db.js'), 'utf8');
+  const start = source.indexOf('function banUser(');
+  const end = source.indexOf('\nfunction deleteClanByName(', start);
+  assert.ok(start >= 0 && end > start);
+  const context = vm.createContext({ db, auctions, Date });
+  vm.runInContext(source.slice(start, end), context);
+
+  assert.equal(context.tempBanUser('alice'), true);
+  assert.equal(context.tempBanUser('alice'), false);
+  assert.equal(context.isUserBanned('alice'), true);
+  assert.equal(context.isUserTemporarilyBanned('alice'), true);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM catches WHERE user_id = 'alice'").get().n, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM pokemon_auctions").get().n, 0);
+  assert.equal(context.unbanUser('alice'), true);
+  assert.equal(context.isUserBanned('alice'), false);
+  assert.equal(context.unbanUser('alice'), false);
+  db.close();
+});
+
+test('admin temp ban accepts both spellings and is limited to the designated admin', async () => {
+  const source = fs.readFileSync(require.resolve('../index.js'), 'utf8');
+  const start = source.indexOf("      if (command === 'admin' && (subtype === 'tempban'");
+  const end = source.indexOf("\n      if (command === 'admin' && ['ban', 'unban', 'wipe'].includes(subtype))", start);
+  assert.ok(start >= 0 && end > start);
+  const handler = source.slice(start, end);
+
+  for (const [subtype, action, args] of [
+    ['tempban', undefined, ['tempban', '123456789012345']],
+    ['temp', 'ban', ['temp', 'ban', '123456789012345']],
+  ]) {
+    const calls = [];
+    const replies = [];
+    const context = vm.createContext({
+      command: 'admin', subtype, action, PREFIX: '.', args,
+      BAN_WIPE_ADMIN_USER_ID: '1514082847609061541',
+      message: {
+        author: { id: '1514082847609061541' },
+        mentions: { users: { first: () => null } },
+        reply: async (text) => replies.push(text),
+      },
+      isUserBanned: () => false,
+      tempBanUser: (id) => calls.push(id),
+    });
+    vm.runInContext(`async function run() { ${handler} }`, context);
+    await context.run();
+    assert.deepEqual(calls, ['123456789012345']);
+    assert.match(replies[0], /Pokémon and data are unchanged/);
+    assert.match(replies[0], /contact the staff team/);
+  }
+
+  const replies = [];
+  const context = vm.createContext({
+    command: 'admin', subtype: 'tempban', action: undefined, PREFIX: '.',
+    args: ['tempban', '123456789012345'],
+    BAN_WIPE_ADMIN_USER_ID: '1514082847609061541',
+    message: {
+      author: { id: '426946381098254336' },
+      mentions: { users: { first: () => null } },
+      reply: async (text) => replies.push(text),
+    },
+    isUserBanned: () => false,
+    tempBanUser: () => assert.fail('unauthorized temp ban should not run'),
+  });
+  vm.runInContext(`async function run() { ${handler} }`, context);
+  await context.run();
+  assert.match(replies[0], /Only the designated bot admin/);
 });
 
 test('auction filters, bid ordering and pagination use the full result set', () => {

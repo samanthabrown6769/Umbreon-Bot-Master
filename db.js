@@ -9829,6 +9829,7 @@ function disbandClan(userId) {
 }
 
 db.exec('CREATE TABLE IF NOT EXISTS banned_users (user_id TEXT PRIMARY KEY, banned_at INTEGER NOT NULL)');
+db.exec('CREATE TABLE IF NOT EXISTS temporary_banned_users (user_id TEXT PRIMARY KEY, banned_at INTEGER NOT NULL)');
 
 const auctions = require('./auctions').createAuctions({
   db, getUser, incrementUser, addUserItem, saveCatch, rebaseTransferredPokemon, syncNewCatchState,
@@ -9842,6 +9843,11 @@ function banUser(userId) {
     db.prepare('INSERT OR REPLACE INTO banned_users (user_id, banned_at) VALUES (?, ?)').run(userId, Date.now());
     return auctions.confiscate(userId, Date.now(), auctions.getEligibility(), { queued: true, startingBid: 10 });
   }).immediate();
+}
+
+function tempBanUser(userId) {
+  return db.prepare('INSERT OR IGNORE INTO temporary_banned_users (user_id, banned_at) VALUES (?, ?)')
+    .run(userId, Date.now()).changes > 0;
 }
 
 function banUsers(userIds) {
@@ -9865,16 +9871,29 @@ function backfillBannedAuctions() {
 }
 
 function unbanUser(userId) {
-  return db.prepare('DELETE FROM banned_users WHERE user_id = ?').run(userId).changes > 0;
+  return db.transaction(() => {
+    const permanent = db.prepare('DELETE FROM banned_users WHERE user_id = ?').run(userId).changes;
+    const temporary = db.prepare('DELETE FROM temporary_banned_users WHERE user_id = ?').run(userId).changes;
+    return permanent + temporary > 0;
+  }).immediate();
 }
 
 function isUserBanned(userId) {
-  return !!db.prepare('SELECT 1 FROM banned_users WHERE user_id = ?').get(userId);
+  return !!db.prepare(`
+    SELECT 1 FROM banned_users WHERE user_id = ?
+    UNION ALL
+    SELECT 1 FROM temporary_banned_users WHERE user_id = ?
+    LIMIT 1
+  `).get(userId, userId);
+}
+
+function isUserTemporarilyBanned(userId) {
+  return !!db.prepare('SELECT 1 FROM temporary_banned_users WHERE user_id = ?').get(userId);
 }
 
 function wipeUserData(userId) {
   const keep = new Set([
-    'banned_users', 'market_sales', 'patreon_token_trades', 'clan_members',
+    'banned_users', 'temporary_banned_users', 'market_sales', 'patreon_token_trades', 'clan_members',
     'clan_activity_periods', 'catches', 'pokemon_auctions', 'pokemon_auction_bids',
   ]);
   return db.transaction(() => {
@@ -11560,8 +11579,10 @@ module.exports = {
   disbandClan,
   banUser,
   banUsers,
+  tempBanUser,
   unbanUser,
   isUserBanned,
+  isUserTemporarilyBanned,
   wipeUserData,
   deleteClanByName,
   trackClanActivity,

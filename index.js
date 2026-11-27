@@ -367,8 +367,10 @@ const {
   disbandClan,
   banUser,
   banUsers,
+  tempBanUser,
   unbanUser,
   isUserBanned,
+  isUserTemporarilyBanned,
   wipeUserData,
   deleteClanByName,
   trackClanActivity,
@@ -7350,17 +7352,26 @@ async function getBannedCommandTargetName(message, input, command, args) {
         target = await client.users.fetch(id);
       } catch (error) {
         console.error(`Failed to fetch banned command target ${id}:`, error);
-        return `<@${id}>`;
+        return {
+          name: `<@${id}>`,
+          temporary: isUserTemporarilyBanned(id),
+        };
       }
     }
-    return target.username || `<@${id}>`;
+    return {
+      name: target.username || `<@${id}>`,
+      temporary: isUserTemporarilyBanned(id),
+    };
   }
   return null;
 }
 
 function shouldLogAdminCommand(message, command, args) {
   if (!ADMIN_COMMAND_LOG_EXEMPT_USER_IDS.has(message.author.id)) return true;
-  return command === 'admin' && ['ban', 'wipe'].includes(args[0]?.toLowerCase());
+  return command === 'admin' && (
+    ['ban', 'tempban', 'wipe'].includes(args[0]?.toLowerCase())
+    || (args[0]?.toLowerCase() === 'temp' && args[1]?.toLowerCase() === 'ban')
+  );
 }
 
 async function sendAdminCommandLog(message) {
@@ -11742,7 +11753,10 @@ async function handleStatsCommand(message, args) {
 
 client.on('interactionCreate', (interaction) => {
   if (interaction.user && isUserBanned(interaction.user.id)) {
-    if (interaction.isRepliable()) interaction.reply({ content: '⛔ You are banned from this bot.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    const notice = isUserTemporarilyBanned(interaction.user.id)
+      ? '⛔ You are temporarily banned from this bot. Please contact the staff team if you believe this is a mistake.'
+      : '⛔ You are banned from this bot.';
+    if (interaction.isRepliable()) interaction.reply({ content: notice, flags: MessageFlags.Ephemeral }).catch(() => {});
     interaction.__banned = true;
     return;
   }
@@ -13175,12 +13189,17 @@ client.on('messageCreate', async (message) => {
     void sendAdminCommandLog(message);
   }
   if (isUserBanned(message.author.id)) {
+    if (isUserTemporarilyBanned(message.author.id)) {
+      return message.reply('⛔ You are temporarily banned from this bot. Please contact the staff team if you believe this is a mistake.');
+    }
     return message.reply(`${message.author.username} is permanently banned from the game`);
   }
   if (isCommandThrottled(message.author.id)) return;
   const bannedTargetName = await getBannedCommandTargetName(message, input, command, args);
   if (bannedTargetName) {
-    return message.reply(`${bannedTargetName} is permanently banned from the game`);
+    return message.reply(bannedTargetName.temporary
+      ? `⛔ ${bannedTargetName.name} is temporarily banned from the game. Please contact the staff team if you believe this is a mistake.`
+      : `${bannedTargetName.name} is permanently banned from the game`);
   }
   if (command === 'mbuy') {
     command = 'market';
@@ -16554,6 +16573,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin clan perks <@User|id> [bronze|silver|gold|diamond|amethyst|onyx|none]\` — Grant clan perks (default onyx)\n` +
             `• \`${PREFIX}admin clan delete <clan name>\` — Delete a clan\n` +
             `• \`${PREFIX}admin ban <@User|id>\` / \`${PREFIX}admin multiban <id> <id> ...\` — Ban users and queue eligible Pokémon for auction\n` +
+            `• \`${PREFIX}admin tempban <@User|id>\` (or \`${PREFIX}admin temp ban <@User|id>\`) — Temporarily block a user without removing Pokémon or data; contact the staff team to appeal\n` +
             `• \`${PREFIX}admin unban <@User|id>\` — Unban a user from the bot\n` +
             `• \`${PREFIX}admin wipe <@User|id> confirm\` — Delete a user's data and Pokémon while keeping clan membership and clan lifetime totals`
           ),
@@ -16913,6 +16933,18 @@ client.on('messageCreate', async (message) => {
           );
         }
         return message.reply(`⚖️ Started **${started}** queued Pokémon auction${started === 1 ? '' : 's'}.`);
+      }
+
+      if (command === 'admin' && (subtype === 'tempban' || (subtype === 'temp' && action === 'ban'))) {
+        if (message.author.id !== BAN_WIPE_ADMIN_USER_ID) {
+          return message.reply('⛔ Only the designated bot admin can use `.admin tempban`.');
+        }
+        const targetArg = subtype === 'tempban' ? args[1] : args[2];
+        const targetId = message.mentions.users.first()?.id || targetArg?.match(/^\d{15,25}$/)?.[0];
+        if (!targetId) return message.reply(`Usage: \`${PREFIX}admin tempban <@User|id>\`.`);
+        if (isUserBanned(targetId)) return message.reply(`ℹ️ <@${targetId}> is already banned.`);
+        tempBanUser(targetId);
+        return message.reply(`⛔ Temporarily banned <@${targetId}>. Their Pokémon and data are unchanged. They will be told to contact the staff team; use \`${PREFIX}admin unban ${targetId}\` to restore access.`);
       }
 
       if (command === 'admin' && ['ban', 'unban', 'wipe'].includes(subtype)) {
