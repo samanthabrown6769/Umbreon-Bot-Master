@@ -3965,8 +3965,8 @@ test('Grimer, Muk, and Walking Wake use their supplied sprite emojis', () => {
     `${spriteMap}\n${exactOnly}\n${extract(indexSource, 'function getPokemonSpriteEmoji(', '\nfunction formatFactionFavorites(')}`,
     ctx
   );
-  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Grimer', isShiny: true }), '<:SGrimer:1569451545236611152>');
-  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Muk', isShiny: true }), '<:SMuk:1569451543160430724>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Grimer', isShiny: true }), '<:1088:1569451545236611152>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Muk', isShiny: true }), '<:1089:1569451543160430724>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Walking Wake' }), '<:WalkingWake:1568037632376569968>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Walking Wake', isShiny: true }), '<:SWalkingWake:1568037630292140142>');
 });

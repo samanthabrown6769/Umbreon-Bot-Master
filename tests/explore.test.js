@@ -475,7 +475,7 @@ test('provided Pokémon emojis map to the correct normal and Golden variants', (
   const context = vm.createContext({});
   vm.runInContext(extract('const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), context);
   const normal = {
-    bulbasaur: '1562183894181089400', charmander: '1569731185532215349', squirtle: '1569731183041052754',
+    bulbasaur: '1569731188774404146', charmander: '1569731185532215349', squirtle: '1569731183041052754',
     chikorita: '1569731181480513647', cyndaquil: '1569731179911839846', totodile: '1569731177303113768',
     treecko: '1569731174816022688', torchic: '1569731171347075092', mudkip: '1569731168088232066',
     turtwig: '1569731166573957222', chimchar: '1569731164971995176', piplup: '1569731162727776287',
@@ -491,10 +491,42 @@ test('provided Pokémon emojis map to the correct normal and Golden variants', (
   };
   for (const [name, id] of Object.entries(normal)) assert.match(context.getPokemonSpriteEmoji({ name }), new RegExp(id));
   for (const [name, id] of Object.entries(golden)) assert.match(context.getPokemonSpriteEmoji({ name, isGolden: true }), new RegExp(id));
+  const normalNames = {
+    bulbasaur: '001', charmander: '004', squirtle: '007', chikorita: '152', cyndaquil: '155', totodile: '158',
+    treecko: '252', torchic: '255', mudkip: '258', turtwig: '387', chimchar: '390', piplup: '393',
+    snivy: '495', tepig: '498', oshawott: '501', chespin: '650', fennekin: '653', froakie: '656',
+    rowlet: '722', litten: '725', popplio: '728', grookey: '810', scorbunny: '813', sobble: '816',
+    sprigatito: '906', fuecoco: '909', quaxly: '912',
+  };
+  for (const [name, number] of Object.entries(normalNames)) {
+    assert.equal(context.getPokemonSpriteEmoji({ name }), `<:${number}:${normal[name]}>`);
+  }
+  const goldenNames = { treecko: '9252', litten: '9725', piplup: '9393', chinchou: '9170', munchlax: '9446' };
+  for (const [name, number] of Object.entries(goldenNames)) {
+    assert.equal(context.getPokemonSpriteEmoji({ name, isGolden: true }), `<:${number}:${golden[name]}>`);
+  }
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Espeon', isGolden: true }), '<:9196:1562183880696529027>');
   assert.match(context.getPokemonSpriteEmoji({ name: 'Sprigatito', isShiny: true }), /1567588638194409512/);
-  assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle' }), '<:smeargle:1573101965418958899>');
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle' }), '<:235:1573101965418958899>');
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle', isShiny: true }), '');
+});
+
+test('updated Legendary and Mythical sprite names retain their variants and forms', () => {
+  const context = vm.createContext({});
+  vm.runInContext(extract('const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), context);
+  const normal = {
+    'tornadus therian': '<:7516:1568037745060872273>', zamazenta: '<:889:1568037685631910068>',
+    eternatus: '<:890:1568037674517012510>', urshifu: '<:892:1568037671908147342>',
+    zarude: '<:893:1568037670318243850>', regieleki: '<:894:1568037668690857984>',
+    regidrago: '<:895:1568037666442973255>', glastrier: '<:896:1568037664203079740>',
+    spectrier: '<:897:1568037661921255625>', enamorus: '<:905:1568037659518050335>',
+    'deoxys attack': '<:7501:1568037657450389664>', 'deoxys defense': '<:7504:1568037655482990775>',
+    'kyurem black': '<:7510:1568037654002540575>',
+  };
+  for (const [name, emoji] of Object.entries(normal)) {
+    assert.equal(context.getPokemonSpriteEmoji({ name }), emoji);
+  }
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'Hoopa', isShiny: true }), '<:1720:1568037686998999090>');
 });
 
 test('supplied Dex sprites resolve for default and primal forms without mixing variants', () => {
@@ -561,8 +593,28 @@ test('Gigantamax sprite emojis resolve for each form and variant without affecti
     }
     assert.match(context.getPokemonSpriteEmoji({ form_slug: `${name.replace(/ /g, '-')}-gmax` }), new RegExp(`:${normal}>$`));
   }
+  const updatedNames = {
+    charizard: ['7145', null], cinderace: ['7148', '7149'], gengar: [null, '7152'],
+    eevee: ['7154', '7155'], machamp: ['7157', '7158'], blastoise: ['7160', '7161'],
+    venusaur: ['7163', '7164'], butterfree: ['7166', '7167'], pikachu: ['7169', '7170'],
+    meowth: ['7172', '7173'], lapras: ['7175', null], snorlax: ['7178', '7179'], kingler: ['7181', '7182'],
+    corviknight: ['7184', '7185'], melmetal: ['7187', '7188'], garbodor: ['7190', '7191'],
+    alcremie: ['7193', '7194'], toxtricity: ['7196', '7197'], 'toxtricity amped': ['7196', '7197'],
+    'toxtricity low key': ['7196', '7197'], coalossal: ['7199', '7200'], grimmsnarl: ['7202', '7203'],
+    rillaboom: ['7205', '7206'], sandaconda: ['7208', '7209'], centiskorch: ['7211', '7212'],
+    duraludon: ['7214', '7215'], inteleon: ['7217', '7218'], orbeetle: ['7220', '7221'],
+    drednaw: ['7223', '7224'], copperajah: ['7226', '7227'], flapple: ['7229', '7230'],
+    'urshifu single strike': ['7232', '7233'], 'urshifu rapid strike': ['7235', '7236'],
+    hatterene: ['7238', null], appletun: ['7241', '7242'],
+  };
+  for (const [name, normal, shiny] of forms) {
+    const names = updatedNames[name];
+    if (!names) continue;
+    if (names[0]) assert.equal(context.getPokemonSpriteEmoji({ name: `${name} gmax` }), `<:${names[0]}:${normal}>`);
+    if (names[1]) assert.equal(context.getPokemonSpriteEmoji({ name: `${name} gmax`, is_shiny: 1 }), `<:${names[1]}:${shiny}>`);
+  }
   assert.doesNotMatch(context.getPokemonSpriteEmoji({ name: 'Eevee' }), /1573093956365852772/);
-  assert.equal(context.getPokemonSpriteEmoji({ name: 'shiny rillaboom gmax' }), '<:sgmaxrilaboom:1573093864800260168>');
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'shiny rillaboom gmax' }), '<:7206:1573093864800260168>');
 });
 
 test('Patreon tiers provide the requested Explore limits and Golden bonus', () => {
@@ -1573,7 +1625,7 @@ test('Explore session selects maps, enforces Patreon limits and preserves encoun
   await click('exp_ball:pb');
   await click('exp_run');
   await endPromise;
-  assert.ok(payloads.at(-1).content.includes('Pokémon caught (3): <:01:1562183894181089400>² Unknown Pokémon¹'));
+  assert.ok(payloads.at(-1).content.includes('Pokémon caught (3): <:001:1569731188774404146>² Unknown Pokémon¹'));
   ctx.getPokemonSpriteEmoji = mockedSprite;
   encounterVariant = {};
 

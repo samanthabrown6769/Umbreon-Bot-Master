@@ -298,9 +298,9 @@ test('event checklist displays the requested Patreon and fishing labels with pro
   vm.runInContext(extract(indexSource, 'async function handleEventCommand(', '\nasync function getUsernameById('), ctx);
   const payload = await ctx.handleEventCommand({ reply: (value) => value }, 'user', ['cl']);
   const description = payload.embeds[0].toJSON().description;
-  assert.ok(description.includes('✅ <:soricorio:1573347784462172321> Shiny Oricorio <:patreonlogo:1573357109058470039> — **1** caught'));
+  assert.ok(description.includes('✅ <:1741:1573347784462172321> Shiny Oricorio <:patreonlogo:1573357109058470039> — **1** caught'));
   assert.ok(description.includes('✅ <:WalkingWake:1568037632376569968> Walking Wake (`.fish`) — **2** caught'));
-  assert.ok(description.includes('<:sgastly:1573347794121523250> Shiny Gastly — **0** caught'));
+  assert.ok(description.includes('<:1092:1573347794121523250> Shiny Gastly — **0** caught'));
 });
 
 test('the full checklist grants one Gem Turquoise Rookidee only after all 12 catches', async () => {
@@ -429,6 +429,11 @@ test('requested event, Turquoise and Topaz sprite emojis resolve', () => {
   for (const [name, isShiny, id] of emojis) {
     assert.match(ctx.getPokemonSpriteEmoji({ name, isShiny }), new RegExp(`:${id}>$`), name);
   }
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Gastly', isShiny: true }), '<:1092:1573347794121523250>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Alcremie Gmax' }), '<:7193:1573093888132907209>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Alcremie Gmax', isShiny: true }), '<:7194:1573093885624848394>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Mega Latios' }), '<:7142:1573352703264956536>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Goomy', isGolden: true }), '<:9704:1566263107989282927>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Deerling Winter' }), '<:6329:1575024179567140874>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Deerling Winter', isShiny: true }), '<:6330:1575024177323319353>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Topaz Teddiursa' }), '<:10217:1573347758558023860>');

@@ -4814,7 +4814,7 @@ const CHAMBER_CONFIG = {
     megaSlug: 'latios-mega',
     eventId: 'november-part-2-2026',
     closesAfterEvent: 'november-part-2-2026',
-    icon: '<:megalatios:1573352703264956536>',
+    icon: '<:7142:1573352703264956536>',
   },
   abomasnow: {
     id: 10,
@@ -4826,7 +4826,7 @@ const CHAMBER_CONFIG = {
     megaSlug: 'abomasnow-mega',
     eventId: 'november-part-2-2026',
     closesAfterEvent: 'november-part-2-2026',
-    icon: '<:megaabomasnow:1573352687708405942>',
+    icon: '<:7070:1573352687708405942>',
   },
   houndoom: {
     id: 11,
@@ -4838,7 +4838,7 @@ const CHAMBER_CONFIG = {
     megaSlug: 'houndoom-mega',
     eventId: 'november-part-2-2026',
     closesAfterEvent: 'november-part-2-2026',
-    icon: '<:megahoundoom:1573352679285981274>',
+    icon: '<:7076:1573352679285981274>',
   },
   charizardx: {
     id: 12,
@@ -4850,7 +4850,7 @@ const CHAMBER_CONFIG = {
     megaSlug: 'charizard-mega-x',
     eventId: 'november-part-2-2026',
     closesAfterEvent: 'november-part-2-2026',
-    icon: '<:charizardx:1573352645047885824>',
+    icon: '<:7004:1573352645047885824>',
   },
 };
 

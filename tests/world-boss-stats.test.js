@@ -286,7 +286,9 @@ test('provided World Boss reward sprite emojis preserve variant and form distinc
   for (const [name, id] of Object.entries(shiny)) {
     assert.match(ctx.getPokemonSpriteEmoji({ name, isShiny: true }), new RegExp(`:${id}>$`));
   }
-  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Onix', isGolden: true }), '<:gonix:1573100201831436398>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Chingling', isShiny: true }), '<:1433:1573100206138986516>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Klink', isShiny: true }), '<:1599:1573100203760951346>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Onix', isGolden: true }), '<:9095:1573100201831436398>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Lapras Gmax', isShiny: true }),
     '<:sgmaxlapras:1573093915848998952>');
 });
@@ -295,17 +297,17 @@ test('new Pokémon sprite emojis preserve existing variants and distinguish Mega
   const ctx = vm.createContext({});
   vm.runInContext(extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), ctx);
   const shiny = {
-    Magby: '<:smagby:1573354894289674260>', Mudkip: '<:smudkip:1573354896286163114>',
-    Aron: '<:saron:1573354898869981304>', Piplup: '<:spiplup:1573354901101350912>',
-    Staraptor: '<:sstaraptor:1573354902917222510>', Bronzor: '<:sbronzor:1573354905098256424>',
-    Sandile: '<:ssandile:1573354907572895785>', Ducklett: '<:sducklett:1573354910433673459>',
-    Galvantula: '<:sgalvantula:1573354913436799096>', Joltik: '<:sjoltik:1573354915529756833>',
-    Shelmet: '<:sshelmet:1573354917760868473>', Larvesta: '<:slarvesta:1573354920055275601>',
-    Skitty: '<:sskitty:1573354922215215246>', Minun: '<:sminun:1573354924526403737>',
-    'Mega Metagross': '<:smegametagross:1573354926606917753>',
-    'Metagross Mega': '<:smegametagross:1573354926606917753>',
-    Metagross: '<:smetagross:1573354928511131749>', Metang: '<:smetang:1573354930540904589>',
-    Beldum: '<:sbeldum:1573354932822741022>', Pancham: '<:spancham:1573354935033266236>',
+    Magby: '<:1240:1573354894289674260>', Mudkip: '<:1258:1573354896286163114>',
+    Aron: '<:1304:1573354898869981304>', Piplup: '<:1393:1573354901101350912>',
+    Staraptor: '<:1398:1573354902917222510>', Bronzor: '<:1346:1573354905098256424>',
+    Sandile: '<:1551:1573354907572895785>', Ducklett: '<:1580:1573354910433673459>',
+    Galvantula: '<:1596:1573354913436799096>', Joltik: '<:1595:1573354915529756833>',
+    Shelmet: '<:1616:1573354917760868473>', Larvesta: '<:1636:1573354920055275601>',
+    Skitty: '<:1300:1573354922215215246>', Minun: '<:1312:1573354924526403737>',
+    'Mega Metagross': '<:7137:1573354926606917753>',
+    'Metagross Mega': '<:7137:1573354926606917753>',
+    Metagross: '<:1376:1573354928511131749>', Metang: '<:1375:1573354930540904589>',
+    Beldum: '<:1374:1573354932822741022>', Pancham: '<:1674:1573354935033266236>',
     Buizel: '<:1418:1573354937386012712>', Swadloon: '<:1541:1573354939340689538>',
     Bunnelby: '<:1659:1573354941421191168>', Swirlix: '<:1684:1573354943425945752>',
     'Hakamo-o': '<:1783:1573354945867026432>',
@@ -316,9 +318,9 @@ test('new Pokémon sprite emojis preserve existing variants and distinguish Mega
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Wynaut', isGolden: true }), '<:9360:1573354947771371601>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Frogadier' }), '<:657:1573354950073786438>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Aron', isGolden: true }), '<:9304:1562208128618209310>');
-  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Mudkip' }), '<:mudkip:1569731168088232066>');
-  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Piplup' }), '<:piplup:1569731162727776287>');
-  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Piplup', isGolden: true }), '<:GPiplup:1569731123251122196>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Mudkip' }), '<:258:1569731168088232066>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Piplup' }), '<:393:1569731162727776287>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Piplup', isGolden: true }), '<:9393:1569731123251122196>');
 });
 
 test('claim displays and logs the boss and each bonus Pokémon together', async () => {
@@ -453,7 +455,7 @@ test('boss columns stay within Discord field limits for long names and large cou
   const ctx = vm.createContext({
     ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, WORLD_BOSS_POOL: pool,
     EMOJIS: { pokecoin: '🪙' }, HELD_ITEM_EMOJI: '<:helditem:1561412843272937472>',
-    getPokemonSpriteEmoji: () => '<:sgmaxurshifushinglestrike:1573093823238897725>',
+    getPokemonSpriteEmoji: () => '<:7233:1573093823238897725>',
     getItemEmoji: () => '', console,
     getWorldBossStats: () => ({
       contributions: pool.map((entry) => ({ boss_name: entry.name, fights: 999999999, damage: 1 })), rewards: [],

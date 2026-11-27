@@ -33,7 +33,7 @@ module.exports = {
     {
       key: 's_oricorio', name: 'Shiny Oricorio', matchNames: ['Oricorio Baile'], shiny: true,
       patreonOnly: true,
-      checklistDisplay: '<:soricorio:1573347784462172321> Shiny Oricorio <:patreonlogo:1573357109058470039>',
+      checklistDisplay: '<:1741:1573347784462172321> Shiny Oricorio <:patreonlogo:1573357109058470039>',
     },
     { key: 'h_growlithe', name: 'Hisuian Growlithe', matchNames: ['Hisuian Growlithe'], shiny: false },
     {
