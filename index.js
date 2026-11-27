@@ -1054,6 +1054,7 @@ const HARD_RARITY_RATE_MULTIPLIER = 0.25;
 const POKEMON_COOLDOWN_MS = 8000;
 const FISHING_COOLDOWN_MS = 20000;
 const BATTLE_COOLDOWN_MS = 45000;
+const EV_BATTLE_COOLDOWN_MS = 15000;
 function isCooldownExemptUser(userId) {
   return COOLDOWN_EXEMPT_USER_IDS.has(String(userId));
 }
@@ -1063,6 +1064,7 @@ function isEncounterCooldownExemptUser(userId) {
 const catchCooldowns = new Set();
 const fishCooldowns = new Set();
 const battleCooldowns = new Set();
+const evBattleCooldownEndsAt = new Map();
 const pokemonCooldownStates = { p: new Map(), f: new Map() };
 const cooldownEndsAt = { p: new Map(), f: new Map(), battle: new Map() };
 const pokemonAbilitiesByFormId = new Map();
@@ -1085,6 +1087,7 @@ function reserveRegularEncounter(userId) {
 const activeLeagueBattles = new Map();
 const activeMegaChamberBattles = new Map();
 const activeSparBattles = new Map();
+const activeUserBattles = new Set();
 const activeWorldBossBattles = new Map();
 const activeWorldBossPosts = new Map();
 const activeWorldBossRaidHandlers = new Map();
@@ -1092,6 +1095,41 @@ const activeWorldBossPlayers = new Map();
 const activeWorldBossFainted = new Map();
 const activeWorldBossTeamStates = new Map();
 const activeDexEntries = new Map();
+
+function reserveUserBattle(userIds) {
+  const uniqueUserIds = [...new Set(userIds.map(String))];
+  if (uniqueUserIds.some((userId) => activeUserBattles.has(userId))) return null;
+  for (const userId of uniqueUserIds) activeUserBattles.add(userId);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    for (const userId of uniqueUserIds) activeUserBattles.delete(userId);
+  };
+}
+
+function activeBattleMessage() {
+  return '⚔️ You must finish your current battle before starting another one.';
+}
+
+function replyEvBattleCooldown(message, userId) {
+  const endsAt = evBattleCooldownEndsAt.get(userId);
+  if (!endsAt) return null;
+  if (endsAt <= Date.now()) {
+    evBattleCooldownEndsAt.delete(userId);
+    return null;
+  }
+  return message.reply(`⏳ You can start another EV battle <t:${Math.ceil(endsAt / 1000)}:R>.`);
+}
+
+function startEvBattleCooldown(userId) {
+  const endsAt = Date.now() + EV_BATTLE_COOLDOWN_MS;
+  evBattleCooldownEndsAt.set(userId, endsAt);
+  const timer = setTimeout(() => {
+    if (evBattleCooldownEndsAt.get(userId) === endsAt) evBattleCooldownEndsAt.delete(userId);
+  }, EV_BATTLE_COOLDOWN_MS);
+  timer.unref?.();
+}
 
 function isInteractionAlreadyAcknowledgedOrExpired(error) {
   return error?.code === 40060 || error?.code === 10062;
@@ -1473,7 +1511,7 @@ const CHALLENGER_STAT_MULTIPLIERS = Object.freeze({
   attack: 2,
   defense: 1.5,
 });
-const CHALLENGER_INVITE_CHANCE = 1 / 250;
+const CHALLENGER_INVITE_CHANCE = 1 / 100;
 function halveNpcCoinReward(amount) {
   return amount > 0 ? Math.max(1, Math.floor(amount / 2)) : 0;
 }
@@ -1520,6 +1558,13 @@ const CHALLENGER_DEFINITION_LIST = CHALLENGER_DEFINITIONS;
 NPC_SPECIAL_BATTLES.push(...CHALLENGER_DEFINITIONS);
 const GOLDEN_TIMBURR_EMOJI = '<:9532:1564685185121783980>';
 const GOLDEN_TIMBURR_DROP_CHANCE = 1 / 5000;
+
+function canDropBattleGolden(challenge) {
+  return challenge.invited
+    && !challenge.evStat
+    && !challenge.expBattle
+    && CHALLENGER_DEFINITION_LIST.includes(challenge);
+}
 
 for (const challenge of [...NPC_CAMPAIGN, ...NPC_SPECIAL_BATTLES]) {
   const trainerName = challenge.name.split('\u2014').pop().trim();
@@ -2050,6 +2095,7 @@ async function fetchPokemonItemDetails(itemQuery) {
 }
 
 function startLeagueChallengeWithCooldown(message, userId, challengeIndex, challenges) {
+  if (activeUserBattles.has(userId)) return message.reply(activeBattleMessage());
   const cooldownExempt = isCooldownExemptUser(userId);
   if (!cooldownExempt && battleCooldowns.has(userId)) {
     return message.reply(
@@ -8907,7 +8953,7 @@ function buildChallengerListEmbed(user, userId) {
     .setColor(0x5865f2)
     .setTitle(`📨 ${user.username}'s Battle Invitations`)
     .setDescription(
-      `Each catch, fishing, or battle action has a 1-in-250 chance to trigger a challenger invitation.\n\n` +
+      `Each catch, fishing, or battle action has a 1-in-100 chance to trigger a challenger invitation.\n\n` +
       `Type \`${PREFIX}ch <name/id>\` to start the battle.\n\n` +
       `All challenges have a *chance* to drop a special battle-exclusive ${EMOJIS.golden} Pokémon and their trainer battle icon.\n\n` +
       sections.join('\n\n') +
@@ -9209,14 +9255,24 @@ async function runPlayerSpar(message, userId, opponentUser) {
     makeBattleSwitchButtons(party, partyIndex, 'spar'),
     makeBattleForfeitRow('spar:forfeit'),
   ].filter(Boolean);
-  const battleMessage = await message.reply({
-    embeds: [battleEmbed()],
-    components: battleComponents(),
-  });
-  const collector = battleMessage.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 120000,
-  });
+  const releaseBattle = reserveUserBattle([userId, opponentUser.id]);
+  if (!releaseBattle) return message.reply(activeBattleMessage());
+  let battleMessage;
+  let collector;
+  try {
+    battleMessage = await message.reply({
+      embeds: [battleEmbed()],
+      components: battleComponents(),
+    });
+    collector = battleMessage.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 120000,
+    });
+  } catch (error) {
+    releaseBattle();
+    throw error;
+  }
+  collector.once('end', releaseBattle);
   const handleMove = async (interaction) => {
     try {
       if (interaction.user.id !== userId) {
@@ -9359,6 +9415,7 @@ async function runPlayerSpar(message, userId, opponentUser) {
 }
 
 async function runMegaChamberGauntlet(message, userId, config) {
+  if (activeUserBattles.has(userId)) return message.reply(activeBattleMessage());
   const team = getUserTeam(userId);
   if (team.length < 3) {
     return message.reply('❌ You need a full 3-Pokémon team to enter the Mega Chamber.');
@@ -9497,14 +9554,24 @@ async function runMegaChamberGauntlet(message, userId, config) {
     onSwitchIn(entryCtx, party[0], 'player', push);
     onSwitchIn(entryCtx, opponents[0], 'enemy', push);
   }
-  const battleMessage = await message.reply({
-    embeds: [battleEmbed()],
-    components: battleComponents(),
-  });
-  const collector = battleMessage.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 90000,
-  });
+  const releaseBattle = reserveUserBattle([userId]);
+  if (!releaseBattle) return message.reply(activeBattleMessage());
+  let battleMessage;
+  let collector;
+  try {
+    battleMessage = await message.reply({
+      embeds: [battleEmbed()],
+      components: battleComponents(),
+    });
+    collector = battleMessage.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 90000,
+    });
+  } catch (error) {
+    releaseBattle();
+    throw error;
+  }
+  collector.once('end', releaseBattle);
   const handleMove = async (interaction) => {
     try {
       if (interaction.user.id !== userId) {
@@ -9762,6 +9829,11 @@ function makeLeagueButtons(moves, disabled = false) {
 }
 
 async function runLeagueChallenge(message, userId, challengeIndex, challenges = KANTO_LEAGUE) {
+  if (activeUserBattles.has(userId)) return message.reply(activeBattleMessage());
+  if (challenges === EV_TRAINING_NPCS) {
+    const cooldownReply = replyEvBattleCooldown(message, userId);
+    if (cooldownReply) return cooldownReply;
+  }
   const challenge = challenges[challengeIndex];
   if (!challenge || !Array.isArray(challenge.team) || !challenge.team.length) {
     return message.reply('❌ That battle is unavailable right now. Please try again later.');
@@ -9799,13 +9871,6 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
     : NPC_SPECIAL_BATTLES.indexOf(challenge) >= 0
       ? NPC_CAMPAIGN.length + NPC_SPECIAL_BATTLES.indexOf(challenge)
       : -1;
-  if (trainerStatsIndex >= 0) {
-    recordBattleTrainerFight(userId, trainerStatsIndex, partyData.map((pokemon) => ({
-      name: pokemon.name,
-      is_shiny: Boolean(pokemon.is_shiny),
-      is_golden: Boolean(pokemon.is_golden),
-    })));
-  }
   const refreshLeaguePartyMoves = () => {
     const latestTeam = new Map(getUserTeam(userId).map((pokemon) => [pokemon.id, pokemon]));
     let changed = false;
@@ -9932,14 +9997,34 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
   };
   openingEntry();
 
-  const battleMessage = await message.reply({
-    embeds: [battleEmbed()],
-    components: battleComponents(),
+  const releaseBattle = reserveUserBattle([userId]);
+  if (!releaseBattle) return message.reply(activeBattleMessage());
+  let battleMessage;
+  let collector;
+  try {
+    battleMessage = await message.reply({
+      embeds: [battleEmbed()],
+      components: battleComponents(),
+    });
+    collector = battleMessage.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 90000,
+    });
+  } catch (error) {
+    releaseBattle();
+    throw error;
+  }
+  collector.once('end', () => {
+    releaseBattle();
+    if (challenges === EV_TRAINING_NPCS) startEvBattleCooldown(userId);
   });
-  const collector = battleMessage.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 90000,
-  });
+  if (trainerStatsIndex >= 0) {
+    recordBattleTrainerFight(userId, trainerStatsIndex, partyData.map((pokemon) => ({
+      name: pokemon.name,
+      is_shiny: Boolean(pokemon.is_shiny),
+      is_golden: Boolean(pokemon.is_golden),
+    })));
+  }
   let actionInProgress = false;
   const handleMove = async (interaction) => {
     try {
@@ -10131,10 +10216,12 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           const [minFactionPoints, maxFactionPoints] = challenge.factionNpc
             ? factionPointRanges[challenge.factionNpcRole]
             : [1000, 5000];
-          const factionPointsAwarded = addFactionPoints(
-            userId,
-            minFactionPoints + Math.floor(Math.random() * (maxFactionPoints - minFactionPoints + 1))
-          );
+          const factionPointsAwarded = challenge.evStat
+            ? 0
+            : addFactionPoints(
+              userId,
+              minFactionPoints + Math.floor(Math.random() * (maxFactionPoints - minFactionPoints + 1))
+            );
           let evResults = [];
           if (challenge.evStat) {
             const user = getUser(userId);
@@ -10250,7 +10337,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
               unlockedIconIndex = challengeIconIndex;
             }
           }
-          if (challenge.invited && Math.random() < GOLDEN_TIMBURR_DROP_CHANCE) {
+          if (canDropBattleGolden(challenge) && Math.random() < GOLDEN_TIMBURR_DROP_CHANCE) {
             const timburrForm = resolvePokemonForm('Timburr');
             if (timburrForm) {
               saveGoldenCatch(userId, {
@@ -14646,6 +14733,7 @@ client.on('messageCreate', async (message) => {
                         `• \`${PREFIX}npc list [region]\` / \`${PREFIX}battle npc list [region]\` — Browse all NPCs (paginated); cleared campaign NPCs can be rematched for icon drops (1/500)\n` +
                         `• \`${PREFIX}faction npc list\` — List all faction NPCs and their teams\n` +
             `• \`${PREFIX}battle icons [@user]\` / \`${PREFIX}battle set-icon <name|number>\` — View and set unlocked NPC battle icons\n` +
+            `• \`${PREFIX}lb icon [@user|user ID]\` — Check battle-icon count and global rank\n` +
             `• \`${PREFIX}league\` — Check progress across Kanto, Johto, Hoenn, Sinnoh, Unova, Kalos, Alola, Galar, and Paldea\n` +
             `• \`${PREFIX}mc\` — View Mega Chambers; release or swap matching Pokémon to earn sacrifices, then use move buttons in \`${PREFIX}mc battle <chamber>\`\n` +
             `• \`${PREFIX}mega evo [shiny] <Pokémon name|Pokédex number>\` / \`${PREFIX}use <Mega Stone> <Pokémon>\` — Mega Evolve a normal or shiny Pokémon with its matching Mega Stone\n` +
@@ -16414,6 +16502,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}channel boost\` — list your boosted channels across all servers`
           ),
           new EmbedBuilder().setColor(0xe67e22).setTitle('🛠️ Admin Help — Give & Spawn').setDescription(
+            `• \`${PREFIX}admin balance <@user|user ID>\` — Check a user's currency and faction balances\n` +
             `• \`${PREFIX}admin coins <@user|user ID> <amount>\` — Add or remove PokéCoins\n` +
             `• \`${PREFIX}admin token <@user|user ID> <amount>\` — Add or remove Patreon tokens\n` +
             `• \`${PREFIX}admin factionpoints <@user|user ID> <amount>\` — Add faction points\n` +
@@ -17273,6 +17362,37 @@ client.on('messageCreate', async (message) => {
           `${RESEARCH_POINT_EMOJI} ${amount > 0 ? 'Added' : 'Removed'} **${Math.abs(amount).toLocaleString()} Research Points** ` +
           `${amount > 0 ? 'to' : 'from'} <@${target.id}> (${updatedPoints.toLocaleString()} owned).`
         );
+      }
+
+      if (command === 'admin' && subtype === 'balance') {
+        const targetMatch = args[1]?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
+        const targetId = message.mentions.users.first()?.id || targetMatch?.[1] || targetMatch?.[2];
+        if (args.length !== 2 || !targetId) {
+          return message.reply(`Usage: \`${PREFIX}admin balance <@user|user ID>\`.`);
+        }
+        if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(targetId)) {
+          return message.reply(`❌ No registered account found for <@${targetId}>.`);
+        }
+        const user = getUser(targetId);
+        const balances = [
+          `🪙 **${user.coins.toLocaleString()} PokéCoins**`,
+          `<:patreontoken:1560376902374522980> **${user.patreon_tokens.toLocaleString()} Patreon tokens**`,
+          `${EMOJIS.votecoin} **${user.vote_coins.toLocaleString()} Vote coins**`,
+          `${EMOJIS.fishingtoken} **${user.fishing_tokens.toLocaleString()} Fishing tokens**`,
+          `🎟️ **${(getUserItems(targetId).find((item) => item.item_name === 'Swap Ticket')?.amount || 0).toLocaleString()} Swap tickets**`,
+          `${RESEARCH_POINT_EMOJI} **${(user.research_points || 0).toLocaleString()} Research points**`,
+        ];
+        const faction = getUserFaction(targetId);
+        if (faction) {
+          balances.push(`${faction.team.emoji} **${faction.points.toLocaleString()} ${faction.team.name} points**`);
+        }
+        return message.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x5865f2)
+            .setTitle('User balance')
+            .setDescription(`<@${targetId}> currently has:\n${balances.map((balance) => `• ${balance}`).join('\n')}`)
+            .setTimestamp()],
+        });
       }
 
       const mentionedTarget = message.mentions.users.first();
@@ -23383,7 +23503,8 @@ client.on('messageCreate', async (message) => {
           return message.reply(
             `**EV Training** — each win against an EV trainer grants **${EV_PER_BATTLE}** EVs in one stat ` +
             `(max ${EV_STAT_LIMIT} per stat, ${EV_TOTAL_LIMIT} total). With Exp. Share on, your full active team ` +
-            `and buddy gain EVs; with it off, only Pokémon that participated in the battle gain EVs.\n` +
+            `and buddy gain EVs; with it off, only Pokémon that participated in the battle gain EVs. ` +
+            `There is a 15-second cooldown after each EV battle.\n` +
             `Usage: \`${PREFIX}b ev <atk|def|spa|spd|hp|spe>\``
           );
         }
@@ -29056,6 +29177,26 @@ client.on('messageCreate', async (message) => {
           (opened.eggs ? `\n${EMOJIS.pokeEgg} **${opened.eggs}x** Egg${opened.eggs === 1 ? '' : 's'}` : ''),
           box.shiny ? 0xff69b4 : 0xf1c40f
         )],
+      });
+    }
+
+    if (command === 'lb' && args[0]?.toLowerCase() === 'icon') {
+      const mentioned = message.mentions.users.first();
+      const targetMatch = args[1]?.match(/^(?:<@!?(\d{17,20})>|(\d{17,20}))$/);
+      if (args.length > 2 || (args[1] && !mentioned && !targetMatch)) {
+        return message.reply(`Usage: \`${PREFIX}lb icon [@user|user ID]\`.`);
+      }
+      const targetId = mentioned?.id || targetMatch?.[1] || targetMatch?.[2] || userId;
+      const iconCount = getUnlockedBattleIcons(targetId).length;
+      const rank = getBattleIconRank(targetId);
+      return message.reply({
+        embeds: [new EmbedBuilder()
+          .setColor(0x3498db)
+          .setTitle('🏆 Battle Icon Ranking')
+          .setDescription(
+            `<@${targetId}> has **${iconCount.toLocaleString()}** battle icons.\n` +
+            `Global rank: **#${rank.toLocaleString()}**`
+          )],
       });
     }
 

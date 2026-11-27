@@ -1624,6 +1624,81 @@ test('admin grants and trainers equip challenger icons by displayed NPC number',
   assert.match(replies.at(-1), /No battle icon matches/);
 });
 
+test('lb icon reports a mentioned user\'s icon count and global rank', async () => {
+  const replies = [];
+  const target = { id: '12345678901234567' };
+  const ctx = vm.createContext({
+    command: 'lb',
+    args: ['icon', `<@${target.id}>`],
+    userId: 'self',
+    PREFIX: '.',
+    EmbedBuilder,
+    message: {
+      mentions: { users: { first: () => target } },
+      reply: async (payload) => replies.push(payload),
+    },
+    getUnlockedBattleIcons: (userId) => userId === target.id ? [0, 3, 5] : [],
+    getBattleIconRank: (userId) => userId === target.id ? 8 : 1,
+  });
+  const branch = extract(
+    indexSource,
+    "    if (command === 'lb' && args[0]?.toLowerCase() === 'icon') {",
+    "\n    if (command === 'leaderboard' ||"
+  );
+  vm.runInContext(`async function checkIcon() { ${branch} }`, ctx);
+  await ctx.checkIcon();
+  const description = replies[0].embeds[0].toJSON().description;
+  assert.match(description, new RegExp(`<@${target.id}> has \\*\\*3\\*\\* battle icons`));
+  assert.match(description, /Global rank: \*\*#8\*\*/);
+});
+
+test('battle-exclusive Goldens are limited to .ch challenger NPCs', () => {
+  const challenger = { invited: true };
+  const ctx = vm.createContext({ CHALLENGER_DEFINITION_LIST: [challenger] });
+  vm.runInContext(
+    extract(indexSource, 'function canDropBattleGolden(', '\nfor (const challenge of [...NPC_CAMPAIGN'),
+    ctx
+  );
+  assert.equal(ctx.canDropBattleGolden(challenger), true);
+  assert.equal(ctx.canDropBattleGolden({ invited: true }), false);
+  assert.equal(ctx.canDropBattleGolden({ invited: true, evStat: 'atk' }), false);
+  assert.equal(ctx.canDropBattleGolden({ invited: true, expBattle: true }), false);
+  assert.equal(ctx.canDropBattleGolden({ invited: false }), false);
+});
+
+test('challenger invitation odds use the boosted 1-in-100 rate', async () => {
+  const rolls = [0.0099, 0.01];
+  const math = Object.create(Math);
+  math.random = () => rolls.shift();
+  const sent = [];
+  const challenger = {
+    challengerKey: 'basic-trainer',
+    challengerTier: 'basic',
+    challengerId: 300,
+    iconEmoji: ':trainer:',
+    name: 'Trainer',
+  };
+  const ctx = vm.createContext({
+    Math: math,
+    CHALLENGER_TIERS: { basic: { label: 'Basic' } },
+    pickChallengerInvite: () => challenger,
+    addChallengerInvite: () => true,
+    EmbedBuilder,
+    PREFIX: '.',
+    console,
+  });
+  vm.runInContext(
+    extract(indexSource, 'const CHALLENGER_INVITE_CHANCE =', '\nfunction halveNpcCoinReward')
+      + extract(indexSource, 'async function maybeSendChallengerInvite(', '\nfunction buildChallengerListEmbed('),
+    ctx
+  );
+  const message = { channel: { send: async (payload) => sent.push(payload) } };
+  await ctx.maybeSendChallengerInvite(message, 'user');
+  await ctx.maybeSendChallengerInvite(message, 'user');
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].embeds[0].toJSON().title, /Trainer wants to battle/);
+});
+
 test('challenger quest wins count only their specified invited NPC tiers', () => {
   const recorded = [];
   const ctx = challengerContext({
@@ -4900,12 +4975,36 @@ test('NPC coin rewards are halved for first clears, rematches, challengers and V
   assert.match(indexSource, /Rematch won![\s\S]*?\$\{reward\.toLocaleString\(\)\}/);
 });
 
+test('EV battles do not award faction points', () => {
+  let factionPointCalls = 0;
+  const ctx = vm.createContext({
+    challenge: { evStat: 'atk' },
+    userId: 'user',
+    minFactionPoints: 1000,
+    maxFactionPoints: 5000,
+    addFactionPoints: () => { factionPointCalls += 1; return 2500; },
+  });
+  const award = extract(
+    indexSource,
+    'const factionPointsAwarded = challenge.evStat',
+    '\n          let evResults = [];'
+  );
+  vm.runInContext(`function getAward() { ${award}; return factionPointsAwarded; }`, ctx);
+  assert.equal(ctx.getAward(), 0);
+  assert.equal(factionPointCalls, 0);
+  ctx.challenge = {};
+  assert.equal(ctx.getAward(), 2500);
+  assert.equal(factionPointCalls, 1);
+});
+
 test('battle cooldown is bypassed only for configured users', async () => {
   const notifications = [];
   let teamReady = true;
   const exemptIds = new Set(['1514082847609061541', '537500331953881088', '1573782664773767301']);
   const ctx = vm.createContext({
     battleCooldowns: new Set(), BATTLE_COOLDOWN_MS: 45000,
+    activeUserBattles: new Set(),
+    activeBattleMessage: () => 'finish your current battle',
     COOLDOWN_EXEMPT_USER_IDS: exemptIds,
     getCooldownReadyTimestamp: () => 'later',
     getUserTeam: () => teamReady ? [{}] : [],
@@ -4916,6 +5015,9 @@ test('battle cooldown is bypassed only for configured users', async () => {
   vm.runInContext(extract(indexSource, 'function isCooldownExemptUser(', '\nconst catchCooldowns'), ctx);
   vm.runInContext(extract(indexSource, 'function startLeagueChallengeWithCooldown(', '\nconst ROD_CONFIGS'), ctx);
   const message = { author: { username: 'Trainer' }, channel: {}, reply: (text) => text };
+  ctx.activeUserBattles.add('in-battle');
+  assert.equal(await ctx.startLeagueChallengeWithCooldown(message, 'in-battle', 0, []), 'finish your current battle');
+  ctx.activeUserBattles.delete('in-battle');
   for (const id of exemptIds) {
     assert.equal(await ctx.startLeagueChallengeWithCooldown(message, id, 0, []), 'started');
     assert.equal(await ctx.startLeagueChallengeWithCooldown(message, id, 0, []), 'started');
@@ -4927,6 +5029,49 @@ test('battle cooldown is bypassed only for configured users', async () => {
   teamReady = false;
   assert.equal(await ctx.startLeagueChallengeWithCooldown(message, 'no-team', 0, []), 'started');
   assert.equal(ctx.battleCooldowns.has('no-team'), false);
+});
+
+test('active battle reservations block both spar participants until released', () => {
+  const ctx = vm.createContext({ activeUserBattles: new Set() });
+  vm.runInContext(extract(indexSource, 'function reserveUserBattle(', '\nfunction activeBattleMessage'), ctx);
+
+  const release = ctx.reserveUserBattle(['challenger', 'opponent']);
+  assert.equal(typeof release, 'function');
+  assert.equal(ctx.reserveUserBattle(['other', 'opponent']), null);
+  release();
+  release();
+  const nextRelease = ctx.reserveUserBattle(['opponent']);
+  assert.equal(typeof nextRelease, 'function');
+  nextRelease();
+});
+
+test('EV battle cooldown lasts 15 seconds and expires', () => {
+  let now = 1000;
+  const timers = [];
+  const ctx = vm.createContext({
+    evBattleCooldownEndsAt: new Map(),
+    EV_BATTLE_COOLDOWN_MS: 15000,
+    Date: { now: () => now },
+    setTimeout: (callback, delay) => {
+      const timer = { callback, delay };
+      timers.push(timer);
+      return timer;
+    },
+  });
+  vm.runInContext(
+    extract(indexSource, 'function replyEvBattleCooldown(', '\nfunction isInteractionAlreadyAcknowledgedOrExpired('),
+    ctx
+  );
+  const message = { reply: (content) => content };
+  assert.equal(ctx.replyEvBattleCooldown(message, 'user'), null);
+  ctx.startEvBattleCooldown('user');
+  assert.equal(timers[0].delay, 15000);
+  assert.match(ctx.replyEvBattleCooldown(message, 'user'), /<t:16:R>/);
+  now = 16000;
+  assert.equal(ctx.replyEvBattleCooldown(message, 'user'), null);
+  assert.equal(ctx.evBattleCooldownEndsAt.has('user'), false);
+  timers[0].callback();
+  assert.equal(ctx.evBattleCooldownEndsAt.has('user'), false);
 });
 
 test('configured users bypass faction-change cooldown but not other faction requirements', () => {
