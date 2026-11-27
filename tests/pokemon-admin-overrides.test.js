@@ -230,6 +230,126 @@ test('Primal Groudon migration fixes the old PC override without replacing custo
   }
 });
 
+test('admin factionpoints adds and removes points without overdrawing', async () => {
+  const db = new Database(':memory:');
+  db.exec('CREATE TABLE user_factions (user_id TEXT PRIMARY KEY, points INTEGER NOT NULL);');
+  const id = '123456789012345678';
+  db.prepare('INSERT INTO user_factions VALUES (?, ?)').run(id, 5000);
+  const replies = [];
+  const ctx = vm.createContext({
+    command: 'admin',
+    subtype: 'factionpoints',
+    args: [],
+    PREFIX: '.',
+    db,
+    parseAmount: require('../amounts').parseAmount,
+    getUserFaction: (userId) => {
+      const row = db.prepare('SELECT points FROM user_factions WHERE user_id = ?').get(userId);
+      return row && { ...row, team: { emoji: 'team' } };
+    },
+    message: { reply: async (reply) => { replies.push(reply); return reply; } },
+  });
+  const code = extract(indexSource,
+    "      if (command === 'admin' && subtype === 'factionpoints')",
+    "\n      if (command === 'admin' && subtype === 'servers')");
+  vm.runInContext(`async function run() { ${code} }`, ctx);
+  try {
+    ctx.args = ['factionpoints', `<@${id}>`, '-2k'];
+    await ctx.run();
+    assert.equal(db.prepare('SELECT points FROM user_factions WHERE user_id = ?').get(id).points, 3000);
+    assert.match(replies.at(-1).content, /Removed \*\*2,000 faction points\*\*/);
+    ctx.args = ['factionpoints', id, '-3001'];
+    await ctx.run();
+    assert.match(replies.at(-1), /Maximum removable: \*\*3,000 faction points\*\*/);
+    assert.equal(db.prepare('SELECT points FROM user_factions WHERE user_id = ?').get(id).points, 3000);
+    ctx.args = ['factionpoints', id, '-3000'];
+    await ctx.run();
+    assert.equal(db.prepare('SELECT points FROM user_factions WHERE user_id = ?').get(id).points, 0);
+    ctx.args = ['factionpoints', id, '1k'];
+    await ctx.run();
+    assert.match(replies.at(-1).content, /Added \*\*1,000 faction points\*\*/);
+    ctx.args = ['factionpoints', id, '0'];
+    await ctx.run();
+    assert.match(replies.at(-1), /Usage/);
+    ctx.args = ['factionpoints', '987654321098765432', '-1'];
+    await ctx.run();
+    assert.match(replies.at(-1), /must join a faction/);
+  } finally {
+    db.close();
+  }
+});
+
+test('admin currency removals reject overdrafts and report the maximum', async () => {
+  const balances = { coins: 1200, patreon_tokens: 4, vote_coins: 7 };
+  const replies = [];
+  const id = '123456789012345678';
+  const ctx = vm.createContext({
+    subtype: '', action: '', args: [], target: { id }, rawTargetId: id,
+    PREFIX: '.', EMOJIS: { pokecoin: 'coin', patreonToken: 'token', votecoin: 'vote' },
+    getUser: () => balances,
+    incrementUser: (_id, increments) => {
+      for (const [field, value] of Object.entries(increments)) balances[field] += value;
+      return balances;
+    },
+    parseAmount: require('../amounts').parseAmount,
+    message: { reply: async (reply) => { replies.push(reply); return reply; } },
+  });
+  const code = extract(indexSource,
+    "      if (['coin', 'coins', 'pkc'].includes(subtype))",
+    "\n      if (subtype === 'item')");
+  vm.runInContext(`async function run() { ${code} }`, ctx);
+  for (const [subtype, action, field, amount, expected] of [
+    ['coins', '', 'coins', '-1201', '1,200 PokéCoins'],
+    ['token', '', 'patreon_tokens', '-5', '4 Patreon tokens'],
+    ['vote', 'coin', 'vote_coins', '-8', '7 Vote Coins'],
+  ]) {
+    ctx.subtype = subtype;
+    ctx.action = action;
+    ctx.args = subtype === 'vote' ? ['vote', 'coin', id, amount] : [subtype, id, amount];
+    const before = balances[field];
+    await ctx.run();
+    assert.match(replies.at(-1), /Maximum removable/);
+    assert.ok(replies.at(-1).includes(expected));
+    assert.equal(balances[field], before);
+    ctx.args[ctx.args.length - 1] = `-${before}`;
+    await ctx.run();
+    assert.equal(balances[field], 0);
+  }
+});
+
+test('admin research and item currency removals report the available amount', async () => {
+  const balances = { research_points: 9, fishing_tokens: 3 };
+  const replies = [];
+  const id = '123456789012345678';
+  const ctx = vm.createContext({
+    command: 'admin', subtype: 'research', action: 'points', args: [],
+    target: { id }, PREFIX: '.', EMOJIS: {}, RESEARCH_POINT_EMOJI: 'research',
+    getUser: () => balances,
+    incrementUser: (_id, increments) => {
+      for (const [field, value] of Object.entries(increments)) balances[field] += value;
+      return balances;
+    },
+    parseAmount: require('../amounts').parseAmount,
+    message: { mentions: { users: { first: () => null } }, reply: async (reply) => { replies.push(reply); return reply; } },
+  });
+  const research = extract(indexSource,
+    "      if (command === 'admin' && subtype === 'research' && action === 'points')",
+    "\n      if (command === 'admin' && subtype === 'balance')");
+  const item = extract(indexSource,
+    "      if (subtype === 'item')",
+    "\n      if (['pokemon', 'mon', 'p'].includes(subtype))");
+  vm.runInContext(`async function research() { ${research} } async function item() { ${item} }`, ctx);
+  ctx.args = ['research', 'points', id, '-10'];
+  await ctx.research();
+  assert.match(replies.at(-1), /Maximum removable: \*\*9 Research Points\*\*/);
+  assert.equal(balances.research_points, 9);
+  ctx.subtype = 'item';
+  ctx.args = ['item', id, 'fishingtoken', '-4'];
+  await ctx.item();
+  assert.match(replies.at(-1), /Maximum removable: \*\*3x fishingtoken\*\*/);
+  assert.equal(balances.fishing_tokens, 3);
+});
+
 test('admin emoji command resolves names, variants, and dex numbers', async () => {
   const writes = [];
   const replies = [];

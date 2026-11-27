@@ -15948,8 +15948,8 @@ client.on('messageCreate', async (message) => {
       if (command === 'admin' && subtype === 'factionpoints') {
         const targetId = args[1]?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
         const amount = args.length === 3 ? parseAmount(args[2]) : NaN;
-        if (!targetId || !Number.isSafeInteger(amount) || amount <= 0) {
-          return message.reply(`Usage: \`${PREFIX}admin factionpoints <@user|user ID> <positive amount>\`.`);
+        if (!targetId || !Number.isSafeInteger(amount) || amount === 0) {
+          return message.reply(`Usage: \`${PREFIX}admin factionpoints <@user|user ID> <non-zero amount>\` (use a negative amount to remove points).`);
         }
         const recipientId = targetId[1] || targetId[2];
         const result = db.transaction(() => {
@@ -15957,15 +15957,19 @@ client.on('messageCreate', async (message) => {
           if (!faction) return { error: 'no_faction' };
           const balance = faction.points + amount;
           if (!Number.isSafeInteger(balance)) return { error: 'too_large' };
+          if (balance < 0) return { error: 'insufficient', balance: faction.points };
           db.prepare('UPDATE user_factions SET points = ? WHERE user_id = ?').run(balance, recipientId);
           return { balance, team: faction.team };
         }).immediate();
         if (result.error === 'no_faction') {
-          return message.reply('❌ That user must join a faction before receiving faction points.');
+          return message.reply('❌ That user must join a faction before their faction points can be changed.');
         }
         if (result.error === 'too_large') return message.reply('❌ That amount would exceed the supported faction-point balance.');
+        if (result.error === 'insufficient') {
+          return message.reply(`❌ Maximum removable: **${result.balance.toLocaleString()} faction points**.`);
+        }
         return message.reply({
-          content: `${result.team.emoji} Added **${amount.toLocaleString()} faction points** to <@${recipientId}>. New balance: **${result.balance.toLocaleString()}**.`,
+          content: `${result.team.emoji} ${amount > 0 ? 'Added' : 'Removed'} **${Math.abs(amount).toLocaleString()} faction points** ${amount > 0 ? 'to' : 'from'} <@${recipientId}>. New balance: **${result.balance.toLocaleString()}**.`,
           allowedMentions: { users: [recipientId] },
         });
       }
@@ -16505,7 +16509,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin balance <@user|user ID>\` — Check a user's currency and faction balances\n` +
             `• \`${PREFIX}admin coins <@user|user ID> <amount>\` — Add or remove PokéCoins\n` +
             `• \`${PREFIX}admin token <@user|user ID> <amount>\` — Add or remove Patreon tokens\n` +
-            `• \`${PREFIX}admin factionpoints <@user|user ID> <amount>\` — Add faction points\n` +
+            `• \`${PREFIX}admin factionpoints <@user|user ID> <amount>\` — Add or remove faction points (negative amount to remove)\n` +
             `• \`${PREFIX}admin vote coin <@user|user ID> <amount>\` — Add or remove Vote Coins\n` +
             `• \`${PREFIX}admin manual vote <@user|user ID>\` — Grant a vote: streak +1 and the normal vote rewards (ignores the 12-hour cooldown)\n` +
             `• \`${PREFIX}admin research points <@user|user ID> [amount]\` — Check or adjust a user's Research Points\n` +
@@ -17350,11 +17354,14 @@ client.on('messageCreate', async (message) => {
         const amount = amountTokens.length === 1 ? parseAmount(amountTokens[0]) : NaN;
         const currentPoints = getUser(target.id).research_points;
         const updatedPoints = currentPoints + amount;
+        if (Number.isSafeInteger(amount) && updatedPoints < 0) {
+          return message.reply(`❌ Maximum removable: **${currentPoints.toLocaleString()} Research Points**.`);
+        }
         if (!Number.isSafeInteger(amount) || amount === 0
-            || !Number.isSafeInteger(updatedPoints) || updatedPoints < 0) {
+            || !Number.isSafeInteger(updatedPoints)) {
           return message.reply(
             `Usage: \`${PREFIX}admin research points <@User|user ID> [non-zero amount]\`. ` +
-            `A removal cannot exceed the user's current balance (${currentPoints.toLocaleString()}).`
+            'The resulting balance must be a supported number.'
           );
         }
         incrementUser(target.id, { research_points: amount });
@@ -17445,9 +17452,18 @@ client.on('messageCreate', async (message) => {
         if (!Number.isSafeInteger(amount) || amount === 0) {
           return message.reply(`Usage: \`${PREFIX}admin coins <@User|user ID> <non-zero amount>\``);
         }
+        const currentCoins = getUser(target.id).coins;
+        const updatedCoins = currentCoins + amount;
+        if (updatedCoins < 0) {
+          return message.reply(`❌ Maximum removable: **${currentCoins.toLocaleString()} PokéCoins**.`);
+        }
+        if (!Number.isSafeInteger(updatedCoins)) {
+          return message.reply('❌ That amount would exceed the supported PokéCoin balance.');
+        }
         incrementUser(target.id, { coins: amount });
         return message.reply(
-          `${EMOJIS.pokecoin} Granted **${amount.toLocaleString()} PokéCoins** to <@${target.id}>.`
+          `${EMOJIS.pokecoin} ${amount > 0 ? 'Granted' : 'Removed'} **${Math.abs(amount).toLocaleString()} PokéCoins** ` +
+          `${amount > 0 ? 'to' : 'from'} <@${target.id}>.`
         );
       }
 
@@ -17455,10 +17471,13 @@ client.on('messageCreate', async (message) => {
         const amount = parseAmount(args[2]);
         const currentTokens = getUser(target.id).patreon_tokens;
         const updatedTokens = currentTokens + amount;
-        if (!Number.isSafeInteger(amount) || amount === 0 || !Number.isSafeInteger(updatedTokens) || updatedTokens < 0) {
+        if (Number.isSafeInteger(amount) && updatedTokens < 0) {
+          return message.reply(`❌ Maximum removable: **${currentTokens.toLocaleString()} Patreon tokens**.`);
+        }
+        if (!Number.isSafeInteger(amount) || amount === 0 || !Number.isSafeInteger(updatedTokens)) {
           return message.reply(
             `Usage: \`${PREFIX}admin token <@User|user ID> <non-zero amount>\`. ` +
-            `The amount cannot remove more than the user's current balance (${currentTokens.toLocaleString()}).`
+            'The resulting balance must be a supported number.'
           );
         }
         incrementUser(target.id, { patreon_tokens: amount });
@@ -17489,11 +17508,14 @@ client.on('messageCreate', async (message) => {
         const amount = amountTokens.length === 1 ? parseAmount(amountTokens[0]) : NaN;
         const currentVoteCoins = getUser(target.id).vote_coins;
         const updatedVoteCoins = currentVoteCoins + amount;
+        if (Number.isSafeInteger(amount) && updatedVoteCoins < 0) {
+          return message.reply(`❌ Maximum removable: **${currentVoteCoins.toLocaleString()} Vote Coins**.`);
+        }
         if (!Number.isSafeInteger(amount) || amount === 0
-            || !Number.isSafeInteger(updatedVoteCoins) || updatedVoteCoins < 0) {
+            || !Number.isSafeInteger(updatedVoteCoins)) {
           return message.reply(
             `Usage: \`${PREFIX}admin vote coin @User|user ID <non-zero amount>\`. ` +
-            `A removal cannot exceed the user's current balance (${currentVoteCoins.toLocaleString()}).`
+            'The resulting balance must be a supported number.'
           );
         }
         incrementUser(target.id, { vote_coins: amount });
@@ -17619,7 +17641,7 @@ client.on('messageCreate', async (message) => {
           if (!Number.isSafeInteger(updatedAmount) || updatedAmount < 0) {
             return message.reply(
               amount < 0
-                ? `<@${target.id}> only has ${currentAmount.toLocaleString()}x **${itemQuery}** to remove.`
+                ? `❌ Maximum removable: **${currentAmount.toLocaleString()}x ${itemQuery}**.`
                 : `That grant would exceed the supported balance for **${itemQuery}**.`
             );
           }
@@ -17670,7 +17692,7 @@ client.on('messageCreate', async (message) => {
           if (amount > 0) {
             completedQuests = addUserItem(target.id, storedItem, amount);
           } else if (!takeUserItem(target.id, storedItem, -amount)) {
-            return message.reply(`<@${target.id}> doesn't have ${(-amount).toLocaleString()}x **${storedItem}** to remove.`);
+            return message.reply(`❌ Maximum removable: **${currentAmount.toLocaleString()}x ${storedItem}**.`);
           }
           const reply = await message.reply(
             `${({
