@@ -2759,6 +2759,12 @@ function getVoteStreakRewards(streak) {
   return { milestoneCoinBonus, streakRewards };
 }
 
+function getVoteCoinReward(streak, voteCoinMult, isGlobalBonusDay) {
+  const streakCoinBonus = streak >= 50 ? 2 : streak >= 10 ? 1 : 0;
+  const { milestoneCoinBonus } = getVoteStreakRewards(streak);
+  return (1 + streakCoinBonus + milestoneCoinBonus) * voteCoinMult + (isGlobalBonusDay ? 1 : 0);
+}
+
 function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}) {
   assertUserId(userId);
   if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
@@ -2778,12 +2784,10 @@ function processTopggVote(userId, timestamp = Date.now(), { force = false } = {}
 
     // The vote streak counts every vote and never resets.
     const streak = user.vote_streak + 1;
-    const streakCoinBonus = streak >= 50 ? 2 : streak >= 10 ? 1 : 0;
-    const { milestoneCoinBonus, streakRewards } = getVoteStreakRewards(streak);
+    const { streakRewards } = getVoteStreakRewards(streak);
 
     const isGlobalBonusDay = Number(voteDay.slice(-2)) <= 5;
-    const baseVoteCoins = 1 + streakCoinBonus + milestoneCoinBonus;
-    const voteCoins = baseVoteCoins * getPatreonPerks(userId).voteCoinMult + (isGlobalBonusDay ? 1 : 0);
+    const voteCoins = getVoteCoinReward(streak, getPatreonPerks(userId).voteCoinMult, isGlobalBonusDay);
     const pokecoins = Math.floor(Math.random() * 10001) + 10000;
     const rewards = {
       duplicate: false,
@@ -4031,7 +4035,7 @@ function recordPokemonTradeStats(userId, pokemon) {
   });
 }
 
-// abilityBoost: true/false when the caller already resolved the ability; undefined falls back to stored abilities.
+// abilityBoost: true/false when the caller already resolved the buddy's ability.
 function advanceEggCatchProgress(userId, amount = 1, abilityBoost) {
   assertUserId(userId);
   if (!Number.isSafeInteger(amount) || amount <= 0) {
@@ -4041,7 +4045,7 @@ function advanceEggCatchProgress(userId, amount = 1, abilityBoost) {
     SELECT 1
     FROM catches
     WHERE user_id = ?
-      AND (in_team = 1 OR id = (SELECT buddy_catch_id FROM users WHERE id = ?))
+      AND id = (SELECT buddy_catch_id FROM users WHERE id = ?)
       AND lower(replace(ability, ' ', '-')) IN ('flame-body', 'magma-armor')
     LIMIT 1
   `).get(userId, userId);
@@ -11227,9 +11231,8 @@ function applyMissedVoteGrant(grantKey, userId) {
     if (db.prepare('SELECT 1 FROM manual_grants WHERE grant_key = ?').get(grantKey)) return;
     const user = getUser(userId);
     const streak = user.vote_streak + 1;
-    const streakCoinBonus = streak >= 50 ? 2 : streak >= 10 ? 1 : 0;
     // The missed vote happened on 2026-11-03, inside the first-5-days bonus window.
-    const voteCoins = (1 + streakCoinBonus) * getPatreonPerks(userId).voteCoinMult + 1;
+    const voteCoins = getVoteCoinReward(streak, getPatreonPerks(userId).voteCoinMult, true);
     incrementUser(userId, { votes_claimed: 1, vote_coins: voteCoins });
     updateUser(userId, {
       vote_streak: streak,
@@ -11303,6 +11306,7 @@ module.exports = {
   incrementUser,
   grantGlobalUserReward,
   processTopggVote,
+  getVoteCoinReward,
   takeDueVoteReminders,
   openVoteBox,
   getAmuletCoinBoost,

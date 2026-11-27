@@ -270,6 +270,7 @@ const {
   incrementUser,
   grantGlobalUserReward,
   processTopggVote,
+  getVoteCoinReward,
   takeDueVoteReminders,
   openVoteBox,
   listOnMarket,
@@ -1517,7 +1518,7 @@ const CHALLENGER_DEFINITIONS = [
 }));
 const CHALLENGER_DEFINITION_LIST = CHALLENGER_DEFINITIONS;
 NPC_SPECIAL_BATTLES.push(...CHALLENGER_DEFINITIONS);
-const GOLDEN_TIMBURR_EMOJI = '<:GoldenTimburr:1564685185121783980>';
+const GOLDEN_TIMBURR_EMOJI = '<:9532:1564685185121783980>';
 const GOLDEN_TIMBURR_DROP_CHANCE = 1 / 5000;
 
 for (const challenge of [...NPC_CAMPAIGN, ...NPC_SPECIAL_BATTLES]) {
@@ -1842,24 +1843,22 @@ async function resolveLeadOverworldAbility(userId) {
 
 const EGG_BOOST_ABILITIES = new Set(['magma-armor', 'flame-body']);
 
-// True when the buddy or any team member has Magma Armor or Flame Body.
+// Only the buddy's ability affects Egg progress.
 async function hasEggBoostAbility(userId) {
-  const holders = [getUserBuddy(userId), ...getUserTeam(userId)].filter(Boolean);
-  for (const mon of holders) {
-    let ability = String(mon.ability || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    if (!ability) {
-      try {
-        const abilities = await fetchPokemonAbilities(mon.form_id || mon.pokemon_id);
-        ability = String((abilities.find((entry) => !entry.hidden) || abilities[0]).name)
-          .toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      } catch (error) {
-        console.error(`Failed to resolve egg-boost ability for catch ${mon.id}:`, error);
-        continue;
-      }
+  const mon = getUserBuddy(userId);
+  if (!mon) return false;
+  let ability = String(mon.ability || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  if (!ability) {
+    try {
+      const abilities = await fetchPokemonAbilities(mon.form_id || mon.pokemon_id);
+      ability = String((abilities.find((entry) => !entry.hidden) || abilities[0]).name)
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    } catch (error) {
+      console.error(`Failed to resolve egg-boost ability for catch ${mon.id}:`, error);
+      return false;
     }
-    if (EGG_BOOST_ABILITIES.has(ability)) return true;
   }
-  return false;
+  return EGG_BOOST_ABILITIES.has(ability);
 }
 
 function getOverworldEncounterMultiplier(ability) {
@@ -2487,112 +2486,112 @@ const MEGA_SPECIES_EMOJIS = {};
 
 const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'hisuian typhlosion': {
-    normal: '<:HisuianTyphlosion:1562183795011096647>',
-    shiny: '<:SHisuianTyphlosion:1562183793190637708>',
+    normal: '<:7807:1562183795011096647>',
+    shiny: '<:7808:1562183793190637708>',
   },
   'hisuian zorua': {
-    normal: '<:HisuianZorua:1562183797502513233>',
-    shiny: '<:SHisuianZorua:1562192199188488294>',
+    normal: '<:7801:1562183797502513233>',
+    shiny: '<:7802:1562192199188488294>',
     golden: '<:GHisuianZorua:1566263100037013535>',
   },
   'zorua hisui': {
-    normal: '<:HisuianZorua:1562183797502513233>',
-    shiny: '<:SHisuianZorua:1562192199188488294>',
+    normal: '<:7801:1562183797502513233>',
+    shiny: '<:7802:1562192199188488294>',
     golden: '<:GHisuianZorua:1566263100037013535>',
   },
   'giratina origin': {
-    normal: '<:GiratinaOrigin:1562183799205396500>',
-    shiny: '<:SGiratinaOrigin:1562183810659917934>',
+    normal: '<:7579:1562183799205396500>',
+    shiny: '<:7580:1562183810659917934>',
   },
-  'flutter mane': { shiny: '<:SFlutterMane:1562183801189437650>' },
-  rotom: { shiny: '<:SRotom:1562183812148895818>' },
-  pumpkaboo: { shiny: '<:SPumpkaboo:1562183813851914310>', golden: '<:GPumpkaboo:1566263123948609618>' },
+  'flutter mane': { shiny: '<:1987:1562183801189437650>' },
+  rotom: { shiny: '<:1479:1562183812148895818>' },
+  pumpkaboo: { shiny: '<:1710:1562183813851914310>', golden: '<:GPumpkaboo:1566263123948609618>' },
   gourgeist: { golden: '<:GGourgeist:1566263125471133797>' },
-  'mega medicham': { normal: '<:MegaMedicham:1566263055313010760>', shiny: '<:SMegaMedicham:1566263053748797500>' },
-  'medicham mega': { normal: '<:MegaMedicham:1566263055313010760>', shiny: '<:SMegaMedicham:1566263053748797500>' },
-  'mega altaria': { normal: '<:MegaAltaria:1566263058874245160>', shiny: '<:SMegaAltaria:1566263057057845268>' },
-  'altaria mega': { normal: '<:MegaAltaria:1566263058874245160>', shiny: '<:SMegaAltaria:1566263057057845268>' },
-  'mega mewtwo x': { normal: '<:MegaMewtwoX:1566263062464565248>', shiny: '<:SMegaMewtwoX:1566263060895760554>' },
-  'mewtwo mega x': { normal: '<:MegaMewtwoX:1566263062464565248>', shiny: '<:SMegaMewtwoX:1566263060895760554>' },
-  'mewtwo x mega': { normal: '<:MegaMewtwoX:1566263062464565248>', shiny: '<:SMegaMewtwoX:1566263060895760554>' },
-  'mega mewtwo y': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
-  'mewtwo mega y': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
-  'mewtwo y mega': { normal: '<:MegaMewtwoY:1566263066008756315>', shiny: '<:SMegaMewtwoY:1566263064259465326>' },
-  'charizard gmax': { normal: '<:GMAXCharizard:1567575571204931656>', shiny: '<:SGMAXCharizard:1566263067334021150>' },
-  'gmax charizard': { normal: '<:GMAXCharizard:1567575571204931656>', shiny: '<:SGMAXCharizard:1566263067334021150>' },
-  'lapras gmax': { shiny: '<:SGMAXLapras:1566263068650897459>' },
-  'gmax lapras': { shiny: '<:SGMAXLapras:1566263068650897459>' },
-  'hatterene gmax': { shiny: '<:SGMAXHatterene:1566263070613839973>' },
-  'gmax hatterene': { shiny: '<:SGMAXHatterene:1566263070613839973>' },
-  registeel: { normal: '<:Registeel:1566263073562562682>', shiny: '<:SRegisteel:1566263072090492938>' },
+  'mega medicham': { normal: '<:7079:1566263055313010760>', shiny: '<:7080:1566263053748797500>' },
+  'medicham mega': { normal: '<:7079:1566263055313010760>', shiny: '<:7080:1566263053748797500>' },
+  'mega altaria': { normal: '<:7115:1566263058874245160>', shiny: '<:7116:1566263057057845268>' },
+  'altaria mega': { normal: '<:7115:1566263058874245160>', shiny: '<:7116:1566263057057845268>' },
+  'mega mewtwo x': { normal: '<:7109:1566263062464565248>', shiny: '<:7110:1566263060895760554>' },
+  'mewtwo mega x': { normal: '<:7109:1566263062464565248>', shiny: '<:7110:1566263060895760554>' },
+  'mewtwo x mega': { normal: '<:7109:1566263062464565248>', shiny: '<:7110:1566263060895760554>' },
+  'mega mewtwo y': { normal: '<:7121:1566263066008756315>', shiny: '<:7122:1566263064259465326>' },
+  'mewtwo mega y': { normal: '<:7121:1566263066008756315>', shiny: '<:7122:1566263064259465326>' },
+  'mewtwo y mega': { normal: '<:7121:1566263066008756315>', shiny: '<:7122:1566263064259465326>' },
+  'charizard gmax': { normal: '<:GMAXCharizard:1567575571204931656>', shiny: '<:7146:1566263067334021150>' },
+  'gmax charizard': { normal: '<:GMAXCharizard:1567575571204931656>', shiny: '<:7146:1566263067334021150>' },
+  'lapras gmax': { shiny: '<:7176:1566263068650897459>' },
+  'gmax lapras': { shiny: '<:7176:1566263068650897459>' },
+  'hatterene gmax': { shiny: '<:7239:1566263070613839973>' },
+  'gmax hatterene': { shiny: '<:7239:1566263070613839973>' },
+  registeel: { normal: '<:379:1566263073562562682>', shiny: '<:1379:1566263072090492938>' },
   regice: {
-    normal: '<:Regice:1566263077941420144>',
-    shiny: '<:SRegice:1566263076989308938>',
-    golden: '<:GRegice:1566263075554726070>',
+    normal: '<:378:1566263077941420144>',
+    shiny: '<:1378:1566263076989308938>',
+    golden: '<:9378:1566263075554726070>',
   },
-  regirock: { normal: '<:Regirock:1566263080999194637>', shiny: '<:SRegirock:1566263079442849854>' },
+  regirock: { normal: '<:377:1566263080999194637>', shiny: '<:1377:1566263079442849854>' },
   regigigas: {
-    normal: '<:Regigigas:1566263086153990204>',
-    shiny: '<:SRegigigas:1566263084363030548>',
-    golden: '<:GRegigigas:1566263082576121997>',
+    normal: '<:486:1566263086153990204>',
+    shiny: '<:1486:1566263084363030548>',
+    golden: '<:9486:1566263082576121997>',
   },
-  ivysaur: { golden: '<:GIvysaur:1566263087772991568>' },
-  venusaur: { golden: '<:GVenusaur:1566263089467498536>' },
-  weedle: { golden: '<:GWeedle:1566263091010871337>', shiny: '<:sweedle:1573347791672184894>' },
-  porygon: { golden: '<:GPorygon:1566263092726202469>' },
-  lairon: { golden: '<:GLairon:1566263094328561775>' },
-  aggron: { golden: '<:GAggron:1566263096455200798>' },
-  swablu: { golden: '<:GSwablu:1566263098396901426>' },
+  ivysaur: { golden: '<:9002:1566263087772991568>' },
+  venusaur: { golden: '<:9003:1566263089467498536>' },
+  weedle: { golden: '<:9013:1566263091010871337>', shiny: '<:sweedle:1573347791672184894>' },
+  porygon: { golden: '<:9137:1566263092726202469>' },
+  lairon: { golden: '<:9305:1566263094328561775>' },
+  aggron: { golden: '<:9306:1566263096455200798>' },
+  swablu: { golden: '<:9333:1566263098396901426>' },
   zorua: { golden: '<:GZorua:1566263101387448370>' },
   'hisuian zoroark': { golden: '<:GHisuianZoroark:1566263103757361312>' },
   zoroark: { golden: '<:GZoroark:1566263106424799444>' },
   goomy: { golden: '<:GGoomy:1566263107989282927>' },
-  phantump: { shiny: '<:SPhantump:1562183815999262831>' },
-  litwick: { shiny: '<:SLitwick:1562183817890893905>' },
-  drifloon: { shiny: '<:SDrifloon:1562183820562931813>' },
-  duskull: { shiny: '<:SDuskull:1562183822160699402>' },
-  sableye: { shiny: '<:SSableye:1562183823511523500>' },
-  'mega sableye': { shiny: '<:Smegasableye:1562192196705452132>' },
-  'sableye mega': { shiny: '<:Smegasableye:1562192196705452132>' },
-  poochyena: { shiny: '<:SPoochyena:1562183825025405019>' },
-  misdreavus: { shiny: '<:SMisdreavus:1562183826883485866>' },
-  spinarak: { shiny: '<:SSpinarak:1562183828901072926>' },
-  eevee: { golden: '<:GEevee:1562183877479375018>' },
-  umbreon: { golden: '<:GUmbreon:1562183879152898129>' },
-  espeon: { golden: '<:GEspeon:1562183880696529027>' },
-  scraggy: { golden: '<:goldenscraggy:1562202553851191366>' },
-  numel: { golden: '<:goldennumel:1562202552022601748>' },
-  carvanha: { golden: '<:goldencarvanha:1562202550080507964>' },
-  'galarian zigzagoon': { golden: '<:goldengalarianzigzagoon:1562202546339315823>', normal: '<:galarianzigzagoon:1573347774651703541>' },
-  zigzagoon: { golden: '<:goldengalarianzigzagoon:1562202546339315823>' },
-  yungoos: { golden: '<:goldenyungoos:1562202544007155752>' },
-  litleo: { golden: '<:goldenlitleo:1562202542203740261>' },
-  croagunk: { golden: '<:goldencroagunk:1562202540521558026>' },
-  varoom: { golden: '<:goldenvaroom:1562203391835381840>', shiny: '<:SVaroom:1567588759824764968>' },
-  aron: { golden: '<:goldenaron:1562208128618209310>', shiny: '<:saron:1573354898869981304>' },
-  terapagos: { normal: '<:terapagos:1562208130325151744>' },
+  phantump: { shiny: '<:1708:1562183815999262831>' },
+  litwick: { shiny: '<:1607:1562183817890893905>' },
+  drifloon: { shiny: '<:1425:1562183820562931813>' },
+  duskull: { shiny: '<:1355:1562183822160699402>' },
+  sableye: { shiny: '<:1302:1562183823511523500>' },
+  'mega sableye': { shiny: '<:7032:1562192196705452132>' },
+  'sableye mega': { shiny: '<:7032:1562192196705452132>' },
+  poochyena: { shiny: '<:1261:1562183825025405019>' },
+  misdreavus: { shiny: '<:1200:1562183826883485866>' },
+  spinarak: { shiny: '<:1167:1562183828901072926>' },
+  eevee: { golden: '<:9133:1562183877479375018>' },
+  umbreon: { golden: '<:9197:1562183879152898129>' },
+  espeon: { golden: '<:9196:1562183880696529027>' },
+  scraggy: { golden: '<:9559:1562202553851191366>' },
+  numel: { golden: '<:9322:1562202552022601748>' },
+  carvanha: { golden: '<:9318:1562202550080507964>' },
+  'galarian zigzagoon': { golden: '<:7827:1562202546339315823>', normal: '<:galarianzigzagoon:1573347774651703541>' },
+  zigzagoon: { golden: '<:7827:1562202546339315823>' },
+  yungoos: { golden: '<:9734:1562202544007155752>' },
+  litleo: { golden: '<:9667:1562202542203740261>' },
+  croagunk: { golden: '<:9453:1562202540521558026>' },
+  varoom: { golden: '<:9965:1562203391835381840>', shiny: '<:SVaroom:1567588759824764968>' },
+  aron: { golden: '<:9304:1562208128618209310>', shiny: '<:saron:1573354898869981304>' },
+  terapagos: { normal: '<:8310:1562208130325151744>' },
   mewtwo: {
-    normal: '<:Mewtwo:1562183882885955674>',
-    shiny: '<:SMewtwo:1562192202782871722>',
+    normal: '<:150:1562183882885955674>',
+    shiny: '<:1150:1562192202782871722>',
   },
-  'gengar gmax': { normal: '<:gengargmax:1562192194914361455>' },
-  'gmax gengar': { normal: '<:gengargmax:1562192194914361455>' },
+  'gengar gmax': { normal: '<:7151:1562192194914361455>' },
+  'gmax gengar': { normal: '<:7151:1562192194914361455>' },
   grimer: {
-    normal: '<:Grimer:1562183885817778288>',
+    normal: '<:88:1562183885817778288>',
     shiny: '<:SGrimer:1569451545236611152>',
-    golden: '<:goldengrimer:1562202548276830229>',
+    golden: '<:9088:1562202548276830229>',
   },
   muk: {
-    normal: '<:Muk:1562183887961194506>',
+    normal: '<:89:1562183887961194506>',
     shiny: '<:SMuk:1569451543160430724>',
   },
   'eternatus eternamax': {
-    normal: '<:EternatusEternamax:1562183889303240814>',
-    shiny: '<:SEterntusEternamax:1562183895804547284>',
+    normal: '<:7244:1562183889303240814>',
+    shiny: '<:7245:1562183895804547284>',
   },
-  banette: { normal: '<:Banette:1562183890972708964>' },
-  whimsicott: { normal: '<:Whimsicott:1562183892574670859>' },
-  bulbasaur: { normal: '<:01:1562183894181089400>', golden: '<:goldenbulbasaur:1562255800372699228>' },
+  banette: { normal: '<:354:1562183890972708964>' },
+  whimsicott: { normal: '<:547:1562183892574670859>' },
+  bulbasaur: { normal: '<:01:1562183894181089400>', golden: '<:9001:1562255800372699228>' },
   charmander: { normal: '<:charmander:1569731185532215349>', shiny: '<:scharmander:1573352658972966923>' },
   charmeleon: { shiny: '<:scharmeleon:1573352656779346010>' },
   charizard: { shiny: '<:scharizard:1573352654250184814>' },
@@ -2625,59 +2624,59 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   chinchou: { golden: '<:GChinchou:1569731121153966200>' },
   munchlax: { golden: '<:GMunchlax:1569731119342030888>' },
   moltres: {
-    normal: '<:moltres:1562188397802684496>',
-    shiny: '<:Smoltres:1562188396011458700>',
+    normal: '<:146:1562188397802684496>',
+    shiny: '<:1146:1562188396011458700>',
   },
   articuno: {
-    normal: '<:articuno:1562188394052849714>',
-    shiny: '<:Sarticuno:1562188391259308223>',
+    normal: '<:144:1562188394052849714>',
+    shiny: '<:1144:1562188391259308223>',
   },
   celebi: {
-    normal: '<:celebi:1562188388768030843>',
-    shiny: '<:Scelebi:1562188387224658141>',
+    normal: '<:251:1562188388768030843>',
+    shiny: '<:1251:1562188387224658141>',
   },
   zapdos: {
-    normal: '<:zapdos:1562188385643143271>',
-    shiny: '<:Szapdos:1562188383743123457>',
+    normal: '<:145:1562188385643143271>',
+    shiny: '<:1145:1562188383743123457>',
   },
   'ho-oh': {
-    normal: '<:hooh:1562188381021278301>',
-    shiny: '<:Shooh:1562188379339227306>',
+    normal: '<:250:1562188381021278301>',
+    shiny: '<:1250:1562188379339227306>',
   },
   lugia: {
-    normal: '<:lugia:1562188377812508682>',
-    shiny: '<:Slugia:1562188376059412571>',
+    normal: '<:249:1562188377812508682>',
+    shiny: '<:1249:1562188376059412571>',
   },
   rayquaza: {
-    normal: '<:rayquaza:1562188374524166194>',
-    shiny: '<:Srayquaza:1562188373060227212>',
+    normal: '<:384:1562188374524166194>',
+    shiny: '<:1384:1562188373060227212>',
   },
   jirachi: {
-    normal: '<:jirachi:1562188371575570532>',
-    shiny: '<:Sjirachi:1562188369969291295>',
+    normal: '<:385:1562188371575570532>',
+    shiny: '<:1385:1562188369969291295>',
   },
   keldeo: {
     normal: '<:647:1562188368207421610>',
-    shiny: '<:Skeldeo:1562188366391541903>',
+    shiny: '<:1647:1562188366391541903>',
   },
   'keldeo ordinary': {
     normal: '<:647:1562188368207421610>',
-    shiny: '<:Skeldeo:1562188366391541903>',
+    shiny: '<:1647:1562188366391541903>',
   },
-  cobalion: { normal: '<:cobalion:1562193601767936111>' },
-  terrakion: { normal: '<:terrakion:1562193599142305903>' },
-  virizion: { normal: '<:virizion:1562193596583510097>' },
+  cobalion: { normal: '<:638:1562193601767936111>' },
+  terrakion: { normal: '<:639:1562193599142305903>' },
+  virizion: { normal: '<:640:1562193596583510097>' },
   genesect: {
     normal: '<:649:1562188364688396308>',
-    shiny: '<:Sgenesect:1562188362717200465>',
+    shiny: '<:1649:1562188362717200465>',
   },
   phione: {
-    normal: '<:Phione:1562188361274236928>',
-    shiny: '<:Sphione:1562188359579738112>',
+    normal: '<:489:1562188361274236928>',
+    shiny: '<:1489:1562188359579738112>',
   },
   manaphy: {
-    normal: '<:manaphy:1562188357738696754>',
-    shiny: '<:Smanaphy:1562188355536420984>',
+    normal: '<:490:1562188357738696754>',
+    shiny: '<:1490:1562188355536420984>',
   },
   smoliv: { shiny: '<:SSmoliv:1567588746902249482>' },
   dolliv: { shiny: '<:SDolliv:1567588744918212648>' },
@@ -2865,8 +2864,8 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'keldeo resolute': { normal: '<:KeldeoResolute:1568037585685577728>' },
   'shaymin sky': { normal: '<:ShayminSky:1568037619764432996>' },
   'genesect shock': { normal: '<:GenesectShock:1568037612474859641>' },
-  'primal groudon': { normal: '<:PrimalGroudon:1568037603389739098>', shiny: '<:SPrimalGroudon:1562183791110393917>' },
-  'groudon primal': { normal: '<:PrimalGroudon:1568037603389739098>', shiny: '<:SPrimalGroudon:1562183791110393917>' },
+  'primal groudon': { normal: '<:PrimalGroudon:1568037603389739098>', shiny: '<:7574:1562183791110393917>' },
+  'groudon primal': { normal: '<:PrimalGroudon:1568037603389739098>', shiny: '<:7574:1562183791110393917>' },
   'primal kyogre': { normal: '<:PrimalKyogre:1568037595496317050>' },
   'kyogre primal': { normal: '<:PrimalKyogre:1568037595496317050>' },
   'zygarde complete': { normal: '<:ZygardeComplete:1568037608972361818>' },
@@ -2897,7 +2896,7 @@ const POKEMON_SPRITE_EMOJIS = Object.freeze({
   'hisuian growlithe': { normal: '<:hisuiangrowlithe:1573347781656182955>' },
   'growlithe hisui': { normal: '<:hisuiangrowlithe:1573347781656182955>' },
   'castform snowy': { normal: '<:catsformsnowy:1573347776979402882>' },
-  'zigzagoon galar': { normal: '<:galarianzigzagoon:1573347774651703541>', golden: '<:goldengalarianzigzagoon:1562202546339315823>' },
+  'zigzagoon galar': { normal: '<:galarianzigzagoon:1573347774651703541>', golden: '<:7827:1562202546339315823>' },
   'necrozma dusk': { normal: '<:nexcrozmadusk:1573347772327927828>' },
   'necrozma duskmane': { normal: '<:nexcrozmadusk:1573347772327927828>' },
   'necrozma dawn': { normal: '<:necrozmadawn:1573347770167861318>' },
@@ -13938,9 +13937,8 @@ client.on('messageCreate', async (message) => {
       const voteUrl = getTopggVoteUrl();
       const perks = getPatreonPerks(userId);
       const streak = voter.vote_streak || 0;
-      const streakBonus = streak >= 50 ? 2 : streak >= 10 ? 1 : 0;
       const bonusDay = new Date().getUTCDate() <= 5;
-      const perVote = (1 + streakBonus) * perks.voteCoinMult + (bonusDay ? 1 : 0);
+      const perVote = getVoteCoinReward(streak + 1, perks.voteCoinMult, bonusDay);
       const lastVoted = voter.last_vote_at > 0
         ? `<t:${Math.floor(voter.last_vote_at / 1000)}:R>`
         : 'never';
@@ -13968,7 +13966,7 @@ client.on('messageCreate', async (message) => {
           `🔥 **Your Vote streak**: ${streak}\n` +
           `• **10+ Vote Streak:** You permanently receive +1 ${EMOJIS.votecoin} per vote ${streak >= 10 ? '✅' : '❌'}\n` +
           `• **50+ Vote Streak:** You permanently receive +2 ${EMOJIS.votecoin} per vote ${streak >= 50 ? '✅' : '❌'}\n\n` +
-          `😍 **You currently receive:** ${EMOJIS.votecoin} ${perVote} per vote${bonusDay ? ' (includes the +1 first-5-days bonus)' : ''}\n\n` +
+          `😍 **Your next vote:** ${EMOJIS.votecoin} ${perVote} using today's bonuses${bonusDay ? ' (includes the +1 first-5-days bonus)' : ''}\n\n` +
           `Support our Patreon for extra voting benefits & sneak peeks for new features!\n` +
           `**Weekend votes or voting on the first 5 days of the month gives bonus rewards!**`
         );

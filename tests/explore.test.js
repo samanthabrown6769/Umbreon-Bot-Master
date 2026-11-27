@@ -491,7 +491,7 @@ test('provided Pokémon emojis map to the correct normal and Golden variants', (
   };
   for (const [name, id] of Object.entries(normal)) assert.match(context.getPokemonSpriteEmoji({ name }), new RegExp(id));
   for (const [name, id] of Object.entries(golden)) assert.match(context.getPokemonSpriteEmoji({ name, isGolden: true }), new RegExp(id));
-  assert.equal(context.getPokemonSpriteEmoji({ name: 'Espeon', isGolden: true }), '<:GEspeon:1562183880696529027>');
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'Espeon', isGolden: true }), '<:9196:1562183880696529027>');
   assert.match(context.getPokemonSpriteEmoji({ name: 'Sprigatito', isShiny: true }), /1567588638194409512/);
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle' }), '<:smeargle:1573101965418958899>');
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Smeargle', isShiny: true }), '');
@@ -502,13 +502,13 @@ test('supplied Dex sprites resolve for default and primal forms without mixing v
   vm.runInContext(extract('const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), context);
   for (const name of ['Keldeo', 'Keldeo Ordinary', 'keldeo-ordinary']) {
     assert.equal(context.getPokemonSpriteEmoji({ name }), '<:647:1562188368207421610>');
-    assert.match(context.getPokemonSpriteEmoji({ name, isShiny: true }), /:1562188366391541903>$/);
+    assert.equal(context.getPokemonSpriteEmoji({ name, isShiny: true }), '<:1647:1562188366391541903>');
   }
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Genesect' }), '<:649:1562188364688396308>');
-  assert.match(context.getPokemonSpriteEmoji({ name: 'Genesect', isShiny: true }), /:1562188362717200465>$/);
+  assert.equal(context.getPokemonSpriteEmoji({ name: 'Genesect', isShiny: true }), '<:1649:1562188362717200465>');
   for (const name of ['Primal Groudon', 'Groudon Primal', 'groudon-primal']) {
     assert.match(context.getPokemonSpriteEmoji({ name }), /:1568037603389739098>$/);
-    assert.match(context.getPokemonSpriteEmoji({ name, isShiny: true }), /:1562183791110393917>$/);
+    assert.equal(context.getPokemonSpriteEmoji({ name, isShiny: true }), '<:7574:1562183791110393917>');
   }
   assert.notEqual(context.getPokemonSpriteEmoji({ name: 'Keldeo Resolute' }), '<:647:1562188368207421610>');
 });

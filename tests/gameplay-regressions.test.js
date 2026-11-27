@@ -87,6 +87,93 @@ test('vote streak rewards repeat at every 10- and 25-vote milestone', () => {
   });
 });
 
+test('vote rewards and preview include next-streak milestones and Patreon bonuses', async () => {
+  const user = { vote_streak: 0, highest_vote_streak: 0, last_vote_at: 0, vote_coins: 0, votes_claimed: 0 };
+  let multiplier = 1;
+  const ctx = vm.createContext({
+    assertUserId: () => {},
+    db: {
+      transaction: (fn) => ({ immediate: () => fn() }),
+      prepare: () => ({ run: () => {} }),
+    },
+    getUser: () => user,
+    incrementUser: (_id, values) => { user.vote_coins += values.vote_coins; user.votes_claimed += 1; },
+    updateUser: (_id, values) => Object.assign(user, values),
+    getPatreonPerks: () => ({ voteCoinMult: multiplier }),
+    addUserItem: () => {},
+    VOTE_DUPLICATE_WINDOW_MS: 11.5 * 60 * 60 * 1000,
+    VOTE_COOLDOWN_MS: 12 * 60 * 60 * 1000,
+  });
+  vm.runInContext(extract(dbSource, 'function getVoteStreakRewards(', '\nfunction openVoteBox('), ctx);
+  const timestamp = Date.UTC(2026, 10, 3);
+  for (const [next, mult, expected] of [[9, 1, 2], [10, 2, 5], [25, 2, 9], [50, 2, 11], [75, 1, 6]]) {
+    user.vote_streak = next - 1;
+    multiplier = mult;
+    const before = user.vote_coins;
+    const result = ctx.processTopggVote('player', timestamp, { force: true });
+    assert.equal(result.voteCoins, expected);
+    assert.equal(user.vote_coins - before, expected);
+  }
+  user.vote_streak = 24;
+  multiplier = 2;
+  let reply;
+  Object.assign(ctx, {
+    command: 'vote', userId: 'player', PREFIX: '.', EmbedBuilder, BOXES, LOOTBOX_EMOJI,
+    EMOJIS: { votecoin: ':coin:', shinyCharm: ':charm:', rarecandy: ':candy:', pokeEgg: ':egg:' },
+    getTopggVoteUrl: () => 'https://example.test/vote',
+    message: { reply: async (value) => { reply = value; } },
+  });
+  vm.runInContext(`async function showVote() { ${extract(indexSource, "    if (command === 'vote') {", "\n    if (command === 'egg') {")} }`, ctx);
+  await ctx.showVote();
+  const bonusToday = new Date().getUTCDate() <= 5;
+  assert.match(reply.embeds[0].toJSON().description,
+    new RegExp(`Your next vote:\\*\\* :coin: ${bonusToday ? 9 : 8} `));
+});
+
+test('egg ability progress only uses the buddy and stacks with the global hatch bonus', async () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE users (id TEXT PRIMARY KEY, buddy_catch_id INTEGER, held_egg_progress INTEGER, held_egg_target INTEGER);
+      CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, in_team INTEGER, ability TEXT);
+      CREATE TABLE egg_incubators (user_id TEXT, incubator_type TEXT, slot INTEGER, progress INTEGER, target INTEGER);
+      INSERT INTO users VALUES ('player', NULL, 0, 100);
+      INSERT INTO catches VALUES (1, 'player', 1, 'Flame Body'), (2, 'player', 0, 'Magma Armor'), (3, 'player', 0, 'Other');
+      INSERT INTO egg_incubators VALUES ('player', 'incubator', 1, 0, 100);
+    `);
+    let globalBonus = false;
+    const ctx = vm.createContext({ db, assertUserId: () => {}, isPlayerBonusActive: () => globalBonus });
+    vm.runInContext(extract(dbSource, 'function advanceEggCatchProgress(', '\nconst EGG_INCUBATOR_LIMITS'), ctx);
+    for (const [buddy, active, expected] of [[null, false, 1], [3, false, 1], [1, false, 2], [2, false, 2], [1, true, 4], [3, true, 2]]) {
+      db.prepare('UPDATE users SET buddy_catch_id = ?, held_egg_progress = 0').run(buddy);
+      db.exec('UPDATE egg_incubators SET progress = 0');
+      globalBonus = active;
+      ctx.advanceEggCatchProgress('player');
+      assert.equal(db.prepare('SELECT held_egg_progress AS progress FROM users').get().progress, expected);
+      assert.equal(db.prepare('SELECT progress FROM egg_incubators').get().progress, expected);
+    }
+
+    let buddy = null;
+    let fetched = 0;
+    Object.assign(ctx, {
+      getUserBuddy: () => buddy,
+      fetchPokemonAbilities: async () => { fetched += 1; return [{ name: 'Flame Body', hidden: false }]; },
+      console,
+    });
+    vm.runInContext(extract(indexSource, 'const EGG_BOOST_ABILITIES =', '\nfunction getOverworldEncounterMultiplier('), ctx);
+    assert.equal(await ctx.hasEggBoostAbility('player'), false);
+    buddy = { id: 1, pokemon_id: 1, ability: 'Magma Armor' };
+    assert.equal(await ctx.hasEggBoostAbility('player'), true);
+    buddy = { id: 2, pokemon_id: 2, ability: 'Other' };
+    assert.equal(await ctx.hasEggBoostAbility('player'), false);
+    buddy = { id: 3, pokemon_id: 3, ability: null };
+    assert.equal(await ctx.hasEggBoostAbility('player'), true);
+    assert.equal(fetched, 1);
+  } finally {
+    db.close();
+  }
+});
+
 test('gameplay override users have a displayed and applied 100% catch rate', () => {
   const overrideIds = new Set(['537500331953881088', '1573782664773767301']);
   const ctx = vm.createContext({ GUARANTEED_CATCH_RATE_USER_IDS: overrideIds });
@@ -768,7 +855,7 @@ test('catch EXP and level-up messages use nicknames without affecting sprite loo
   const experienceCode = extract(indexSource, '    const experienceLines = [];', '\n    if (inline?.onCatch)');
   vm.runInContext(`function buildExperienceMessage() { ${experienceCode} return [experienceMessage, levelUpMessage]; }`, ctx);
   const [message, levelUps] = ctx.buildExperienceMessage();
-  assert.match(message, /trainer-icon <:GEspeon:1562183880696529027> \*\*Sunshine\*\* gained \*\*300 EXP!\*\*/);
+  assert.match(message, /trainer-icon <:9196:1562183880696529027> \*\*Sunshine\*\* gained \*\*300 EXP!\*\*/);
   assert.match(message, /exp-share • Your <:.*:1569731127269392447> gained \*\*100\*\* EXP!/);
   assert.match(levelUps, /Your \*\*Sunshine\*\* is now level \*\*2\*\*/);
   assert.match(levelUps, /Your \*\*Treecko\*\* is now level \*\*2\*\*/);
@@ -777,7 +864,7 @@ test('catch EXP and level-up messages use nicknames without affecting sprite loo
   db.prepare('UPDATE catches SET experience = 650 WHERE id = 2').run();
   ctx.experienceResult = ctx.awardCatchExperience('trainer', 300);
   const [resetMessage, teamLevelUps] = ctx.buildExperienceMessage();
-  assert.match(resetMessage, /<:GEspeon:1562183880696529027> \*\*Espeon\*\* gained/);
+  assert.match(resetMessage, /<:9196:1562183880696529027> \*\*Espeon\*\* gained/);
   assert.match(teamLevelUps, /Your \*\*Leaf\*\* is now level \*\*3\*\*/);
   db.close();
 });
@@ -849,7 +936,7 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     getPokemonSpriteEmoji: (pokemon) => !pokemon
       ? ''
       : pokemon.name === 'Espeon'
-        ? '<:GEspeon:1562183880696529027>'
+        ? '<:9196:1562183880696529027>'
         : '<:Combee:123>',
     getUserBuddy: () => null,
     getTrainerIconEmoji: () => 'trainer-icon',
@@ -894,7 +981,7 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
   );
   spawnContext.getUserBuddy = () => ({ name: 'Espeon', is_golden: 1 });
   spawnContext.buildSpawnEmbed();
-  assert.match(spawnContext.spawnMessageContent, /<:GEspeon:1562183880696529027> trainer-icon \*\*Trainer\*\*/);
+  assert.match(spawnContext.spawnMessageContent, /<:9196:1562183880696529027> trainer-icon \*\*Trainer\*\*/);
   assert.doesNotMatch(spawnContext.spawnMessageContent, /vote/i);
   assert.doesNotMatch(spawnEmbed.description, /🎟️/);
   assert.equal(spawnEmbed.image.url, 'https://example.test/combee.png');
@@ -906,7 +993,7 @@ test('successful catches and spawn encounters show the Pokémon image in one emb
     assert.equal(fishingSpawnEmbed.author.name, '🎣 Trainer found a wild Pokémon!');
     assert.ok(fishingSpawnEmbed.description.includes(`${emoji} Rod used: **${rod}**`));
     assert.equal(fishingSpawnEmbed.image.url, 'https://example.test/combee.png');
-    assert.match(spawnContext.spawnMessageContent, /<:GEspeon:1562183880696529027> trainer-icon \*\*Trainer\*\*/);
+    assert.match(spawnContext.spawnMessageContent, /<:9196:1562183880696529027> trainer-icon \*\*Trainer\*\*/);
   }
   spawnContext.target.isGolden = true;
   assert.equal(spawnContext.buildSpawnEmbed().image.url, 'https://example.test/golden-combee.png');
@@ -3936,7 +4023,7 @@ test('requested item, currency, ball, rarity and mega stone emojis are used', ()
   );
   assert.equal(
     spriteContext.getPokemonSpriteEmoji({ name: 'Eternatus Eternamax' }),
-    '<:EternatusEternamax:1562183889303240814>'
+    '<:7244:1562183889303240814>'
   );
 
   const stoneContext = vm.createContext({});

@@ -315,7 +315,7 @@ test('new Pokémon sprite emojis preserve existing variants and distinguish Mega
   }
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Wynaut', isGolden: true }), '<:gwynaut:1573354947771371601>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Frogadier' }), '<:frogadier:1573354950073786438>');
-  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Aron', isGolden: true }), '<:goldenaron:1562208128618209310>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Aron', isGolden: true }), '<:9304:1562208128618209310>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Mudkip' }), '<:mudkip:1569731168088232066>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Piplup' }), '<:piplup:1569731162727776287>');
   assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Piplup', isGolden: true }), '<:GPiplup:1569731123251122196>');
