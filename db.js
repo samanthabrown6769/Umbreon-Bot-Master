@@ -2338,6 +2338,19 @@ function getUser(userId) {
 // One-time fix: joined_at used to come from the Discord server join date.
 // Use each user's earliest catch instead, or now if they have none.
 db.exec('CREATE TABLE IF NOT EXISTS migration_flags (name TEXT PRIMARY KEY)');
+function migrateShinyPrimalGroudonEmoji() {
+  db.transaction(() => {
+    const migration = 'shiny_primal_groudon_emoji_7574';
+    if (db.prepare('SELECT 1 FROM migration_flags WHERE name = ?').get(migration)) return;
+    db.prepare(`
+      UPDATE pokemon_admin_emojis SET emoji = ?
+      WHERE slug = 'groudon-primal' AND variant = 'shiny' AND emoji = ?
+    `).run('<:7574:1562183791110393917>', '<:sprimalgroudon:1569882139158384680>');
+    db.prepare('INSERT INTO migration_flags (name) VALUES (?)').run(migration);
+  }).immediate();
+}
+migrateShinyPrimalGroudonEmoji();
+
 if (!db.prepare("SELECT 1 FROM migration_flags WHERE name = 'clan_perks_user_profile'").get()) {
   db.transaction(() => {
     db.prepare(`

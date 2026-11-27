@@ -429,6 +429,10 @@ test('requested event, Turquoise and Topaz sprite emojis resolve', () => {
   for (const [name, isShiny, id] of emojis) {
     assert.match(ctx.getPokemonSpriteEmoji({ name, isShiny }), new RegExp(`:${id}>$`), name);
   }
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Deerling Winter' }), '<:6329:1575024179567140874>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Deerling Winter', isShiny: true }), '<:6330:1575024177323319353>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Topaz Teddiursa' }), '<:10217:1573347758558023860>');
+  assert.equal(ctx.getPokemonSpriteEmoji({ name: 'Topaz Ursaring' }), '<:10216:1573347754678296596>');
 });
 
 test('November Part 2 chambers open and close with the event and award the correct stones', () => {

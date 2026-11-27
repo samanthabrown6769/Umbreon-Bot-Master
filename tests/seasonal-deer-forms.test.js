@@ -8,6 +8,7 @@ const referenceForms = require('../pokemon-database/formes.json');
 const { appendCustomPokemonForms } = require('../scripts/pokemon-custom-forms');
 const { getPokemonDexNumbers, getGoldenDexNumber } = require('../pokemon-dex-numbers');
 const { getPokemonShowdownSprite } = require('../pokemon-sprites');
+const { loadPokemonDatabase } = require('../pokemon-database');
 
 const seasonalForms = [
   ['deerling-summer', 6321],
@@ -57,6 +58,22 @@ test('seasonal forms resolve all requested normal and shiny Dex numbers and spri
     assert.equal(reference.shiny_dex_number, dexNumber + 1);
     assert.equal(reference.animated_sprite, getPokemonShowdownSprite(slug));
     assert.equal(reference.shiny_animated_sprite, getPokemonShowdownSprite(slug, true));
+  }
+});
+
+test('summer, autumn and winter Deerling and Sawsbuck remain Super Rare after import and regeneration', () => {
+  const definitions = require('../data/custom-pokemon-forms.json');
+  const customSlugs = new Set(definitions.map((entry) => entry.slug));
+  const regenerated = catalog.filter((entry) => !customSlugs.has(entry.slug));
+  appendCustomPokemonForms(regenerated);
+  const imported = loadPokemonDatabase();
+  for (const [slug] of seasonalForms) {
+    const form = catalog.find((entry) => entry.slug === slug);
+    assert.equal(form.rarity, 'Super Rare', slug);
+    assert.equal(rarities.find((entry) => entry.id === form.id).rarity, 'Super Rare', slug);
+    assert.equal(referenceForms.find((entry) => entry.slug === slug).rarity, 'Super Rare', slug);
+    assert.equal(imported.get(slug).rarity, 'Super Rare', slug);
+    assert.equal(regenerated.find((entry) => entry.slug === slug).rarity, 'Super Rare', slug);
   }
 });
 

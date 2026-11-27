@@ -182,6 +182,54 @@ test('sprite emoji overrides apply by variant and retain built-in fallbacks', ()
   assert.equal(context.getPokemonSpriteEmoji({ name: 'Iron Bundle' }), '');
 });
 
+test('Primal Groudon migration fixes the old PC override without replacing custom overrides', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE migration_flags (name TEXT PRIMARY KEY);
+      CREATE TABLE pokemon_admin_emojis (slug TEXT, variant TEXT, emoji TEXT, PRIMARY KEY (slug, variant));
+      INSERT INTO pokemon_admin_emojis VALUES
+        ('groudon-primal', 'shiny', '<:sprimalgroudon:1569882139158384680>'),
+        ('groudon-primal', 'normal', '<:custom:123456789012345678>');
+    `);
+    const ctx = vm.createContext({ db });
+    vm.runInContext(extract(dbSource, 'function migrateShinyPrimalGroudonEmoji()', '\nmigrateShinyPrimalGroudonEmoji();'), ctx);
+    vm.runInContext(extract(indexSource, 'const POKEMON_SPRITE_EMOJIS =', '\nfunction formatFactionFavorites('), ctx);
+    ctx.migrateShinyPrimalGroudonEmoji();
+    const rows = db.prepare('SELECT slug, variant, emoji FROM pokemon_admin_emojis').all()
+      .map((row) => ({ ...row, name: 'Groudon Primal' }));
+    ctx.refreshPokemonSpriteEmojis(rows);
+    for (const name of ['Primal Groudon', 'Groudon Primal']) {
+      assert.equal(ctx.getPokemonSpriteEmoji({ name, form_slug: 'groudon-primal', is_shiny: 1 }),
+        '<:7574:1562183791110393917>');
+    }
+    Object.assign(ctx, {
+      getDisplayRarity: (rarity) => rarity,
+      EMOJIS: {}, RARITY_EMOJIS: {}, MEGA_SPECIES_EMOJIS: {},
+    });
+    vm.runInContext(`function renderPcLine(pokemon) {
+      ${extract(indexSource, '      const lineFor = (pokemon) => {', '\n      const pageEmbed =')}
+      return lineFor(pokemon);
+    }`, ctx);
+    assert.match(ctx.renderPcLine({
+      name: 'Primal Groudon', form_slug: 'groudon-primal', is_shiny: 1,
+      rarity: 'Shiny', dex_number: 7574, count: 1,
+    }), /7574 .*<:7574:1562183791110393917>/);
+    assert.equal(ctx.getPokemonSpriteEmoji({ form_slug: 'groudon-primal' }), '<:custom:123456789012345678>');
+    db.prepare("UPDATE pokemon_admin_emojis SET emoji = ? WHERE variant = 'shiny'")
+      .run('<:newcustom:123456789012345679>');
+    ctx.migrateShinyPrimalGroudonEmoji();
+    assert.equal(db.prepare("SELECT emoji FROM pokemon_admin_emojis WHERE variant = 'shiny'").get().emoji,
+      '<:newcustom:123456789012345679>');
+    db.exec('DELETE FROM migration_flags');
+    ctx.migrateShinyPrimalGroudonEmoji();
+    assert.equal(db.prepare("SELECT emoji FROM pokemon_admin_emojis WHERE variant = 'shiny'").get().emoji,
+      '<:newcustom:123456789012345679>');
+  } finally {
+    db.close();
+  }
+});
+
 test('admin emoji command resolves names, variants, and dex numbers', async () => {
   const writes = [];
   const replies = [];
