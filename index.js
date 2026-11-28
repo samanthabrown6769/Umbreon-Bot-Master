@@ -4,6 +4,7 @@ const fs = require('fs');
 const { EventEmitter } = require('events');
 const path = require('path');
 const { execFile } = require('child_process');
+const { CLONE_FORM_IDS } = require('./remove-clone-pokemon');
 
 function rebuildPokemonDatabaseFiles() {
   execFile(process.execPath, [path.join(__dirname, 'scripts', 'build-pokemon-database.js')], (error) => {
@@ -107,6 +108,8 @@ const {
 } = require('discord.js');
 const {
   db,
+  isPokemonVariantRemoved,
+  removePokemonVariant,
   auctions,
   backfillBannedAuctions,
   getCooldownNotificationMode,
@@ -2400,6 +2403,7 @@ function rollCatchbotGoldenExclusive(luckLevel) {
   const pokemon = CATCHBOT_GOLDEN_EXCLUSIVES[
     Math.floor(Math.random() * CATCHBOT_GOLDEN_EXCLUSIVES.length)
   ];
+  if (isPokemonVariantRemoved(pokemon.id, false, true)) return null;
   return {
     ...pokemon,
     types: JSON.parse(pokemon.types),
@@ -2444,14 +2448,8 @@ function rollEggHatch(target, hasPatreon, userId = null) {
         * (entry.isShiny ? EGG_SHINY_DENOMINATOR_MULTIPLIER : 1)
         * (entry.isGolden ? EGG_GOLDEN_DENOMINATOR_MULTIPLIER : 1))
   );
-  const result = matchingSpecials.length
-    ? matchingSpecials[Math.floor(Math.random() * matchingSpecials.length)]
-    : {
-      name: EGG_HATCH_POOLS[target <= 90 ? 'early' : 'late'][
-        Math.floor(Math.random() * EGG_HATCH_POOLS[target <= 90 ? 'early' : 'late'].length)
-      ],
-    };
-  const form = db.prepare(`
+  const regular = EGG_HATCH_POOLS[target <= 90 ? 'early' : 'late'].map((name) => ({ name }));
+  const findForm = db.prepare(`
     SELECT id, species_id, slug, species_name, rarity, sprite AS img, shiny_sprite AS shinyImg,
       base_hp AS baseHp, base_atk AS baseAtk,
       base_def AS baseDef, base_spd AS baseSpd
@@ -2459,13 +2457,22 @@ function rollEggHatch(target, hasPatreon, userId = null) {
     WHERE lower(species_name) = lower(?) AND is_default = 1
     ORDER BY id
     LIMIT 1
-  `).get(result.name);
-  if (!form) throw new Error(`Egg-exclusive Pokémon ${result.name} has no default form in the catalog.`);
-  return {
-    pokemon: { ...form, name: form.species_name },
-    isShiny: Boolean(result.isShiny),
-    isGolden: Boolean(result.isGolden),
-  };
+  `);
+  for (const choices of [matchingSpecials, regular]) {
+    while (choices.length) {
+      const index = Math.floor(Math.random() * choices.length);
+      const [result] = choices.splice(index, 1);
+      const form = findForm.get(result.name);
+      if (!form) throw new Error(`Egg-exclusive Pokémon ${result.name} has no default form in the catalog.`);
+      if (isPokemonVariantRemoved(form.id, Boolean(result.isShiny), Boolean(result.isGolden))) continue;
+      return {
+        pokemon: { ...form, name: form.species_name },
+        isShiny: Boolean(result.isShiny),
+        isGolden: Boolean(result.isGolden),
+      };
+    }
+  }
+  throw new Error('No available Pokémon variants remain in this Egg pool.');
 }
 
 const RARITY_EMOJIS = {
@@ -3697,19 +3704,6 @@ function getRandomLegendaryFromGenerations(generations, userId = null, boostedSp
   const boosted = new Set(boostedSpeciesIds);
   const pokemon = pickWeighted(candidates, (candidate) => boosted.has(candidate.species_id) ? 2.5 : 1);
   const researchShard = RESEARCH_SHARD_BY_SPECIES.get(pokemon.species_name.toLowerCase());
-  if (researchShard && userId !== null) {
-    if (!takeUserItem(userId, researchShard.name)) {
-      const heldPokemon = db.prepare(`
-        SELECT id FROM catches WHERE user_id = ? AND held_item = ? ORDER BY id LIMIT 1
-      `).get(userId, researchShard.name);
-      if (!heldPokemon) {
-        throw new Error(`Could not consume the ${researchShard.name} for ${pokemon.species_name}.`);
-      }
-      db.prepare('UPDATE catches SET held_item = NULL WHERE id = ? AND user_id = ?')
-        .run(heldPokemon.id, userId);
-      syncDuplicateCatchState(userId, heldPokemon.id);
-    }
-  }
   return {
     id: pokemon.id,
     speciesId: pokemon.species_id,
@@ -3730,6 +3724,21 @@ function getRandomLegendaryFromGenerations(generations, userId = null, boostedSp
     generation: pokemon.generation,
     ...(researchShard ? { researchShard: researchShard.name } : {}),
   };
+}
+
+function consumeLegendaryResearchShard(pokemon, userId) {
+  if (!pokemon.researchShard || userId === null) return;
+  if (!takeUserItem(userId, pokemon.researchShard)) {
+    const heldPokemon = db.prepare(`
+      SELECT id FROM catches WHERE user_id = ? AND held_item = ? ORDER BY id LIMIT 1
+    `).get(userId, pokemon.researchShard);
+    if (!heldPokemon) {
+      throw new Error(`Could not consume the ${pokemon.researchShard} for ${pokemon.speciesName}.`);
+    }
+    db.prepare('UPDATE catches SET held_item = NULL WHERE id = ? AND user_id = ?')
+      .run(heldPokemon.id, userId);
+    syncDuplicateCatchState(userId, heldPokemon.id);
+  }
 }
 
 function rollEncounterLegendary(userId = null, boostedSpeciesIds = []) {
@@ -3945,12 +3954,14 @@ function rollSpawn(
       channelRateBoost,
       roleChanceBoost
     );
-    if (specialPokemon) {
+    if (specialPokemon && !isPokemonVariantRemoved(
+      specialPokemon.id, Boolean(specialPokemon.isShiny), Boolean(specialPokemon.isGolden)
+    )) {
       return specialPokemon;
     }
   }
 
-  while (true) {
+  for (let attempt = 0; attempt < 5000; attempt += 1) {
     let rarity;
     let pokemon;
     let isForcedEventSpawn = false;
@@ -4147,8 +4158,13 @@ function rollSpawn(
       && eventTicketActive
       && isEventShinyTarget(pokemon)
     );
-    if (isForcedEventSpawn || !eventTicketActive || !getEventPokemonKey(pokemon, false)) return pokemon;
+    if (isPokemonVariantRemoved(pokemon.id, Boolean(pokemon.isShiny), Boolean(pokemon.isGolden))) continue;
+    if (isForcedEventSpawn || !eventTicketActive || !getEventPokemonKey(pokemon, false)) {
+      if (pokemon.researchShard) consumeLegendaryResearchShard(pokemon, userId);
+      return pokemon;
+    }
   }
+  throw new Error('No available Pokémon variant could be rolled for this encounter.');
 }
 
 function isEventChecklistSpawn(pokemon) {
@@ -4268,7 +4284,7 @@ function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0, ab
     pokemon.isExplore = true;
     pokemon.encounterModifier = 'normal';
     pokemon.encounterRateText = 'Explore encounter';
-    return pokemon;
+    return isPokemonVariantRemoved(pokemon.id, false, true) ? null : pokemon;
   }
   const shinyBonus = getTotalEffectiveShinyBonus(userId);
   const shinyRate = getChanceFromFlooredOdds(BASE_SHINY_RATE
@@ -4284,7 +4300,7 @@ function rollExploreEncounter(userId, mapKey = 'grass', channelRateBoost = 0, ab
   pokemon.isExplore = true;
   pokemon.encounterModifier = 'normal';
   pokemon.encounterRateText = 'Explore encounter';
-  return pokemon;
+  return isPokemonVariantRemoved(pokemon.id, Boolean(pokemon.isShiny), false) ? null : pokemon;
 }
 
 function getEventPokemonKey(pokemon, matchVariant = true) {
@@ -8328,6 +8344,12 @@ async function askForBall(
         return spawnMessage.edit(payload);
       }
     };
+    if (isPokemonVariantRemoved(target.id, Boolean(target.isShiny), Boolean(target.isGolden || target.is_golden))) {
+      buttonCollector.stop('removed');
+      textCollector.stop('removed');
+      await editEncounter({ content: 'This Pokémon is no longer available.', embeds: [], components: [] });
+      return false;
+    }
     const ball = BALL_CONFIG[selectedBall];
     const resultNinjaBoostText = allowAnyUserCatch
       ? formatPatreonCatchBoost(getPatreonPerks(userId).catchBoost)
@@ -10385,7 +10407,7 @@ async function runLeagueChallenge(message, userId, challengeIndex, challenges = 
           }
           if (canDropBattleGolden(challenge) && Math.random() < GOLDEN_TIMBURR_DROP_CHANCE) {
             const timburrForm = resolvePokemonForm('Timburr');
-            if (timburrForm) {
+            if (timburrForm && !isPokemonVariantRemoved(timburrForm.id, false, true)) {
               saveGoldenCatch(userId, {
                 id: timburrForm.id,
                 name: timburrForm.name,
@@ -11537,6 +11559,9 @@ async function handleEventCommand(message, userId, args, checklistOnly = false) 
       const reward = halloweenEvent.rewards[rewardTier];
       const species = getPokemonFormBySlug(reward.pokemonSlug);
       if (!species) throw new Error(`Event reward form "${reward.pokemonSlug}" is missing from the Pokémon catalog.`);
+      if (isPokemonVariantRemoved(species.id, Boolean(reward.shiny), false)) {
+        return message.reply('❌ This event reward is no longer available.');
+      }
       const claimed = db.transaction(() => {
         const currentUser = getUser(userId);
         const caughtCount = db.prepare(
@@ -12479,6 +12504,26 @@ function scheduleGiveaway(giveawayId, endsAt) {
   giveawayTimers.set(giveawayId, timer);
 }
 
+async function cancelCloneGiveaway(giveaway, reason = 'Clone Pokémon have been removed.') {
+  const cancelled = db.prepare('UPDATE active_giveaways SET ended = 1 WHERE id = ? AND ended = 0')
+    .run(giveaway.id).changes;
+  if (!cancelled) return;
+  try {
+    const channel = await client.channels.fetch(giveaway.channel_id);
+    const message = await channel.messages.fetch(giveaway.message_id);
+    await message.edit({
+      embeds: [new EmbedBuilder()
+        .setColor(0x2b2d31)
+        .setTitle(`Giveaway for ${giveaway.prize_title} — CANCELLED`)
+        .setDescription(`This giveaway was cancelled because ${reason}`)
+        .setTimestamp()],
+      components: [],
+    });
+  } catch (error) {
+    console.error(`Failed to announce cancellation of giveaway ${giveaway.id}:`, error);
+  }
+}
+
 async function concludeGiveaway(giveawayId) {
   const giveaway = db.prepare('SELECT * FROM active_giveaways WHERE id = ?').get(giveawayId);
   if (!giveaway || giveaway.ended) return;
@@ -12775,7 +12820,7 @@ function rollNonLegendaryAutospawn() {
 
 function getAutospawnPokemon(rarity, chamberSpecies) {
   const target = getRandomPokemon(
-    rarity, false, true, true, [], SPECIAL_SPAWN_RESERVED_SPECIES, null, chamberSpecies
+    rarity, false, true, true, [], SPECIAL_SPAWN_RESERVED_SPECIES, null, chamberSpecies, 'base'
   );
   if (target.rarity.toLowerCase() !== rarity.toLowerCase()) {
     throw new Error(`No eligible ${rarity} Pokémon are available for autospawn.`);
@@ -14942,6 +14987,9 @@ client.on('messageCreate', async (message) => {
         const variant = args[flagIndex].toLowerCase();
         const isShiny = variant === 'true';
         const isGolden = variant === 'golden';
+        if (isPokemonVariantRemoved(form.id, isShiny, isGolden)) {
+          return message.reply('That Pokémon variant has been removed from the game.');
+        }
         if (isGolden && !isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))) {
           return message.reply('Golden giveaways are limited to base Pokémon and supported regional forms (no Mega or Gmax forms).');
         }
@@ -15196,6 +15244,7 @@ client.on('messageCreate', async (message) => {
           'SELECT * FROM pokemon_forms WHERE species_id = ? AND is_default = 1 ORDER BY id LIMIT 1'
         ).get(promo.speciesId);
         if (!form) throw new Error(`promo.json speciesId ${promo.speciesId} has no base form in the catalog.`);
+        if (isPokemonVariantRemoved(form.id, false, true)) return { error: 'removed' };
         db.transaction(() => {
           incrementUser(userId, { coins: -promo.costCoins, promos_claimed: 1 });
           takeUserItem(userId, promo.itemName, promo.costItems);
@@ -15282,6 +15331,9 @@ client.on('messageCreate', async (message) => {
           );
         }
         const result = claimPromo(promo);
+        if (result.error === 'removed') {
+          return message.reply('❌ This Pokémon is no longer available.');
+        }
         if (result.error === 'coins') {
           return message.reply(`❌ You need **${promo.costCoins.toLocaleString()} PokéCoins** to claim this promo!`);
         }
@@ -15335,6 +15387,10 @@ client.on('messageCreate', async (message) => {
           }
           const promo = promos[currentIndex];
           const result = claimPromo(promo);
+          if (result.error === 'removed') {
+            await interaction.reply({ content: '❌ This Pokémon is no longer available.', ephemeral: true });
+            return;
+          }
           if (result.error === 'coins') {
             await interaction.reply({
               content: `❌ You need **${promo.costCoins.toLocaleString()} PokéCoins** to claim this promo!`,
@@ -15841,6 +15897,42 @@ client.on('messageCreate', async (message) => {
 
       const subtype = args[0]?.toLowerCase();
       const action = args[1]?.toLowerCase();
+
+      if (command === 'admin' && subtype === 'remove') {
+        const explicitVariant = ['shiny', 'golden'].includes(action) ? action : null;
+        const query = args.slice(explicitVariant ? 2 : 1).join(' ').trim();
+        if (!query) {
+          return message.reply(`Usage: \`${PREFIX}admin remove [shiny|golden] <Pokémon name|dex number>\`.`);
+        }
+        const form = resolvePokemonForm(query);
+        if (!form) return message.reply(`No Pokémon or form found for **${query}**.`);
+        const dexVariant = getDexQueryMarketVariant(form, query);
+        const variant = explicitVariant || (dexVariant === 'normal' ? 'base' : dexVariant) || 'base';
+        if (variant === 'golden'
+            && !isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))) {
+          return message.reply(`❌ **${form.name}** does not have a Golden form.`);
+        }
+        const giveaways = db.prepare('SELECT * FROM active_giveaways WHERE ended = 0').all()
+          .filter((giveaway) => {
+            const prize = JSON.parse(giveaway.prize_data).pokemon;
+            if (!prize || Number(prize.id) !== form.id) return false;
+            const prizeVariant = prize.isGolden ? 'golden' : prize.isShiny ? 'shiny' : 'base';
+            return prizeVariant === variant;
+          });
+        const result = removePokemonVariant(form.id, variant);
+        if (result.error === 'already_removed') {
+          return message.reply(`❌ This Pokémon variant has already been removed.`);
+        }
+        if (result.error) return message.reply('❌ That Pokémon is no longer in the catalog.');
+        const cancellations = giveaways.map((giveaway) => {
+          clearTimeout(giveawayTimers.get(giveaway.id));
+          giveawayTimers.delete(giveaway.id);
+          return cancelCloneGiveaway(giveaway, 'its Pokémon was removed from the game.');
+        });
+        await Promise.all(cancellations);
+        const name = `${variant === 'base' ? '' : `${variant === 'shiny' ? 'Shiny' : 'Golden'} `}${form.name}`;
+        return message.reply(`✅ Removed **${name}** and its Pokédex entry, copies and listings from the game.`);
+      }
 
       if (command === 'admin' && ['bud', 'buddy'].includes(subtype)) {
         const targetMatch = args[2]?.match(/^(?:<@!?(\d{15,25})>|(\d{15,25}))$/);
@@ -16742,7 +16834,9 @@ client.on('messageCreate', async (message) => {
                 break;
               }
             }
-            const candidate = getRandomPokemon(rarity.name, false, true, true, [], SPECIAL_SPAWN_RESERVED_SPECIES);
+            const candidate = getRandomPokemon(
+              rarity.name, false, true, true, [], SPECIAL_SPAWN_RESERVED_SPECIES, null, [], 'base'
+            );
             if (!selectedIds.has(candidate.id)) {
               pokemon = candidate;
               break;
@@ -17901,6 +17995,10 @@ client.on('messageCreate', async (message) => {
               invalidEntries.push(`${entry} (Golden form unsupported)`);
               continue;
             }
+            if (isPokemonVariantRemoved(grant.exactMatch.id, grant.isShiny, grant.isGolden)) {
+              invalidEntries.push(`${entry} (removed from the game)`);
+              continue;
+            }
             grants.push({ ...grant, name: entry });
           }
           if (invalidEntries.length) {
@@ -17978,6 +18076,9 @@ client.on('messageCreate', async (message) => {
         }
         if (isGolden && !isGoldenFormSupported(exactMatch.species_id, exactMatch.slug, Boolean(exactMatch.is_default))) {
           return message.reply('Golden Pokémon can only be granted in base forms and supported regional forms, not Mega or Gmax forms.');
+        }
+        if (isPokemonVariantRemoved(exactMatch.id, isShiny, isGolden)) {
+          return message.reply('That Pokémon variant has been removed from the game.');
         }
         const catalogPokemon = {
           id: exactMatch.id,
@@ -18540,18 +18641,21 @@ client.on('messageCreate', async (message) => {
           * (isPlayerBonusActive('fish') ? 1.25 : 1);
         let fishingTarget;
         if (rod.name === 'Golden Rod' && Math.random() < goldenFishingChance) {
-          const speciesName = FISH_EXCLUSIVE_GOLDENS[
-            Math.floor(Math.random() * FISH_EXCLUSIVE_GOLDENS.length)
-          ];
-          fishingTarget = {
-            ...getSpecialSpawnPokemon(speciesName),
-            rarity: 'Golden',
-            isGolden: true,
-            isShiny: false,
-            isEventShiny: false,
-            encounterRateText: 'Fishing-exclusive Golden',
-          };
-        } else {
+          const availableFishingGoldens = FISH_EXCLUSIVE_GOLDENS.map((name) => getSpecialSpawnPokemon(name))
+            .filter((pokemon) => !isPokemonVariantRemoved(pokemon.id, false, true));
+          if (availableFishingGoldens.length) {
+            const golden = availableFishingGoldens[Math.floor(Math.random() * availableFishingGoldens.length)];
+            fishingTarget = {
+              ...golden,
+              rarity: 'Golden',
+              isGolden: true,
+              isShiny: false,
+              isEventShiny: false,
+              encounterRateText: 'Fishing-exclusive Golden',
+            };
+          }
+        }
+        if (!fishingTarget) {
           fishingTarget = rollSpawn('water', userId, rod, {
             channelRateBoost: getMessageChannelCatchRateBoost(userId, message),
             roleChanceBoost,
@@ -20046,10 +20150,6 @@ client.on('messageCreate', async (message) => {
     ) {
       const dexRegion = requestedDexRegion;
       const targetUser = message.mentions.users.first() || message.author;
-      const totalSpecies = db.prepare(
-        'SELECT COUNT(DISTINCT species_id) AS count FROM pokemon_forms WHERE is_default = 1'
-      ).get().count;
-      const total = totalSpecies * 3;
       const dexNumberByFormId = getPokemonDexNumbers(db.prepare(`
         SELECT id, species_id, name, slug, is_default
         FROM pokemon_forms
@@ -20066,7 +20166,10 @@ client.on('messageCreate', async (message) => {
           { ...pokemon, is_shiny: 1, dex_number: numbers.shinyDexNumber },
           { ...pokemon, is_shiny: 0, is_golden: 1, dex_number: getGoldenDexNumber(pokemon.species_id) },
         ];
-      });
+      }).filter((pokemon) => !isPokemonVariantRemoved(
+        pokemon.id, Boolean(pokemon.is_shiny), Boolean(pokemon.is_golden)
+      ));
+      const total = dexEntries.length;
       const formEntryRows = db.prepare(`
         SELECT id, species_id, name, rarity
         FROM pokemon_forms
@@ -20075,10 +20178,12 @@ client.on('messageCreate', async (message) => {
       for (const pokemon of formEntryRows) {
         const numbers = dexNumberByFormId.get(pokemon.id);
         if (!numbers) continue;
-        dexEntries.push(
-          { ...pokemon, is_form: 1, is_shiny: 0, dex_number: numbers.dexNumber },
-          { ...pokemon, is_form: 1, is_shiny: 1, dex_number: numbers.shinyDexNumber },
-        );
+        for (const shiny of [false, true]) {
+          if (!isPokemonVariantRemoved(pokemon.id, shiny, false)) {
+            dexEntries.push({ ...pokemon, is_form: 1, is_shiny: shiny ? 1 : 0,
+              dex_number: shiny ? numbers.shinyDexNumber : numbers.dexNumber });
+          }
+        }
       }
       const pageSize = 20;
       const dexRarityOptions = [
@@ -20435,6 +20540,9 @@ client.on('messageCreate', async (message) => {
           'SELECT * FROM pokemon_forms WHERE species_id = ? AND is_default = 1 ORDER BY id LIMIT 1'
         ).get(selectedPokemon.species_id) || selectedPokemon;
       }
+      if (isPokemonVariantRemoved(selectedPokemon.id, shinyEntry, goldenEntry)) {
+        return message.reply(`No Pokémon or form found for **${query}**.`);
+      }
 
       // Golden searches exclude Mega and Gmax forms from the related-form buttons.
       const relatedForms = db.prepare(`
@@ -20444,10 +20552,11 @@ client.on('messageCreate', async (message) => {
       `).all(
         selectedPokemon.evolution_chain_id || -1,
         selectedPokemon.species_id
-      ).filter((form) => !goldenEntry || (
-        !/mega|gmax/i.test(form.rarity)
-        && isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))
-      ));
+      ).filter((form) => !isPokemonVariantRemoved(form.id, shinyEntry, goldenEntry)
+        && (!goldenEntry || (
+          !/mega|gmax/i.test(form.rarity)
+          && isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))
+        )));
       const formById = new Map(relatedForms.map((form) => [form.id, form]));
       let currentPokemon = selectedPokemon;
       const formsPerPage = 20;
@@ -20513,8 +20622,9 @@ client.on('messageCreate', async (message) => {
           .join(' → ');
         const hasShinyVariant = numbers?.shinyDexNumber !== undefined || pokemon.is_default;
         const variantIds = [
-          ...(hasShinyVariant ? [`${EMOJIS.shiny} variant: \`${PREFIX}dex ${shinyDexNumber}\``] : []),
-          ...(goldenDexNumber
+          ...(hasShinyVariant && !isPokemonVariantRemoved(pokemon.id, true, false)
+            ? [`${EMOJIS.shiny} variant: \`${PREFIX}dex ${shinyDexNumber}\``] : []),
+          ...(goldenDexNumber && !isPokemonVariantRemoved(pokemon.id, false, true)
             ? [`${EMOJIS.golden} variant: \`${PREFIX}dex ${goldenDexNumber}\``]
             : []),
         ].join('  ');
@@ -22222,6 +22332,9 @@ client.on('messageCreate', async (message) => {
             });
           }
           const purchase = buyFactionGoldenPokemon(interaction.user.id);
+          if (purchase.error === 'variant_removed') {
+            return interaction.reply({ content: 'This Pokémon is no longer available.', ephemeral: true });
+          }
           if (purchase.error === 'not_in_faction') {
             return interaction.reply({ content: `Join a faction with \`${PREFIX}faction\` first.`, ephemeral: true });
           }
@@ -23461,6 +23574,9 @@ client.on('messageCreate', async (message) => {
         );
       }
       const result = megaEvolvePokemon(userId, args.slice(1).join(' '));
+      if (result.error === 'variant_removed') {
+        return message.reply('❌ That Mega Evolution has been removed from the game.');
+      }
       if (result.error === 'bracelet_required') {
         return message.reply(
           `❌ Mega Evolution requires ${EMOJIS.megabracelet} **Mega Bracelet**. ` +
@@ -27467,12 +27583,17 @@ client.on('messageCreate', async (message) => {
           const goldenChance = Math.min(1, multiplier * goldenBonus * swapBonus * (1 + swapPerks.goldenBoost) / 2500);
           const exclusiveShinyHits = SWAP_EXCLUSIVE_SHINIES.filter((exclusive) =>
             (!exclusive.patreonOnly || user.has_patreon)
+            && findPokemonForms(exclusive.name, 50).some((form) =>
+              form.is_default && form.species_name === exclusive.name
+              && !isPokemonVariantRemoved(form.id, true, false))
             && Math.random() < shinyChance
           );
           const exclusiveShiny = exclusiveShinyHits.length
             ? exclusiveShinyHits[Math.floor(Math.random() * exclusiveShinyHits.length)]
             : null;
-          const receivedGolden = Math.random() < goldenChance;
+          const goomy = findPokemonForms('Goomy', 50).find((pokemon) => pokemon.is_default);
+          const receivedGolden = Boolean(goomy && !isPokemonVariantRemoved(goomy.id, false, true))
+            && Math.random() < goldenChance;
           const receivedRegularShiny = Math.random() < shinyChance / 2;
           const receivedShiny = !receivedGolden && (Boolean(exclusiveShiny) || receivedRegularShiny);
           db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?')
@@ -27498,7 +27619,7 @@ client.on('messageCreate', async (message) => {
 
           let reward;
           if (receivedGolden) {
-            reward = findPokemonForms('Goomy', 50).find((pokemon) => pokemon.is_default);
+            reward = goomy;
             if (!reward) throw new Error('Could not find base-form Goomy for the Golden PokeSwap reward.');
             saveGoldenCatch(userId, reward);
           } else if (exclusiveShiny) {
@@ -27509,7 +27630,8 @@ client.on('messageCreate', async (message) => {
           } else {
             reward = getRandomPokemon(
               rollSwapRarity(), false, true, true, [],
-              getSwapRewardExcludedSpecies(receivedShiny)
+              getSwapRewardExcludedSpecies(receivedShiny), null, [],
+              receivedShiny ? 'shiny' : 'base'
             );
             saveCatch(userId, reward, receivedShiny);
           }
@@ -28993,6 +29115,9 @@ client.on('messageCreate', async (message) => {
           );
         }
         const result = megaEvolvePokemon(userId, parsed.pokemon, parsed.stoneName);
+        if (result.error === 'variant_removed') {
+          return message.reply('❌ That Mega Evolution has been removed from the game.');
+        }
         if (result.error === 'unsupported_pokemon') {
           return message.reply(
             `❌ **${parsed.pokemon}** does not have a supported Mega Evolution.`
@@ -29068,6 +29193,7 @@ client.on('messageCreate', async (message) => {
           `Catch Pokémon while it is your buddy to raise it.`,
         wrong_time: `**${result.pokemonName}** can only evolve with high friendship during the **${result.timeOfDay}**.`,
         no_item: `You do not have a **${result.itemName}**.`,
+        variant_removed: 'That evolution has been removed from the game.',
       };
       if (result.error) return message.reply(`❌ ${failures[result.error]}`);
       const emoji = getRarityEmojis(result.rarity, result.to, result.isShiny);
@@ -29241,7 +29367,10 @@ client.on('messageCreate', async (message) => {
               const boxUser = getUser(userId);
               const hasVoted = Date.now() - (boxUser.last_vote_at || 0) < 12 * 60 * 60 * 1000;
               const eligible = hasVoted
-                ? BOX_ONLY_SHINY_SPECIES.filter((entry) => !entry.patreonOnly || boxUser.has_patreon)
+                ? BOX_ONLY_SHINY_SPECIES.filter((entry) => (!entry.patreonOnly || boxUser.has_patreon)
+                  && findPokemonForms(entry.name, 50).some((form) =>
+                    form.is_default && form.species_name === entry.name
+                    && !isPokemonVariantRemoved(form.id, true, false)))
                 : [];
               if (eligible.length) {
                 const chosen = eligible[Math.floor(Math.random() * eligible.length)];
@@ -29251,7 +29380,8 @@ client.on('messageCreate', async (message) => {
             } else {
               pokemon = getRandomPokemon(
                 box.rarity, false, true, true, [],
-                [...SPECIAL_SPAWN_RESERVED_SPECIES, ...(box.excludedSpeciesNames || [])]
+                [...SPECIAL_SPAWN_RESERVED_SPECIES, ...(box.excludedSpeciesNames || [])],
+                null, [], 'base'
               );
             }
             if (!pokemon) {
@@ -29925,8 +30055,13 @@ client.once('clientReady', () => {
   setWorldBossAnnouncementChannel(WORLD_BOSS_GUILD_ID, WORLD_BOSS_CHANNEL_ID);
   setGiveawayChannel(WORLD_BOSS_GUILD_ID, GIVEAWAY_CHANNEL_ID);
   setLotteryChannel(WORLD_BOSS_GUILD_ID, LOTTERY_CHANNEL_ID);
-  for (const pending of db.prepare('SELECT id, ends_at FROM active_giveaways WHERE ended = 0').all()) {
-    scheduleGiveaway(pending.id, pending.ends_at);
+  for (const pending of db.prepare('SELECT * FROM active_giveaways WHERE ended = 0').all()) {
+    const prize = JSON.parse(pending.prize_data);
+    if (CLONE_FORM_IDS.includes(Number(prize.pokemon?.id))) cancelCloneGiveaway(pending);
+    else if (prize.pokemon && isPokemonVariantRemoved(
+      Number(prize.pokemon.id), Boolean(prize.pokemon.isShiny), Boolean(prize.pokemon.isGolden)
+    )) cancelCloneGiveaway(pending, 'its Pokémon was removed from the game.');
+    else scheduleGiveaway(pending.id, pending.ends_at);
   }
   const safely = (name, job) => () => {
     Promise.resolve().then(job).catch((error) => console.error(`[${name}] failed:`, error));

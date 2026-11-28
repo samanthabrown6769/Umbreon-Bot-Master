@@ -130,6 +130,7 @@ test('reward stats store actual boosted coins including the spawner bonus exactl
     math.random = () => 0.99;
     const ctx = vm.createContext({
       db, Math: math, assertUserId: () => {},
+      isPokemonVariantRemoved: () => false,
       WORLD_BOSS_POOL: [{ name: 'Charizard Gmax', catchName: 'Charizard Gmax', formId: 1, rarity: 'Gmax' }],
       BOXES: {}, trackClanActivity: () => {}, recordPokemonSeen: () => {}, addFactionPoints: () => 0,
       incrementUser: () => {}, awardCoinsWithBoost: (_id, amount) => ({ finalAmount: amount * 2 }),
@@ -167,6 +168,7 @@ test('specified users cannot receive either Eternamax boss drop but still receiv
       const seen = [];
       const ctx = vm.createContext({
         db, Math: math,
+        isPokemonVariantRemoved: () => false,
         WORLD_BOSS_POOL: [{
           name: bossName, catchName: isEternamax ? 'Eternatus-Eternamax' : 'Charizard Gmax',
           formId: isEternamax ? 10190 : 1, rarity: 'Gmax', catchRarity: 'Gmax', isShiny,
@@ -216,6 +218,7 @@ test('bonus Pokémon roll independently with MVP and World Boss bonuses and pers
     const seen = [];
     const ctx = vm.createContext({
       db, Math: math, assertUserId: () => {},
+      isPokemonVariantRemoved: () => false,
       WORLD_BOSS_POOL: [{ name: 'Charizard Gmax', catchName: 'Charizard Gmax', formId: 1, rarity: 'Gmax' }],
       BOXES: {}, trackClanActivity: () => {}, recordPokemonSeen: (...args) => seen.push(args),
       addFactionPoints: () => 0, incrementUser: () => ({ world_bosses_fought: 1 }),
@@ -260,6 +263,7 @@ test('a missing bonus form rolls back the entire World Boss reward', () => {
     math.random = () => rolls.shift();
     const ctx = vm.createContext({
       db, Math: math, assertUserId: () => {},
+      isPokemonVariantRemoved: () => false,
       WORLD_BOSS_POOL: [{ name: 'Charizard Gmax', catchName: 'Charizard Gmax', formId: 1, rarity: 'Gmax' }],
       BOXES: {}, trackClanActivity: () => {}, recordPokemonSeen: () => {}, addFactionPoints: () => 0,
       incrementUser: () => {}, awardCoinsWithBoost: (_id, amount) => ({ finalAmount: amount }),

@@ -146,6 +146,7 @@ test('only Patreon ticket holders spawn Shiny Oricorio and Walking Wake spawns o
     math.random = () => 0;
     const ctx = vm.createContext({
       db, Math: math, halloweenEvent: event,
+      isPokemonVariantRemoved: () => false,
       eventSpawnFormIds: [], eventSpawnEntries: [], EVENT_FISH_SPECIES: new Set(),
       EVENT_NON_FISH_SPECIES: [], EVENT_FISH_SPAWN_FORM_IDS: [],
       getUser: () => ({ event_ticket: ticket, has_patreon: patreon }),
@@ -243,6 +244,7 @@ test('the designated user cannot spawn the final missing event checklist Pokémo
   math.random = () => 0;
   const ctx = vm.createContext({
     Math: math,
+    isPokemonVariantRemoved: () => false,
     halloweenEvent: event,
     eventSpawnEntries,
     getUser: () => ({ event_ticket: 1, has_patreon: 0 }),
@@ -317,6 +319,7 @@ test('the full checklist grants one Gem Turquoise Rookidee only after all 12 cat
     let announcements = 0;
     const ctx = vm.createContext({
       db, halloweenEvent: event,
+      isPokemonVariantRemoved: () => false,
       getUser: (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id),
       getUserEventProgress: (id, user) => new Set(db.prepare(
         'SELECT pokemon_key FROM event_catches WHERE event_id = ? AND user_id = ?'

@@ -77,6 +77,7 @@ test('Phione hatch chances require Manaphy ownership for regular and shiny Phion
   let ownsManaphy = false;
   const context = vm.createContext({
     HARD_RARITY_USER_IDS: new Set(),
+    isPokemonVariantRemoved: () => false,
     EGG_HATCH_POOLS: { early: [], late: ['Carbink', 'Mimikyu'] },
     EGG_SHINY_DENOMINATOR_MULTIPLIER: 10,
     EGG_GOLDEN_DENOMINATOR_MULTIPLIER: 10,
@@ -132,6 +133,23 @@ test('Phione hatch chances require Manaphy ownership for regular and shiny Phion
   assert.notEqual(rollEntryAtOdds('Chansey', true, 0.0015), 'Chansey');
   assert.equal(rollEntryAtOdds('Wynaut', false, 0.0005), 'Wynaut');
   assert.notEqual(rollEntryAtOdds('Wynaut', false, 0.0015), 'Wynaut');
+});
+
+test('Egg hatches skip removed choices without repeatedly selecting the same one', () => {
+  const context = vm.createContext({
+    HARD_RARITY_USER_IDS: new Set(),
+    EGG_RARE_HATCHES: [],
+    EGG_HATCH_POOLS: { early: ['Removed', 'Available'], late: [] },
+    Math: { floor: Math.floor, random: () => 0 },
+    isPokemonVariantRemoved: (id) => id === 1,
+    db: { prepare: () => ({ get: (name) => ({
+      id: name === 'Removed' ? 1 : 2, species_name: name,
+    }) }) },
+  });
+  vm.runInContext(extract(source, 'function rollEggHatch(', '\nconst RARITY_EMOJIS'), context);
+  assert.equal(context.rollEggHatch(30, false).pokemon.name, 'Available');
+  context.isPokemonVariantRemoved = () => true;
+  assert.throws(() => context.rollEggHatch(30, false), /No available Pokémon variants/);
 });
 
 test('existing and new accounts default to using incubators and setting persists', () => {

@@ -9758,34 +9758,6 @@
     "rarity": "Uncommon"
   },
   {
-    "id": 20086,
-    "dex_number": 6020,
-    "shiny_dex_number": 7020,
-    "name": "Pikachu Clone",
-    "rarity": "Uncommon"
-  },
-  {
-    "id": 20087,
-    "dex_number": 6001,
-    "shiny_dex_number": 7001,
-    "name": "Venusaur Clone",
-    "rarity": "Super Rare"
-  },
-  {
-    "id": 20088,
-    "dex_number": 6002,
-    "shiny_dex_number": 7002,
-    "name": "Charizard Clone",
-    "rarity": "Super Rare"
-  },
-  {
-    "id": 20089,
-    "dex_number": 6003,
-    "shiny_dex_number": 7003,
-    "name": "Blastoise Clone",
-    "rarity": "Super Rare"
-  },
-  {
     "id": 20090,
     "dex_number": 6052,
     "shiny_dex_number": 7052,

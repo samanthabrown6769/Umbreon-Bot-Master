@@ -33,6 +33,11 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS removed_pokemon_variants (
+    pokemon_id INTEGER NOT NULL,
+    variant TEXT NOT NULL CHECK (variant IN ('base', 'shiny', 'golden')),
+    PRIMARY KEY (pokemon_id, variant)
+  );
   CREATE TABLE IF NOT EXISTS pokemon_admin_sprites (
     slug TEXT PRIMARY KEY,
     normal_url TEXT NOT NULL,
@@ -51,6 +56,14 @@ db.exec(`
     PRIMARY KEY (slug, variant)
   );
 `);
+const removedPokemonVariantQuery = db.prepare(
+  'SELECT 1 FROM removed_pokemon_variants WHERE pokemon_id = ? AND variant = ?'
+);
+
+function isPokemonVariantRemoved(pokemonId, isShiny = false, isGolden = false) {
+  const variant = isGolden ? 'golden' : isShiny ? 'shiny' : 'base';
+  return Boolean(removedPokemonVariantQuery.get(pokemonId, variant));
+}
 db.exec(`
   CREATE TABLE IF NOT EXISTS user_encounter_counters (
     user_id TEXT NOT NULL,
@@ -2451,6 +2464,9 @@ function grantGlobalUserReward() {
     `).get();
     if (!goldenPorygon) {
       throw new Error('Cannot grant the global reward because the default Porygon form is unavailable.');
+    }
+    if (isPokemonVariantRemoved(goldenPorygon.id, false, true)) {
+      throw new Error('Cannot grant the global reward because Golden Porygon has been removed.');
     }
 
     for (const { id } of users) {
@@ -5191,6 +5207,9 @@ function megaEvolvePokemon(userId, query, requestedStone = null) {
         isShiny,
       };
     }
+    if (isPokemonVariantRemoved(megaForm.id, Boolean(pokemon.is_shiny), Boolean(pokemon.is_golden))) {
+      return { error: 'variant_removed' };
+    }
 
     const maxHp = calculateStat(megaForm.base_hp, pokemon.hp_iv, pokemon.level, true, pokemon.is_shiny, pokemon.ev_hp, Boolean(pokemon.is_golden), pokemon.rarity);
     const atk = calculateStat(megaForm.base_atk, pokemon.atk_iv, pokemon.level, false, pokemon.is_shiny, pokemon.ev_atk, Boolean(pokemon.is_golden), pokemon.rarity);
@@ -5588,6 +5607,9 @@ function resetPreEvolutionCopies(userId, row) {
 }
 
 function applyPokemonEvolution(userId, row, target, itemName = null, consumesHeldItem = false) {
+  if (isPokemonVariantRemoved(target.id, Boolean(row.is_shiny), Boolean(row.is_golden))) {
+    return { error: 'variant_removed' };
+  }
   const targetHeldItem = prepareEvolutionHeldItems(userId, row, target.id, consumesHeldItem);
   const maxHp = calculateStat(target.base_hp, row.hp_iv, row.level, true, row.is_shiny, row.ev_hp, Boolean(row.is_golden), row.rarity);
   const atk = calculateStat(target.base_atk, row.atk_iv, row.level, false, row.is_shiny, row.ev_atk, Boolean(row.is_golden), row.rarity);
@@ -5843,6 +5865,9 @@ function evolvePokemonWithItem(userId, pokemonQuery, itemQuery = null) {
     }
 
     const { row, itemName, target, alreadyHeld, needsInventoryItem } = chosen;
+    if (isPokemonVariantRemoved(target.id, Boolean(row.is_shiny), Boolean(row.is_golden))) {
+      return { error: 'variant_removed' };
+    }
     if (needsInventoryItem && !takeUserItem(userId, itemName)) {
       return { error: 'no_item', itemName, pokemonName: row.name };
     }
@@ -6962,7 +6987,8 @@ function getRandomPokemon(
   allowedFormIds = null,
   excludedSpeciesNames = [],
   exactFormIds = null,
-  boostedSpeciesIds = []
+  boostedSpeciesIds = [],
+  variant = null
 ) {
   const exactFilter = exactFormIds && exactFormIds.length
     ? `AND id IN (${exactFormIds.map(() => '?').join(', ')})`
@@ -6979,6 +7005,9 @@ function getRandomPokemon(
   if (!Array.isArray(boostedSpeciesIds)
       || boostedSpeciesIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
     throw new TypeError('boostedSpeciesIds must be an array of positive species IDs.');
+  }
+  if (variant !== null && !['base', 'shiny', 'golden'].includes(variant)) {
+    throw new TypeError('Unknown Pokémon variant.');
   }
   const formFilter = allowedFormIds === null
     ? ''
@@ -7038,7 +7067,9 @@ function getRandomPokemon(
       entry = { rows, total: null };
       attemptCandidates[attemptIndex] = entry;
     }
-    const candidates = entry.rows;
+    const candidates = variant === null ? entry.rows : entry.rows.filter((row) =>
+      !isPokemonVariantRemoved(row.id, variant === 'shiny', variant === 'golden')
+    );
     if (!candidates.length) continue;
     const boosted = new Set(boostedSpeciesIds);
     const chosen = pickWeighted(candidates, (candidate) =>
@@ -7651,7 +7682,9 @@ function distributeWorldBossRewards(bossId) {
       const isMvp = index === 0;
       trackClanActivity(entry.user_id, 'battle');
       // Fighting the boss counts as Seen; drops below are Owned only.
-      recordPokemonSeen(entry.user_id, template.formId, Boolean(template.isShiny), false);
+      if (!isPokemonVariantRemoved(template.formId, Boolean(template.isShiny), false)) {
+        recordPokemonSeen(entry.user_id, template.formId, Boolean(template.isShiny), false);
+      }
       db.prepare(`
         INSERT OR IGNORE INTO world_boss_rewards
           (boss_id, user_id, boss_name, max_hp, damage, rank, total_players, coins)
@@ -7685,7 +7718,8 @@ function distributeWorldBossRewards(bossId) {
       const rolledPokemonDrop = Math.random() < Math.min(1, dropChance * 0.8 * (isSpawner && isMvp ? 1.25 : 1) * worldBossBonus);
       const isExcludedEternatusDrop = ETERNATUS_WORLD_BOSS_DROP_EXCLUDED_USER_IDS.has(entry.user_id)
         && /eternatus/i.test(template.catchName);
-      if (rolledPokemonDrop && !isExcludedEternatusDrop) {
+      if (rolledPokemonDrop && !isExcludedEternatusDrop
+          && !isPokemonVariantRemoved(template.formId, Boolean(template.isShiny), false)) {
         gotPokemon = true;
         saveCatch(entry.user_id, {
           ...template,
@@ -7704,6 +7738,7 @@ function distributeWorldBossRewards(bossId) {
           FROM pokemon_forms WHERE id = ? AND is_default = 1
         `).get(drop.id);
         if (!form) throw new Error(`Missing World Boss bonus Pokémon form ${drop.id}.`);
+        if (isPokemonVariantRemoved(form.id, !drop.golden, Boolean(drop.golden))) continue;
         const pokemon = {
           id: form.id, name: form.name, rarity: form.rarity,
           baseHp: form.base_hp, baseAtk: form.base_atk, baseDef: form.base_def, baseSpd: form.base_spd,
@@ -10369,7 +10404,7 @@ function drawLottery(now = Date.now()) {
     const jackpot = state.jackpot;
     const prizes = [0.5, 0.3, 0.2].map((share) => Math.floor(jackpot * share));
     const estDay = new Date(state.ends_at - 5 * 60 * 60 * 1000).getUTCDay();
-    const goldenPrize = LOTTERY_SCHEDULE[estDay] || null;
+    let goldenPrize = LOTTERY_SCHEDULE[estDay] || null;
     winners.forEach((winnerId, place) => {
       getUser(winnerId);
       getUserLotteryStats(winnerId);
@@ -10387,15 +10422,18 @@ function drawLottery(now = Date.now()) {
         'SELECT * FROM pokemon_forms WHERE species_id = ? AND is_default = 1 ORDER BY id LIMIT 1'
       ).get(goldenPrize.speciesId);
       if (!form) throw new Error(`Lottery golden prize species ${goldenPrize.speciesId} has no base form.`);
-      saveGoldenCatch(winners[0], {
-        id: form.id,
-        name: form.name,
-        rarity: 'Golden',
-        baseHp: form.base_hp,
-        baseAtk: form.base_atk,
-        baseDef: form.base_def,
-        baseSpd: form.base_spd,
-      });
+      if (isPokemonVariantRemoved(form.id, false, true)) goldenPrize = null;
+      else {
+        saveGoldenCatch(winners[0], {
+          id: form.id,
+          name: form.name,
+          rarity: 'Golden',
+          baseHp: form.base_hp,
+          baseAtk: form.base_atk,
+          baseDef: form.base_def,
+          baseSpd: form.base_spd,
+        });
+      }
     }
     const ticketCountByUser = new Map(tickets.map((entry) => [entry.user_id, entry.ticket_count]));
     const totalTickets = tickets.reduce((sum, entry) => sum + entry.ticket_count, 0);
@@ -11074,6 +11112,7 @@ function buyFactionGoldenPokemon(userId, now = Date.now()) {
 
     const form = db.prepare('SELECT * FROM pokemon_forms WHERE slug = ?').get(faction.team.goldenSlug);
     if (!form) throw new Error(`Missing faction Golden Pokémon form "${faction.team.goldenSlug}".`);
+    if (isPokemonVariantRemoved(form.id, false, true)) return { error: 'variant_removed' };
     if (db.prepare(`
       SELECT 1 FROM catches WHERE user_id = ? AND pokemon_id = ? AND is_golden = 1 LIMIT 1
     `).get(userId, form.id)) return { error: 'already_owned' };
@@ -11285,7 +11324,52 @@ applyMissedVoteGrant('missed-vote-20261103-793793055495946251', '793793055495946
 applyMissedVoteGrant('missed-vote-20261103-434593153341980672', '434593153341980672');
 applyMissedVoteGrant('missed-vote-20261103-396307095521067012', '396307095521067012');
 
+require('./remove-clone-pokemon').removeClonePokemon(db, { addUserItem, incrementUser });
+
+function removePokemonVariant(pokemonId, variant) {
+  if (!Number.isSafeInteger(pokemonId) || pokemonId <= 0
+      || !['base', 'shiny', 'golden'].includes(variant)) {
+    throw new TypeError('Invalid Pokémon form or variant.');
+  }
+  return db.transaction(() => {
+    if (!db.prepare('SELECT 1 FROM pokemon_forms WHERE id = ?').get(pokemonId)) {
+      return { error: 'not_found' };
+    }
+    const inserted = db.prepare(
+      'INSERT OR IGNORE INTO removed_pokemon_variants (pokemon_id, variant) VALUES (?, ?)'
+    ).run(pokemonId, variant);
+    if (!inserted.changes) return { error: 'already_removed' };
+    require('./remove-clone-pokemon').removePokemonCopies(
+      db, { addUserItem, incrementUser }, [pokemonId], variant
+    );
+    return { removed: true };
+  }).immediate();
+}
+
+for (const table of ['catches', 'market', 'pokemon_gifts']) {
+  for (const [operation, event] of [
+    ['insert', 'INSERT'],
+    ['update', 'UPDATE OF pokemon_id, is_shiny, is_golden'],
+  ]) {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS removed_variant_${table}_${operation}
+      BEFORE ${event} ON ${table}
+      WHEN EXISTS (
+        SELECT 1 FROM removed_pokemon_variants
+        WHERE pokemon_id = NEW.pokemon_id
+          AND variant = CASE WHEN COALESCE(NEW.is_golden, 0) = 1 THEN 'golden'
+            WHEN COALESCE(NEW.is_shiny, 0) = 1 THEN 'shiny' ELSE 'base' END
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'This Pokémon variant has been removed from the game.');
+      END;
+    `);
+  }
+}
+
 module.exports = {
+  isPokemonVariantRemoved,
+  removePokemonVariant,
   auctions,
   backfillBannedAuctions,
   getTimeOfDayPhase,

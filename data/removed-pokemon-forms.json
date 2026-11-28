@@ -41,5 +41,9 @@
   { "id": 10269, "slug": "miraidon-drive-mode" },
   { "id": 10270, "slug": "miraidon-aquatic-mode" },
   { "id": 10271, "slug": "miraidon-glide-mode" },
-  { "id": 10228, "slug": "toxtricity-low-key-gmax" }
+  { "id": 10228, "slug": "toxtricity-low-key-gmax" },
+  { "id": 20086, "slug": "pikachu-clone" },
+  { "id": 20087, "slug": "venusaur-clone" },
+  { "id": 20088, "slug": "charizard-clone" },
+  { "id": 20089, "slug": "blastoise-clone" }
 ]

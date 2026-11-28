@@ -520,6 +520,14 @@ function getPokemonDexGroups(pokemonForms) {
 }
 
 function getPokemonDexNumbers(pokemonForms) {
+  const formIds = new Set(pokemonForms.map((pokemon) => pokemon.id));
+  // Retain these former form slots so removing clones does not renumber other Pokémon.
+  const removedCloneSlots = [
+    { id: 20086, species_id: 25, slug: 'pikachu-clone', name: 'Pikachu Clone', is_default: 0 },
+    { id: 20087, species_id: 3, slug: 'venusaur-clone', name: 'Venusaur Clone', is_default: 0 },
+    { id: 20088, species_id: 6, slug: 'charizard-clone', name: 'Charizard Clone', is_default: 0 },
+    { id: 20089, species_id: 9, slug: 'blastoise-clone', name: 'Blastoise Clone', is_default: 0 },
+  ].filter((pokemon) => !formIds.has(pokemon.id));
   const numbers = new Map();
   for (const pokemon of pokemonForms) {
     if (pokemon.is_default) {
@@ -531,12 +539,16 @@ function getPokemonDexNumbers(pokemonForms) {
       });
     }
   }
-  for (const { start, forms, shiny } of getPokemonDexGroups(pokemonForms)) {
+  for (const { start, forms, shiny } of getPokemonDexGroups([...pokemonForms, ...removedCloneSlots])) {
     let index = 0;
     forms.forEach((pokemon) => {
       const current = numbers.get(pokemon.id) || {};
       if (FIXED_FORM_DEX_SLUGS.has(pokemon.slug)) {
         numbers.set(pokemon.id, current);
+        return;
+      }
+      if (!formIds.has(pokemon.id)) {
+        if (!shiny) index += 1;
         return;
       }
       // Each form takes an even number and its shiny takes the next one.

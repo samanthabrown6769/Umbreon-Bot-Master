@@ -390,6 +390,7 @@ test('Explore Legendary roll has a 1/333 boundary and allows eligible Shinies', 
     rarity: 'Legendary', types: '["fire","flying"]', is_default: 1, is_legendary: 1 };
   const ctx = vm.createContext({
     Math: math, EXPLORE_EXCLUSIVES: { fire: [[4, 'Uncommon', false]] },
+    isPokemonVariantRemoved: () => false,
     getExploreLegendaryEntries: () => [legendary], getExploreCatalogEntries: () => [],
     EXPLORE_GOLDENS: {},
     db: { prepare: () => ({ get: () => ({ id: 4, species_id: 4, name: 'Charmander',
@@ -702,6 +703,7 @@ test('Explore overworld abilities apply their own rates and repel only Common en
   math.random = () => { assert.ok(rolls.length); return rolls.shift(); };
   const context = vm.createContext({
     Math: math, EXPLORE_EXCLUSIVES: { grass: [[1, 'Common', false], [2, 'Uncommon', false]] },
+    isPokemonVariantRemoved: () => false,
     getExploreCatalogEntries: () => [], getExploreLegendaryEntries: () => [],
     EXPLORE_GOLDENS: {}, db: { prepare: () => ({ get: (id) => ({
       id, species_id: id, slug: `pokemon-${id}`, name: `Pokemon ${id}`, species_name: `Pokemon ${id}`,
@@ -766,6 +768,7 @@ test('Golden fishing does not consume an unseen wild or event pity encounter', (
   math.random = () => random;
   const ctx = vm.createContext({
     Math: math, userId: 'trainer', rod: { name: 'Golden Rod' },
+    isPokemonVariantRemoved: () => false,
     getPatreonPerks: () => ({ goldenBoost: 0 }), isPlayerBonusActive: () => false,
     FISH_EXCLUSIVE_GOLDEN_DENOMINATOR: 5000, FISH_EXCLUSIVE_GOLDENS: ['Poliwag'],
     getSpecialSpawnPokemon: (name) => ({ name }), roleChanceBoost: 0,
@@ -873,6 +876,7 @@ test('wild starter encounters retain Explore shiny exclusivity', () => {
   math.random = () => 0;
   const ctx = vm.createContext({
     Math: math,
+    isPokemonVariantRemoved: () => false,
     consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
     isEventOpen: () => forcedEvent, halloweenEvent: { id: 'event' },
     eventSpawnEntries: [{ ids: [1], shiny: true, fish: true }],
@@ -944,6 +948,7 @@ test('wild Shiny and event rolls do not use old pity counters', () => {
   math.random = () => random;
   const ctx = vm.createContext({
     Math: math, consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
+    isPokemonVariantRemoved: () => false,
     isEventOpen: () => eventActive, halloweenEvent: { id: 'event' },
     eventSpawnEntries: [{ ids: [1], shiny: true, fish: true }],
     getUser: () => ({ event_ticket: eventActive, has_patreon: 0 }),
@@ -1351,6 +1356,7 @@ test('Explore uses map data, configured shiny eligibility and Patreon rates', ()
   let perks = { shinyRatePct: 0, goldenBoost: 0 };
   const ctx = vm.createContext({
     Math: math, EXPLORE_EXCLUSIVES: data.EXPLORE_EXCLUSIVES, EXPLORE_GOLDENS: data.EXPLORE_GOLDENS,
+    isPokemonVariantRemoved: () => false,
     getExploreCatalogEntries: () => [], getExploreLegendaryEntries: () => [],
     db: { prepare: () => ({ get: (id) => ({
       id, species_id: id, slug: `pokemon-${id}`, name: `Pokemon ${id}`, species_name: `Pokemon ${id}`,

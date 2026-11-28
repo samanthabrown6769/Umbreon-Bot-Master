@@ -332,6 +332,7 @@ test('lottery draw selects all winners from ticket-weighted entries', () => {
     math.random = () => random;
     const context = vm.createContext({
       db, Math: math, Date, console: { warn: (text) => warnings.push(text) },
+      isPokemonVariantRemoved: () => false,
       LOTTERY_FIRST_PLACE_EXCLUDED_USER_ID: smallTicketHolderId,
       LOTTERY_NON_WINNER_USER_IDS: adminIds,
       LOTTERY_SCHEDULE: { 0: { name: 'Golden Eevee', speciesId: 133 } },
@@ -477,7 +478,8 @@ test('ordinary admin catches use normal rates while shared admin spawns stay gua
       reply: async (text) => text },
     isBotAdmin: () => true, isConfiguredBotAdmin: () => true,
     catchCooldowns: new Set(), fishCooldowns: new Set(),
-    isCooldownExemptUser: () => false,
+    isCooldownExemptUser: () => false, isEncounterCooldownExemptUser: () => false,
+    isPokemonVariantRemoved: () => false,
     consumeCooldownMachineForEarlyUse: () => false, getCooldownReadyTimestamp: () => 'later',
     scheduleCooldownNotification: () => ({}), POKEMON_COOLDOWN_MS: 8000, PREFIX: '.',
     getUser: () => ({ grazz_buff_encounters: 0 }), getRoleEncounterBoost: async () => 0,
@@ -3956,6 +3958,7 @@ test('admin Pokémon grants count each regular, shiny and Golden copy as seen an
     .run(userId, pokemon.id, shiny ? 1 : 0, golden ? 1 : 0);
   const ctx = vm.createContext({
     db, assertUserId: () => {}, subtype: 'pokemon', action: '', args: [], rawTargetId: '123',
+    isPokemonVariantRemoved: () => false,
     target: { id: '123' }, PREFIX: '.', EMOJIS: { golden: 'golden' },
     message: { author: { username: 'Admin' }, content: '.admin pokemon', guild: null, reply: async (value) => value },
     client: { users: { fetch: async (id) => ({ id }) } },
@@ -4560,11 +4563,13 @@ test('spawn selection applies chamber weights and Legendary Box exclusions', () 
     INSERT INTO pokemon_forms VALUES (898,898,898,1,'Legendary',0,'Calyrex','Calyrex');
   `);
   let roll = 0;
+  const removed = new Set();
   const math = Object.create(Math);
   math.random = () => roll;
   const ctx = vm.createContext({
     db, Math: math, pickWeighted: (candidates, weightOf) => pickWeighted(candidates, weightOf, () => roll),
     randomPokemonCache: new Map(), RANDOM_POKEMON_CACHE_MS: 5000,
+    isPokemonVariantRemoved: (id, shiny, golden) => removed.has(`${id}:${golden ? 'golden' : shiny ? 'shiny' : 'base'}`),
     getStarterChainIds: () => new Set(), STARTER_SPAWN_WEIGHT: 1,
     getCachedPokemonForm: (id) => ({ ...db.prepare('SELECT * FROM pokemon_forms WHERE id=?').get(id), types: '["normal"]' }),
   });
@@ -4573,6 +4578,9 @@ test('spawn selection applies chamber weights and Legendary Box exclusions', () 
   assert.equal(ctx.getRandomPokemon('Common', false, true, true, [], [], null, [2]).speciesId, 2);
   assert.equal(ctx.getRandomPokemon('Common', false, true, true, [], [], null, []).speciesId, 1);
   assert.equal(ctx.getRandomPokemon('Common', false, true, true, []).id, 1);
+  removed.add('1:base');
+  assert.equal(ctx.getRandomPokemon('Common', false, true, true, [], [], null, [], 'base').id, 2);
+  assert.equal(ctx.getRandomPokemon('Common', false, true, true, [], [], null, [], 'shiny').id, 1);
   assert.equal(
     ctx.getRandomPokemon('Legendary', false, true, true, [], BOXES['Legendary Box'].excludedSpeciesNames).speciesId,
     898
@@ -4625,6 +4633,7 @@ test('wild and fishing rolls ignore saved pity guarantees', () => {
   math.random = () => 0.999999;
   const ctx = vm.createContext({
     Math: math,
+    isPokemonVariantRemoved: () => false,
     consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
     isEventOpen: () => true, halloweenEvent: { id: 'event' },
     eventSpawnEntries: [{ ids: [7], shiny: false, fish: false }],
@@ -4674,6 +4683,16 @@ test('wild and fishing rolls ignore saved pity guarantees', () => {
     assert.equal(spawn.spawnPity, undefined);
   }
   assert.equal(pityCalls, 0);
+  let nextId = 0;
+  const consumed = [];
+  ctx.getRandomPokemon = () => ({
+    id: ++nextId, speciesId: 2, speciesName: 'Test', name: 'Test',
+    rarity: 'Common', types: [], researchShard: 'Shard',
+  });
+  ctx.isPokemonVariantRemoved = (id) => id === 1;
+  ctx.consumeLegendaryResearchShard = (pokemon) => consumed.push(pokemon.id);
+  assert.equal(ctx.rollSpawn('water', 'trainer', { enablesLegendary: true, enablesShiny: true }).id, 2);
+  assert.deepEqual(consumed, [2]);
 });
 
 test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier', () => {
@@ -4682,6 +4701,7 @@ test('fishing and CatchBot apply the Legendary base rate and CatchBot modifier',
   math.random = () => rolls.shift() ?? 0.9;
   const ctx = vm.createContext({
     Math: math, consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
+    isPokemonVariantRemoved: () => false,
     isEventOpen: () => false, halloweenEvent: {}, eventSpawnEntries: [],
     getUser: () => ({ has_patreon: 0 }), getPlayerClan: () => null,
     getClanPerkMultipliers: () => ({ erBonus: 0 }), getTotalEffectiveShinyBonus: () => 0,
@@ -4734,6 +4754,7 @@ test('CatchBot uses configured rarity weights, odds, and per-level Luck bonuses'
   math.random = () => rolls.shift() ?? 0.9;
   const ctx = vm.createContext({
     Math: math, consumeIncenseCharge: () => false, consumePokeradarCharge: () => false,
+    isPokemonVariantRemoved: () => false,
     isEventOpen: () => false, halloweenEvent: {}, eventSpawnEntries: [],
     getUser: () => ({ has_patreon: 0 }), getPlayerClan: () => null,
     getClanPerkMultipliers: () => ({ erBonus: 0 }), getTotalEffectiveShinyBonus: () => 0,
@@ -4801,6 +4822,7 @@ test('CatchBot uses configured rarity weights, odds, and per-level Luck bonuses'
   goldenMath.random = () => goldenRolls.shift() ?? 0;
   const goldenCtx = vm.createContext({
     Math: goldenMath,
+    isPokemonVariantRemoved: () => false,
     CATCHBOT_GOLDEN_EXCLUSIVES: [{ name: 'Aron', types: '[]' }],
   });
   vm.runInContext(
@@ -4859,6 +4881,7 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
       selectedWeights = Array.from(pool, weightOf);
       return pickWeighted(pool, weightOf, math.random);
     },
+    isPokemonVariantRemoved: () => false,
     consumeIncenseCharge: () => incense, consumePokeradarCharge: () => pokeradar,
     isEventOpen: () => eventOpen, halloweenEvent: event, eventSpawnEntries: entries,
     getUser: () => ({ event_ticket: ticket, has_patreon: patreon }),
@@ -5722,6 +5745,7 @@ test('evolution keeps held items on original forms and preserves target-form ite
   const evolution = extract(dbSource, 'function applyPokemonEvolution(', '\nfunction ');
   const ctx = vm.createContext({
     db, calculateStat: () => 10, carryOverEvolutionMoves: () => {},
+    isPokemonVariantRemoved: () => false,
     syncEvolvedCatchState: () => false, recordPokemonSeen: () => {},
   });
   vm.runInContext(source, ctx);
@@ -5773,10 +5797,17 @@ test('evolution preserves a last original copy holding its item and consumes evo
   `);
   const ctx = vm.createContext({
     db, calculateStat: () => 10, carryOverEvolutionMoves: () => {},
+    isPokemonVariantRemoved: () => true,
     syncEvolvedCatchState: () => false, recordPokemonSeen: () => {},
   });
   vm.runInContext(extract(dbSource, 'function prepareEvolutionHeldItems(', '\nfunction applyPokemonEvolution('), ctx);
   vm.runInContext(extract(dbSource, 'function applyPokemonEvolution(', '\nfunction '), ctx);
+  const blocked = ctx.applyPokemonEvolution('user', db.prepare('SELECT * FROM catches WHERE id=1').get(),
+    { id: 17, name: 'Pidgeotto', rarity: 'Uncommon' });
+  assert.equal(blocked.error, 'variant_removed');
+  assert.equal(db.prepare('SELECT pokemon_id, held_item FROM catches WHERE id=1').get().pokemon_id, 16);
+  assert.equal(db.prepare('SELECT held_item FROM catches WHERE id=1').get().held_item, 'Nugget');
+  ctx.isPokemonVariantRemoved = () => false;
   ctx.applyPokemonEvolution('user', db.prepare('SELECT * FROM catches WHERE id=1').get(),
     { id: 17, name: 'Pidgeotto', rarity: 'Uncommon' });
   const original = db.prepare('SELECT * FROM catches WHERE pokemon_id=16').get();
@@ -5818,6 +5849,7 @@ test('Mega Evolution preserves the original item and an existing Mega form item'
   `);
   const ctx = vm.createContext({
     db, assertUserId: () => {}, getMegaStoneForForm: () => 'Venusaurite', calculateStat: () => 10,
+    isPokemonVariantRemoved: () => false,
     syncEvolvedCatchState: () => false, recordPokemonSeen: () => {},
     getPokemonDexNumbersForForms: () => new Map([[2, { dexNumber: 2 }]]),
   });
