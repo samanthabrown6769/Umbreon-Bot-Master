@@ -487,6 +487,7 @@ const {
   isGoldenFormSupported,
   isGoldenDexNumber,
 } = require('./pokemon-dex-numbers');
+const { loadPokemonDatabase, updatePokemonDexFiles } = require('./pokemon-database');
 const { getPokedexRegion, isPokemonInPokedexRegion } = require('./pokemon-regions');
 const { getPokemonShowdownSprite } = require('./pokemon-sprites');
 const battleFx = require('./battle-effects');
@@ -15898,6 +15899,48 @@ client.on('messageCreate', async (message) => {
       const subtype = args[0]?.toLowerCase();
       const action = args[1]?.toLowerCase();
 
+      if (command === 'admin' && action === 'update') {
+        if (args.length !== 3 || !/^\d+$/.test(args[0]) || !/^\d+$/.test(args[2])
+            || !Number.isSafeInteger(Number(args[0])) || Number(args[0]) <= 0
+            || !Number.isSafeInteger(Number(args[2])) || Number(args[2]) <= 0) {
+          return message.reply(`Usage: \`${PREFIX}admin <dex number> update <new number>\` (positive whole numbers).`);
+        }
+        const oldNumber = Number(args[0]);
+        const newNumber = Number(args[2]);
+        const forms = db.prepare('SELECT * FROM pokemon_forms ORDER BY species_id, id').all();
+        const numbers = getPokemonDexNumbers(forms);
+        const entries = forms.flatMap((form) => {
+          const dex = numbers.get(form.id);
+          const variants = [
+            { form, variant: 'normal', number: dex?.dexNumber },
+            { form, variant: 'shiny', number: dex?.shinyDexNumber },
+          ];
+          if (isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))) {
+            variants.push({ form, variant: 'golden', number: getGoldenDexNumber(form.species_id, form.slug) });
+          }
+          return variants;
+        });
+        const matches = entries.filter((entry) => entry.number === oldNumber);
+        if (!matches.length) return message.reply(`❌ No Pokémon dex entry found for **#${oldNumber}**.`);
+        if (matches.length > 1) {
+          return message.reply(`❌ Dex number **#${oldNumber}** is ambiguous; resolve the duplicate entries first.`);
+        }
+        if (oldNumber === newNumber) return message.reply(`❌ That entry already uses **#${newNumber}**.`);
+        const occupied = entries.find((entry) => entry.number === newNumber);
+        if (occupied) {
+          return message.reply(`❌ Dex number **#${newNumber}** is already used by **${occupied.variant} ${occupied.form.name}**.`);
+        }
+        const { form, variant } = matches[0];
+        try {
+          updatePokemonDexFiles(form.slug, variant, newNumber);
+        } catch (error) {
+          console.error(`Failed to update ${variant} dex number for ${form.slug}:`, error);
+          return message.reply('❌ Could not update the Pokémon dex files. Check the bot logs.');
+        }
+        marketDexNumbersByFormId = null;
+        return message.reply(`✅ Updated **${variant === 'normal' ? '' : `${variant === 'shiny' ? 'Shiny' : 'Golden'} `}${form.name}** from **#${oldNumber}** to **#${newNumber}**.`);
+      }
+
       if (command === 'admin' && subtype === 'remove') {
         const explicitVariant = ['shiny', 'golden'].includes(action) ? action : null;
         const query = args.slice(explicitVariant ? 2 : 1).join(' ').trim();
@@ -16674,6 +16717,7 @@ client.on('messageCreate', async (message) => {
             `• \`${PREFIX}admin rarity list\` — View rarity weights and catch chances\n` +
             `• \`${PREFIX}admin rarity set <name> <weight> <catch chance>\`\n` +
             `• \`${PREFIX}admin pokemon rarity <number> <rarity>\`\n` +
+            `• \`${PREFIX}admin <dex number> update <new number>\` — Change one normal, shiny, or golden dex number\n` +
             `• \`${PREFIX}admin pokemon rename <Pokémon|form|number> -- <new name>\`\n` +
             `• \`${PREFIX}admin pokemon sprite [shiny|golden] <Pokémon|form|dex number> <https URL>\`\n` +
             `• \`${PREFIX}admin [shiny|golden] <Pokémon|number> emoji <custom emoji>\`\n` +
@@ -20530,6 +20574,12 @@ client.on('messageCreate', async (message) => {
         ) || matches[0];
       }
       if (!selectedPokemon) return message.reply(`No Pokémon or form found for **${query}**.`);
+      if (numericDex !== null && !numericMatch && !goldenByNumber && !goldenFormByNumber) {
+        const edited = loadPokemonDatabase().get(selectedPokemon.slug);
+        if ((shinyEntry && edited?.adminShinyDexNumber) || (!shinyEntry && edited?.adminDexNumber)) {
+          return message.reply(`No Pokémon or form found for **${query}**.`);
+        }
+      }
       if (goldenEntry && !isGoldenFormSupported(
         selectedPokemon.species_id,
         selectedPokemon.slug,

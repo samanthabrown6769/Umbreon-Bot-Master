@@ -9,11 +9,9 @@ const { regionalPokemonName } = require('../pokemon-names');
 const { loadPokemonDatabase } = require('../pokemon-database');
 const { getGoldenSpriteUrl } = require('../golden-pokemon');
 const {
-  getDexNumberOverride,
   getGoldenDexNumber,
   getPokemonDexGroups,
   getPokemonDexNumbers,
-  getShinyDexNumberOverride,
   isGoldenFormSupported,
 } = require('../pokemon-dex-numbers');
 
@@ -78,8 +76,9 @@ for (const pokemon of catalog) {
     catalogChanged = true;
   }
   const edited = loadPokemonDatabase().get(pokemon.slug) || {};
+  const { dex_number, shiny_dex_number, golden_dex_number, ...catalogRecord } = pokemon;
   const record = {
-    ...pokemon,
+    ...catalogRecord,
     name: edited.name || name,
     rarity: edited.rarity || rarity,
     sprite: edited.sprite || pokemon.sprite,
@@ -110,12 +109,11 @@ for (const pokemon of catalog) {
   } else if (pokemon.is_default) {
     datasets['base-dex.json'].push({
       ...record,
-      dex_number: getDexNumberOverride(pokemon.slug) ?? pokemon.species_id,
+      dex_number: dexNumbersById.get(pokemon.id).dexNumber,
     });
     datasets['shiny-dex.json'].push({
       ...record,
-      dex_number: getShinyDexNumberOverride(pokemon.slug)
-        ?? dexNumbersById.get(pokemon.id).shinyDexNumber,
+      dex_number: dexNumbersById.get(pokemon.id).shinyDexNumber,
       sprite: record.shiny_sprite || record.sprite,
       variant: 'shiny',
     });

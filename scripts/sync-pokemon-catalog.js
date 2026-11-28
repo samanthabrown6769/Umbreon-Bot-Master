@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { displayName, regionalPokemonName } = require('../pokemon-names');
 const { appendCustomPokemonForms } = require('./pokemon-custom-forms');
+const { loadPokemonDatabase } = require('../pokemon-database');
 
 const API = 'https://pokeapi.co/api/v2';
 const OUTPUT = path.join(__dirname, '..', 'data', 'pokemon-catalog.json');
@@ -211,6 +212,13 @@ async function main() {
     };
   }).sort((left, right) => left.id - right.id);
   appendCustomPokemonForms(catalog);
+  const overrides = loadPokemonDatabase();
+  for (const pokemon of catalog) {
+    const edited = overrides.get(pokemon.slug);
+    if (edited?.adminDexNumber) pokemon.dex_number = edited.adminDexNumber;
+    if (edited?.adminShinyDexNumber) pokemon.shiny_dex_number = edited.adminShinyDexNumber;
+    if (edited?.adminGoldenDexNumber) pokemon.golden_dex_number = edited.adminGoldenDexNumber;
+  }
   catalog.sort((left, right) => left.id - right.id);
 
   fs.mkdirSync(path.dirname(OUTPUT), { recursive: true });

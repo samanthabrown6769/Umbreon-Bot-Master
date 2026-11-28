@@ -1,4 +1,4 @@
-const { loadPokemonDatabase } = require('./pokemon-database');
+const { loadPokemonDatabase, getAdminGoldenDexOverrides } = require('./pokemon-database');
 const {
   GOLDEN_FORM_DEX_NUMBERS,
   GOLDEN_REGIONAL_FORMS,
@@ -25,6 +25,11 @@ const FIXED_FORM_DEX_SLUGS = new Set([
 const SHINY_BASE_SPECIES_END = 999;
 const GOLDEN_SCREENSHOT_DEX_END = 9999;
 const pokemonCatalog = require('./data/pokemon-catalog.json');
+const defaultPokemonBySpecies = new Map(
+  pokemonCatalog.filter((pokemon) => pokemon.is_default)
+    .map((pokemon) => [pokemon.species_id, pokemon])
+);
+const pokemonBySlug = new Map(pokemonCatalog.map((pokemon) => [pokemon.slug, pokemon]));
 const MAX_GOLDEN_BASE_SPECIES_ID = Math.max(
   ...pokemonCatalog
     .filter((pokemon) => pokemon.is_default)
@@ -242,6 +247,10 @@ const SHINY_DEX_NUMBER_OVERRIDES_BY_SLUG = new Map([
   ['electrode-hisui', 7920],
   ['sneasel-hisui', 7926],
   ['decidueye-hisui', 7929],
+  ['gholdengo', 7941],
+  ['wo-chien', 7944],
+  ['chien-pao', 7947],
+  ['ting-lu', 7950],
   ['chi-yu', 7953],
   ['roaring-moon', 7956],
   ['iron-valiant', 7959],
@@ -249,6 +258,15 @@ const SHINY_DEX_NUMBER_OVERRIDES_BY_SLUG = new Map([
   ['koraidon', 7968],
   ['miraidon', 7971],
   ['walking-wake', 7974],
+  ['iron-leaves', 7977],
+  ['dipplin', 8150],
+  ['poltchageist', 8153],
+  ['sinistcha', 8156],
+  ['okidogi', 8159],
+  ['munkidori', 8162],
+  ['fezandipiti', 8165],
+  ['ogerpon', 8168],
+  ['gouging-fire', 8177],
   ['floette-eternal', 8192],
   ['pikachu-sinnoh-cap', 8195],
   ['ogerpon-wellspring-mask', 8212],
@@ -590,6 +608,15 @@ function getPokemonDexNumbers(pokemonForms) {
   for (const pokemon of pokemonForms) {
     if (NO_SHINY_SLUGS.has(pokemon.slug)) delete numbers.get(pokemon.id)?.shinyDexNumber;
   }
+  for (const pokemon of pokemonForms) {
+    const edited = edits.get(pokemon.slug);
+    const current = numbers.get(pokemon.id);
+    if (!current || !edited) continue;
+    if (edited.adminDexNumber) current.dexNumber = edited.adminDexNumber;
+    if (edited.adminShinyDexNumber && !NO_SHINY_SLUGS.has(pokemon.slug)) {
+      current.shinyDexNumber = edited.adminShinyDexNumber;
+    }
+  }
   return numbers;
 }
 
@@ -603,26 +630,35 @@ function getShinyDexNumberOverride(slug) {
 
 function getGoldenDexNumber(speciesId, formSlug = null) {
   if (!Number.isSafeInteger(speciesId) || speciesId <= 0 || speciesId > 1999) return null;
+  const defaultSlug = defaultPokemonBySpecies.get(speciesId)?.slug;
+  const slug = formSlug || defaultSlug;
   if (formSlug) {
     const dexNumber = GOLDEN_FORM_DEX_NUMBERS.get(formSlug);
     if (dexNumber) {
       const goldenForm = GOLDEN_REGIONAL_FORMS.get(formSlug);
       const formSpeciesId = goldenForm?.speciesId
         ?? pokemonCatalog.find((pokemon) => pokemon.slug === formSlug)?.species_id;
-      return formSpeciesId === speciesId ? dexNumber : null;
+      return formSpeciesId === speciesId
+        ? loadPokemonDatabase().get(formSlug)?.adminGoldenDexNumber ?? dexNumber : null;
     }
     const goldenForm = GOLDEN_REGIONAL_FORMS.get(formSlug);
-    if (goldenForm) return goldenForm.speciesId === speciesId ? goldenForm.dexNumber : null;
+    if (goldenForm) return goldenForm.speciesId === speciesId
+      ? loadPokemonDatabase().get(formSlug)?.adminGoldenDexNumber ?? goldenForm.dexNumber : null;
     if (!isGoldenBaseForm(speciesId, formSlug)) return null;
   }
-  return GOLDEN_DEX_START - 1 + speciesId;
+  return loadPokemonDatabase().get(slug)?.adminGoldenDexNumber ?? GOLDEN_DEX_START - 1 + speciesId;
 }
 
 function getGoldenSpeciesId(dexNumber) {
   if (!Number.isSafeInteger(dexNumber)) return null;
-  if (dexNumber >= GOLDEN_DEX_START
-      && dexNumber <= GOLDEN_DEX_START - 1 + MAX_GOLDEN_BASE_SPECIES_ID) {
-    return dexNumber - GOLDEN_DEX_START + 1;
+  for (const [slug, override] of getAdminGoldenDexOverrides()) {
+    const pokemon = pokemonBySlug.get(slug);
+    if (override === dexNumber && pokemon?.is_default) return pokemon.species_id;
+  }
+  const speciesId = dexNumber - GOLDEN_DEX_START + 1;
+  if (speciesId > 0 && speciesId <= MAX_GOLDEN_BASE_SPECIES_ID
+      && getGoldenDexNumber(speciesId) === dexNumber) {
+    return speciesId;
   }
   return null;
 }
@@ -641,8 +677,12 @@ function isGoldenFormSupported(speciesId, formSlug, isDefault = false) {
 function isGoldenDexNumber(dexNumber) {
   return Number.isSafeInteger(dexNumber)
     && (getGoldenSpeciesId(dexNumber) !== null
-      || [...GOLDEN_FORM_DEX_NUMBERS.values()].includes(dexNumber)
-      || [...GOLDEN_REGIONAL_FORMS.values()].some((form) => form.dexNumber === dexNumber));
+      || [...GOLDEN_FORM_DEX_NUMBERS.keys()].some((slug) => {
+        const pokemon = pokemonBySlug.get(slug);
+        return pokemon && getGoldenDexNumber(pokemon.species_id, slug) === dexNumber;
+      })
+      || [...GOLDEN_REGIONAL_FORMS].some(([slug, form]) =>
+        getGoldenDexNumber(form.speciesId, slug) === dexNumber));
 }
 
 module.exports = {
