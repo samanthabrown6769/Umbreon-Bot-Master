@@ -1977,7 +1977,9 @@ async function fetchPokemonAbilityDetails(abilityName) {
   }
   const data = await response.json();
   if (!Number.isSafeInteger(data.id) || data.id <= 0 || typeof data.name !== 'string'
-      || !Array.isArray(data.effect_entries) || !Array.isArray(data.pokemon)) {
+      || !Array.isArray(data.effect_entries) || !Array.isArray(data.pokemon)
+      || data.pokemon.some((entry) => typeof entry?.pokemon?.name !== 'string'
+        || typeof entry.is_hidden !== 'boolean' || !Number.isSafeInteger(entry.slot) || entry.slot < 1)) {
     throw new Error(`PokéAPI returned invalid detail data for ability "${abilityName}".`);
   }
   const englishEffect = data.effect_entries.find((entry) =>
@@ -1989,9 +1991,10 @@ async function fetchPokemonAbilityDetails(abilityName) {
     effect: englishEffect?.effect || null,
     shortEffect: typeof englishEffect?.short_effect === 'string' ? englishEffect.short_effect : null,
     pokemon: data.pokemon.map((entry) => ({
-      name: entry.pokemon?.name,
+      name: entry.pokemon.name,
       hidden: entry.is_hidden,
-    })).filter((entry) => typeof entry.name === 'string'),
+      slot: entry.slot,
+    })),
   };
   pokemonAbilityDetails.set(normalizedName, details);
   return details;
@@ -4861,7 +4864,7 @@ async function sendPagedEmbeds(message, embeds, label) {
   let page = 0;
   const total = embeds.length;
   const render = () => {
-    embeds[page].setFooter({ text: `${label} • Page ${page + 1}/${total}` });
+    embeds[page].setFooter({ text: `${label ? `${label} • ` : ''}Page ${page + 1}/${total}` });
     return embeds[page];
   };
   const buttons = (disabled = false) => new ActionRowBuilder().addComponents(
@@ -18271,7 +18274,8 @@ client.on('messageCreate', async (message) => {
           return message.reply('❌ Ability data could not be loaded for that Pokémon right now. Please try again later.');
         }
         const abilityLines = abilities.map((ability) =>
-          `• **${ability.name}** — ${ability.hidden ? 'Hidden Ability' : 'Standard Ability'}`
+          `• **${ability.name}** — ${ability.hidden ? 'Hidden Ability'
+            : ability.slot === 1 ? 'Primary Ability' : ability.slot === 2 ? 'Secondary Ability' : 'Standard Ability'}`
         );
         const dexNumber = getPokemonFormDexNumber(pokemon);
         const sprite = getPokemonSpriteEmoji(pokemon);
@@ -18303,12 +18307,17 @@ client.on('messageCreate', async (message) => {
 
       const formsBySlug = new Map(db.prepare('SELECT name, slug FROM pokemon_forms').all()
         .map((form) => [form.slug.toLowerCase(), form]));
-      const pokemonEntries = ability.pokemon.map((entry) => {
+      const pokemonGroups = new Map([
+        ['Primary Ability', []], ['Secondary Ability', []], ['Hidden Ability', []], ['Other Standard Ability', []],
+      ]);
+      for (const entry of ability.pokemon) {
         const form = formsBySlug.get(entry.name.toLowerCase());
         const name = form?.name || entry.name.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
         const sprite = getPokemonSpriteEmoji({ name, form_slug: entry.name });
-        return `${sprite ? `${sprite} ` : ''}**${name}**${entry.hidden ? ' (Hidden Ability)' : ''}`;
-      });
+        const category = entry.hidden ? 'Hidden Ability'
+          : entry.slot === 1 ? 'Primary Ability' : entry.slot === 2 ? 'Secondary Ability' : 'Other Standard Ability';
+        pokemonGroups.get(category).push(`${sprite ? `${sprite} ` : ''}**${name}**`);
+      }
       const effect = ability.effect || ability.shortEffect || 'No English effect description is available.';
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
@@ -18319,19 +18328,32 @@ client.on('messageCreate', async (message) => {
       }
       const pokemonPages = [];
       let pokemonList = '';
-      for (const entry of pokemonEntries) {
-        if (pokemonList && pokemonList.length + entry.length + 3 > 4000) {
+      for (const [category, entries] of pokemonGroups) {
+        if (!entries.length) continue;
+        const heading = `**${category} (${entries.length})**`;
+        if (pokemonList && pokemonList.length + heading.length + entries[0].length + 3 > 4000) {
           pokemonPages.push(pokemonList);
           pokemonList = '';
         }
-        pokemonList += `${pokemonList ? ' · ' : ''}${entry}`;
+        pokemonList += `${pokemonList ? '\n\n' : ''}${heading}\n`;
+        let hasEntry = false;
+        for (const entry of entries) {
+          const separator = hasEntry ? ' · ' : '';
+          if (pokemonList.length + separator.length + entry.length > 4000) {
+            pokemonPages.push(pokemonList);
+            pokemonList = `${heading} (continued)\n`;
+            hasEntry = false;
+          }
+          pokemonList += `${hasEntry ? ' · ' : ''}${entry}`;
+          hasEntry = true;
+        }
       }
       pokemonPages.push(pokemonList || 'No Pokémon are currently listed with this ability.');
       const pages = [embed, ...pokemonPages.map((list) => new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle(`${ability.name} — Pokémon (${ability.pokemon.length})`)
         .setDescription(list))];
-      return sendPagedEmbeds(message, pages, `Ability #${ability.id}`);
+      return sendPagedEmbeds(message, pages);
     }
 
     if (command === 'pokemon' || command === 'p') {

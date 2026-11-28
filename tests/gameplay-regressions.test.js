@@ -6206,10 +6206,41 @@ test('faction hunt alerts use the daily species mapping and mention the trainer'
   assert.equal(ctx.buildFactionEncounterAlert({ speciesId: 25, isExplore: true }, '123'), null);
 });
 
-test('ability details page the complete Pokémon list with available sprites', async () => {
+test('ability details retain and validate Pokémon ability slots', async () => {
+  let requests = 0;
+  const data = {
+    id: 1, name: 'test-ability', effect_entries: [],
+    pokemon: [
+      { pokemon: { name: 'primary' }, slot: 1, is_hidden: false },
+      { pokemon: { name: 'secondary' }, slot: 2, is_hidden: false },
+      { pokemon: { name: 'hidden' }, slot: 3, is_hidden: true },
+    ],
+  };
+  const ctx = vm.createContext({
+    pokemonAbilityDetails: new Map(), AbortSignal,
+    fetch: async () => { requests++; return { ok: true, json: async () => data }; },
+  });
+  vm.runInContext(extract(indexSource, 'async function fetchPokemonAbilityDetails(', '\nasync function fetchBulbapediaItemSummary('), ctx);
+  const result = await ctx.fetchPokemonAbilityDetails('test ability');
+  assert.deepEqual(JSON.parse(JSON.stringify(result.pokemon)), [
+    { name: 'primary', hidden: false, slot: 1 },
+    { name: 'secondary', hidden: false, slot: 2 },
+    { name: 'hidden', hidden: true, slot: 3 },
+  ]);
+  assert.equal(await ctx.fetchPokemonAbilityDetails('test ability'), result);
+  assert.equal(requests, 1);
+  data.pokemon[0].slot = null;
+  await assert.rejects(ctx.fetchPokemonAbilityDetails('another ability'), /invalid detail data/);
+});
+
+test('ability details group and page the complete Pokémon list with available sprites', async () => {
   const entries = [
-    { name: 'mr-mime', hidden: true },
-    ...Array.from({ length: 300 }, (_, index) => ({ name: `pokemon-${String(index).padStart(3, '0')}`, hidden: false })),
+    { name: 'mr-mime', hidden: true, slot: 3 },
+    ...Array.from({ length: 300 }, (_, index) => ({
+      name: `pokemon-${String(index).padStart(3, '0')}`,
+      hidden: index >= 270 && index < 290,
+      slot: index < 250 ? 1 : index < 270 ? 2 : index < 290 ? 3 : 4,
+    })),
   ];
   const handlers = {};
   const displayed = [];
@@ -6237,7 +6268,7 @@ test('ability details page the complete Pokémon list with available sprites', a
   await ctx.run();
   assert.equal(displayed[0].description, 'The detailed effect.');
   assert.equal(displayed[0].fields[0].value, 'Summary.');
-  assert.match(displayed[0].footer.text, /Page 1\//);
+  assert.match(displayed[0].footer.text, /^Page 1\/\d+$/);
   assert.doesNotMatch(JSON.stringify(displayed[0]), /PokéAPI|PokeAPI/);
   let denied;
   await handlers.collect({ user: { id: 'other' }, reply: async (payload) => { denied = payload; } });
@@ -6251,13 +6282,22 @@ test('ability details page the complete Pokémon list with available sprites', a
     });
   }
   const list = displayed.slice(1).map((page) => page.description).join(' · ');
-  assert.match(list, /<:mime:123456789012345678> \*\*Mr\. Mime\*\* \(Hidden Ability\)/);
+  assert.match(list, /\*\*Primary Ability \(250\)\*\*/);
+  assert.match(list, /\*\*Secondary Ability \(20\)\*\*/);
+  assert.match(list, /\*\*Hidden Ability \(21\)\*\*/);
+  assert.match(list, /\*\*Other Standard Ability \(10\)\*\*/);
+  assert.match(list, /\*\*Primary Ability \(250\)\*\* \(continued\)/);
+  assert.ok(list.indexOf('**Primary Ability') < list.indexOf('**Pokemon 000**'));
+  assert.ok(list.indexOf('**Secondary Ability') < list.indexOf('**Pokemon 250**'));
+  assert.ok(list.indexOf('**Hidden Ability') < list.indexOf('<:mime:123456789012345678> **Mr. Mime**'));
+  assert.ok(list.indexOf('**Other Standard Ability') < list.indexOf('**Pokemon 290**'));
   for (let index = 0; index < 300; index++) {
     assert.ok(list.includes(`**Pokemon ${String(index).padStart(3, '0')}**`));
   }
   for (const page of displayed.slice(1)) {
     assert.ok(page.description.length <= 4000);
     assert.doesNotMatch(JSON.stringify(page), /PokéAPI|PokeAPI/);
+    assert.match(page.footer.text, /^Page \d+\/\d+$/);
   }
   assert.match(displayed[1].footer.text, /Page 2\//);
 
@@ -6273,12 +6313,18 @@ test('ability details page the complete Pokémon list with available sprites', a
   assert.equal(displayed[1].description, 'No Pokémon are currently listed with this ability.');
 
   ctx.resolvePokemonForm = () => ({ id: 1, name: 'Mr. Mime', form_slug: 'mr-mime' });
-  ctx.fetchPokemonAbilities = async () => [{ name: 'Test Ability', hidden: false }];
+  ctx.fetchPokemonAbilities = async () => [
+    { name: 'Primary', hidden: false, slot: 1 },
+    { name: 'Secondary', hidden: false, slot: 2 },
+    { name: 'Hidden', hidden: true, slot: 3 },
+  ];
   ctx.getPokemonFormDexNumber = () => 122;
   displayed.length = 0;
   await ctx.run();
   assert.match(displayed[0].description, /<:mime:123456789012345678> \*\*Mr\. Mime\*\*/);
-  assert.match(displayed[0].description, /Test Ability/);
+  assert.match(displayed[0].description, /\*\*Primary\*\* — Primary Ability/);
+  assert.match(displayed[0].description, /\*\*Secondary\*\* — Secondary Ability/);
+  assert.match(displayed[0].description, /\*\*Hidden\*\* — Hidden Ability/);
 });
 
 test('held-item list groups all owned Pokémon by item and pages without counting shared copies twice', async () => {
