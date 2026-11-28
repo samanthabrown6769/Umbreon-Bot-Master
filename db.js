@@ -9672,6 +9672,7 @@ function getClanLeaderboard() {
 function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.now()) {
   const categories = new Set([
     'daily',
+    'weekly',
     'monthly',
     'yearly',
     'catches',
@@ -9686,7 +9687,7 @@ function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.n
     throw new TypeError('Clan highscore limit must be between 1 and 100.');
   }
 
-  const period = ['daily', 'monthly', 'yearly'].includes(category) ? category : null;
+  const period = ['daily', 'weekly', 'monthly', 'yearly'].includes(category) ? category : null;
   const periodStart = period ? getClanPeriodBounds(period, timestamp).start : null;
   const rows = db.prepare(`
     SELECT clans.id, clans.name, clans.clan_rank, clans.treasury,
@@ -9710,6 +9711,7 @@ function getClanHighScores(category = 'monthly', limit = 100, timestamp = Date.n
 
   const valueForCategory = {
     daily: (row) => row.period_catches,
+    weekly: (row) => row.period_catches,
     monthly: (row) => row.period_catches,
     yearly: (row) => row.period_catches,
     catches: (row) => row.catches + row.fishes - row.bonus_fishes,

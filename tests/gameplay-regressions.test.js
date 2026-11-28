@@ -4319,6 +4319,82 @@ test('repel all resolves to every owned Repel and is not accepted for other modi
   assert.ok(Number.isNaN(ctx.parseEncounterModifierAmount('super_repel', 'all', 4)));
 });
 
+test('weekly clan highscores use current Monday reset and include fishing catches', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE clans (id INTEGER PRIMARY KEY, name TEXT, clan_rank TEXT, treasury INTEGER,
+        bonus_catches INTEGER, bonus_fishes INTEGER, bonus_hatches INTEGER, bonus_swaps INTEGER, bonus_catchbot INTEGER);
+      CREATE TABLE clan_members (user_id TEXT, clan_id INTEGER, catches INTEGER, fishes INTEGER,
+        hatches INTEGER, swaps INTEGER, catchbot INTEGER);
+      CREATE TABLE clan_activity_periods (clan_id INTEGER, user_id TEXT, period TEXT, period_start INTEGER,
+        catches INTEGER, fishes INTEGER);
+      INSERT INTO clans VALUES (1, 'Alpha', 'starter', 0, 100, 0, 0, 0, 0),
+        (2, 'Beta', 'starter', 0, 0, 0, 0, 0, 0), (3, 'Empty', 'starter', 0, 0, 0, 0, 0, 0);
+      INSERT INTO clan_members VALUES ('a', 1, 0, 0, 0, 0, 0), ('b', 1, 0, 0, 0, 0, 0),
+        ('c', 2, 0, 0, 0, 0, 0);
+    `);
+    const ctx = vm.createContext({ db, CLAN_PERIOD_OFFSET_MS: 5 * 60 * 60 * 1000, CLAN_DAY_MS: 24 * 60 * 60 * 1000 });
+    vm.runInContext(
+      `${extract(dbSource, 'function getClanPeriodBounds(', '\nfunction getClanActivityStats(')}\n` +
+        extract(dbSource, 'function getClanHighScores(', '\nfunction createClan('), ctx
+    );
+    const start = Date.parse('2026-11-23T05:00:00Z');
+    const nextStart = Date.parse('2026-11-30T05:00:00Z');
+    const insert = db.prepare('INSERT INTO clan_activity_periods VALUES (?, ?, ?, ?, ?, ?)');
+    insert.run(1, 'a', 'weekly', start, 3, 2);
+    insert.run(1, 'b', 'weekly', start, 1, 1);
+    insert.run(2, 'c', 'weekly', start, 6, 2);
+    insert.run(1, 'a', 'weekly', start - 7 * 86400000, 50, 0);
+    insert.run(1, 'a', 'monthly', start, 1000, 0);
+    insert.run(1, 'a', 'weekly', nextStart, 2, 1);
+    const scores = ctx.getClanHighScores('weekly', 100, nextStart - 1);
+    assert.deepEqual(Array.from(scores, (row) => [row.name, row.score, row.member_count]), [
+      ['Beta', 8, 1], ['Alpha', 7, 2], ['Empty', 0, 0],
+    ]);
+    assert.deepEqual(Array.from(ctx.getClanHighScores('weekly', 1, nextStart), (row) => [row.name, row.score]),
+      [['Alpha', 3]]);
+    assert.equal(ctx.getClanHighScores('catches', 100, nextStart)[0].score, 100);
+  } finally { db.close(); }
+});
+
+test('clan hs weekly displays and pages the weekly leaderboard', async () => {
+  const events = {};
+  const categories = [];
+  const replies = [];
+  const clans = Array.from({ length: 16 }, (_, index) => ({
+    rank: index + 1, name: `Clan ${index + 1}`, score: 100 - index, member_count: 1, clan_rank: 'starter',
+  }));
+  const ctx = vm.createContext({
+    subcommand: 'hs', args: ['hs', 'weekly'], userId: 'u', PREFIX: '.', console,
+    getClanHighScores: (category) => { categories.push(category); return clans; },
+    CLAN_RANK_EMOJIS: { starter: '⭐' }, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
+    message: { reply: async (payload) => {
+      replies.push(payload);
+      return { createMessageComponentCollector: () => ({ on: (name, handler) => { events[name] = handler; } }) };
+    } },
+  });
+  vm.runInContext(`async function run() { ${extract(indexSource, "      if (subcommand === 'hs') {", "\n      if (subcommand === 'lb'")} }`, ctx);
+  await ctx.run();
+  assert.equal(categories[0], 'weekly');
+  assert.match(replies[0].embeds[0].toJSON().title, /Weekly Catches/);
+  assert.match(replies[0].embeds[0].toJSON().footer.text, /Page 1\/2/);
+  let updated;
+  await events.collect({
+    user: { id: 'u' }, customId: 'clan-hs-next',
+    update: async (payload) => { updated = payload; },
+  });
+  assert.equal(categories.at(-1), 'weekly');
+  assert.match(updated.embeds[0].toJSON().description, /Clan 16/);
+  assert.match(updated.embeds[0].toJSON().footer.text, /Page 2\/2/);
+  ctx.args = ['hs'];
+  await ctx.run();
+  assert.equal(categories.at(-1), 'catches');
+  ctx.args = ['hs', 'unknown'];
+  await ctx.run();
+  assert.match(replies.at(-1), /weekly/);
+});
+
 test('wiping a trainer clears catches, stats and snapshots while preserving clan lifetime totals', () => {
   const db = new Database(':memory:');
   db.exec(`

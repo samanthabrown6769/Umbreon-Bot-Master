@@ -14849,7 +14849,7 @@ client.on('messageCreate', async (message) => {
           `• \`${PREFIX}time\` — Show bot time and the day/dusk/night phase\n` +
           `• \`${PREFIX}evoitems\` / \`${PREFIX}stones\` — View evolution items\n` +
           `• \`${PREFIX}clan members [clan name]\` — Members ranked by catches\n` +
-          `• \`${PREFIX}clan hs [daily|monthly|yearly|all time]\` — Clan highscores\n` +
+          `• \`${PREFIX}clan hs [daily|weekly|monthly|yearly|all time]\` — Clan highscores\n` +
           `• \`${PREFIX}market\` — Minimum listing prices: Legendary 40,000 • Shiny 75,000 • Golden 500,000`
         );
       const pageList = Object.values(helpPages);
@@ -18798,6 +18798,7 @@ client.on('messageCreate', async (message) => {
       if (subcommand === 'hs') {
         const hsOptions = {
           daily: { category: 'daily', title: 'Daily' },
+          weekly: { category: 'weekly', title: 'Weekly' },
           monthly: { category: 'monthly', title: 'Monthly' },
           yearly: { category: 'yearly', title: 'Yearly' },
           alltime: { category: 'catches', title: 'All-Time' },
@@ -18805,7 +18806,7 @@ client.on('messageCreate', async (message) => {
         const hsKey = args.slice(1).join('').toLowerCase().replace(/[^a-z]/g, '') || 'alltime';
         const hsOption = hsOptions[hsKey];
         if (!hsOption) {
-          return message.reply(`Usage: \`${PREFIX}clan hs [daily|monthly|yearly|all time]\`.`);
+          return message.reply(`Usage: \`${PREFIX}clan hs [daily|weekly|monthly|yearly|all time]\`.`);
         }
         const pageSize = 15;
         let currentPage = 0;
