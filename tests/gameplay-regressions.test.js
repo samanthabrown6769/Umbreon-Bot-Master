@@ -1325,7 +1325,7 @@ test('released and swapped Pokémon credit each open chamber atomically', () => 
       isChamberOpen: (chamber) => chamber.key !== 'closed',
       getReleaseProtectionReason: (pokemon) => pokemon.is_golden ? 'protected' : null,
       getDisplayRarity: () => 'Common', RELEASE_PAYOUTS: { common: 10 },
-      grantRotomItemDrops: () => [], awardCoinsWithBoost: (_id, value) => ({ finalAmount: value }),
+      grantRotomItemDrops: () => [], getAmuletCoinBoost: () => ({ multiplier: 1 }),
       findOwnedPokemonRows: (_userId, query) => db.prepare('SELECT * FROM catches WHERE id = ?').all(Number(query)),
       getUser: () => ({ coins: 0, swaps_today: 0, last_swap_reset: 0 }),
       getDailyResetDay: () => 0, getUserItems: () => [{ item_name: 'Swap Ticket', amount: 1 }],
@@ -1356,6 +1356,91 @@ test('released and swapped Pokémon credit each open chamber atomically', () => 
     ctx.swapForTest('4');
     assert.equal(db.prepare("SELECT sacrifices FROM mega_chambers WHERE chamber_key = 'x'").get().sacrifices, 11);
   } finally { db.close(); }
+});
+
+test('bulk release batches rewards while preserving per-catch rounding and protections', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE users (id TEXT PRIMARY KEY, buddy_catch_id INTEGER, coins INTEGER, pkc_earned INTEGER);
+      INSERT INTO users VALUES ('u', 1, 0, 0);
+      CREATE TABLE pokemon_forms (id INTEGER, species_id INTEGER);
+      INSERT INTO pokemon_forms VALUES (1, 1);
+      CREATE TABLE catches (id INTEGER PRIMARY KEY, user_id TEXT, pokemon_id INTEGER, name TEXT,
+        rarity TEXT, is_shiny INTEGER, is_golden INTEGER, in_team INTEGER, is_locked INTEGER, is_fav INTEGER);
+      CREATE TABLE mega_chambers (user_id TEXT, chamber_key TEXT, sacrifices INTEGER, clears INTEGER, PRIMARY KEY (user_id, chamber_key));
+    `);
+    const insert = db.prepare("INSERT INTO catches VALUES (?, 'u', 1, 'Bulbasaur', 'Common', 0, 0, 0, 0, 0)");
+    db.transaction(() => { for (let id = 1; id <= 2003; id++) insert.run(id); })();
+    db.exec('UPDATE catches SET is_locked = 1 WHERE id = 2001; UPDATE catches SET in_team = 1 WHERE id = 2002; UPDATE catches SET is_fav = 1 WHERE id = 2003');
+    let boostCalls = 0;
+    let paymentCalls = 0;
+    let failPayment = true;
+    const ctx = vm.createContext({
+      db, RELEASE_PAYOUTS: { common: 150 }, getDisplayRarity: () => 'Common',
+      getReleaseProtectionReason: () => null, grantRotomItemDrops: () => [],
+      getAmuletCoinBoost: () => { boostCalls++; return { multiplier: 1.05 }; },
+      CHAMBER_CONFIG: { x: { key: 'x', pokemonId: 1 } }, isChamberOpen: () => true,
+      incrementUser: (id, values) => {
+        paymentCalls++;
+        if (failPayment) throw new Error('payment failed');
+        db.prepare('UPDATE users SET coins = coins + ?, pkc_earned = pkc_earned + ? WHERE id = ?')
+          .run(values.coins, values.pkc_earned, id);
+      },
+    });
+    vm.runInContext(extract(indexSource, 'function releaseCatchIds(', '\nfunction createReleaseAnnouncement('), ctx);
+    const ids = Array.from({ length: 2003 }, (_, index) => index + 1);
+    assert.throws(() => ctx.releaseCatchIds('u', ids, { protectFavorites: true }), /payment failed/);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM catches').get().n, 2003);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM mega_chambers').get().n, 0);
+    failPayment = false;
+    boostCalls = 0;
+    paymentCalls = 0;
+    const result = ctx.releaseCatchIds('u', ids, { protectFavorites: true });
+    assert.equal(result.released.length, 2000);
+    assert.equal(result.totalPayout, 2000 * 157);
+    assert.deepEqual(db.prepare('SELECT coins, pkc_earned, buddy_catch_id FROM users WHERE id = ?').get('u'),
+      { coins: 2000 * 157, pkc_earned: 2000 * 157, buddy_catch_id: null });
+    assert.equal(db.prepare('SELECT sacrifices FROM mega_chambers').get().sacrifices, 2000);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM catches').get().n, 3);
+    assert.equal(boostCalls, 1);
+    assert.equal(paymentCalls, 1);
+  } finally { db.close(); }
+});
+
+test('duplicate release acknowledges confirmation before rechecking eligibility', async () => {
+  const rows = [1, 2, 3].map((id) => ({
+    id, pokemon_id: 1, name: 'Bulbasaur', rarity: 'Common',
+    is_shiny: 0, is_golden: 0, in_team: 0, is_locked: 0, is_favorite: 0,
+  }));
+  const events = {};
+  const order = [];
+  let edited;
+  const collector = { on: (name, fn) => { events[name] = fn; }, stop: () => {} };
+  const ctx = vm.createContext({
+    subcommand: 'duplicates', args: ['duplicates'], userId: 'u', PREFIX: '.',
+    message: { author: { username: 'Trainer' }, reply: async () => ({ createMessageComponentCollector: () => collector }) },
+    db: { prepare: () => ({ all: () => rows.map((row) => ({ ...row })) }) },
+    getReleaseProtectionReason: () => null, getDisplayRarity: () => 'Common',
+    getAmuletCoinBoost: () => ({ multiplier: 1 }), RELEASE_PAYOUTS: { common: 150 },
+    getRarityEmojis: () => '', getTrainerIconEmoji: () => '', EMOJIS: { pokecoin: 'coin' },
+    releaseCatchIds: (_userId, ids) => {
+      order.push('release');
+      assert.deepEqual(Array.from(ids), [2]);
+      return { released: [rows[1]], totalPayout: 150, rotomDrops: [] };
+    },
+    ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, EmbedBuilder, console,
+  });
+  vm.runInContext(`async function run() { ${extract(indexSource, "        if (subcommand === 'duplicates') {", '\n        const rarityArg =')} }`, ctx);
+  await ctx.run();
+  rows[2].is_favorite = 1;
+  await events.collect({
+    user: { id: 'u' }, customId: 'release-duplicates-confirm',
+    deferUpdate: async () => { order.push('deferred'); },
+    editReply: async (payload) => { edited = payload; },
+  });
+  assert.deepEqual(order, ['deferred', 'release']);
+  assert.match(edited.content, /1 duplicate Pokémon/);
 });
 
 test('daily swap tickets are announced at the start of the swap response', async () => {
@@ -1981,6 +2066,109 @@ test('PC dex sort orders displayed numbers across favorites and variants and wor
   assert.doesNotMatch(edits[0].embeds[0].toJSON().fields[0].value, /0025/);
   await events.collect({ user, customId: 'box:sort', deferUpdate: async () => {} });
   assert.match(edits[1].embeds[0].toJSON().footer.text, /Sorted by: Rarity/);
+});
+
+test('PC favorites require ownership of the requested variant', async () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE pokemon_forms (id INTEGER, species_id INTEGER, name TEXT, slug TEXT, is_default INTEGER);
+      INSERT INTO pokemon_forms VALUES (1, 1, 'Bulbasaur', 'bulbasaur', 1);
+      CREATE TABLE catches (id INTEGER, user_id TEXT, pokemon_id INTEGER, name TEXT, is_fav INTEGER, is_golden INTEGER, is_shiny INTEGER);
+      INSERT INTO catches VALUES (1, 'u', 1, 'Bulbasaur', 0, 1, 0);
+    `);
+    const user = { id: 'u', username: 'Trainer', displayAvatarURL: () => 'https://example.com/avatar.png' };
+    const replies = [];
+    const ctx = vm.createContext({
+      command: 'pc', args: [], userId: 'u', adminPcLookup: false, PREFIX: '.', db, EmbedBuilder,
+      message: { author: user, mentions: { users: { first: () => null } }, reply: async (value) => replies.push(value) },
+      getUser: () => ({ has_patreon: false }),
+      getPokemonDexNumbers: () => new Map([[1, { dexNumber: 1, shinyDexNumber: 1001 }]]),
+      isGoldenDexNumber: (number) => number === 9001,
+      isGoldenFormSupported: () => true, getGoldenDexNumber: () => 9001,
+      resolvePokemonForm: () => db.prepare('SELECT * FROM pokemon_forms').get(),
+    });
+    vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'box' || command === 'pc') {", "\n    if ((command === 'item'")} }`, ctx);
+    for (const input of ['Bulbasaur', 'shiny Bulbasaur', '1', '1001']) {
+      ctx.args = ['fav', input];
+      await ctx.run();
+      assert.equal(db.prepare('SELECT is_fav FROM catches WHERE id = 1').get().is_fav, 0);
+      assert.match(replies.at(-1).embeds[0].toJSON().fields[0].name, /Not changed/);
+    }
+    ctx.args = ['fav', '9001'];
+    await ctx.run();
+    assert.equal(db.prepare('SELECT is_fav FROM catches WHERE id = 1').get().is_fav, 1);
+    db.prepare("INSERT INTO catches VALUES (2, 'u', 1, 'Bulbasaur', 0, 0, 0)").run();
+    ctx.args = ['fav', 'Bulbasaur'];
+    await ctx.run();
+    assert.equal(db.prepare('SELECT is_fav FROM catches WHERE id = 2').get().is_fav, 1);
+  } finally { db.close(); }
+});
+
+test('release locks can be added and removed before owning a form or variant', async () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE pokemon_forms (id INTEGER, species_id INTEGER, species_name TEXT, name TEXT, slug TEXT, is_default INTEGER, evolution_chain_id INTEGER, evolution_stage INTEGER);
+      INSERT INTO pokemon_forms VALUES (1, 1, 'Bulbasaur', 'Bulbasaur', 'bulbasaur', 1, 1, 1);
+      CREATE TABLE catches (id INTEGER, user_id TEXT, pokemon_id INTEGER, name TEXT, rarity TEXT, is_shiny INTEGER, is_golden INTEGER, is_locked INTEGER);
+      CREATE TABLE release_category_locks (user_id TEXT, category TEXT, PRIMARY KEY (user_id, category));
+    `);
+    const form = db.prepare('SELECT * FROM pokemon_forms').get();
+    const replies = [];
+    const ctx = vm.createContext({
+      db, userId: 'u', command: 'release', args: [], PREFIX: '.', message: { reply: async (text) => replies.push(text) },
+      getPatreonPerks: () => ({ releaseLocks: 0 }), findOwnedPokemonRows: () => [],
+      resolvePokemonForm: (value) => ['bulbasaur', '1', '1001', '9001'].includes(value.toLowerCase()) ? form : null,
+      getPokemonDexNumbers: () => new Map([[1, { dexNumber: 1, shinyDexNumber: 1001 }]]),
+      isGoldenFormSupported: () => true, getGoldenDexNumber: () => 9001,
+      EMOJIS: {}, getDisplayRarity: (rarity) => rarity,
+    });
+    vm.runInContext(extract(indexSource, 'const BASE_RELEASE_LOCK_LIMIT', '\nfunction releaseCatchIds('), ctx);
+    vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'release') {", "\n      if (subcommand === 'values') {")} } }`, ctx);
+    for (const [input, category] of [['Bulbasaur', 'exact:1:base'], ['1001', 'exact:1:shiny'], ['golden Bulbasaur', 'exact:1:golden']]) {
+      ctx.args = ['lock', ...input.split(' ')];
+      await ctx.run();
+      assert.ok(db.prepare('SELECT 1 FROM release_category_locks WHERE category = ?').get(category));
+    }
+    ctx.args = ['lock', 'unknown'];
+    await ctx.run();
+    assert.match(replies.at(-1), /No Pokémon matching/);
+    db.exec("INSERT INTO catches VALUES (1, 'u', 1, 'Bulbasaur', 'Common', 1, 0, 0)");
+    const insert = db.prepare("INSERT INTO catches VALUES (?, 'u', 1, 'Bulbasaur', 'Common', 1, 0, 0)");
+    db.transaction(() => { for (let id = 2; id <= 1001; id++) insert.run(id); })();
+    ctx.syncReleaseCategoryLocks('u');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM catches WHERE is_locked = 1').get().n, 1001);
+    ctx.args = ['lock', 'common'];
+    await ctx.run();
+    ctx.args = ['unlock', 'common'];
+    await ctx.run();
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM catches WHERE is_locked = 1').get().n, 1001);
+    ctx.args = ['unlock', '9001'];
+    await ctx.run();
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM release_category_locks WHERE category = 'exact:1:golden'").get().n, 0);
+  } finally { db.close(); }
+});
+
+test('box coin rewards retain boosts without increasing earned stats', () => {
+  const increments = [];
+  const ctx = vm.createContext({
+    assertUserId: () => {}, getAmuletCoinBoost: () => ({ multiplier: 1.5, percentBoost: 50 }),
+    incrementUser: (_id, values) => increments.push({ ...values }),
+    VOTE_BOXES: { Rare: { coins: [100, 100], rareCandies: [0, 0, 0], eggs: [0, 0, 0], masterballs: [0] } },
+    getUserItems: () => [{ item_name: 'Rare', amount: 1 }], takeUserItem: () => true,
+    db: { transaction: (fn) => ({ immediate: fn }) },
+  });
+  vm.runInContext(extract(dbSource, 'function awardCoinsWithBoost(', '\nconst VOTE_COOLDOWN_MS'), ctx);
+  vm.runInContext(extract(dbSource, 'function openVoteBox(', '\nfunction getCatchbotData('), ctx);
+  assert.equal(ctx.openVoteBox('u', 'Rare').awardedPokecoins, 150);
+  assert.deepEqual(increments.at(-1), { coins: 150 });
+  ctx.awardCoinsWithBoost('u', 100);
+  assert.deepEqual(increments.at(-1), { coins: 150, pkc_earned: 150 });
+  assert.match(indexSource, /awardCoinsWithBoost\(userId, coins, \{ countInStats: false \}\)/);
+  assert.match(indexSource, /awardCoinsWithBoost\(userId, rewards\.coins, \{ countInStats: false \}\)/);
+  const giveaway = extract(indexSource, 'async function concludeGiveaway(', '\nasync function updateGiveawayEntryDisplay(');
+  assert.match(giveaway, /incrementUser\(winnerId, \{ coins: prizeData\.coins \}\)/);
 });
 
 test('clan stats shortcuts select the same periods as their full names', async () => {

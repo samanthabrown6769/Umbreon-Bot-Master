@@ -2719,7 +2719,7 @@ function getAmuletCoinBoost(userId) {
   };
 }
 
-function awardCoinsWithBoost(userId, baseAmount) {
+function awardCoinsWithBoost(userId, baseAmount, { countInStats = true } = {}) {
   assertUserId(userId);
   if (!Number.isSafeInteger(baseAmount) || baseAmount < 0) {
     throw new TypeError('Coin reward must be a non-negative safe integer.');
@@ -2731,7 +2731,9 @@ function awardCoinsWithBoost(userId, baseAmount) {
     throw new RangeError('Boosted coin reward exceeds the safe integer range.');
   }
 
-  incrementUser(userId, { coins: finalAmount, pkc_earned: finalAmount });
+  incrementUser(userId, countInStats
+    ? { coins: finalAmount, pkc_earned: finalAmount }
+    : { coins: finalAmount });
   return { finalAmount, boostPercent: amuletBoost.percentBoost };
 }
 
@@ -2888,7 +2890,7 @@ function openVoteBox(userId, boxName, amount = 1) {
       vote_eggs: rewards.eggs,
       masterballs: rewards.masterballs,
     });
-    rewards.awardedPokecoins = awardCoinsWithBoost(userId, rewards.pokecoins).finalAmount;
+    rewards.awardedPokecoins = awardCoinsWithBoost(userId, rewards.pokecoins, { countInStats: false }).finalAmount;
     return rewards;
   }).immediate();
 }

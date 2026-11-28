@@ -4461,8 +4461,11 @@ function getLockedReleaseCategories(userId) {
 
 function getCategoryLockedCatchIds(userId) {
   const ids = new Set();
-  for (const category of getLockedReleaseCategories(userId)) {
-    for (const pokemon of findReleaseLockPresetMatches(userId, category) || []) ids.add(pokemon.id);
+  const categories = getLockedReleaseCategories(userId);
+  if (!categories.length) return ids;
+  const catches = getReleaseLockCatches(userId);
+  for (const category of categories) {
+    for (const pokemon of findReleaseLockPresetMatches(userId, category, catches) || []) ids.add(pokemon.id);
   }
   return ids;
 }
@@ -4471,9 +4474,12 @@ function getCategoryLockedCatchIds(userId) {
 function syncReleaseCategoryLocks(userId) {
   const ids = [...getCategoryLockedCatchIds(userId)];
   if (!ids.length) return;
-  db.prepare(
-    `UPDATE catches SET is_locked = 1 WHERE user_id = ? AND is_locked = 0 AND id IN (${ids.map(() => '?').join(', ')})`
-  ).run(userId, ...ids);
+  for (let offset = 0; offset < ids.length; offset += 500) {
+    const chunk = ids.slice(offset, offset + 500);
+    db.prepare(
+      `UPDATE catches SET is_locked = 1 WHERE user_id = ? AND is_locked = 0 AND id IN (${chunk.map(() => '?').join(', ')})`
+    ).run(userId, ...chunk);
+  }
 }
 
 function getReleaseProtectionReason(pokemon, { manual = false } = {}) {
@@ -4491,8 +4497,8 @@ function getReleaseProtectionReason(pokemon, { manual = false } = {}) {
   return null;
 }
 
-function findReleaseLockPresetMatches(userId, preset) {
-  const catches = db.prepare(`
+function getReleaseLockCatches(userId) {
+  return db.prepare(`
     SELECT catches.id, catches.pokemon_id, catches.name, catches.rarity,
     catches.is_shiny, catches.is_golden, catches.is_locked, pokemon_forms.species_id,
       pokemon_forms.species_name, pokemon_forms.slug, pokemon_forms.evolution_chain_id,
@@ -4502,6 +4508,9 @@ function findReleaseLockPresetMatches(userId, preset) {
     WHERE catches.user_id = ?
     ORDER BY catches.id DESC
   `).all(userId);
+}
+
+function findReleaseLockPresetMatches(userId, preset, catches = getReleaseLockCatches(userId)) {
   const normalize = (value) => `${value || ''}`.toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizedPreset = normalize(preset);
   const exactLock = `${preset || ''}`.match(/^exact:(\d+):(base|shiny|golden)$/i);
@@ -4644,20 +4653,46 @@ function getReleaseLockCategoryLabel(category) {
   `).get(Number(speciesLock[1]))?.species_name || `Pokémon #${speciesLock[1]}`;
 }
 
+function resolveReleaseLockCategory(query) {
+  const match = query.trim().match(/^(shiny|golden)[\s_-]+(.+)$/i);
+  const value = match ? match[2].trim() : query.trim();
+  const form = resolvePokemonForm(value);
+  if (!form) return null;
+  let variant = match ? match[1].toLowerCase() : 'base';
+  if (/^\d+$/.test(value)) {
+    const number = Number(value);
+    const forms = db.prepare('SELECT * FROM pokemon_forms ORDER BY species_id, id').all();
+    const numbers = getPokemonDexNumbers(forms).get(form.id);
+    const numericVariant = numbers?.dexNumber === number ? 'base'
+      : numbers?.shinyDexNumber === number ? 'shiny'
+        : isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))
+          && getGoldenDexNumber(form.species_id, form.slug) === number ? 'golden' : null;
+    if (!numericVariant || (match && numericVariant !== variant)) return null;
+    variant = numericVariant;
+  }
+  if (variant === 'golden' && !isGoldenFormSupported(form.species_id, form.slug, Boolean(form.is_default))) return null;
+  return `exact:${form.id}:${variant}`;
+}
+
 function releaseCatchIds(userId, catchIds, { protectFavorites = false, allowManual = false } = {}) {
   return db.transaction(() => {
     const released = [];
     const skipped = { locked: 0, inTeam: 0, golden: 0, unsupported: 0 };
     let totalPayout = 0;
     const rotomDrops = [];
+    const sacrificeCounts = new Map();
+    const multiplier = getAmuletCoinBoost(userId).multiplier;
+    const selectCatch = db.prepare(`
+      SELECT catches.*, (catches.is_fav = 1) AS is_favorite
+      FROM catches WHERE catches.id = ? AND catches.user_id = ?
+    `);
+    const deleteCatch = db.prepare(
+      `DELETE FROM catches
+       WHERE id = ? AND user_id = ? AND is_locked = 0 AND in_team = 0 AND is_golden = 0`
+    );
+    const clearBuddy = db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ? AND id = ?');
     for (const catchId of catchIds) {
-      const pokemon = db.prepare(`
-        SELECT catches.*,
-          (catches.is_fav = 1) AS is_favorite
-        FROM catches
-        WHERE catches.id = ? AND catches.user_id = ?
-      `
-      ).get(catchId, userId);
+      const pokemon = selectCatch.get(catchId, userId);
       if (!pokemon) continue;
       if (pokemon.is_locked) {
         skipped.locked += 1;
@@ -4685,32 +4720,31 @@ function releaseCatchIds(userId, catchIds, { protectFavorites = false, allowManu
         skipped.unsupported += 1;
         continue;
       }
-      const deleted = db.prepare(
-        `DELETE FROM catches
-         WHERE id = ? AND user_id = ? AND is_locked = 0 AND in_team = 0 AND is_golden = 0`
-      ).run(catchId, userId);
+      const deleted = deleteCatch.run(catchId, userId);
       if (!deleted.changes) continue;
-      creditChamberSacrifice(userId, pokemon.pokemon_id);
+      sacrificeCounts.set(pokemon.pokemon_id, (sacrificeCounts.get(pokemon.pokemon_id) || 0) + 1);
       const drops = grantRotomItemDrops(userId, pokemon);
       rotomDrops.push(...drops);
-      db.prepare('UPDATE users SET buddy_catch_id = NULL WHERE buddy_catch_id = ?').run(catchId);
-      totalPayout += awardCoinsWithBoost(userId, payout).finalAmount;
+      clearBuddy.run(catchId, userId);
+      totalPayout += Math.floor(payout * multiplier);
       released.push(pokemon);
     }
+    for (const [formId, count] of sacrificeCounts) creditChamberSacrifice(userId, formId, count);
+    if (released.length) incrementUser(userId, { coins: totalPayout, pkc_earned: totalPayout });
     return { released, skipped, totalPayout, rotomDrops };
   }).immediate();
 }
 
-function creditChamberSacrifice(userId, formId) {
+function creditChamberSacrifice(userId, formId, count = 1) {
   const form = db.prepare('SELECT species_id FROM pokemon_forms WHERE id = ?').get(formId);
   if (!form) return;
   for (const chamber of Object.values(CHAMBER_CONFIG)) {
     if (chamber.pokemonId !== form.species_id || !isChamberOpen(chamber)) continue;
     db.prepare(`
       INSERT INTO mega_chambers (user_id, chamber_key, sacrifices, clears)
-      VALUES (?, ?, 1, 0)
-      ON CONFLICT(user_id, chamber_key) DO UPDATE SET sacrifices = sacrifices + 1
-    `).run(userId, chamber.key);
+      VALUES (?, ?, ?, 0)
+      ON CONFLICT(user_id, chamber_key) DO UPDATE SET sacrifices = sacrifices + excluded.sacrifices
+    `).run(userId, chamber.key, count);
   }
 }
 
@@ -12469,7 +12503,7 @@ async function concludeGiveaway(giveawayId) {
       const increments = {};
       if (prizeData.coins) {
         winnerCoinRewards.set(winnerId, prizeData.coins);
-        incrementUser(winnerId, { coins: prizeData.coins, pkc_earned: prizeData.coins });
+        incrementUser(winnerId, { coins: prizeData.coins });
       }
       for (const [item, quantity] of Object.entries(prizeData.items || {})) {
         const column = GIVEAWAY_ITEM_COLUMNS[item];
@@ -24325,10 +24359,6 @@ client.on('messageCreate', async (message) => {
                 ? findCatches.all(userId, form.id, mutation === 'fav' ? 0 : 1, golden ? 1 : 0, shiny ? 1 : 0)
                 : [];
               let rows = findRows(wantsGolden, wantsShiny);
-              if (!rows.length && !wantsGolden) {
-                rows = findRows(true, false);
-                if (rows.length) wantsGolden = true;
-              }
               if (!rows.length) {
                 missing.push(rawValue);
                 continue;
@@ -26498,9 +26528,9 @@ client.on('messageCreate', async (message) => {
           );
         }
         const locked = subcommand === 'lock';
-        const presetMatches = findReleaseLockPresetMatches(userId, query);
         const category = getReleaseCategory(query);
-        if (presetMatches && category) {
+        if (category) {
+          const presetMatches = findReleaseLockPresetMatches(userId, query);
           const label = `${releaseCategoryEmoji(category)}\`${getReleaseLockCategoryLabel(category)}\``;
           const alreadyLocked = getLockedReleaseCategories(userId).includes(category);
           if (locked) {
@@ -26509,11 +26539,13 @@ client.on('messageCreate', async (message) => {
             db.prepare('DELETE FROM release_category_locks WHERE user_id = ? AND category = ?').run(userId, category);
           }
           const ids = presetMatches.map((pokemon) => pokemon.id);
-          if (ids.length) {
+          for (let offset = 0; offset < ids.length; offset += 500) {
+            const chunk = ids.slice(offset, offset + 500);
             db.prepare(
-              `UPDATE catches SET is_locked = ? WHERE user_id = ? AND id IN (${ids.map(() => '?').join(', ')})`
-            ).run(locked ? 1 : 0, userId, ...ids);
+              `UPDATE catches SET is_locked = ? WHERE user_id = ? AND id IN (${chunk.map(() => '?').join(', ')})`
+            ).run(locked ? 1 : 0, userId, ...chunk);
           }
+          if (!locked) syncReleaseCategoryLocks(userId);
           if (locked === alreadyLocked) {
             return message.reply(`The ${label} category is already ${locked ? 'locked' : 'unlocked'}.`);
           }
@@ -26524,13 +26556,15 @@ client.on('messageCreate', async (message) => {
         }
         // Strict match: base names/numbers never include shiny or golden copies.
         const strictMatches = findOwnedPokemonRows(userId, query);
-        if (!strictMatches.length) {
-          return message.reply(`No Pokémon matching **${query}** found in your storage.`);
-        }
         // One lock slot per exact form + variant, covering every duplicate of it.
         const exactCategories = [...new Set(strictMatches.map((pokemon) =>
           `exact:${pokemon.pokemon_id}:${pokemon.is_golden ? 'golden' : pokemon.is_shiny ? 'shiny' : 'base'}`
         ))];
+        if (!exactCategories.length) {
+          const resolved = resolveReleaseLockCategory(query);
+          if (!resolved) return message.reply(`No Pokémon matching **${query}** found.`);
+          exactCategories.push(resolved);
+        }
         const matchName = exactCategories.map(getReleaseLockCategoryLabel).join(', ');
         const lockedCategories = getLockedReleaseCategories(userId);
         const targetCategories = exactCategories.filter((category) => lockedCategories.includes(category) !== locked);
@@ -26567,10 +26601,11 @@ client.on('messageCreate', async (message) => {
         for (const category of targetCategories) remove.run(userId, category);
         const stillLocked = getCategoryLockedCatchIds(userId);
         const unlockIds = [...idsToUnlock].filter((id) => !stillLocked.has(id));
-        if (unlockIds.length) {
+        for (let offset = 0; offset < unlockIds.length; offset += 500) {
+          const chunk = unlockIds.slice(offset, offset + 500);
           db.prepare(
-            `UPDATE catches SET is_locked = 0 WHERE user_id = ? AND id IN (${unlockIds.map(() => '?').join(', ')})`
-          ).run(userId, ...unlockIds);
+            `UPDATE catches SET is_locked = 0 WHERE user_id = ? AND id IN (${chunk.map(() => '?').join(', ')})`
+          ).run(userId, ...chunk);
         }
         return message.reply(`🔓 Unlocked all **${matchName}** from release.`);
       }
@@ -26611,7 +26646,7 @@ client.on('messageCreate', async (message) => {
         const lines = entries.slice(0, 20).map((entry, index) => `${String(index + 1).padStart(2, '0')}.) ${entry}`);
         const remaining = entries.length - lines.length;
         return message.reply(
-          `🔒 **Your release locks (${individual.length}/${getReleaseLockLimit(userId)} slots used):**\n${lines.join('\n')}` +
+          `🔒 **Your release locks (${getReleaseLockCount(userId)}/${getReleaseLockLimit(userId)} slots used):**\n${lines.join('\n')}` +
           (remaining ? `\n…and ${remaining} more.` : '')
         );
       }
@@ -26680,10 +26715,11 @@ client.on('messageCreate', async (message) => {
 
           const candidateIds = releaseCandidates.map((pokemon) => pokemon.id);
           const groupedCounts = new Map();
+          const releaseMultiplier = getAmuletCoinBoost(userId).multiplier;
           for (const pokemon of releaseCandidates) {
             const rarityData = groupedCounts.get(pokemon.displayRarity) || { count: 0, payout: 0, pokemon: new Map() };
             const basePayout = RELEASE_PAYOUTS[pokemon.displayRarity.toLowerCase()];
-            const payout = Math.floor(basePayout * getAmuletCoinBoost(userId).multiplier);
+            const payout = Math.floor(basePayout * releaseMultiplier);
             rarityData.count += 1;
             rarityData.payout += payout;
             rarityData.pokemon.set(pokemon.name, (rarityData.pokemon.get(pokemon.name) || 0) + 1);
@@ -26732,7 +26768,7 @@ client.on('messageCreate', async (message) => {
                 lines.push(`\n${getRarityEmojis(activeRarity)} **${activeRarity} (${count})**`);
               }
               lines.push(`• ${entry.name} ×${entry.count} — ${EMOJIS.pokecoin} ${Math.floor(
-                RELEASE_PAYOUTS[activeRarity.toLowerCase()] * getAmuletCoinBoost(userId).multiplier
+                RELEASE_PAYOUTS[activeRarity.toLowerCase()] * releaseMultiplier
               ).toLocaleString()}`);
             }
             return new EmbedBuilder()
@@ -26800,12 +26836,13 @@ client.on('messageCreate', async (message) => {
               } else if (interaction.customId === 'release-duplicates-last') {
                 detailsPage = totalPages - 1;
               } else if (interaction.customId === 'release-duplicates-confirm') {
+                await interaction.deferUpdate();
                 const stillDuplicateIds = new Set(findReleaseCandidates().map((pokemon) => pokemon.id));
                 const safeIds = candidateIds.filter((id) => stillDuplicateIds.has(id));
                 const outcome = releaseCatchIds(userId, safeIds, { protectFavorites: true });
                 collector.stop('confirmed');
                 if (!outcome.released.length) {
-                  await interaction.update({
+                  await interaction.editReply({
                     content: 'No eligible duplicate Pokémon remained to release.',
                     embeds: [],
                     components: [],
@@ -26824,7 +26861,7 @@ client.on('messageCreate', async (message) => {
                 const rotomText = outcome.rotomDrops.length
                   ? `\n⚙️ Rotom items found: ${outcome.rotomDrops.join(', ')}.`
                   : '';
-                await interaction.update({
+                await interaction.editReply({
                   content:
                     `${getTrainerIconEmoji(userId)} **${message.author.username}** released ` +
                     `**${outcome.released.length} duplicate Pokémon**, earning ${EMOJIS.pokecoin} ` +
@@ -26845,6 +26882,11 @@ client.on('messageCreate', async (message) => {
                 await interaction.reply({
                   content: 'The request encountered an error. Check your Pokémon storage before retrying to avoid releasing the same Pokémon twice.',
                   ephemeral: true,
+                });
+              } else if (interaction.deferred) {
+                await interaction.editReply({
+                  content: 'The request encountered an error. Check your Pokémon storage before retrying to avoid releasing the same Pokémon twice.',
+                  embeds: [], components: [],
                 });
               }
             }
@@ -27057,8 +27099,7 @@ client.on('messageCreate', async (message) => {
           })
           .setDescription(
             `\`${PREFIX}release <species name|Dex #> [amount]\` — release up to that many matching Pokémon.\n` +
-            `\`${PREFIX}release lock|unlock <species name>\` — lock/unlock all copies of a species using one lock slot.\n` +
-            `\`${PREFIX}release lock|unlock <Dex #>\` — lock/unlock matching individual Pokémon.\n` +
+            `\`${PREFIX}release lock|unlock <name|Dex #>\` — lock/unlock all copies of a form and variant using one slot, even before you own it.\n` +
             `\`${PREFIX}release lock|unlock <rarity>\` — lock/unlock a rarity category.\n` +
             `\`${PREFIX}release lock|unlock mega-line\` — lock/unlock pre-evolutions of Mega Pokémon.\n` +
             `Preset category locks use no slots; a species lock groups every copy into one slot.\n` +
@@ -29201,7 +29242,7 @@ client.on('messageCreate', async (message) => {
             ultraballs += Math.floor(Math.random() * 3) + 1;
           }
         }
-        const boostedCoins = awardCoinsWithBoost(userId, coins).finalAmount;
+        const boostedCoins = awardCoinsWithBoost(userId, coins, { countInStats: false }).finalAmount;
         incrementUser(userId, {
           greatballs,
           ultraballs,
@@ -29330,7 +29371,7 @@ client.on('messageCreate', async (message) => {
           if (rollDrop(0.04)) rewards.expCandies['Exp. Candy S'] += 1;
           if (rollDrop(0.01)) rewards.expCandies['Exp. Candy M'] += 1;
         }
-        const boostedCoins = awardCoinsWithBoost(userId, rewards.coins).finalAmount;
+        const boostedCoins = awardCoinsWithBoost(userId, rewards.coins, { countInStats: false }).finalAmount;
         incrementUser(userId, {
           lootboxes: -amount,
           lootboxes_opened: amount,
