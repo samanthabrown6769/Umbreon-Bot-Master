@@ -667,15 +667,13 @@ function getChanceFromFlooredOdds(chance) {
   return 1 / Math.max(1, flooredDenominator);
 }
 
-const EVENT_SPAWN_ODDS = 1000;
-const EVENT_SPAWN_RATE_MULTIPLIER = 4.5;
+const EVENT_SPAWN_ODDS = 210;
 function getEventSpawnChance(roleChanceBoost = 0, eventShinyPct = 0, shinyBonusActive = false) {
   const tierMultiplier = 1 + (eventShinyPct / 100) * (70 / 27);
-  const chance = EVENT_SPAWN_RATE_MULTIPLIER
+  const chance = (1 / EVENT_SPAWN_ODDS)
     * (1 + roleChanceBoost / 100)
     * tierMultiplier
-    * (shinyBonusActive ? 1.25 : 1)
-    / EVENT_SPAWN_ODDS;
+    * (shinyBonusActive ? 1.25 : 1);
   return getChanceFromFlooredOdds(chance) / 2;
 }
 let eventSpawnFormIds = [];
@@ -18276,10 +18274,12 @@ client.on('messageCreate', async (message) => {
           `• **${ability.name}** — ${ability.hidden ? 'Hidden Ability' : 'Standard Ability'}`
         );
         const dexNumber = getPokemonFormDexNumber(pokemon);
+        const sprite = getPokemonSpriteEmoji(pokemon);
         const embed = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`${pokemon.name} — Abilities`)
           .setDescription(
+            `${sprite ? `${sprite} **${pokemon.name}**\n` : ''}` +
             `**Pokédex number:** #${dexNumber}\n\n${abilityLines.join('\n')}\n\n` +
             `Use \`${PREFIX}ability <ability name>\` to read about an ability.`
           );
@@ -18301,36 +18301,37 @@ client.on('messageCreate', async (message) => {
         );
       }
 
-      const pokemonEntries = ability.pokemon.slice(0, 20).map((entry) => {
-        const name = entry.name.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-        const sprite = getPokemonSpriteEmoji({ name: entry.name });
+      const formsBySlug = new Map(db.prepare('SELECT name, slug FROM pokemon_forms').all()
+        .map((form) => [form.slug.toLowerCase(), form]));
+      const pokemonEntries = ability.pokemon.map((entry) => {
+        const form = formsBySlug.get(entry.name.toLowerCase());
+        const name = form?.name || entry.name.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+        const sprite = getPokemonSpriteEmoji({ name, form_slug: entry.name });
         return `${sprite ? `${sprite} ` : ''}**${name}**${entry.hidden ? ' (Hidden Ability)' : ''}`;
       });
-      while (pokemonEntries.length) {
-        const remaining = ability.pokemon.length - pokemonEntries.length;
-        const suffix = remaining > 0 ? ` …and ${remaining} more.` : '';
-        if (`${pokemonEntries.join(' · ')}${suffix}`.length <= 1024) break;
-        pokemonEntries.pop();
-      }
-      const pokemonList = pokemonEntries.length
-        ? `${pokemonEntries.join(' · ')}${ability.pokemon.length > pokemonEntries.length
-          ? ` …and ${ability.pokemon.length - pokemonEntries.length} more.`
-          : ''}`
-        : 'No Pokémon are currently listed with this ability.';
       const effect = ability.effect || ability.shortEffect || 'No English effect description is available.';
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle(`${ability.name} — Ability`)
-        .setDescription(effect.length > 4000 ? `${effect.slice(0, 3997)}...` : effect)
-        .addFields({
-          name: `Pokémon with this ability (${ability.pokemon.length})`,
-          value: pokemonList,
-        })
-        .setFooter({ text: `Ability #${ability.id} • Data from PokéAPI` });
+        .setDescription(effect.length > 4000 ? `${effect.slice(0, 3997)}...` : effect);
       if (ability.shortEffect && ability.shortEffect !== ability.effect) {
-        embed.addFields({ name: 'Summary', value: ability.shortEffect });
+        embed.addFields({ name: 'Summary', value: ability.shortEffect.slice(0, 1024) });
       }
-      return message.reply({ embeds: [embed] });
+      const pokemonPages = [];
+      let pokemonList = '';
+      for (const entry of pokemonEntries) {
+        if (pokemonList && pokemonList.length + entry.length + 3 > 4000) {
+          pokemonPages.push(pokemonList);
+          pokemonList = '';
+        }
+        pokemonList += `${pokemonList ? ' · ' : ''}${entry}`;
+      }
+      pokemonPages.push(pokemonList || 'No Pokémon are currently listed with this ability.');
+      const pages = [embed, ...pokemonPages.map((list) => new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle(`${ability.name} — Pokémon (${ability.pokemon.length})`)
+        .setDescription(list))];
+      return sendPagedEmbeds(message, pages, `Ability #${ability.id}`);
     }
 
     if (command === 'pokemon' || command === 'p') {

@@ -4063,10 +4063,10 @@ test('ordinary Legendary and event rolls use the requested base thresholds', () 
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Legendary');
   roll = 1 / 250;
   assert.equal(ctx.chooseEncounterRarity('normal', true, 0), 'Common');
-  assert.equal(ctx.getEventSpawnChance(), 1 / 444);
-  assert.equal(ctx.getEventSpawnChance(50), 1 / 296);
-  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 200);
-  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 132);
+  assert.equal(ctx.getEventSpawnChance(), 1 / 420);
+  assert.equal(ctx.getEventSpawnChance(50), 1 / 280);
+  assert.equal(ctx.getEventSpawnChance(0, 30, true), 1 / 188);
+  assert.equal(ctx.getEventSpawnChance(50, 30, true), 1 / 126);
   const shinyRate = 0.001 * 1.5 * (1 / (1 - 1 / 100));
   assert.equal(ctx.getChanceFromFlooredOdds(shinyRate), 1 / 660);
 });
@@ -4790,6 +4790,8 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     getTotalEffectiveShinyBonus: () => shinyBonus + (tierPerks ? tierPerks.shinyCharms : 0),
     getChamberSpawnSpecies: () => [],
     consumeEncounterModifier: () => 'normal', rollSpecialLegendarySpawn: () => null,
+    getActiveHuntTarget: () => null, DAILY_HUNT_SPAWN_BOOST_CHANCE: 0,
+    chooseEncounterRarity: () => 'Common', getEncounterRarityRate: () => 1,
     getPatreonPerks: () => tierPerks || { shinyRatePct: 0, eventShinyPct },
     isPlayerBonusActive: (key) => key === 'shiny' && bonusActive,
     HARD_RARITY_USER_IDS: new Set(), HARD_RARITY_RATE_MULTIPLIER: 1,
@@ -4824,10 +4826,12 @@ test('checklist shiny bonus weights only eligible event spawns', () => {
     rolls = [0, selectionRoll];
     return ctx.rollSpawn('water', 'user', rod, options);
   };
-  rolls = [1 / 444 - 1e-10, 0];
+  rolls = [1 / 420 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod).id, 1);
-  rolls = [1 / 444 - 1e-10, 0];
+  rolls = [1 / 420 - 1e-10, 0];
   assert.equal(ctx.rollSpawn('land', 'user').isEventSpawn, true);
+  rolls = [1 / 420, 0.5, 1];
+  assert.equal(ctx.rollSpawn('land', 'user').isEventSpawn, undefined);
   rolls = [ctx.getEventSpawnChance(5) - 1e-10, 0];
   assert.equal(ctx.rollSpawn('water', 'user', rod, { roleChanceBoost: 5 }).id, 1);
   rolls = [ctx.getEventSpawnChance(5), 0.5, 0.1, 0.001];
@@ -6200,6 +6204,81 @@ test('faction hunt alerts use the daily species mapping and mention the trainer'
   assert.equal(ctx.buildFactionEncounterAlert({ species_id: 25 }, '123').content, alert.content);
   assert.equal(ctx.buildFactionEncounterAlert({ speciesId: 26 }, '123'), null);
   assert.equal(ctx.buildFactionEncounterAlert({ speciesId: 25, isExplore: true }, '123'), null);
+});
+
+test('ability details page the complete Pokémon list with available sprites', async () => {
+  const entries = [
+    { name: 'mr-mime', hidden: true },
+    ...Array.from({ length: 300 }, (_, index) => ({ name: `pokemon-${String(index).padStart(3, '0')}`, hidden: false })),
+  ];
+  const handlers = {};
+  const displayed = [];
+  const panel = {
+    createMessageComponentCollector: () => ({ on: (name, handler) => { handlers[name] = handler; } }),
+    edit: async () => {},
+  };
+  const message = {
+    author: { id: 'user' },
+    reply: async (payload) => { displayed.push(payload.embeds[0].toJSON()); return panel; },
+  };
+  const ctx = vm.createContext({
+    command: 'ability', args: ['test ability'], message, PREFIX: '.', console,
+    resolvePokemonForm: () => null,
+    fetchPokemonAbilityDetails: async () => ({
+      id: 1, name: 'Test Ability', effect: 'The detailed effect.', shortEffect: 'Summary.',
+      pokemon: entries,
+    }),
+    db: { prepare: () => ({ all: () => [{ name: 'Mr. Mime', slug: 'mr-mime' }] }) },
+    getPokemonSpriteEmoji: (pokemon) => pokemon.form_slug === 'mr-mime' ? '<:mime:123456789012345678>' : '',
+    EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType,
+  });
+  vm.runInContext(extract(indexSource, 'async function sendPagedEmbeds(', '\nfunction summarizeWorldBossStats('), ctx);
+  vm.runInContext(`async function run() { ${extract(indexSource, "    if (command === 'ability' || command === 'ab') {", "\n    if (command === 'pokemon' || command === 'p') {")} }`, ctx);
+  await ctx.run();
+  assert.equal(displayed[0].description, 'The detailed effect.');
+  assert.equal(displayed[0].fields[0].value, 'Summary.');
+  assert.match(displayed[0].footer.text, /Page 1\//);
+  assert.doesNotMatch(JSON.stringify(displayed[0]), /PokéAPI|PokeAPI/);
+  let denied;
+  await handlers.collect({ user: { id: 'other' }, reply: async (payload) => { denied = payload; } });
+  assert.equal(denied.ephemeral, true);
+  const pageCount = Number(displayed[0].footer.text.match(/Page 1\/(\d+)/)[1]);
+  assert.ok(pageCount > 2);
+  for (let page = 2; page <= pageCount; page++) {
+    await handlers.collect({
+      user: { id: 'user' }, customId: 'page_next',
+      update: async (payload) => { displayed.push(payload.embeds[0].toJSON()); },
+    });
+  }
+  const list = displayed.slice(1).map((page) => page.description).join(' · ');
+  assert.match(list, /<:mime:123456789012345678> \*\*Mr\. Mime\*\* \(Hidden Ability\)/);
+  for (let index = 0; index < 300; index++) {
+    assert.ok(list.includes(`**Pokemon ${String(index).padStart(3, '0')}**`));
+  }
+  for (const page of displayed.slice(1)) {
+    assert.ok(page.description.length <= 4000);
+    assert.doesNotMatch(JSON.stringify(page), /PokéAPI|PokeAPI/);
+  }
+  assert.match(displayed[1].footer.text, /Page 2\//);
+
+  ctx.fetchPokemonAbilityDetails = async () => ({
+    id: 2, name: 'Empty', effect: null, shortEffect: null, pokemon: [],
+  });
+  displayed.length = 0;
+  await ctx.run();
+  await handlers.collect({
+    user: { id: 'user' }, customId: 'page_next',
+    update: async (payload) => { displayed.push(payload.embeds[0].toJSON()); },
+  });
+  assert.equal(displayed[1].description, 'No Pokémon are currently listed with this ability.');
+
+  ctx.resolvePokemonForm = () => ({ id: 1, name: 'Mr. Mime', form_slug: 'mr-mime' });
+  ctx.fetchPokemonAbilities = async () => [{ name: 'Test Ability', hidden: false }];
+  ctx.getPokemonFormDexNumber = () => 122;
+  displayed.length = 0;
+  await ctx.run();
+  assert.match(displayed[0].description, /<:mime:123456789012345678> \*\*Mr\. Mime\*\*/);
+  assert.match(displayed[0].description, /Test Ability/);
 });
 
 test('held-item list groups all owned Pokémon by item and pages without counting shared copies twice', async () => {
